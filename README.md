@@ -73,17 +73,17 @@ pnpm verify
 
 runs the ordered release-gate stages defined in `scripts/verify.ts`, fails fast on the first real failure, and always writes a machine-readable report to `artifacts/verification/latest/report.json` (plus `summary.md` on failure). As of this writing the stages are:
 
-| Stage              | Status                                                                         |
-| ------------------ | ------------------------------------------------------------------------------ |
-| `format:check`     | real                                                                           |
-| `lint`             | real                                                                           |
-| `typecheck`        | real                                                                           |
-| `test:unit`        | real                                                                           |
-| `test:pack`        | real                                                                           |
-| `test:integration` | real                                                                           |
-| `test:contract`    | declared, not yet implemented — reported as `skipped`, never a fabricated pass |
-| `test:scenario`    | real                                                                           |
-| `test:e2e`         | real                                                                           |
+| Stage              | Status |
+| ------------------ | ------ |
+| `format:check`     | real   |
+| `lint`             | real   |
+| `typecheck`        | real   |
+| `test:unit`        | real   |
+| `test:pack`        | real   |
+| `test:integration` | real   |
+| `test:contract`    | real   |
+| `test:scenario`    | real   |
+| `test:e2e`         | real   |
 
 `pnpm verify` runs with no network access once dependencies and Playwright browsers are installed.
 
@@ -97,7 +97,15 @@ PAX_DEPLOYED_URL=https://pax-hackathon-production.up.railway.app pnpm test:deplo
 
 It checks health/static assets, a real fixture case and investigation run, Runtime Inspector availability, same-origin CORS, and — its core assertion — that a case survives a real Railway redeploy byte-identically.
 
-`pnpm verify:release` is currently a declared stub (`scripts/stage-not-implemented.ts`) rather than a real composed gate — it prints an honest "not yet implemented" message and exits `0`; do not treat it as release evidence yet. `test:observability`, `test:mutation`, `test:live`, and `test:submission` are stubbed the same way. See [`docs/specs/testing.md`](docs/specs/testing.md) for the full intended verification pyramid and which layers are real today.
+```bash
+pnpm verify:release
+```
+
+runs `pnpm verify` (above), then `pnpm test:mutation` (real Stryker-based mutation testing, invoked as a plain external command), a production build check (`pnpm --filter @pax/web build`), a Docker build contract check (`docker build -t pax-release-check .` against the repo-root `Dockerfile` — honestly skipped with a reason if the `docker` CLI is not available in the current environment, never silently passed), and `pnpm test:submission`. It fails fast on the first real stage failure and always writes a machine-readable report to `artifacts/verification/release-latest/report.json` (plus `summary.md` on failure), separate from `pnpm verify`'s own `artifacts/verification/latest/report.json` so both remain independently inspectable.
+
+`pnpm test:submission` (`scripts/test-submission.ts`) is the automated half of `docs/submissions/`: it checks that required submission files exist, README commands match real `package.json` scripts, `LICENSE` is present and MIT, `.env.example` contains no likely secrets, the architecture diagram source/export exist, fixture/reuse attribution is real, both hero scenarios' deterministic assertion reports exist and passed, the latest `pnpm verify` report's Git SHA matches the current commit, any present demo recording is within its competition's time limit, and required public URL fields are set in `docs/submissions/release-metadata.json`. It never marks eligibility, country, submitter type, learning, career-value, AWS Builder ID ownership, or other personal/legal attestations complete — those stay human-only gates in the Markdown checklists under `docs/submissions/`. As of this writing it honestly fails on two not-yet-done items: no `home-energy-guardian` scenario report has been generated yet (only `car-purchase`'s exists), and `docs/submissions/release-metadata.json` has not been created yet (that is later submission-packaging work, not a defect in the checker).
+
+`test:observability` and `test:live` remain declared stubs (`scripts/stage-not-implemented.ts`) — they print an honest "not yet implemented" message and exit `0`; do not treat either as release evidence yet. See [`docs/specs/testing.md`](docs/specs/testing.md) for the full intended verification pyramid and which layers are real today.
 
 ## Architecture
 

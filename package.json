@@ -15,19 +15,19 @@
     "test:unit": "vitest run",
     "test:pack": "vitest run packages/packs/src apps/agent/src/authoring apps/agent/src/fixtures/apartment-hunt-extension.test.ts packages/core/src/extensions.test.ts",
     "test:integration": "vitest run apps/agent/src/routes apps/agent/src/store apps/agent/src/db apps/agent/src/app.test.ts apps/agent/src/runtime/strands-adapter.test.ts apps/agent/src/runtime/event-normalizer.test.ts apps/agent/src/runtime/interventions.test.ts apps/agent/src/runtime/plugins.test.ts apps/agent/src/runtime/model-provider.test.ts apps/agent/src/runtime/session-adapter.test.ts apps/agent/src/runtime/car-purchase-engine.test.ts apps/agent/src/runtime/home-energy-engine.test.ts",
-    "test:contract": "tsx scripts/stage-not-implemented.ts test:contract",
+    "test:contract": "vitest run apps/web/src/model-context/webmcp-contract.test.ts apps/agent/src/routes/agentcore.test.ts",
     "test:scenario": "vitest run --project tests",
     "test:e2e": "pnpm --filter @pax/web build && playwright test",
     "test:observability": "tsx scripts/stage-not-implemented.ts test:observability",
-    "test:mutation": "tsx scripts/stage-not-implemented.ts test:mutation",
+    "test:mutation": "stryker run",
     "test:live": "tsx scripts/stage-not-implemented.ts test:live",
     "test:deployed": "tsx scripts/test-deployed.ts",
-    "test:submission": "tsx scripts/stage-not-implemented.ts test:submission",
+    "test:submission": "tsx scripts/test-submission.ts",
     "check:source": "tsx scripts/check-source.ts",
     "docs:diagram": "tsx scripts/generate-diagram.ts",
     "pax": "tsx scripts/pax-cli.ts",
     "verify": "tsx scripts/verify.ts",
-    "verify:release": "tsx scripts/stage-not-implemented.ts verify:release"
+    "verify:release": "tsx scripts/verify-release.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
