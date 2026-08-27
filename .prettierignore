@@ -11,6 +11,12 @@ reports
 pnpm-lock.yaml
 *.sqlite
 
+# drizzle-kit-generated migration SQL and its meta/ snapshot+journal JSON
+# (apps/agent/drizzle/ and any future package's equivalent output dir) are
+# generated artifacts, not hand-authored source — left exactly as the
+# generator wrote them rather than reformatted.
+drizzle
+
 # Hand-authored specification, planning, and submission prose. These predate
 # and are governed by docs/specs/README.md's precedence rules, not by this
 # repo's code-formatting gate; reformatting them is unrelated churn to any

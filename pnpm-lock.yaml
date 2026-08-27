@@ -109,7 +109,18 @@ importers:
         specifier: ^4.9.0
         version: 4.9.0
 
-  packages/packs: {}
+  packages/packs:
+    dependencies:
+      '@pax/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@pax/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      fast-check:
+        specifier: ^4.9.0
+        version: 4.9.0
 
   packages/scenarios: {}
 

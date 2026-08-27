@@ -1,0 +1,142 @@
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { openDatabase, type PaxDatabase } from './connection.js';
+import { applyMigrations, migrate, MigrationIntegrityError } from './migrate.js';
+
+const REQUIRED_TABLES = [
+  'cases',
+  'case_events',
+  'activity_events',
+  'runs',
+  'idempotency_keys',
+  'runtime_events',
+  'schema_migrations',
+];
+
+function tableNames(database: PaxDatabase): string[] {
+  const rows = database.sqlite
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+    .all() as { name: string }[];
+  return rows.map((row) => row.name);
+}
+
+describe('applyMigrations', () => {
+  let database: PaxDatabase | undefined;
+  let dir: string | undefined;
+
+  afterEach(() => {
+    database?.close();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    database = undefined;
+    dir = undefined;
+  });
+
+  it('creates all seven required tables from a fresh connection', () => {
+    dir = mkdtempSync(join(tmpdir(), 'pax-migrate-test-'));
+    database = openDatabase(dir);
+
+    const result = applyMigrations(database.sqlite);
+
+    expect(result.applied).toEqual(['0001_initial.sql']);
+    expect(result.alreadyApplied).toEqual([]);
+    for (const table of REQUIRED_TABLES) {
+      expect(tableNames(database)).toContain(table);
+    }
+  });
+
+  it('is a no-op the second time it runs against the same database', () => {
+    dir = mkdtempSync(join(tmpdir(), 'pax-migrate-test-'));
+    database = openDatabase(dir);
+
+    const first = applyMigrations(database.sqlite);
+    const second = applyMigrations(database.sqlite);
+
+    expect(first.applied).toEqual(['0001_initial.sql']);
+    expect(second.applied).toEqual([]);
+    expect(second.alreadyApplied).toEqual(['0001_initial.sql']);
+
+    const ledgerRows = database.sqlite.prepare('SELECT * FROM schema_migrations').all();
+    expect(ledgerRows).toHaveLength(1);
+  });
+
+  it('throws MigrationIntegrityError when an already-applied migration file is edited afterward', () => {
+    dir = mkdtempSync(join(tmpdir(), 'pax-migrate-test-'));
+    const migrationsDir = mkdtempSync(join(tmpdir(), 'pax-migrate-files-'));
+    // A real (if minimal) migration: it must create `schema_migrations`
+    // itself, exactly like the generated `0001_initial.sql` does, since a
+    // fresh database has no ledger table yet — the first-ever migration is
+    // always the one that brings it into existence.
+    writeFileSync(
+      join(migrationsDir, '0001_initial.sql'),
+      `CREATE TABLE probe (id INTEGER PRIMARY KEY);
+--> statement-breakpoint
+CREATE TABLE schema_migrations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  hash TEXT NOT NULL,
+  applied_at TEXT NOT NULL
+);`,
+    );
+    const opened = openDatabase(dir);
+    database = opened;
+
+    applyMigrations(opened.sqlite, migrationsDir);
+    // Tamper with the already-applied file's content.
+    writeFileSync(
+      join(migrationsDir, '0001_initial.sql'),
+      `CREATE TABLE probe (id INTEGER PRIMARY KEY); -- tampered
+--> statement-breakpoint
+CREATE TABLE schema_migrations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  hash TEXT NOT NULL,
+  applied_at TEXT NOT NULL
+);`,
+    );
+
+    expect(() => applyMigrations(opened.sqlite, migrationsDir)).toThrow(MigrationIntegrityError);
+    rmSync(migrationsDir, { recursive: true, force: true });
+  });
+});
+
+describe('migrate', () => {
+  let dir: string | undefined;
+  let database: PaxDatabase | undefined;
+
+  afterEach(() => {
+    database?.close();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+    database = undefined;
+  });
+
+  it('creates a missing/nested data directory and applies migrations rather than crashing', () => {
+    dir = mkdtempSync(join(tmpdir(), 'pax-migrate-boot-'));
+    const nestedDataDir = join(dir, 'deeply', 'nested', 'data');
+    expect(existsSync(nestedDataDir)).toBe(false);
+
+    const outcome = migrate(nestedDataDir);
+    database = outcome.database;
+
+    expect(existsSync(nestedDataDir)).toBe(true);
+    expect(outcome.result.applied).toEqual(['0001_initial.sql']);
+    for (const table of REQUIRED_TABLES) {
+      expect(tableNames(database)).toContain(table);
+    }
+  });
+
+  it('is idempotent and safe to call repeatedly (as on every service boot)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'pax-migrate-boot-'));
+
+    const firstBoot = migrate(dir);
+    firstBoot.database.close();
+    const secondBoot = migrate(dir);
+    database = secondBoot.database;
+
+    expect(firstBoot.result.applied).toEqual(['0001_initial.sql']);
+    expect(secondBoot.result.applied).toEqual([]);
+    expect(secondBoot.result.alreadyApplied).toEqual(['0001_initial.sql']);
+  });
+});
