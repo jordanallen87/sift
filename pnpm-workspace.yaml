@@ -1,6 +1,18 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+overrides:
+  # `@axe-core/playwright` (tests/e2e's Task 12 addition) and the
+  # pre-existing `@mermaid-js/mermaid-cli` (`docs:diagram`) both declare a
+  # loose `playwright-core` peer, which pnpm otherwise resolves to an older
+  # copy pulled in transitively through `mermaid-cli`'s own `puppeteer`
+  # dependency -- a second, independent `playwright-core` install whose
+  # `Page` type is nominally (not structurally) incompatible with the one
+  # `@playwright/test` exports, breaking `pnpm typecheck` in any file that
+  # passes a `@playwright/test` `Page` to `AxeBuilder`. Pinning the whole
+  # workspace to one `playwright-core` (matching `@playwright/test`'s own
+  # pinned `^1.62.1`) removes the duplicate entirely.
+  playwright-core: 1.62.1
 allowBuilds:
   better-sqlite3: true
   esbuild: true

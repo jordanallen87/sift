@@ -102,7 +102,12 @@ export function OptionComparison({
           Add at least one candidate to see a side-by-side comparison.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div
+          className="overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label="Comparison table -- scroll horizontally to see every option"
+        >
           <table data-testid="option-comparison-table" className="w-full border-collapse text-left">
             <thead>
               <tr>

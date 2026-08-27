@@ -32,7 +32,17 @@
 
   --color-ink: #1b1d1b; /* primary text */
   --color-ink-secondary: #4b4e49; /* secondary text, supporting copy */
-  --color-ink-muted: #6b6e68; /* tertiary text, metadata, timestamps-adjacent labels */
+  /* tertiary text, metadata, timestamps-adjacent labels. Darkened from the
+   * original #6b6e68 (a real axe `color-contrast` failure found by this
+   * task's Playwright gate: 4.1-4.3:1 against every `--color-status-*-bg`
+   * tint this token is actually rendered on, e.g. ActivityTimeline's
+   * timestamp/sequence line inside a status-tinted card -- all below WCAG
+   * AA's 4.5:1 for normal text). #60635e keeps the same hue/muted role
+   * (still visibly lighter than --color-ink-secondary) while clearing
+   * 4.5:1 against every status background, with margin (4.82:1 worst case,
+   * measured against every `--color-status-*-bg` plus `--color-surface`/
+   * `--color-surface-sunken`). */
+  --color-ink-muted: #60635e; /* tertiary text, metadata, timestamps-adjacent labels */
   --color-ink-on-brand: #ffffff; /* text on solid brand/status fills */
 
   --color-border-subtle: #d8dcd6; /* internal hairlines/dividers inside a bounded card */

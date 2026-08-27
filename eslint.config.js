@@ -61,5 +61,20 @@ export default tseslint.config(
       },
     },
   },
+  {
+    // Playwright specs/helpers run in Node (the test runner process), but
+    // `page.evaluate`/`page.addInitScript` callbacks are function bodies
+    // that execute inside the real browser page -- they legitimately
+    // reference `document`/`window`/`localStorage`/`getComputedStyle`.
+    // Both global sets are added (rather than replacing Node's) since the
+    // same file also uses real Node APIs (`node:fs`, `node:path`, ...).
+    files: ['tests/e2e/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+      },
+    },
+  },
   eslintConfigPrettier,
 );

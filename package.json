@@ -17,7 +17,7 @@
     "test:integration": "tsx scripts/stage-not-implemented.ts test:integration",
     "test:contract": "tsx scripts/stage-not-implemented.ts test:contract",
     "test:scenario": "vitest run --project tests",
-    "test:e2e": "tsx scripts/stage-not-implemented.ts test:e2e",
+    "test:e2e": "pnpm --filter @pax/web build && playwright test",
     "test:observability": "tsx scripts/stage-not-implemented.ts test:observability",
     "test:mutation": "tsx scripts/stage-not-implemented.ts test:mutation",
     "test:live": "tsx scripts/stage-not-implemented.ts test:live",
@@ -25,10 +25,12 @@
     "test:submission": "tsx scripts/stage-not-implemented.ts test:submission",
     "check:source": "tsx scripts/check-source.ts",
     "docs:diagram": "tsx scripts/generate-diagram.ts",
+    "pax": "tsx scripts/pax-cli.ts",
     "verify": "tsx scripts/verify.ts",
     "verify:release": "tsx scripts/stage-not-implemented.ts verify:release"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
     "@mermaid-js/mermaid-cli": "^11.16.0",
     "@playwright/test": "^1.62.1",
