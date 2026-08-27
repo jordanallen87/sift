@@ -1,0 +1,168 @@
+{
+  "_provenance": "Fictional demo data. All publishers, report titles, URLs, and ratings below are invented for the Pax 'Choose Our Next Car' hackathon scenario and do not represent any real publication, organization, or test result.",
+  "caseId": "case-demo-car-purchase",
+  "sources": [
+    {
+      "sourceId": "source-national-crash-safety-consortium",
+      "publisherName": "National Crash Safety Consortium (fictional)",
+      "reportTitle": "Compact and Midsize Crossover Crashworthiness Ratings, Model Years 2022-2023",
+      "url": "https://ratings.example.com/reports/crossover-crashworthiness-2022-2023",
+      "retrievedAt": "2026-08-15",
+      "publishedAt": "2026-02-10",
+      "methodologyNote": "Fictionalized frontal, side, and rollover crash test composite rating on a 5-point scale."
+    },
+    {
+      "sourceId": "source-northfield-vehicle-safety-lab",
+      "publisherName": "Northfield Vehicle Safety Lab (fictional)",
+      "reportTitle": "Advanced Driver Assistance System Effectiveness Study, 2023",
+      "url": "https://nvsl.example.com/studies/adas-effectiveness-2023",
+      "retrievedAt": "2026-08-15",
+      "publishedAt": "2026-01-22",
+      "methodologyNote": "Fictionalized track testing of forward collision warning and automatic emergency braking effectiveness."
+    },
+    {
+      "sourceId": "source-consumer-drive-index",
+      "publisherName": "Consumer Drive Index (fictional)",
+      "reportTitle": "Annual Owner-Reported Reliability Index, 2026 Edition",
+      "url": "https://index.example.com/reports/reliability-2026",
+      "retrievedAt": "2026-08-16",
+      "publishedAt": "2026-05-01",
+      "methodologyNote": "Fictionalized survey of owner-reported problem rates in the first 3 years of ownership, indexed against segment average."
+    },
+    {
+      "sourceId": "source-autotrust-reliability-survey",
+      "publisherName": "AutoTrust Annual Reliability Survey (fictional)",
+      "reportTitle": "Predicted Reliability by Model, 2026",
+      "url": "https://reliabilitysurvey.example.com/predicted/2026",
+      "retrievedAt": "2026-08-16",
+      "publishedAt": "2026-06-18",
+      "methodologyNote": "Fictionalized predicted-reliability score derived from manufacturer powertrain and component history, weighted toward the most recent model year's known technical service bulletins."
+    }
+  ],
+  "findings": [
+    {
+      "candidateId": "candidate-rav4",
+      "sourceId": "source-national-crash-safety-consortium",
+      "category": "crash_safety",
+      "rating": "Top Safety Pick+",
+      "notes": "Highest available composite rating; good or acceptable in all fictional test modes."
+    },
+    {
+      "candidateId": "candidate-rav4",
+      "sourceId": "source-northfield-vehicle-safety-lab",
+      "category": "driver_assistance",
+      "rating": "Superior",
+      "notes": "Highest effectiveness tier for forward collision warning and automatic emergency braking in this fictional study."
+    },
+    {
+      "candidateId": "candidate-rav4",
+      "sourceId": "source-consumer-drive-index",
+      "category": "reliability",
+      "rating": "Above Average",
+      "notes": "Hybrid powertrain variant reported meaningfully fewer owner-reported problems than the segment average."
+    },
+    {
+      "candidateId": "candidate-rav4",
+      "sourceId": "source-autotrust-reliability-survey",
+      "category": "reliability",
+      "rating": "Above Average",
+      "notes": "Consistent with source-consumer-drive-index; no disagreement for this candidate."
+    },
+    {
+      "candidateId": "candidate-crv",
+      "sourceId": "source-national-crash-safety-consortium",
+      "category": "crash_safety",
+      "rating": "Top Safety Pick",
+      "notes": "Good or acceptable in all fictional test modes; one grade below Top Safety Pick+ due to a fictional headlight-glare finding."
+    },
+    {
+      "candidateId": "candidate-crv",
+      "sourceId": "source-northfield-vehicle-safety-lab",
+      "category": "driver_assistance",
+      "rating": "Advanced",
+      "notes": "Strong forward collision warning and automatic emergency braking performance, one tier below the top rating."
+    },
+    {
+      "candidateId": "candidate-crv",
+      "sourceId": "source-consumer-drive-index",
+      "category": "reliability",
+      "rating": "Average",
+      "notes": "In line with segment average owner-reported problem rate."
+    },
+    {
+      "candidateId": "candidate-crv",
+      "sourceId": "source-autotrust-reliability-survey",
+      "category": "reliability",
+      "rating": "Average",
+      "notes": "Consistent with source-consumer-drive-index; no disagreement for this candidate."
+    },
+    {
+      "candidateId": "candidate-cx5",
+      "sourceId": "source-national-crash-safety-consortium",
+      "category": "crash_safety",
+      "rating": "Top Safety Pick",
+      "notes": "Good or acceptable in all fictional test modes."
+    },
+    {
+      "candidateId": "candidate-cx5",
+      "sourceId": "source-northfield-vehicle-safety-lab",
+      "category": "driver_assistance",
+      "rating": "Advanced",
+      "notes": "Strong forward collision warning and automatic emergency braking performance."
+    },
+    {
+      "candidateId": "candidate-cx5",
+      "sourceId": "source-consumer-drive-index",
+      "category": "reliability",
+      "rating": "Average",
+      "notes": "In line with segment average owner-reported problem rate."
+    },
+    {
+      "candidateId": "candidate-cx5",
+      "sourceId": "source-autotrust-reliability-survey",
+      "category": "reliability",
+      "rating": "Average",
+      "notes": "Consistent with source-consumer-drive-index; no disagreement for this candidate."
+    },
+    {
+      "candidateId": "candidate-outback",
+      "sourceId": "source-national-crash-safety-consortium",
+      "category": "crash_safety",
+      "rating": "Top Safety Pick+",
+      "notes": "Highest available composite rating; good or acceptable in all fictional test modes."
+    },
+    {
+      "candidateId": "candidate-outback",
+      "sourceId": "source-northfield-vehicle-safety-lab",
+      "category": "driver_assistance",
+      "rating": "Superior",
+      "notes": "Highest effectiveness tier for forward collision warning and automatic emergency braking in this fictional study."
+    },
+    {
+      "candidateId": "candidate-outback",
+      "sourceId": "source-consumer-drive-index",
+      "category": "reliability",
+      "rating": "Above Average",
+      "notes": "Owner-reported problem rate for this model year trends better than segment average, driven largely by infotainment and body-hardware complaints trending down since the prior generation."
+    },
+    {
+      "candidateId": "candidate-outback",
+      "sourceId": "source-autotrust-reliability-survey",
+      "category": "reliability",
+      "rating": "Below Average",
+      "notes": "Predicted-reliability model weights this model year's continuously variable transmission technical service bulletin history heavily, and rates the powertrain component category as a known weak point."
+    }
+  ],
+  "disagreements": [
+    {
+      "candidateId": "candidate-outback",
+      "category": "reliability",
+      "sourceIdA": "source-consumer-drive-index",
+      "ratingA": "Above Average",
+      "sourceIdB": "source-autotrust-reliability-survey",
+      "ratingB": "Below Average",
+      "natureOfConflict": "source-consumer-drive-index measures realized owner-reported problems across all vehicle systems and rates the candidate above average. source-autotrust-reliability-survey predicts reliability primarily from powertrain technical service bulletin history and rates the same candidate's powertrain component category below average because of continuously variable transmission service bulletins. Both figures are current and traceable; they disagree because they measure different things (realized owner complaints vs. predicted powertrain risk), not because either source is stale or wrong.",
+      "requiresSourceChallengeReview": true
+    }
+  ]
+}

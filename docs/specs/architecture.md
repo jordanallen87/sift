@@ -70,6 +70,8 @@ interface PaxCommands {
   submitSource(input: SubmitSourceInput): Promise<CommandReceipt>
   requestInvestigation(input: RequestInvestigationInput): Promise<RunReceipt>
   reviewProposal(input: ReviewProposalInput): Promise<CommandReceipt>
+  setEvidenceDisposition(input: SetEvidenceDispositionInput): Promise<CommandReceipt>
+  requestRevision(input: RequestRevisionInput): Promise<CommandReceipt>
 }
 
 interface CommandReceipt {

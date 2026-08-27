@@ -1,0 +1,115 @@
+{
+  "_provenance": "Fictional demo data authored for the Pax 'Choose Our Next Car' hackathon scenario. No real person, household, address, account number, or vehicle identification number is represented. All names, budgets, and preferences are invented for demonstration purposes only.",
+  "householdId": "household-demo-car-01",
+  "displayName": "The Ferris-Adeyemi household",
+  "caseId": "case-demo-car-purchase",
+  "members": {
+    "adults": 2,
+    "children": 2,
+    "childCarSeatDetails": {
+      "seatsRequired": 2,
+      "seatTypes": ["convertible car seat", "high-back booster"],
+      "isofixOrLatchAnchorsRequired": 2
+    },
+    "dogs": 2,
+    "dogProfile": {
+      "breedSizeClass": "large",
+      "combinedApproximateWeightLb": 130,
+      "crateCount": 2,
+      "crateDimensionsIn": {
+        "eachCrate": { "lengthIn": 36, "widthIn": 24, "heightIn": 27 },
+        "note": "Two hard-sided travel crates for dogs in the 55-75 lb range each. Household wants both crates to fit behind the second row without folding any seats."
+      }
+    }
+  },
+  "budget": {
+    "maxOutTheDoorPrice": { "amount": 32000, "currency": "USD" },
+    "preferredMonthlyPayment": { "amount": 480, "currency": "USD", "cadence": "monthly" },
+    "downPayment": { "amount": 3000, "currency": "USD" }
+  },
+  "financingAssumptions": {
+    "targetApr": 0.059,
+    "targetTermMonths": 60,
+    "creditTier": "prime",
+    "note": "Household's own target terms for planning purposes. Actual dealer-offered APR and term per candidate are recorded in dealer-offers.json and may differ."
+  },
+  "commute": {
+    "roundTripMilesPerDay": 38,
+    "drivingMixProfile": "60% highway / 40% city",
+    "annualMileageEstimateMi": 12000,
+    "primaryDriver": "adult-1",
+    "secondaryDriver": "adult-2"
+  },
+  "cargoAndRearSeatNeeds": {
+    "rearSeatOccupantsTypical": "2 children in car seats, second row",
+    "cargoUseCase": "Two dog travel crates must fit behind the second row without folding the second-row seats, in addition to weekly grocery and gear cargo.",
+    "cargoUseCaseResolved": false,
+    "note": "Whether the crates actually fit is not asserted here. See household-fit.json for known specification facts and explicit unknowns."
+  },
+  "mustHaves": [
+    { "id": "must.awd", "label": "All-wheel drive", "kind": "hard_constraint" },
+    { "id": "must.adaptive_cruise", "label": "Adaptive cruise control", "kind": "hard_constraint" },
+    {
+      "id": "must.blind_spot_monitoring",
+      "label": "Blind spot monitoring",
+      "kind": "hard_constraint"
+    },
+    {
+      "id": "must.forward_collision_warning",
+      "label": "Forward collision warning with automatic emergency braking",
+      "kind": "hard_constraint"
+    },
+    {
+      "id": "must.latch_anchors",
+      "label": "At least 2 LATCH lower-anchor positions in the second row",
+      "kind": "hard_constraint"
+    },
+    {
+      "id": "must.max_budget",
+      "label": "Comparable out-the-door price at or under household budget",
+      "kind": "hard_constraint"
+    }
+  ],
+  "weightedPreferences": {
+    "note": "Initial household-supplied weights, seeded before any WebMCP criteria updates. Weights sum to 1.0. These represent a 'lowest-risk and fuel-cost' posture that should initially favor the most reliable, most fuel-efficient shortlisted candidate.",
+    "criteria": [
+      {
+        "id": "pref.safety_reliability",
+        "label": "Safety and reliability",
+        "weight": 0.3,
+        "direction": "higher_better"
+      },
+      {
+        "id": "pref.ownership_cost",
+        "label": "5-year ownership cost (fuel, maintenance, depreciation, financing)",
+        "weight": 0.3,
+        "direction": "lower_better"
+      },
+      {
+        "id": "pref.deal_value",
+        "label": "Deal value (normalized out-the-door price vs. market)",
+        "weight": 0.2,
+        "direction": "higher_better"
+      },
+      {
+        "id": "pref.household_fit",
+        "label": "Household fit (cargo, rear seat, known specification match)",
+        "weight": 0.15,
+        "direction": "higher_better"
+      },
+      {
+        "id": "pref.driving_comfort",
+        "label": "Driving comfort",
+        "weight": 0.05,
+        "direction": "higher_better"
+      }
+    ]
+  },
+  "_scenarioNotes": {
+    "purpose": "Authorial guidance for implementers, not a computed or authoritative engine result.",
+    "expectedInitialFavorite": "candidate-rav4",
+    "expectedInitialFavoriteReasoning": "Under the seeded weights, safety_reliability (0.30) and ownership_cost (0.30) dominate the score (0.60 combined). candidate-rav4 has the best combined fuel economy (38 mpg) of the four candidates and the strongest, least-disputed safety/reliability record in safety-reliability-sources.json, so it should score highest before deal normalization or criteria changes are applied.",
+    "expectedRevisedFavoriteAfterSequence": "candidate-crv",
+    "expectedRevisedFavoriteReasoning": "Once dealer-offers.json's mandatory add-ons and financing terms are normalized, candidate-rav4's true out-the-door price ($33,291.30) exceeds the household's stated max budget ($32,000) and is materially more expensive than candidate-crv's normalized out-the-door price ($29,023.65), while candidate-rav4's advertised teaser price ($27,995.00) had made it look cheaper than it is. Combined with a criteria reweighting that lowers the weight on fuel economy (candidate-rav4's core advantage) and candidate-crv's larger known cargo dimensions in household-fit.json, the normalized comparison should favor candidate-crv without requiring any fabricated comfort or crate-fit score."
+  }
+}

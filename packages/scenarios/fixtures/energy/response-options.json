@@ -1,0 +1,48 @@
+{
+  "_provenance": "Fictional demo data. Cost and effort figures are fixture-authored, rough planning estimates for the Pax 'Home Energy Guardian' hackathon scenario and do not describe any real service pricing.",
+  "caseId": "case-demo-energy-guardian",
+  "options": [
+    {
+      "optionId": "monitor-one-cycle",
+      "label": "Monitor for one more billing cycle",
+      "description": "Take no action and observe whether the next bill remains elevated. Lowest-cost, lowest-effort option, but leaves the suspected root cause (possible thermostat malfunction) unaddressed and unresolved evidence gaps open, including whether a household or appliance event explains the spike.",
+      "roughCost": { "amount": 0, "currency": "USD" },
+      "roughEffortLevel": "low",
+      "estimatedTimeToInsight": "one billing cycle (about 30 days)",
+      "addressesRootCause": false,
+      "requiresConsequentialAction": false
+    },
+    {
+      "optionId": "change-rate-plan",
+      "label": "Switch to a different rate plan",
+      "description": "Evaluate and switch to an alternate tariff (for example, a time-of-use plan) that may reduce cost for this household's usage pattern. Addresses only the rate-change portion of the anomaly (18.62 USD of the 92.12 USD gap versus the prior tariff at baseline usage); does not reduce the underlying elevated usage.",
+      "roughCost": { "amount": 0, "currency": "USD" },
+      "roughEffortLevel": "low",
+      "estimatedTimeToInsight": "immediate for the plan comparison; savings realized starting the next cycle",
+      "addressesRootCause": false,
+      "requiresConsequentialAction": false
+    },
+    {
+      "optionId": "request-energy-audit",
+      "label": "Request a home energy audit",
+      "description": "Schedule a broad professional walkthrough assessment of insulation, air sealing, and major appliances. Thorough but slower and more expensive than a targeted HVAC/thermostat visit, and not specifically aimed at the supported thermostat-malfunction hypothesis.",
+      "roughCost": { "amount": 250, "currency": "USD" },
+      "roughEffortLevel": "medium",
+      "estimatedTimeToInsight": "1-2 weeks to schedule, half-day on-site visit",
+      "addressesRootCause": false,
+      "requiresConsequentialAction": true,
+      "consequentialActionNote": "Scheduling the audit itself is a real-world appointment; this fixture only supports Pax proposing the option, not booking it."
+    },
+    {
+      "optionId": "request-hvac-inspection",
+      "label": "Request an HVAC / thermostat inspection",
+      "description": "Schedule a targeted technician visit to diagnose and, if confirmed, repair the suspected thermostat sensor-drift fault identified in household-events.json. Directly targets the supported hypothesis for the unexplained 280 kWh of usage in the current cycle.",
+      "roughCost": { "amount": 165, "currency": "USD" },
+      "roughEffortLevel": "medium",
+      "estimatedTimeToInsight": "3-5 days to schedule, single visit",
+      "addressesRootCause": true,
+      "requiresConsequentialAction": true,
+      "consequentialActionNote": "Creating this as a proposal requires human confirmation before it exists as a case artifact. The demo does not schedule an actual appointment; it only creates and approves the proposal record."
+    }
+  ]
+}

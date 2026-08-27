@@ -1,0 +1,33 @@
+{
+  "_provenance": "Fictional demo data. Service company, technician, and device names are invented for the Pax 'Home Energy Guardian' hackathon scenario and do not describe any real company, person, or device.",
+  "caseId": "case-demo-energy-guardian",
+  "householdId": "household-demo-energy-01",
+  "events": [
+    {
+      "eventId": "event-hvac-maintenance-2026-05",
+      "type": "hvac_maintenance",
+      "date": "2026-05-08",
+      "label": "Annual heat pump / AC tune-up",
+      "description": "Routine annual maintenance visit performed on the household's heat pump system by a fictional service company. Refrigerant charge measured within manufacturer specification, no refrigerant leaks found, condenser and evaporator coils cleaned, air filter replaced, ductwork visually inspected with no defects noted.",
+      "performedBy": "Northfield Comfort Services (fictional)",
+      "workOrderId": "FICTIONAL-WO-88213",
+      "outcome": "System passed inspection and was returned to normal operating condition. No parts were replaced beyond the standard filter.",
+      "relevanceNote": "Occurred about 10 weeks before the anomalous billing cycle began (2026-07-16). Because the system was independently verified as mechanically sound shortly before the spike, this event supports ruling out general equipment degradation as the primary cause and points investigation toward a control/thermostat issue instead."
+    },
+    {
+      "eventId": "event-thermostat-failure-2026-07",
+      "type": "thermostat_malfunction",
+      "date": "2026-07-19",
+      "label": "Smart thermostat sensor drift first observed",
+      "description": "Household's smart thermostat (a fictional 'ClimaSync' model) began exhibiting temperature sensor drift, under-reading the room temperature by approximately 4 degrees Fahrenheit. As a result, the system called for cooling far more often and for longer runtimes than the household's programmed 74F setpoint would normally require. The household did not change any programmed settings before or during this period.",
+      "device": {
+        "make": "ClimaSync (fictional)",
+        "model": "ClimaSync Home 3",
+        "deviceIdFictional": "FICTIONAL-THERM-4471"
+      },
+      "detectionMethod": "Device diagnostic log flagged sensor drift and elevated cumulative cooling-call duration; later confirmed by the household noticing the house felt cooler than the display suggested.",
+      "status": "newly_failing_unresolved",
+      "relevanceNote": "First observed 2026-07-19, 3 days into the anomalous billing cycle (2026-07-16 to 2026-08-14), and continued through the remainder of the cycle. Timing plausibly accounts for the 280 kWh of usage in this cycle that is not explained by the rate change (18.62 dollars, see rate-schedules.json) or by weather (210 kWh, see weather-history.json)."
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "_provenance": "Fictional demo data. Specification figures below are fixture-authored, plausible approximations for the Pax 'Choose Our Next Car' hackathon scenario and are not sourced from any real manufacturer specification sheet.",
+  "caseId": "case-demo-car-purchase",
+  "householdDogCrateProfile": {
+    "note": "Copied from household-profile.json for convenience. Two hard-sided crates, each roughly 36 in (L) x 24 in (W) x 27 in (H), intended to fit behind the second row without folding seats.",
+    "crateCount": 2,
+    "eachCrateDimensionsIn": { "lengthIn": 36, "widthIn": 24, "heightIn": 27 }
+  },
+  "candidates": {
+    "candidate-rav4": {
+      "knownSpecifications": {
+        "source": "Manufacturer published specification sheet (fictionalized)",
+        "cargoWidthBetweenWheelWellsIn": 41.3,
+        "cargoLengthSeatToLiftgateIn": 37.6,
+        "cargoHeightFloorToCeilingIn": 27.4,
+        "rearDoorOpeningWidthIn": 43.4,
+        "secondRowLegroomIn": 37.8,
+        "cargoVolumeBehindSecondRowCuFt": 37.6,
+        "groundClearanceIn": 8.1
+      },
+      "explicitUnknowns": [
+        {
+          "id": "unknown.rear_cargo_crate_compatibility",
+          "question": "Do both dog travel crates fit behind the second row without folding either seat?",
+          "status": "unknown",
+          "reason": "Published cargo width and length figures describe the overall opening, not whether two 36in x 24in crate footprints (in either orientation) clear the wheel wells, rear seatback contour, and load-floor step. This cannot be derived from the specification sheet alone.",
+          "resolutionPath": "physical_measurement_or_test_drive"
+        },
+        {
+          "id": "unknown.driving_comfort",
+          "question": "How comfortable is the ride and seating for both adult drivers on the household's typical commute?",
+          "status": "unknown",
+          "reason": "Driving comfort is subjective and cannot be established from specification data.",
+          "resolutionPath": "test_drive"
+        }
+      ]
+    },
+    "candidate-crv": {
+      "knownSpecifications": {
+        "source": "Manufacturer published specification sheet (fictionalized)",
+        "cargoWidthBetweenWheelWellsIn": 42.8,
+        "cargoLengthSeatToLiftgateIn": 39.4,
+        "cargoHeightFloorToCeilingIn": 28.6,
+        "rearDoorOpeningWidthIn": 44.9,
+        "secondRowLegroomIn": 40.4,
+        "cargoVolumeBehindSecondRowCuFt": 39.3,
+        "groundClearanceIn": 7.6
+      },
+      "explicitUnknowns": [
+        {
+          "id": "unknown.rear_cargo_crate_compatibility",
+          "question": "Do both dog travel crates fit behind the second row without folding either seat?",
+          "status": "unknown",
+          "reason": "This candidate has the largest known cargo width, length, and door opening of the four candidates, which is favorable, but published dimensions still do not confirm two 36in x 24in crate footprints clear the wheel wells and load-floor step. This cannot be derived from the specification sheet alone.",
+          "resolutionPath": "physical_measurement_or_test_drive"
+        },
+        {
+          "id": "unknown.driving_comfort",
+          "question": "How comfortable is the ride and seating for both adult drivers on the household's typical commute?",
+          "status": "unknown",
+          "reason": "Driving comfort is subjective and cannot be established from specification data.",
+          "resolutionPath": "test_drive"
+        }
+      ]
+    },
+    "candidate-cx5": {
+      "knownSpecifications": {
+        "source": "Manufacturer published specification sheet (fictionalized)",
+        "cargoWidthBetweenWheelWellsIn": 40.2,
+        "cargoLengthSeatToLiftgateIn": 36.4,
+        "cargoHeightFloorToCeilingIn": 26.7,
+        "rearDoorOpeningWidthIn": 42.0,
+        "secondRowLegroomIn": 39.0,
+        "cargoVolumeBehindSecondRowCuFt": 31.0,
+        "groundClearanceIn": 8.6
+      },
+      "explicitUnknowns": [
+        {
+          "id": "unknown.rear_cargo_crate_compatibility",
+          "question": "Do both dog travel crates fit behind the second row without folding either seat?",
+          "status": "unknown",
+          "reason": "This candidate has the smallest known cargo volume of the four candidates, which is unfavorable, but published dimensions still do not confirm or rule out whether both crates fit. This cannot be derived from the specification sheet alone.",
+          "resolutionPath": "physical_measurement_or_test_drive"
+        },
+        {
+          "id": "unknown.driving_comfort",
+          "question": "How comfortable is the ride and seating for both adult drivers on the household's typical commute?",
+          "status": "unknown",
+          "reason": "Driving comfort is subjective and cannot be established from specification data.",
+          "resolutionPath": "test_drive"
+        }
+      ]
+    },
+    "candidate-outback": {
+      "knownSpecifications": {
+        "source": "Manufacturer published specification sheet (fictionalized)",
+        "cargoWidthBetweenWheelWellsIn": 41.7,
+        "cargoLengthSeatToLiftgateIn": 40.0,
+        "cargoHeightFloorToCeilingIn": 27.4,
+        "rearDoorOpeningWidthIn": 44.5,
+        "secondRowLegroomIn": 39.5,
+        "cargoVolumeBehindSecondRowCuFt": 32.5,
+        "groundClearanceIn": 9.5
+      },
+      "explicitUnknowns": [
+        {
+          "id": "unknown.rear_cargo_crate_compatibility",
+          "question": "Do both dog travel crates fit behind the second row without folding either seat?",
+          "status": "unknown",
+          "reason": "Published cargo width and length figures describe the overall opening, not whether two 36in x 24in crate footprints (in either orientation) clear the wheel wells, rear seatback contour, and load-floor step. This cannot be derived from the specification sheet alone.",
+          "resolutionPath": "physical_measurement_or_test_drive"
+        },
+        {
+          "id": "unknown.driving_comfort",
+          "question": "How comfortable is the ride and seating for both adult drivers on the household's typical commute?",
+          "status": "unknown",
+          "reason": "Driving comfort is subjective and cannot be established from specification data.",
+          "resolutionPath": "test_drive"
+        }
+      ]
+    }
+  }
+}

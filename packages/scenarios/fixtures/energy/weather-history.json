@@ -1,0 +1,132 @@
+{
+  "_provenance": "Fictional demo data. Weather station identity and degree-day figures are invented for the Pax 'Home Energy Guardian' hackathon scenario and do not describe any real weather station or climate record.",
+  "caseId": "case-demo-energy-guardian",
+  "weatherStation": {
+    "stationId": "station-northfield-regional",
+    "name": "Northfield Regional Climate Station (fictional)",
+    "degreeDayBaseF": 65
+  },
+  "note": "Heating degree days (HDD) and cooling degree days (CDD) for the same 18 billing cycles as usage-history.json, using the same cycle boundaries. HDD/CDD are computed against a 65F base.",
+  "cycles": [
+    {
+      "cycleLabel": "2025-03",
+      "billingPeriod": { "start": "2025-02-16", "end": "2025-03-15" },
+      "hdd": 520,
+      "cdd": 5
+    },
+    {
+      "cycleLabel": "2025-04",
+      "billingPeriod": { "start": "2025-03-16", "end": "2025-04-15" },
+      "hdd": 280,
+      "cdd": 15
+    },
+    {
+      "cycleLabel": "2025-05",
+      "billingPeriod": { "start": "2025-04-16", "end": "2025-05-15" },
+      "hdd": 90,
+      "cdd": 60
+    },
+    {
+      "cycleLabel": "2025-06",
+      "billingPeriod": { "start": "2025-05-16", "end": "2025-06-15" },
+      "hdd": 10,
+      "cdd": 190
+    },
+    {
+      "cycleLabel": "2025-07",
+      "billingPeriod": { "start": "2025-06-16", "end": "2025-07-15" },
+      "hdd": 0,
+      "cdd": 330
+    },
+    {
+      "cycleLabel": "2025-08",
+      "billingPeriod": { "start": "2025-07-16", "end": "2025-08-15" },
+      "hdd": 0,
+      "cdd": 380,
+      "note": "Same calendar window as the current (anomalous) cycle, one year earlier. Used as the multi-year typical/normal CDD reference for this cycle window."
+    },
+    {
+      "cycleLabel": "2025-09",
+      "billingPeriod": { "start": "2025-08-16", "end": "2025-09-15" },
+      "hdd": 0,
+      "cdd": 210
+    },
+    {
+      "cycleLabel": "2025-10",
+      "billingPeriod": { "start": "2025-09-16", "end": "2025-10-15" },
+      "hdd": 60,
+      "cdd": 40
+    },
+    {
+      "cycleLabel": "2025-11",
+      "billingPeriod": { "start": "2025-10-16", "end": "2025-11-15" },
+      "hdd": 310,
+      "cdd": 0
+    },
+    {
+      "cycleLabel": "2025-12",
+      "billingPeriod": { "start": "2025-11-16", "end": "2025-12-15" },
+      "hdd": 650,
+      "cdd": 0
+    },
+    {
+      "cycleLabel": "2026-01",
+      "billingPeriod": { "start": "2025-12-16", "end": "2026-01-15" },
+      "hdd": 780,
+      "cdd": 0
+    },
+    {
+      "cycleLabel": "2026-02",
+      "billingPeriod": { "start": "2026-01-16", "end": "2026-02-15" },
+      "hdd": 690,
+      "cdd": 0
+    },
+    {
+      "cycleLabel": "2026-03",
+      "billingPeriod": { "start": "2026-02-16", "end": "2026-03-15" },
+      "hdd": 500,
+      "cdd": 5
+    },
+    {
+      "cycleLabel": "2026-04",
+      "billingPeriod": { "start": "2026-03-16", "end": "2026-04-15" },
+      "hdd": 270,
+      "cdd": 20
+    },
+    {
+      "cycleLabel": "2026-05",
+      "billingPeriod": { "start": "2026-04-16", "end": "2026-05-15" },
+      "hdd": 95,
+      "cdd": 65
+    },
+    {
+      "cycleLabel": "2026-06",
+      "billingPeriod": { "start": "2026-05-16", "end": "2026-06-15" },
+      "hdd": 10,
+      "cdd": 200
+    },
+    {
+      "cycleLabel": "2026-07",
+      "billingPeriod": { "start": "2026-06-16", "end": "2026-07-15" },
+      "hdd": 0,
+      "cdd": 340
+    },
+    {
+      "cycleLabel": "2026-08",
+      "billingPeriod": { "start": "2026-07-16", "end": "2026-08-14" },
+      "hdd": 0,
+      "cdd": 460,
+      "note": "Current (anomalous) cycle. Actual CDD (460) exceeds the typical/normal CDD reference (380, from cycle 2025-08) by 80 cooling degree days.",
+      "weatherAttribution": {
+        "typicalCdd": 380,
+        "actualCdd": 460,
+        "excessCdd": 80,
+        "weatherSensitivityKwhPerCdd": 2.625,
+        "weatherSensitivityMethodology": "Regression coefficient derived from correlating cycle-over-cycle CDD against usage across the prior 17 cycles in usage-history.json for this household (fixture-authored reference value for deterministic tests).",
+        "usageExplainedByWeatherKwh": 210,
+        "arithmeticNote": "80 excess CDD * 2.625 kWh/CDD = 210 kWh. This explains 210 of the 490 kWh anomaly gap (see current-bill.json anomaly.usageGapAboveBaselineKwh); the remaining 280 kWh is not explained by weather alone.",
+        "conclusion": "Weather explains part but not all of the usage increase. The remaining 280 kWh requires household-event correlation."
+      }
+    }
+  ]
+}

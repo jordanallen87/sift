@@ -1,0 +1,183 @@
+%% Pax Architecture Diagram
+%% ---------------------------------------------------------------------------
+%% Canonical source. Do not hand-edit docs/architecture.png -- edit this file
+%% and regenerate with `pnpm docs:diagram` (scripts/generate-diagram.ts calls
+%% @mermaid-js/mermaid-cli to render this file to docs/architecture.png).
+%% ---------------------------------------------------------------------------
+%% This diagram is the "Required architecture diagram" evidence for
+%% docs/submissions/agents-for-humans/requirements-checklist.md. It must
+%% visually distinguish:
+%%   1. ChatGPT / WebMCP browser interaction
+%%   2. Railway web/API services and persistent SQLite storage
+%%   3. Deterministic Pax evidence / readiness / budget / authority governance
+%%   4. The compiled Decision Pack vs. the mutable case / run plan
+%%   5. Strands AgentSkills, Graph/Swarm, interventions, Context Injector,
+%%      GoalLoop, sessions, hooks
+%%   6. Local vs. AgentCore execution targets
+%%   7. OpenTelemetry correlation to the Runtime Inspector and CloudWatch
+%%   8. The human-only approval boundary (styled distinctly, not just another
+%%      box in the flow)
+%% Also folds in the instrumentation pipeline from
+%% docs/specs/debugging-and-observability.md (hooks/OTEL/domain events ->
+%% TelemetryNormalizer -> Redactor -> runtime_events -> Inspector/bundle/OTLP).
+%% ---------------------------------------------------------------------------
+%% Subgraphs are declared in roughly the order data flows top to bottom so
+%% the automatic layout keeps related pieces close together; edges that
+%% loop back upstream (approval, telemetry sources) are the deliberate
+%% exceptions and stay minimal by design.
+%% ---------------------------------------------------------------------------
+
+flowchart TD
+
+  subgraph BROWSER["ChatGPT Right Pane (Browser)"]
+    direction TB
+    CHATGPT["ChatGPT conversation frame<br/>hosts the 390-480px right pane"]
+    WEBMCP["WebMCP tool calls<br/>functions registered with ChatGPT"]
+    UI["React/Vite UI controls<br/>renders canonical CaseState"]
+    CMDCLIENT["Shared PaxCommands client<br/>one command implementation for<br/>UI controls and WebMCP callbacks"]
+    CHATGPT --> UI
+    CHATGPT --> WEBMCP
+    UI --> CMDCLIENT
+    WEBMCP --> CMDCLIENT
+  end
+
+  subgraph RAILWAY["Railway Web/API Gateway (Express, one service)"]
+    direction TB
+    HTTP["HTTP + SSE routes<br/>/api/cases/*, /api/cases/:id/events"]
+    PINGINV["/ping, /invocations<br/>AgentCore-compatible contract"]
+    CMDHANDLER["Command handler<br/>optimistic concurrency + idempotency keys"]
+    HTTP --> CMDHANDLER
+    PINGINV --> CMDHANDLER
+  end
+
+  subgraph CORE["Deterministic Pax Core (pure functions: no model, no I/O)"]
+    direction TB
+    ROUTE["routePack / instantiateCase"]
+    OBLIG["deriveObligations /<br/>selectNextObligation"]
+    EVID["Evidence validity<br/>and source links"]
+    READY["evaluateReadiness"]
+    BUDGET["Run/tool budgets<br/>and steering policy"]
+    AUTHGATE{{"reviewProposal()<br/>rejects any actor != human"}}
+    ROUTE --> OBLIG --> EVID --> READY --> BUDGET
+  end
+
+  subgraph PACKCASE["Compiled Decision Pack vs. Mutable Case / Run Plan"]
+    direction TB
+    PACK[["Compiled Decision Pack<br/>pinned id + version + compiledHash<br/>IMMUTABLE"]]
+    CASEPLAN["Case-specific run plan<br/>mutable CaseState + custom.* extensions"]
+    PACK -->|"adapter compiles a bounded<br/>run plan; never rewrites the pack"| CASEPLAN
+  end
+
+  subgraph TARGETS["Execution Targets (PAX_EXECUTION_TARGET)"]
+    direction TB
+    LOCALEXEC["local: in-process Strands adapter"]
+    AGENTCOREEXEC["agentcore: Bedrock AgentCore runtime<br/>port 8080, /ping + /invocations"]
+  end
+
+  subgraph STRANDS["Strands TypeScript Runtime Adapter"]
+    direction TB
+    SKILLS["AgentSkills<br/>progressive activation"]
+    GRAPHSWARM["Strands Graph (Car Pack) /<br/>bounded Strands Swarm (Energy Pack)"]
+    CTXINJ["Context Injector<br/>current case projection, evidence, budgets"]
+    GOALLOOP["GoalLoop<br/>recommendation validator, maxAttempts: 2"]
+    INTERVENE{{"Interventions<br/>Guide / Confirm / Deny"}}
+    SESS[("Sessions and snapshots<br/>LocalFileStorage / S3Storage")]
+    HOOKS["Lifecycle hooks"]
+    CTXINJ --> SKILLS --> GRAPHSWARM
+    GRAPHSWARM --> GOALLOOP
+    GRAPHSWARM -.->|"no-progress -> Guide"| INTERVENE
+    GOALLOOP -.->|"exhausted -> feedback"| INTERVENE
+    GRAPHSWARM --> HOOKS
+    SESS -.-> GRAPHSWARM
+  end
+
+  subgraph HUMAN["HUMAN-ONLY APPROVAL BOUNDARY"]
+    direction TB
+    HUMANACTOR(("Human user"))
+    APPROVE{{"Approve / Confirm<br/>the consequential decision"}}
+    HUMANACTOR --> APPROVE
+  end
+
+  subgraph PERSIST["SQLite Persistence (better-sqlite3 + Drizzle, WAL)"]
+    direction TB
+    CASES[("cases<br/>latest snapshot + pinned pack ref")]
+    EVENTS[("case_events<br/>append-only canonical")]
+    ACTIVITY[("activity_events<br/>sanitized public stream")]
+    RUNS[("runs")]
+    RUNTIME[("runtime_events<br/>sanitized telemetry")]
+  end
+
+  subgraph OBS["Observability Pipeline"]
+    direction TB
+    NORM["TelemetryNormalizer"]
+    REDACT["Redactor<br/>strips secrets, headers, raw reasoning"]
+    INSPECTOR["Runtime Inspector SSE<br/>PAX_DEBUG_ENABLED"]
+    BUNDLE["Sanitized JSON run bundle export"]
+    OTLP["Optional OTLP exporter"]
+    NORM --> REDACT --> RUNTIME
+    RUNTIME --> INSPECTOR
+    RUNTIME --> BUNDLE
+    RUNTIME --> OTLP
+  end
+
+  subgraph AWS["AWS (optional, credential-gated)"]
+    direction TB
+    CW["CloudWatch /<br/>AgentCore Observability"]
+  end
+
+  %% Command and event flow (architecture.md "Command and event flow")
+  CMDCLIENT -->|"validated command<br/>+ idempotency key"| HTTP
+  CMDHANDLER -->|"routes / instantiates case"| ROUTE
+  PACK -->|"registry lookup"| ROUTE
+  OBLIG -->|"selected obligation +<br/>read-only case snapshot"| CASEPLAN
+  CASEPLAN --> CTXINJ
+
+  CMDHANDLER -->|"local"| LOCALEXEC
+  CMDHANDLER -->|"agentcore"| AGENTCOREEXEC
+  LOCALEXEC --> STRANDS
+  AGENTCOREEXEC --> STRANDS
+  AGENTCOREEXEC -.->|"trace/session/request IDs"| CW
+
+  INTERVENE -->|"candidate evidence /<br/>candidate recommendation only"| EVID
+  BUDGET -.->|"Deny on budget breach"| INTERVENE
+  READY -->|"recommendation<br/>(a proposal, not a decision)"| HUMAN
+  INTERVENE -->|"Confirm required"| HUMAN
+  HUMANACTOR -->|"reviewProposal(actor: 'human')"| AUTHGATE
+  AUTHGATE -->|"approved decision"| CASEPLAN
+
+  CMDHANDLER --> CASES
+  CMDHANDLER --> EVENTS
+  HOOKS --> ACTIVITY
+  STRANDS --> RUNS
+
+  HOOKS -.->|"Strands hooks"| NORM
+  GRAPHSWARM -.->|"Strands OTEL spans +<br/>Graph/Swarm events"| NORM
+  CMDHANDLER -.->|"Pax domain events"| NORM
+  HTTP -.->|"HTTP/SSE/storage events"| NORM
+  INTERVENE -.->|"intervention/plugin events"| NORM
+  SESS -.->|"session/snapshot events"| NORM
+  OTLP -.->|"OTEL correlation"| CW
+
+  classDef browser fill:#e0f2fe,stroke:#0369a1,color:#0c4a6e;
+  classDef railway fill:#ede9fe,stroke:#6d28d9,color:#3b0764;
+  classDef core fill:#dcfce7,stroke:#15803d,color:#14532d;
+  classDef packcase fill:#fef9c3,stroke:#a16207,color:#713f12;
+  classDef strands fill:#ffe4e6,stroke:#be123c,color:#881337;
+  classDef targets fill:#f1f5f9,stroke:#334155,color:#0f172a;
+  classDef persist fill:#e0e7ff,stroke:#4338ca,color:#312e81;
+  classDef obs fill:#fae8ff,stroke:#a21caf,color:#701a75;
+  classDef aws fill:#fff7ed,stroke:#c2410c,color:#7c2d12;
+  classDef human fill:#fef3c7,stroke:#b45309,stroke-width:4px,color:#78350f;
+  classDef authGate fill:#fee2e2,stroke:#b91c1c,stroke-width:3px,color:#7f1d1d;
+
+  class BROWSER browser
+  class RAILWAY railway
+  class CORE core
+  class PACKCASE packcase
+  class STRANDS strands
+  class TARGETS targets
+  class PERSIST persist
+  class OBS obs
+  class AWS aws
+  class HUMAN human
+  class AUTHGATE,APPROVE authGate

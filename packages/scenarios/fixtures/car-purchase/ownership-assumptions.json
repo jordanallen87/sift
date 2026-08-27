@@ -1,0 +1,98 @@
+{
+  "_provenance": "Fictional demo data. Fuel prices, insurance figures, and depreciation curves are invented, round-number approximations for the Pax 'Choose Our Next Car' hackathon scenario and are not sourced from any real insurer, retailer, or market report.",
+  "caseId": "case-demo-car-purchase",
+  "sharedAssumptions": {
+    "note": "These assumptions are held constant across all four candidates so the resulting 5-year ownership estimates are comparable apples-to-apples. They are planning defaults for the ownership-cost calculator, separate from the actual per-candidate dealer financing offers recorded in dealer-offers.json.",
+    "ownershipHorizonYears": 5,
+    "annualMileageMi": 12000,
+    "fuel": {
+      "regularUnleadedPricePerGallon": { "amount": 3.45, "currency": "USD" },
+      "priceSource": "Fictional regional average, fixture-authored for internal consistency"
+    },
+    "insurance": {
+      "coverageProfile": "100/300/100 liability, comprehensive and collision with $500 deductible",
+      "driverProfile": "Two prime-tier adult drivers, no at-fault claims in the past 5 years, both with 15+ years licensed",
+      "note": "Same coverage limits and driver profile priced against each candidate; the resulting annual premium still varies by vehicle risk class, listed per candidate below."
+    },
+    "maintenance": {
+      "gasolinePowertrainCostPerMi": { "amount": 0.09, "currency": "USD" },
+      "hybridPowertrainCostPerMi": { "amount": 0.08, "currency": "USD" },
+      "note": "Hybrid powertrains assumed slightly cheaper per mile due to regenerative braking reducing brake wear, offset elsewhere by hybrid battery inspection intervals."
+    },
+    "depreciation": {
+      "methodology": "Straight-line against true out-the-door price using a fictional 5-year retained-value percentage by candidate.",
+      "note": "Retained-value percentages are fixture-authored planning estimates, not a real residual-value guide."
+    },
+    "financingBaseline": {
+      "note": "Default assumption used only when modeling ownership cost independent of a specific dealer offer. Actual per-candidate APR/term from the accepted dealer offer takes precedence once one exists.",
+      "apr": 0.065,
+      "termMonths": 60
+    }
+  },
+  "perCandidate": {
+    "candidate-rav4": {
+      "fuelEconomyMpg": { "city": 39, "highway": 36, "combined": 38 },
+      "powertrainClassForMaintenance": "hybrid",
+      "annualInsurancePremium": { "amount": 1340.0, "currency": "USD" },
+      "fiveYearRetainedValuePercent": 55,
+      "estimatedFiveYearFuelCost": {
+        "amount": 5447.37,
+        "currency": "USD",
+        "arithmeticNote": "60000 mi / 38 mpg = 1578.95 gal; 1578.95 * 3.45 = 5447.37"
+      },
+      "estimatedFiveYearMaintenanceCost": {
+        "amount": 4800.0,
+        "currency": "USD",
+        "arithmeticNote": "60000 mi * 0.08 = 4800.00"
+      }
+    },
+    "candidate-crv": {
+      "fuelEconomyMpg": { "city": 27, "highway": 32, "combined": 29 },
+      "powertrainClassForMaintenance": "gasoline",
+      "annualInsurancePremium": { "amount": 1290.0, "currency": "USD" },
+      "fiveYearRetainedValuePercent": 54,
+      "estimatedFiveYearFuelCost": {
+        "amount": 7137.93,
+        "currency": "USD",
+        "arithmeticNote": "60000 mi / 29 mpg = 2068.97 gal; 2068.97 * 3.45 = 7137.93"
+      },
+      "estimatedFiveYearMaintenanceCost": {
+        "amount": 5400.0,
+        "currency": "USD",
+        "arithmeticNote": "60000 mi * 0.09 = 5400.00"
+      }
+    },
+    "candidate-cx5": {
+      "fuelEconomyMpg": { "city": 24, "highway": 30, "combined": 26 },
+      "powertrainClassForMaintenance": "gasoline",
+      "annualInsurancePremium": { "amount": 1410.0, "currency": "USD" },
+      "fiveYearRetainedValuePercent": 50,
+      "estimatedFiveYearFuelCost": {
+        "amount": 7961.54,
+        "currency": "USD",
+        "arithmeticNote": "60000 mi / 26 mpg = 2307.69 gal; 2307.69 * 3.45 = 7961.54"
+      },
+      "estimatedFiveYearMaintenanceCost": {
+        "amount": 5400.0,
+        "currency": "USD",
+        "arithmeticNote": "60000 mi * 0.09 = 5400.00"
+      }
+    },
+    "candidate-outback": {
+      "fuelEconomyMpg": { "city": 26, "highway": 33, "combined": 29 },
+      "powertrainClassForMaintenance": "gasoline",
+      "annualInsurancePremium": { "amount": 1260.0, "currency": "USD" },
+      "fiveYearRetainedValuePercent": 52,
+      "estimatedFiveYearFuelCost": {
+        "amount": 7137.93,
+        "currency": "USD",
+        "arithmeticNote": "60000 mi / 29 mpg = 2068.97 gal; 2068.97 * 3.45 = 7137.93"
+      },
+      "estimatedFiveYearMaintenanceCost": {
+        "amount": 5400.0,
+        "currency": "USD",
+        "arithmeticNote": "60000 mi * 0.09 = 5400.00"
+      }
+    }
+  }
+}

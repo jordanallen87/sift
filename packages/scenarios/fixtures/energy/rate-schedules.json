@@ -1,0 +1,60 @@
+{
+  "_provenance": "Fictional demo data. Utility name, tariff IDs, and rates are invented for the Pax 'Home Energy Guardian' hackathon scenario and do not describe any real utility, account, or rate filing.",
+  "caseId": "case-demo-energy-guardian",
+  "utilityName": "Cedar Valley Power & Light (fictional)",
+  "serviceAddressNote": "Fictional single-family residence, electric service only. No real address is represented.",
+  "tariffs": [
+    {
+      "tariffId": "tariff-standard-2024",
+      "label": "Residential Standard Service (prior tariff)",
+      "effectiveFrom": "2024-06-01",
+      "effectiveTo": "2026-05-31",
+      "fixedMonthlyCustomerCharge": { "amount": 11.25, "currency": "USD" },
+      "volumetricRatePerKwh": { "amount": 0.135, "currency": "USD" },
+      "rateStructure": "flat volumetric, no tiers"
+    },
+    {
+      "tariffId": "tariff-standard-2026",
+      "label": "Residential Standard Service (current tariff)",
+      "effectiveFrom": "2026-06-01",
+      "effectiveTo": null,
+      "fixedMonthlyCustomerCharge": { "amount": 13.75, "currency": "USD" },
+      "volumetricRatePerKwh": { "amount": 0.15, "currency": "USD" },
+      "rateStructure": "flat volumetric, no tiers",
+      "changeFromPriorTariff": {
+        "fixedChargeIncrease": { "amount": 2.5, "currency": "USD" },
+        "fixedChargeIncreasePercent": 22.22,
+        "volumetricRateIncrease": { "amount": 0.015, "currency": "USD" },
+        "volumetricRateIncreasePercent": 11.11,
+        "arithmeticNote": "Fixed: (13.75 - 11.25) / 11.25 = 0.2222 -> 22.22%. Volumetric: (0.150 - 0.135) / 0.135 = 0.1111 -> 11.11%."
+      },
+      "regulatoryFilingReference": "Fictional Case No. CVPL-2026-014, approved 2026-05-15"
+    }
+  ],
+  "rateChangeImpactOnBaselineUsage": {
+    "note": "Isolates how much of the anomaly is explained by the rate change alone, holding usage at the normalized baseline for the current billing period (1075 kWh, see current-bill.json baseline).",
+    "baselineUsageKwh": 1075,
+    "billUnderPriorTariffAtBaselineUsage": {
+      "amount": 156.38,
+      "currency": "USD",
+      "arithmeticNote": "11.25 + 0.135 * 1075 = 11.25 + 145.125 = 156.375, rounded to 156.38"
+    },
+    "billUnderCurrentTariffAtBaselineUsage": {
+      "amount": 175.0,
+      "currency": "USD",
+      "arithmeticNote": "13.75 + 0.150 * 1075 = 13.75 + 161.25 = 175.00"
+    },
+    "rateChangeAttributableAmount": {
+      "amount": 18.62,
+      "currency": "USD",
+      "arithmeticNote": "175.00 - 156.38 = 18.62"
+    },
+    "rateChangeAttributablePercentOfTotalGap": 20.21,
+    "totalGapVsPriorTariffAtActualUsage": {
+      "note": "Total gap between the current actual bill and what the bill would have been under the prior tariff at the prior normalized (baseline) usage.",
+      "amount": 92.12,
+      "currency": "USD",
+      "arithmeticNote": "248.50 (current actual bill) - 156.38 (prior tariff at baseline usage) = 92.12. Rate change explains 18.62 of that 92.12 (18.62 / 92.12 = 20.21%); the remaining 73.50 (79.79%) is usage-driven and investigated via weather-history.json and household-events.json."
+    }
+  }
+}

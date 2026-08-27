@@ -1,0 +1,156 @@
+{
+  "_provenance": "Fictional demo data. Usage figures are fixture-authored, internally consistent approximations for the Pax 'Home Energy Guardian' hackathon scenario and do not describe any real meter or account.",
+  "caseId": "case-demo-energy-guardian",
+  "householdId": "household-demo-energy-01",
+  "note": "18 monthly billing cycles ending with the current (anomalous) cycle, which matches current-bill.json exactly. Cycles generally run the 16th of one month through the 15th of the next; the final cycle ends 2026-08-14 (30 days), matching current-bill.json's billingPeriod. tariffId reflects whichever tariff applied to that cycle per rate-schedules.json (a cycle is billed under the tariff in effect on its start date).",
+  "cycles": [
+    {
+      "cycleLabel": "2025-03",
+      "billingPeriod": { "start": "2025-02-16", "end": "2025-03-15" },
+      "usageKwh": 780,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 116.55, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*780 = 11.25 + 105.30 = 116.55"
+    },
+    {
+      "cycleLabel": "2025-04",
+      "billingPeriod": { "start": "2025-03-16", "end": "2025-04-15" },
+      "usageKwh": 650,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 99.0, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*650 = 11.25 + 87.75 = 99.00"
+    },
+    {
+      "cycleLabel": "2025-05",
+      "billingPeriod": { "start": "2025-04-16", "end": "2025-05-15" },
+      "usageKwh": 700,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 105.75, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*700 = 11.25 + 94.50 = 105.75"
+    },
+    {
+      "cycleLabel": "2025-06",
+      "billingPeriod": { "start": "2025-05-16", "end": "2025-06-15" },
+      "usageKwh": 950,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 139.5, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*950 = 11.25 + 128.25 = 139.50"
+    },
+    {
+      "cycleLabel": "2025-07",
+      "billingPeriod": { "start": "2025-06-16", "end": "2025-07-15" },
+      "usageKwh": 1180,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 170.55, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*1180 = 11.25 + 159.30 = 170.55"
+    },
+    {
+      "cycleLabel": "2025-08",
+      "billingPeriod": { "start": "2025-07-16", "end": "2025-08-15" },
+      "usageKwh": 1080,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 157.05, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*1080 = 11.25 + 145.80 = 157.05",
+      "note": "Same calendar window as the current (anomalous) cycle, one year earlier. Used as the primary reference point for this cycle's normalized baseline usage of 1075 kWh (see current-bill.json)."
+    },
+    {
+      "cycleLabel": "2025-09",
+      "billingPeriod": { "start": "2025-08-16", "end": "2025-09-15" },
+      "usageKwh": 900,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 132.75, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*900 = 11.25 + 121.50 = 132.75"
+    },
+    {
+      "cycleLabel": "2025-10",
+      "billingPeriod": { "start": "2025-09-16", "end": "2025-10-15" },
+      "usageKwh": 700,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 105.75, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*700 = 11.25 + 94.50 = 105.75"
+    },
+    {
+      "cycleLabel": "2025-11",
+      "billingPeriod": { "start": "2025-10-16", "end": "2025-11-15" },
+      "usageKwh": 780,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 116.55, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*780 = 11.25 + 105.30 = 116.55"
+    },
+    {
+      "cycleLabel": "2025-12",
+      "billingPeriod": { "start": "2025-11-16", "end": "2025-12-15" },
+      "usageKwh": 980,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 143.55, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*980 = 11.25 + 132.30 = 143.55"
+    },
+    {
+      "cycleLabel": "2026-01",
+      "billingPeriod": { "start": "2025-12-16", "end": "2026-01-15" },
+      "usageKwh": 1050,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 153.0, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*1050 = 11.25 + 141.75 = 153.00"
+    },
+    {
+      "cycleLabel": "2026-02",
+      "billingPeriod": { "start": "2026-01-16", "end": "2026-02-15" },
+      "usageKwh": 960,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 140.85, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*960 = 11.25 + 129.60 = 140.85"
+    },
+    {
+      "cycleLabel": "2026-03",
+      "billingPeriod": { "start": "2026-02-16", "end": "2026-03-15" },
+      "usageKwh": 800,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 119.25, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*800 = 11.25 + 108.00 = 119.25"
+    },
+    {
+      "cycleLabel": "2026-04",
+      "billingPeriod": { "start": "2026-03-16", "end": "2026-04-15" },
+      "usageKwh": 670,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 101.7, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*670 = 11.25 + 90.45 = 101.70"
+    },
+    {
+      "cycleLabel": "2026-05",
+      "billingPeriod": { "start": "2026-04-16", "end": "2026-05-15" },
+      "usageKwh": 720,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 108.45, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*720 = 11.25 + 97.20 = 108.45"
+    },
+    {
+      "cycleLabel": "2026-06",
+      "billingPeriod": { "start": "2026-05-16", "end": "2026-06-15" },
+      "usageKwh": 980,
+      "tariffId": "tariff-standard-2024",
+      "billedAmount": { "amount": 143.55, "currency": "USD" },
+      "arithmeticNote": "11.25 + 0.135*980 = 11.25 + 132.30 = 143.55",
+      "note": "Last cycle billed under the prior tariff; this cycle started 2026-05-16, before the 2026-06-01 rate change took effect."
+    },
+    {
+      "cycleLabel": "2026-07",
+      "billingPeriod": { "start": "2026-06-16", "end": "2026-07-15" },
+      "usageKwh": 1150,
+      "tariffId": "tariff-standard-2026",
+      "billedAmount": { "amount": 186.25, "currency": "USD" },
+      "arithmeticNote": "13.75 + 0.150*1150 = 13.75 + 172.50 = 186.25",
+      "note": "First cycle billed under the current tariff; started 2026-06-16, on/after the 2026-06-01 rate-change effective date."
+    },
+    {
+      "cycleLabel": "2026-08",
+      "billingPeriod": { "start": "2026-07-16", "end": "2026-08-14" },
+      "usageKwh": 1565,
+      "tariffId": "tariff-standard-2026",
+      "billedAmount": { "amount": 248.5, "currency": "USD" },
+      "arithmeticNote": "13.75 + 0.150*1565 = 13.75 + 234.75 = 248.50",
+      "note": "Current (anomalous) cycle. Matches current-bill.json exactly. Usage is 1565 - 1080 = 485 kWh (44.9%) above the same cycle one year earlier, and 1565 - 1075 = 490 kWh above the weather/trend-normalized baseline, well outside the seasonal pattern shown in the prior 17 cycles."
+    }
+  ]
+}

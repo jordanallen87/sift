@@ -128,10 +128,10 @@ interface RoutingDecision {
 
 ## Routing algorithm
 
-Routing follows this order:
+Routing follows this order. The pinned-case check runs unconditionally before every other step, including explicit selection — a pinned case's ID/version/hash can never be overridden by any input, since "the router cannot change it" is an absolute guarantee, not one that only holds when the caller happens not to also pass an `explicitPackId`:
 
-1. If `explicitPackId` references an installed pack, select it with reason `User selected this Decision Pack`.
-2. If an active case is pinned, return that exact ID, version, and compiled hash. The router cannot change it.
+1. If an active case is pinned, return that exact ID, version, and compiled hash regardless of any other input on the request. The router cannot change it.
+2. Otherwise, if `explicitPackId` references an installed pack, select it with reason `User selected this Decision Pack`.
 3. Compute a deterministic signal score from keywords, artifact kinds, entity signals, and exclusions.
 4. Ask a Strands router agent for structured candidate IDs and semantic confidence. The agent receives only registered pack metadata, never full pack instructions.
 5. Merge deterministic and semantic scores with weights `0.6` and `0.4`.
@@ -139,7 +139,7 @@ Routing follows this order:
 7. Otherwise return at most two candidates for user confirmation.
 8. Reject any candidate ID, version, or hash absent from the compiled registry.
 
-When the model is unavailable, deterministic routing remains functional for the two demos.
+When the model is unavailable, deterministic routing remains functional for the two demos: with no semantic candidates, the merged score is deterministic-only and is mathematically capped at `0.6` under the weights above — below the `0.75` auto-select floor by construction. "Functional" therefore means the router always produces a safe `needs_confirmation` result with real candidates and reasons for the user to choose from; it never means the router still auto-selects without a model. This is the intended, safer behavior, not a degraded one.
 
 The `0.6`/`0.4` merge weights and the `0.75`/`0.20` selection thresholds are constants tuned for this hackathon's two-pack catalog, not a derived or general-purpose routing algorithm result. Submission copy and demo narration must describe them as such rather than as a scientifically validated routing model.
 

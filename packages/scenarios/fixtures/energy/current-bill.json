@@ -1,0 +1,38 @@
+{
+  "_provenance": "Fictional demo data. Household, utility, and account identifiers are invented for the Pax 'Home Energy Guardian' hackathon scenario. No real person, address, or utility account is represented.",
+  "caseId": "case-demo-energy-guardian",
+  "householdId": "household-demo-energy-01",
+  "displayName": "The Okafor-Bryant household",
+  "utilityAccountFictionalId": "DEMO-ACCT-0000-0001",
+  "billingPeriod": { "start": "2026-07-16", "end": "2026-08-14", "days": 30 },
+  "tariffId": "tariff-standard-2026",
+  "usage": { "value": 1565, "unit": "kWh" },
+  "charges": {
+    "fixedMonthlyCustomerCharge": { "amount": 13.75, "currency": "USD" },
+    "volumetricCharge": {
+      "amount": 234.75,
+      "currency": "USD",
+      "arithmeticNote": "1565 kWh * 0.150 USD/kWh = 234.75"
+    },
+    "totalAmount": {
+      "amount": 248.5,
+      "currency": "USD",
+      "arithmeticNote": "13.75 + 234.75 = 248.50"
+    }
+  },
+  "currentAmount": { "amount": 248.5, "currency": "USD" },
+  "baseline": {
+    "amount": { "amount": 175.0, "currency": "USD" },
+    "usage": { "value": 1075, "unit": "kWh" },
+    "methodology": "Weather- and trend-normalized expected usage and bill for this billing period, computed from the same calendar period one year prior (August 2025: 1080 kWh, see usage-history.json) adjusted slightly downward for trend, then billed under the CURRENT tariff (tariff-standard-2026) so the rate change is isolated as a separate factor rather than folded into the baseline. 13.75 + 0.150 * 1075 = 175.00.",
+    "computedBy": "bill-normalizer skill (fixture-authored reference value for deterministic tests)"
+  },
+  "anomaly": {
+    "percentAboveBaseline": 42,
+    "arithmeticNote": "currentAmount 248.50 / baseline amount 175.00 = 1.42 exactly -> 42% above the normalized baseline. (248.50 - 175.00) = 73.50 dollars above baseline; 73.50 / 175.00 = 0.42.",
+    "usageGapAboveBaselineKwh": 490,
+    "usageGapArithmeticNote": "1565 - 1075 = 490 kWh above the normalized baseline usage. Of this gap, 210 kWh is explained by weather (see weather-history.json) and the remaining 280 kWh is unexplained by rate or weather alone (see household-events.json for the supported thermostat-malfunction hypothesis).",
+    "flaggedAt": "2026-08-15T09:05:00Z",
+    "flaggedBy": "deterministic anomaly watcher"
+  }
+}

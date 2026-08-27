@@ -1,0 +1,262 @@
+/*
+ * Pax design tokens.
+ *
+ * Design world: a calm claims-examiner's desk, not a SaaS dashboard. Pax
+ * turns an unstructured question into a case: evidence is gathered, sources
+ * are cited, obligations are tracked to readiness, and a human signs off.
+ * The palette and type system below are built around that "case dossier"
+ * vocabulary — paper, ink, ledger rules, a stamped verdict — deployed with
+ * restraint so the workspace stays legible and quiet at 390px width.
+ *
+ * See docs/design-system.md for the full rationale, the 390px-width
+ * decisions, and reuse attribution.
+ *
+ * Adapted values: the spacing, radius, shadow, and motion SCALES (not the
+ * color or type values) are translated from
+ * /Users/jordanallen/IdeaProjects/think-os/packages/shared-design/src/tokens.ts,
+ * a private sibling reference repository, per docs/reuse-source-map.md.
+ * Recorded in docs/reuse-attribution.md.
+ */
+
+:root {
+  /* ---------------------------------------------------------------------
+   * Color — neutrals ("paper and ink")
+   * A cool, quiet paper tone (not the warm-cream/terracotta default) with
+   * a soft ink-charcoal for text. Kept deliberately low-contrast between
+   * background layers so status color is what draws the eye, not chrome.
+   * ------------------------------------------------------------------- */
+  --color-paper: #eef1f0; /* page background */
+  --color-surface: #fbfbf9; /* card / panel fill */
+  --color-surface-sunken: #e4e7e1; /* recessed areas: code blocks, inspector rows */
+  --color-surface-raised: #ffffff; /* popovers, menus, the approval stamp card */
+
+  --color-ink: #1b1d1b; /* primary text */
+  --color-ink-secondary: #4b4e49; /* secondary text, supporting copy */
+  --color-ink-muted: #6b6e68; /* tertiary text, metadata, timestamps-adjacent labels */
+  --color-ink-on-brand: #ffffff; /* text on solid brand/status fills */
+
+  --color-border-subtle: #d8dcd6; /* internal hairlines/dividers inside a bounded card */
+  --color-border-strong: #828983; /* component boundaries: inputs, card edges, buttons */
+
+  /* ---------------------------------------------------------------------
+   * Color — brand ("ink-blue")
+   * A dark, desaturated fountain-pen blue used for primary actions, links,
+   * the active/in-progress signal, and focus. Deliberately not a bright
+   * SaaS blue or an indigo/violet accent.
+   * ------------------------------------------------------------------- */
+  --color-brand: #2c4870;
+  --color-brand-strong: #1f3555; /* hover/pressed */
+  --color-brand-tint: #e3e8f0; /* subtle brand-colored surface */
+  --color-focus-ring: var(--color-brand);
+
+  /* ---------------------------------------------------------------------
+   * Color — status
+   * Nine semantic states, one per obligation/readiness state in
+   * docs/specs/product.md. Each state ships an -ink (text/icon), -bg
+   * (tinted surface), and -border (tinted outline) triad. All -ink values
+   * are calibrated to >= 4.5:1 against both --color-paper and their own
+   * -bg tint, and to >= 4.5:1 as white-on-fill, so the same token works as
+   * text, an outlined chip, or a solid badge. Never the only signal for a
+   * state — always pair with the state's text label/icon.
+   * ------------------------------------------------------------------- */
+
+  /* satisfied — required evidence is in and sufficient */
+  --color-status-satisfied-ink: #3b6b4c;
+  --color-status-satisfied-bg: #e5ede6;
+  --color-status-satisfied-border: #b9cfbe;
+
+  /* active — currently being investigated right now */
+  --color-status-active-ink: #2c4870;
+  --color-status-active-bg: #e3e8f0;
+  --color-status-active-border: #b7c3d6;
+
+  /* blocked — cannot proceed without a human or missing capability */
+  --color-status-blocked-ink: #6b3550;
+  --color-status-blocked-bg: #ede3e8;
+  --color-status-blocked-border: #d2bac7;
+
+  /* accepted-uncertainty — a gap the user explicitly chose to proceed past */
+  --color-status-accepted-uncertainty-ink: #8a5a16;
+  --color-status-accepted-uncertainty-bg: #f0e7d6;
+  --color-status-accepted-uncertainty-border: #dcc79a;
+
+  /* open — not yet started; deliberately hue-less/unclaimed */
+  --color-status-open-ink: #64665f;
+  --color-status-open-bg: #e8e9e5;
+  --color-status-open-border: #cbccc5;
+
+  /* stale — evidence has aged past its validity window */
+  --color-status-stale-ink: #75636c;
+  --color-status-stale-bg: #eee6e9;
+  --color-status-stale-border: #d4c2c9;
+
+  /* error — a recoverable technical/tool failure, not a case decision */
+  --color-status-error-ink: #a13a2a;
+  --color-status-error-bg: #f3e1dc;
+  --color-status-error-border: #e0b7ac;
+
+  /* ready — every required obligation is satisfied; awaiting human review */
+  --color-status-ready-ink: #1b665f;
+  --color-status-ready-bg: #dfebe9;
+  --color-status-ready-border: #a9ccc7;
+
+  /* decided — the case is closed (approved, rejected, or revision requested) */
+  --color-status-decided-ink: #1b1d1b;
+  --color-status-decided-bg: #e9e9e6;
+  --color-status-decided-border: #cfcfc9;
+
+  /* Generic aliases for non-status UI (form validation, inline notices).
+     Point at the status tokens above rather than duplicating hex values. */
+  --color-success: var(--color-status-satisfied-ink);
+  --color-warning: var(--color-status-accepted-uncertainty-ink);
+  --color-danger: var(--color-status-error-ink);
+
+  /* The stamp/verdict signature (see docs/design-system.md "signature
+     element"). Neutral by default; approve/reject/revise treatments layer
+     the satisfied / error / accepted-uncertainty tokens above on top of
+     this shape at the component level. */
+  --color-stamp-ink: var(--color-status-decided-ink);
+  --color-stamp-border: var(--color-status-decided-ink);
+
+  /* ---------------------------------------------------------------------
+   * Typography
+   * Display: Newsreader (editorial serif, restrained — case titles,
+   *   section headings, the stamp verdict).
+   * Body/UI: Public Sans (built for dense civic/case-processing forms —
+   *   readiness rows, labels, buttons, evidence text).
+   * Mono: IBM Plex Mono (IDs, hashes, timestamps, source citations, the
+   *   Runtime Inspector's trace data).
+   * All three are self-hosted OFL-licensed families; see the font-loading
+   * note in global.css and docs/design-system.md.
+   * ------------------------------------------------------------------- */
+  --font-display: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-body:
+    'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono:
+    'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Type scale — tuned for a 390-480px reading column, not scaled down
+     from a desktop composition. Base sits at 16px so form inputs never
+     trigger iOS auto-zoom on focus. */
+  --font-size-2xs: 0.6875rem; /* 11px — timestamps, IDs, sequence numbers */
+  --font-size-xs: 0.78125rem; /* 12.5px — eyebrow labels, badges, chips */
+  --font-size-sm: 0.875rem; /* 14px — secondary text, captions, meta rows */
+  --font-size-base: 1rem; /* 16px — body copy, form inputs */
+  --font-size-md: 1.125rem; /* 18px — current-focus headline, card titles */
+  --font-size-lg: 1.3125rem; /* 21px — section headings (Evidence, Activity, ...) */
+  --font-size-xl: 1.625rem; /* 26px — case title */
+  --font-size-2xl: 2rem; /* 32px — reserved for desktop-width hero use */
+
+  --line-height-tight: 1.2; /* display headings */
+  --line-height-snug: 1.35; /* card titles, labels */
+  --line-height-normal: 1.5; /* body copy */
+  --line-height-relaxed: 1.6; /* long-form rationale text */
+
+  --letter-spacing-tight: -0.01em; /* display headings */
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.02em;
+  --letter-spacing-wider: 0.08em; /* uppercase eyebrow labels, status badges */
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ---------------------------------------------------------------------
+   * Spacing — 4px grid.
+   * Adapted from think-os shared-design tokens.ts `spacing`.
+   * ------------------------------------------------------------------- */
+  --space-0: 0px;
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px; /* desktop-width gutters only */
+
+  /* ---------------------------------------------------------------------
+   * Radius
+   * Adapted from think-os shared-design tokens.ts `borderRadius`, tightened
+   * at the top end: a case dossier reads as a document, not a bubbly app,
+   * so large cards stay closer to square than think-os's 2xl/3xl steps.
+   * ------------------------------------------------------------------- */
+  --radius-xs: 4px; /* chips, inline tags */
+  --radius-sm: 6px; /* inputs, buttons */
+  --radius-md: 10px; /* cards */
+  --radius-lg: 14px; /* panels, the Runtime Inspector sheet */
+  --radius-xl: 18px; /* the demo launcher's two large choice cards */
+  --radius-pill: 999px; /* status badges */
+  --radius-full: 999px; /* avatars, presence dots */
+
+  /* ---------------------------------------------------------------------
+   * Shadow / elevation
+   * Restrained by design, adapted from think-os shared-design tokens.ts
+   * `shadows`: default cards use fill + border, never a drop shadow.
+   * Shadow is reserved for things that float above the page with nothing
+   * behind them in normal flow.
+   * ------------------------------------------------------------------- */
+  --shadow-none: none;
+  --shadow-soft: 0 2px 8px rgba(27, 29, 27, 0.08); /* sticky header/action bar */
+  --shadow-elevated: 0 12px 32px rgba(27, 29, 27, 0.16); /* modals, popovers,
+    the Runtime Inspector overlay */
+
+  /* ---------------------------------------------------------------------
+   * Motion
+   * Adapted from think-os shared-design tokens.ts `themeMotion`. Overridden
+   * to near-zero under prefers-reduced-motion below so every component that
+   * consumes these variables is reduced-motion-safe for free.
+   * ------------------------------------------------------------------- */
+  --duration-instant: 90ms;
+  --duration-fast: 140ms;
+  --duration-normal: 220ms;
+  --duration-slow: 360ms;
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+
+  /* ---------------------------------------------------------------------
+   * Layout
+   * The canonical viewport per CLAUDE.md's "non-negotiable product truths":
+   * a ChatGPT right pane, not a desktop dashboard shrunk down after the
+   * fact. Desktop is a secondary, wider projection of the same layout.
+   * ------------------------------------------------------------------- */
+  --pane-width-min: 390px;
+  --pane-width-max: 480px;
+  --desktop-breakpoint: 900px; /* below this, always single-column stacked */
+  --size-touch-target-min: 44px; /* CSS px; see docs/specs/testing.md */
+
+  /* ---------------------------------------------------------------------
+   * Z-index
+   * ------------------------------------------------------------------- */
+  --z-base: 0;
+  --z-sticky: 10; /* case header, primary action bar */
+  --z-overlay: 100; /* dropdowns, tooltips */
+  --z-modal: 200; /* the Runtime Inspector route, confirmation dialogs */
+  --z-toast: 300; /* connection/reconnect notices */
+}
+
+/*
+ * Reduced motion: override the duration scale globally rather than
+ * requiring every component to add its own media query. A component that
+ * animates via var(--duration-normal) etc. is reduced-motion-safe for
+ * free. Components with a translate/opacity entrance animation should
+ * still branch on this media query directly when the animation itself
+ * (not just its speed) should be skipped.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-slow: 0ms;
+  }
+}

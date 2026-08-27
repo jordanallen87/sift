@@ -87,6 +87,36 @@ and AgentCore/CloudWatch correlation. Per `docs/specs/architecture.md` and
 required deliverable — AgentCore is a score-strengthening bonus for the AWS
 submission, not a gate for either deadline (see audit Finding 1 discussion).
 
+### Judge-visibility reweighting (2026-08-27)
+
+Discussed with the project owner: CLAUDE.md's completion bar (100% branch
+coverage on core, mutation testing, a 6-view Runtime Inspector, a full
+pack-authoring agent/skill/CLI, Playwright at 4 viewports) is a rigorous
+engineering bar, but it is not the same thing as maximizing chance of actually
+winning. Judges for a high-volume Devpost event mostly decide from the demo
+video and a first click on the live URL, not from exploring test coverage or
+every Inspector tab. Mutation testing, the fuller Runtime Inspector views
+beyond Overview+Timeline, and the pack-authoring skill are all real, still-
+required scope — none of it is deleted — but they are low judge-visibility
+relative to their build cost, so they do not get to consume time that a
+flawless first-click live demo and a tightly choreographed video need.
+
+Resolution: parallel subagent capacity means this is not actually an either/or
+trade-off — do both. Two changes to Tier 1 sequencing:
+
+- Draft both demo video storyboards (`docs/demo/webmcp-script.md`,
+  `docs/demo/aws-script.md`) early, in parallel with Task 2, rather than only
+  in Task 14 — so build and polish decisions serve the video's actual beats
+  instead of being reverse-engineered from whatever got built.
+- Run a first-class visual design pass (tokens, typography, motion, the "calm
+  right-pane identity" CLAUDE.md requires) as an explicit early Tier 1 step in
+  parallel with Task 2, not a bullet buried inside Task 9.
+
+If the calendar does get tight against 2026-09-03, mutation testing, Inspector
+views beyond Overview+Timeline, and the pack-authoring skill are the first
+candidates to slip into Tier 2/3 — never deleted, only reordered, consistent
+with Finding 1's resolution.
+
 ## Locked file map
 
 ```text

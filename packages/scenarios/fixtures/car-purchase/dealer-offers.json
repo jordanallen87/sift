@@ -1,0 +1,241 @@
+{
+  "_provenance": "Fictional demo data. Dealer names, fees, and finance terms are invented for the Pax 'Choose Our Next Car' hackathon scenario and do not describe any real dealer or transaction.",
+  "caseId": "case-demo-car-purchase",
+  "sharedTaxAndFeeAssumptions": {
+    "salesTaxRate": 0.07,
+    "salesTaxBasis": "vehicle advertised price plus mandatory dealer add-ons; documentation fee is not taxable under this fixture's fictional state schedule",
+    "titleAndRegistrationFee": { "amount": 275.0, "currency": "USD" }
+  },
+  "offers": [
+    {
+      "candidateId": "candidate-rav4",
+      "dealerName": "Example Motors of Northfield",
+      "quotedAt": "2026-08-19",
+      "hasTeaserPriceConflict": true,
+      "advertisedPrice": { "amount": 27995.0, "currency": "USD" },
+      "advertisedFinancingExample": {
+        "description": "Dealer website advertises 'as low as 4.9% APR for 60 months for well-qualified buyers,' shown alongside the advertised price with no mention of mandatory add-ons.",
+        "apr": 0.049,
+        "termMonths": 60
+      },
+      "mandatoryAddOns": [
+        {
+          "id": "addon-value-protection-package",
+          "label": "Value Protection Package (paint sealant, fabric guard, nitrogen tire fill, VIN etching)",
+          "amount": 2395.0,
+          "currency": "USD",
+          "mandatory": true,
+          "note": "Dealer policy: pre-installed on all lot inventory of this trim, not removable or waivable."
+        },
+        {
+          "id": "addon-doc-fee",
+          "label": "Documentation / processing fee",
+          "amount": 499.0,
+          "currency": "USD",
+          "mandatory": true
+        }
+      ],
+      "actualFinancingOffer": {
+        "description": "Credit decision actually available to this household at time of quote, disclosed only after requesting a written offer.",
+        "apr": 0.0749,
+        "termMonths": 75,
+        "note": "Longer term than the advertised financing example; the advertised 4.9%/60-month example was not available to this household given the amount financed after mandatory add-ons."
+      },
+      "priceBreakdown": {
+        "advertisedPrice": 27995.0,
+        "mandatoryAddOnsTotal": 2894.0,
+        "subtotalBeforeTax": 30889.0,
+        "taxableBase": 30390.0,
+        "salesTax": 2127.3,
+        "titleAndRegistrationFee": 275.0,
+        "trueOutTheDoorPrice": 33291.3,
+        "arithmeticNote": "27995.00 + 2395.00 (value protection package) + 499.00 (doc fee) = 30889.00 subtotal. Taxable base excludes the non-taxable doc fee: 27995.00 + 2395.00 = 30390.00; sales tax = 30390.00 * 0.07 = 2127.30. True out-the-door = 30889.00 + 2127.30 + 275.00 (title/registration) = 33291.30."
+      },
+      "teaserGap": {
+        "advertisedPrice": 27995.0,
+        "trueOutTheDoorPrice": 33291.3,
+        "gapAmount": 5296.3,
+        "gapPercentOfAdvertised": 18.92,
+        "arithmeticNote": "33291.30 - 27995.00 = 5296.30. 5296.30 / 27995.00 = 0.18919... -> 18.92% higher than the advertised teaser price.",
+        "exceedsHouseholdMaxBudget": true,
+        "householdMaxBudget": 32000.0,
+        "amountOverBudget": 1291.3
+      },
+      "downPaymentAssumed": { "amount": 3000.0, "currency": "USD" },
+      "amountFinanced": 30291.3,
+      "estimatedMonthlyPayment": {
+        "underAdvertisedTerms": {
+          "amount": 470.54,
+          "currency": "USD",
+          "basis": "4.9% APR, 60 months, financing 24995.00 (advertised price minus down payment, ignoring add-ons as the advertisement implies)"
+        },
+        "underActualOfferedTerms": {
+          "amount": 507.0,
+          "currency": "USD",
+          "basis": "7.49% APR, 75 months, financing 30291.30 (true out-the-door minus down payment)"
+        },
+        "note": "Standard amortization estimates, rounded to the nearest cent for illustration. The runtime ownership-cost calculator is the source of truth for any figure the product displays."
+      }
+    },
+    {
+      "candidateId": "candidate-crv",
+      "dealerName": "Example Motors of Northfield",
+      "quotedAt": "2026-08-19",
+      "hasTeaserPriceConflict": false,
+      "advertisedPrice": { "amount": 26495.0, "currency": "USD" },
+      "advertisedFinancingExample": {
+        "apr": 0.059,
+        "termMonths": 60,
+        "description": "Advertised terms match the actual offer; no conflict."
+      },
+      "mandatoryAddOns": [
+        {
+          "id": "addon-doc-fee",
+          "label": "Documentation / processing fee",
+          "amount": 399.0,
+          "currency": "USD",
+          "mandatory": true
+        }
+      ],
+      "actualFinancingOffer": {
+        "apr": 0.059,
+        "termMonths": 60,
+        "note": "Matches the advertised financing example."
+      },
+      "priceBreakdown": {
+        "advertisedPrice": 26495.0,
+        "mandatoryAddOnsTotal": 399.0,
+        "subtotalBeforeTax": 26894.0,
+        "taxableBase": 26495.0,
+        "salesTax": 1854.65,
+        "titleAndRegistrationFee": 275.0,
+        "trueOutTheDoorPrice": 29023.65,
+        "arithmeticNote": "26495.00 + 399.00 (doc fee) = 26894.00 subtotal. Taxable base excludes the non-taxable doc fee: 26495.00 * 0.07 = 1854.65. True out-the-door = 26894.00 + 1854.65 + 275.00 = 29023.65."
+      },
+      "teaserGap": {
+        "advertisedPrice": 26495.0,
+        "trueOutTheDoorPrice": 29023.65,
+        "gapAmount": 2528.65,
+        "gapPercentOfAdvertised": 9.55,
+        "exceedsHouseholdMaxBudget": false,
+        "householdMaxBudget": 32000.0,
+        "note": "This gap is ordinary tax/title/doc-fee math, not a mandatory-add-on or financing-term conflict. hasTeaserPriceConflict is false for this candidate."
+      },
+      "downPaymentAssumed": { "amount": 3000.0, "currency": "USD" },
+      "amountFinanced": 26023.65,
+      "estimatedMonthlyPayment": {
+        "underActualOfferedTerms": {
+          "amount": 501.9,
+          "currency": "USD",
+          "basis": "5.9% APR, 60 months, financing 26023.65"
+        }
+      }
+    },
+    {
+      "candidateId": "candidate-cx5",
+      "dealerName": "Example AutoGroup Cedar Valley",
+      "quotedAt": "2026-08-20",
+      "hasTeaserPriceConflict": false,
+      "advertisedPrice": { "amount": 28750.0, "currency": "USD" },
+      "advertisedFinancingExample": {
+        "apr": 0.064,
+        "termMonths": 60,
+        "description": "Advertised terms match the actual offer; no conflict."
+      },
+      "mandatoryAddOns": [
+        {
+          "id": "addon-doc-fee",
+          "label": "Documentation / processing fee",
+          "amount": 449.0,
+          "currency": "USD",
+          "mandatory": true
+        }
+      ],
+      "actualFinancingOffer": {
+        "apr": 0.064,
+        "termMonths": 60,
+        "note": "Matches the advertised financing example."
+      },
+      "priceBreakdown": {
+        "advertisedPrice": 28750.0,
+        "mandatoryAddOnsTotal": 449.0,
+        "subtotalBeforeTax": 29199.0,
+        "taxableBase": 28750.0,
+        "salesTax": 2012.5,
+        "titleAndRegistrationFee": 275.0,
+        "trueOutTheDoorPrice": 31486.5,
+        "arithmeticNote": "28750.00 + 449.00 (doc fee) = 29199.00 subtotal. Taxable base excludes the non-taxable doc fee: 28750.00 * 0.07 = 2012.50. True out-the-door = 29199.00 + 2012.50 + 275.00 = 31486.50."
+      },
+      "teaserGap": {
+        "advertisedPrice": 28750.0,
+        "trueOutTheDoorPrice": 31486.5,
+        "gapAmount": 2736.5,
+        "gapPercentOfAdvertised": 9.52,
+        "exceedsHouseholdMaxBudget": false,
+        "householdMaxBudget": 32000.0
+      },
+      "downPaymentAssumed": { "amount": 3000.0, "currency": "USD" },
+      "amountFinanced": 28486.5,
+      "estimatedMonthlyPayment": {
+        "underActualOfferedTerms": {
+          "amount": 556.04,
+          "currency": "USD",
+          "basis": "6.4% APR, 60 months, financing 28486.50"
+        }
+      }
+    },
+    {
+      "candidateId": "candidate-outback",
+      "dealerName": "Example AutoGroup Cedar Valley",
+      "quotedAt": "2026-08-20",
+      "hasTeaserPriceConflict": false,
+      "advertisedPrice": { "amount": 25900.0, "currency": "USD" },
+      "advertisedFinancingExample": {
+        "apr": 0.055,
+        "termMonths": 60,
+        "description": "Advertised terms match the actual offer; no conflict."
+      },
+      "mandatoryAddOns": [
+        {
+          "id": "addon-doc-fee",
+          "label": "Documentation / processing fee",
+          "amount": 375.0,
+          "currency": "USD",
+          "mandatory": true
+        }
+      ],
+      "actualFinancingOffer": {
+        "apr": 0.055,
+        "termMonths": 60,
+        "note": "Matches the advertised financing example."
+      },
+      "priceBreakdown": {
+        "advertisedPrice": 25900.0,
+        "mandatoryAddOnsTotal": 375.0,
+        "subtotalBeforeTax": 26275.0,
+        "taxableBase": 25900.0,
+        "salesTax": 1813.0,
+        "titleAndRegistrationFee": 275.0,
+        "trueOutTheDoorPrice": 28363.0,
+        "arithmeticNote": "25900.00 + 375.00 (doc fee) = 26275.00 subtotal. Taxable base excludes the non-taxable doc fee: 25900.00 * 0.07 = 1813.00. True out-the-door = 26275.00 + 1813.00 + 275.00 = 28363.00."
+      },
+      "teaserGap": {
+        "advertisedPrice": 25900.0,
+        "trueOutTheDoorPrice": 28363.0,
+        "gapAmount": 2463.0,
+        "gapPercentOfAdvertised": 9.51,
+        "exceedsHouseholdMaxBudget": false,
+        "householdMaxBudget": 32000.0
+      },
+      "downPaymentAssumed": { "amount": 3000.0, "currency": "USD" },
+      "amountFinanced": 25363.0,
+      "estimatedMonthlyPayment": {
+        "underActualOfferedTerms": {
+          "amount": 484.46,
+          "currency": "USD",
+          "basis": "5.5% APR, 60 months, financing 25363.00"
+        }
+      }
+    }
+  ]
+}

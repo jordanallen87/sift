@@ -112,7 +112,7 @@ Most WebMCP examples let an agent operate a website. Pax lets a website mediate 
 The under-three-minute video should put the best material first:
 
 1. **0:00–0:15 — working product immediately.** Show the narrow right-pane case with a selected vehicle and active investigation.
-2. **0:15–0:35 — shared attention.** Ask ChatGPT what would have to be true for the selected RAV4 to win; show `pax_get_case_context` read the exact selection.
+2. **0:15–0:35 — shared attention.** Ask ChatGPT what would have to be true for the selected RAV4 to win; show `pax_get_case_context` read the exact selection, then `pax_request_investigation` fire in the same breath so Beat 4's active Strands investigation has a real cause on screen.
 3. **0:35–1:05 — unanticipated concern.** Say that driving comfort is now non-negotiable and two dog crates must fit. Show WebMCP define/reweight the concern and the page add `custom.dog_crate_fit` plus an evidence question.
 4. **1:05–1:35 — cross-agent steering.** Show the active Strands trajectory redirect, `household-fit` activate, source challenge occur, and prior recommendation become stale.
 5. **1:35–2:05 — honest adaptation.** Show sourced cargo dimensions, explicit unknown comfort/crate fit, test-drive questions, and the revised ranking.

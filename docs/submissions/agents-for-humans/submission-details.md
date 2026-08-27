@@ -132,7 +132,7 @@ The maximum-five-minute video should follow one legible causal chain:
 3. **0:45–1:30 — genuine Strands work.** Show rate and weather specialists, AgentSkills activation, tools, evidence, and real-time UI updates.
 4. **1:30–2:05 — premature answer rejected.** The model proposes monitoring one cycle; GoalLoop/readiness emits `Draft withheld` because household-change evidence remains unresolved.
 5. **2:05–2:45 — steering and switching.** Repeated weather work yields no evidence delta; `RetrySteering` emits `Guide`, the Swarm hands off to `home-systems-analyst`, and `home-event-correlation` activates.
-6. **2:45–3:20 — supported revision.** The thermostat event supports the HVAC hypothesis; `source-challenger` verifies the claim and the recommendation changes.
+6. **2:45–3:20 — supported revision.** The thermostat event supports the HVAC hypothesis; `source-challenger` verifies the claim; the user or ChatGPT reweights the criterion from lowest immediate cost to long-term waste reduction (a required final assertion), and the recommendation changes to `request-hvac-inspection` after GoalLoop validation.
 7. **3:20–3:50 — human boundary and persistence.** `ConsequenceGuard` emits `Confirm`, saves a snapshot, restores after reconstruction, and waits for visible human proposal approval without scheduling anything.
 8. **3:50–4:25 — implementation proof.** Show the Runtime Inspector path, state diff, token/latency metadata, AgentCore/CloudWatch correlation when available, and `pnpm verify:release` result.
 9. **4:25–4:50 — platform proof.** Briefly show that Car Purchase uses a compiled Graph pack and that a typed case concern can adapt a run without rewriting the pack.
