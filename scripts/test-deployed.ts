@@ -167,16 +167,82 @@ async function main(): Promise<void> {
     record('cors', 'fail', `unexpected Access-Control-Allow-Origin: ${acao}`);
   }
 
-  // --- AgentCore /ping (only meaningful when the deployment targets
-  // AgentCore; this Railway deployment runs PAX_EXECUTION_TARGET=local) ---
+  // --- AgentCore /ping and /invocations (routes/agentcore.ts) --- the
+  // routes themselves are always real and live regardless of
+  // PAX_EXECUTION_TARGET (that flag only decides whether Strands execution
+  // is proxied to a deployed Bedrock AgentCore runtime, per config.ts and
+  // strands-runtime.md's "Models and configuration"; the HTTP transport is
+  // real either way). testing.md's test:deployed spec wants "one AgentCore
+  // invocation per hero pack" — the second one below creates its own fresh
+  // home-energy-guardian case for exactly that.
   const pingResponse = await fetch(`${url}/ping`).catch(() => null);
   if (pingResponse?.ok === true) {
     record('agentcore-ping', 'pass', `${url}/ping -> ${pingResponse.status}`);
   } else {
+    record('agentcore-ping', 'fail', `status=${pingResponse?.status ?? 'no response'}`);
+  }
+
+  const carPurchaseInvocation = await fetch(`${url}/invocations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ caseId }),
+  });
+  const carPurchaseInvocationBody = (await carPurchaseInvocation.json().catch(() => null)) as {
+    status?: string;
+  } | null;
+  if (carPurchaseInvocation.ok && carPurchaseInvocationBody?.status === 'success') {
     record(
-      'agentcore-ping',
-      'skip',
-      'external blocker: this deployment runs PAX_EXECUTION_TARGET=local, not agentcore (no AWS credentials were available to deploy Bedrock AgentCore this session)',
+      'agentcore-invocations-car-purchase',
+      'pass',
+      `${url}/invocations -> 200, caseId=${caseId}`,
+    );
+  } else {
+    record(
+      'agentcore-invocations-car-purchase',
+      'fail',
+      `status=${carPurchaseInvocation.status}, body=${JSON.stringify(carPurchaseInvocationBody)}`,
+    );
+  }
+
+  const energyDemoResponse = await fetch(`${url}/api/cases/demo`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': commandId('start-energy-demo'),
+    },
+    body: JSON.stringify({ demoId: 'home-energy-guardian' }),
+  });
+  const energyDemoBody = (await energyDemoResponse.json().catch(() => null)) as {
+    snapshot?: { id: string };
+  } | null;
+  const energyCaseId = energyDemoBody?.snapshot?.id;
+  if (energyDemoResponse.ok && energyCaseId !== undefined) {
+    const energyInvocation = await fetch(`${url}/invocations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: energyCaseId }),
+    });
+    const energyInvocationBody = (await energyInvocation.json().catch(() => null)) as {
+      status?: string;
+    } | null;
+    if (energyInvocation.ok && energyInvocationBody?.status === 'success') {
+      record(
+        'agentcore-invocations-home-energy-guardian',
+        'pass',
+        `${url}/invocations -> 200, caseId=${energyCaseId}`,
+      );
+    } else {
+      record(
+        'agentcore-invocations-home-energy-guardian',
+        'fail',
+        `status=${energyInvocation.status}, body=${JSON.stringify(energyInvocationBody)}`,
+      );
+    }
+  } else {
+    record(
+      'agentcore-invocations-home-energy-guardian',
+      'fail',
+      `could not create a home-energy-guardian fixture case: status=${energyDemoResponse.status}`,
     );
   }
 
