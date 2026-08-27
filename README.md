@@ -13,7 +13,7 @@ This is a dual-hackathon submission (the OpenAI WebMCP Challenge and the AWS Age
 
 **https://pax-hackathon-production.up.railway.app**
 
-The deployment is a single Railway service (Docker image, `PAX_EXECUTION_TARGET=local`) with a persistent SQLite volume. **Choose Our Next Car** is wired to a live engine at boot and runs end to end on the deployment today. **Home Energy Guardian's** Decision Pack manifest, fixture tools, and Strands Swarm exist in the codebase (`packages/packs`, `apps/agent/src/runtime/home-energy-*`), but as of this writing `apps/agent/src/server.ts` only registers the `car-purchase` pack and engine at startup — the second launcher option is visible in the UI but starting it will currently return an error rather than a live investigation. Check `apps/agent/src/server.ts` and `docs/build-log.md` for the current status if you're reading this later.
+The deployment is a single Railway service (Docker image, `PAX_EXECUTION_TARGET=local`) with a persistent SQLite volume. Both hero packs are wired to live engines at boot and run end to end on the deployment today: **Choose Our Next Car** (a real Strands Graph) and **Home Energy Guardian** (a real bounded Strands Swarm, including a real `ConsequenceGuard` confirmation gate before it ever proposes a home inspection).
 
 No AWS credentials are configured for this deployment, so it runs the `local` Strands execution target rather than Bedrock AgentCore; that is an honest, documented external blocker, not a missing feature.
 
@@ -55,8 +55,8 @@ In production (and in the Docker image), there is no separate dev server: the ag
 ## Running the demo locally
 
 1. Open the web app. The launcher presents two options: **"Choose our next car"** and **"Investigate my energy bill."**
-2. Click **"Choose our next car"** to start the car-purchase case from its checked-in fixture (a fresh case ID every time). This is the fully wired path today — click **"Request investigation"** to drive the live Strands Graph, watch skill activation, tool calls, evidence, and readiness update in real time in the activity ledger, edit criteria or candidates, and review the resulting recommendation.
-3. **"Investigate my energy bill"** starts the Home Energy Guardian case — see the live-demo status note above for its current wiring.
+2. Click **"Choose our next car"** to start the car-purchase case from its checked-in fixture (a fresh case ID every time), then **"Request investigation"** to drive the live Strands Graph, watch skill activation, tool calls, evidence, and readiness update in real time in the activity ledger, edit criteria or candidates, and review the resulting recommendation.
+3. **"Investigate my energy bill"** starts the Home Energy Guardian case the same way, driving a real bounded Strands Swarm across its six specialists instead of a Graph — including a real steering intervention on repeated evidence-gathering and a `ConsequenceGuard` confirmation gate before it will ever propose a home inspection.
 4. Click **"Inspect run"** (next to the live run status, or on any activity item that carries a run) to open the Runtime Inspector and drill into correlated Strands hooks, OpenTelemetry spans, and state diffs. This currently ships as an Overview + Timeline slice; the fuller Execution/State/Context/Errors views described in `docs/specs/debugging-and-observability.md` are tracked as follow-on work, not yet built.
 
 ## WebMCP
