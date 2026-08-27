@@ -1,9 +1,7 @@
 // @ts-check
 /**
- * Minimal Task 1 skeleton. `pnpm test:mutation` does not invoke Stryker yet
- * (it prints "not yet implemented" until Task 13 wires the real mutation
- * gate). This config exists now so the mutation surface is declared early:
- * per docs/specs/testing.md, the targeted mutation gate covers router
+ * `pnpm test:mutation` runs `stryker run` against this config. Per
+ * docs/specs/testing.md, the targeted mutation gate covers router
  * thresholds, human-only approval, fail-closed evidence, staleness, and
  * readiness — all of which live in packages/core/src and packages/packs/src.
  * Mutation testing is not required for React presentation code.
@@ -13,6 +11,17 @@
 const config = {
   packageManager: 'pnpm',
   testRunner: 'vitest',
+  // Stryker's default `plugins: ['@stryker-mutator/*']` resolves plugin
+  // packages by reading the directory next to wherever `@stryker-mutator/core`
+  // itself physically lives (see `PluginLoader#globPluginModules`). Under
+  // pnpm's isolated store that directory is
+  // `node_modules/.pnpm/@stryker-mutator+core@*/node_modules/@stryker-mutator`,
+  // which does not contain the sibling `@stryker-mutator/vitest-runner`
+  // package — so the glob silently finds nothing and every worker process
+  // fails with "Cannot find TestRunner plugin \"vitest\"". Naming the plugin
+  // as a bare specifier instead makes Stryker `import()` it directly, which
+  // pnpm's normal node_modules resolution (from the project root) satisfies.
+  plugins: ['@stryker-mutator/vitest-runner'],
   reporters: ['clear-text', 'progress', 'html', 'json'],
   htmlReporter: {
     fileName: 'artifacts/verification/mutation/index.html',

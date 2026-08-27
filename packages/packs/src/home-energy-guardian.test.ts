@@ -451,3 +451,13 @@ describe('evaluation (negative case required)', () => {
     expect(HOME_ENERGY_GUARDIAN_MANIFEST.evaluation.scenarioIds.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('full manifest fidelity', () => {
+  // See car-purchase.test.ts's identical suite for the full rationale:
+  // structural suites above don't pin individual field values, so mutation
+  // testing found hundreds of surviving string/boolean/array-literal
+  // mutants in this file. This snapshot pins the entire manifest verbatim.
+  it('matches its full manifest snapshot', () => {
+    expect(HOME_ENERGY_GUARDIAN_MANIFEST).toMatchSnapshot();
+  });
+});

@@ -363,3 +363,17 @@ describe('evaluation (negative case required)', () => {
     expect(CAR_PURCHASE_MANIFEST.evaluation.scenarioIds.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('full manifest fidelity', () => {
+  // The suites above assert structural invariants (counts, ids, required
+  // relationships) but do not pin every individual field value -- a label
+  // silently emptied, a `required` flag silently flipped, or an `appliesTo`
+  // entry silently dropped would still satisfy every one of them. This
+  // snapshot pins the ENTIRE manifest verbatim, so any such change forces a
+  // deliberate, reviewed snapshot update instead of passing silently. (Found
+  // via mutation testing: hundreds of pure string/boolean/array-literal
+  // mutants in this file survived every other test in the suite.)
+  it('matches its full manifest snapshot', () => {
+    expect(CAR_PURCHASE_MANIFEST).toMatchSnapshot();
+  });
+});
