@@ -4109,3 +4109,389 @@ comment describes ("later tasks flip each to `kind: 'real'` as they land").
 `pnpm verify` now reports `test:scenario` as a genuine `PASS`, not a skip.
 `test:pack`/`test:integration`/`test:contract`/`test:e2e` remain honest
 skips since no real capability backs them yet.
+
+### 2026-08-27 — the live `car-purchase` Strands adapter: `run-service.ts` now actually runs the Graph
+
+**The gap.** `run-service.ts`'s own header comment was explicit: `POST
+/api/cases/:caseId/run` durably created a `runs` row and emitted
+`run.queued`, then did nothing else -- ever. A real browser session
+clicking "Investigate" got a queued run record and no specialist, skill,
+tool, or evidence event ever followed. `car-purchase-graph.ts` (a real
+six-node Strands `Graph`) and `car-purchase-scenario.ts` (a scripted,
+in-process test harness proving that Graph produces the full required demo
+trajectory, 39/39 assertions) already existed and were both real and
+correct -- nothing connected them to the live HTTP service. This task
+built that connection.
+
+**What was built.**
+
+- `apps/agent/src/runtime/car-purchase-engine.ts` (new) -- the live,
+  asynchronously-triggered adapter. `createCarPurchaseEngine(deps)` returns
+  `{ trigger(params): Promise<void> }`. `trigger` is fire-and-forget from
+  its caller's perspective (never awaited by `run-service.ts`) but returns
+  the real in-flight promise so tests can await genuine completion without
+  polling or a fixed sleep; two triggers for the same `caseId` are
+  serialized through a per-case in-flight map so the engine never runs two
+  concurrent Graph passes against one case's mutable state. Internally it:
+  loads the live case snapshot, determines `round1`/`round2` purely from
+  real case state (`determineCarPurchaseRound`, exported, pure), builds the
+  real `ExecutionRequest`s via `car-purchase-scenario.ts`'s own
+  `buildGraphDeps` (now exported for this reuse), runs the real
+  `executeCarPurchaseGraph`, streams every yielded `RuntimeEvent` into the
+  real `ActivityStore` as it happens (`drainGraphToActivity`/
+  `appendActivityForRuntimeEvent` -- `run.started`/`specialist.started`/
+  `specialist.completed`/`skill.activated`/`tool.started`/`tool.completed`/
+  `tool.failed`/`intervention.guided`/`intervention.confirmation_required`,
+  never buffered until the end), folds every specialist's `ExecutionResult`
+  via the scenario's own `foldExecutionResult`/`ensureSourcesExist`, and on
+  completion records the round's recommendation/proposal following the
+  scenario's own proven round1/round2 decision shape, then advances
+  `RunStore` status `running` -> `completed`/`failed`. Any thrown error is
+  caught: the run is marked `failed` with a real `result.error` and a
+  `run.failed` activity event, and (new, added after a real gap surfaced in
+  testing -- see below) `console.error`-logged unconditionally first, so a
+  failure this early can never vanish without a trace even in the one edge
+  case where neither durable write is possible.
+- `apps/agent/src/services/run-service.ts` (extended, not rewritten) --
+  added `RunStore.updateStatus`/`RunStore.load` (implemented in both
+  `MemoryRunStore` and `SqliteRunStore`; `RunRecord` gained optional
+  `traceId`/`sessionId`/`result`), and a new `InvestigationEngine` interface
+  (`trigger(params): void | Promise<void>`) plus an optional
+  `RunServiceDeps.engines?: Record<packId, InvestigationEngine>`.
+  `requestInvestigation` now looks up an engine by the case's pinned
+  `pack.id` and fires `.trigger(...)` (`void`-marked, deliberately never
+  awaited) immediately after durably accepting the run and emitting
+  `run.queued` -- never on the idempotent-replay branch. Deliberately kept
+  pack-id-keyed and generic rather than hardcoding `car-purchase`, so a
+  future `home-energy-guardian` engine has the same wiring point.
+- `apps/agent/src/server.ts` (extended) -- the real boot wiring now
+  compiles and registers the real `car-purchase` `CompiledDecisionPack`
+  (previously **no pack was ever registered at boot at all** -- a second,
+  adjacent, genuinely confirmed gap this task also had to close, since
+  without it `POST /api/cases/demo` could never succeed for any real
+  browser session either; see "Judgment calls" below), constructs
+  `createCarPurchaseEngine(...)` with the real SQLite-backed stores, and
+  passes `{ engines: { 'car-purchase': carPurchaseEngine } }` into
+  `RunService`.
+- `apps/agent/src/runtime/car-purchase-scenario.ts` (minimally, additively
+  edited -- confirmed genuinely necessary, not a rewrite): `ensureSourcesExist`/
+  `loadSnapshotOrThrow`/`foldExecutionResult`'s `caseStore`/`activityStore`
+  parameter types were widened from the concrete `MemoryCaseStore`/
+  `InMemoryActivityStore` to the real `CaseStore`/`ActivityStore`
+  interfaces (`MemoryCaseStore implements CaseStore`, so this is a purely
+  additive widening -- TypeScript's private class fields make a concrete
+  class type otherwise *not* structurally accept a different
+  implementation like `SqliteCaseStore`/`SqliteActivityStore`, which the
+  live engine must pass). `buildGraphDeps` and `carPurchaseCapabilityCatalog`
+  gained `export` (previously module-private) so the engine and `server.ts`
+  reuse the exact same Graph-wiring and pack-compilation logic instead of
+  duplicating it. No behavioral line inside any of these functions changed.
+  The full scenario test still passes 39/39 assertions (verified below).
+- `apps/agent/src/runtime/car-purchase-engine.test.ts` (new) -- a real
+  integration test against real `SqliteCaseStore`/`SqliteActivityStore`/
+  `SqliteRunStore` (temp file-backed, WAL, real migrations) and the real
+  `CommandService`/`RunService`/`PackRegistry`/compiled pack. Seeds a case,
+  focuses `candidate-rav4`, calls `requestInvestigation` (round 1 -- proven
+  purely from real state, no scripted round flag anywhere in this test's
+  own reach), polls `RunStore` until it settles, and asserts genuine round-1
+  progress (skills/specialists/evidence, `recommendation.favoredOptionId
+  === 'candidate-rav4'`, no proposal yet). Then drives the real
+  `updateCriteria`/`defineCaseAttribute`/`reviewCaseExtension` commands the
+  scenario proves, calls `requestInvestigation` again, and confirms the
+  engine independently determines round 2 (`candidate-crv`, a pending
+  `proposal`, the derived `case.custom.dog_crate_fit` obligation, superseded
+  stale evidence). Plus a pure unit-test block for
+  `determineCarPurchaseRound` (round1/pending/rejected/confirmed), and two
+  failure-path tests (case does not exist; pinned pack not registered for
+  this engine instance) proving `run.failed`/`console.error` fire correctly.
+
+**Judgment calls, recorded honestly.**
+
+1. **Round-1-vs-round-2 state detection.** `scripted-beats/car-purchase.ts`'s
+   `setScenarioBeat` is scenario-only (an external test-harness call with no
+   live equivalent). The live signal used instead:
+   `caseState.caseExtensions.some(ext => ext.definition.id ===
+   'custom.dog_crate_fit' && ext.definition.confirmation === 'confirmed')`.
+   A *pending* (proposed but not yet human-reviewed) or *rejected* extension
+   is deliberately still `round1` -- round 2's investigation only makes
+   sense once a human has actually accepted the concern as real, matching
+   how `defineCaseAttribute`'s `agent_proposed` origin requires
+   `reviewCaseExtension` confirmation before the concern is "real." This
+   does **not** depend on the derived `case.custom.dog_crate_fit`
+   *obligation* existing (nothing durably creates it before the engine
+   runs -- see judgment call 3), only on the confirmed extension.
+2. **`car-purchase-scenario.ts` needed a small, additive edit, not
+   composition alone.** The task instructions allowed this ("extract via
+   composition/reuse... or if a small compatible change is genuinely
+   necessary, make it"). `foldExecutionResult`/`ensureSourcesExist`/
+   `loadSnapshotOrThrow` were typed against the scenario's own concrete
+   `MemoryCaseStore`/`InMemoryActivityStore` classes. TypeScript's
+   structural typing treats a class's private fields as part of its
+   identity, so `SqliteCaseStore`/`SqliteActivityStore` (real, different
+   classes that both implement the same `CaseStore`/`ActivityStore`
+   interfaces) were *not* assignable to those concrete parameter types --
+   composition alone could not reuse this logic against the live stores.
+   Widening the parameter types to the interfaces (and exporting
+   `buildGraphDeps`/`carPurchaseCapabilityCatalog`) is purely additive: every
+   existing caller (the scenario itself, its own test file) still compiles
+   and behaves identically, verified by the still-passing 39/39-assertion
+   scenario run.
+3. **The derived `case.custom.dog_crate_fit` obligation is created by the
+   engine itself, on its first round-2 run, not by `command-service.ts`.**
+   `command-service.ts`'s own header comment already documents, as a
+   separate deliberately-deferred gap, that `updateCriteria`/
+   `defineCaseAttribute` do not derive a case obligation for a newly-added
+   user concern. This task does not touch `command-service.ts` to fix that
+   generally -- but the live round-2 trigger genuinely needs that
+   obligation to exist before folding `household-fit-analyst`'s round-2
+   result against it, so `ensureDogCrateObligation` derives and appends it
+   (reusing `dogCrateObligationTemplate` + `@pax/core`'s `deriveObligations`,
+   exactly mirroring what `car-purchase-scenario.ts` already does inline)
+   if it is not already present. It deliberately does **not** also write
+   `linkedCriterionId`/`linkedObligationId` back onto the `CaseExtension`
+   record -- a cosmetic completion of the same pre-existing gap, genuinely
+   out of this task's scope.
+4. **A second, real, adjacent gap found and only partly worked around:
+   nothing in the live product ever seeds the four vehicle candidates onto
+   a freshly started `car-purchase` case.** `CommandService.startDemo` only
+   ever seeds `pack`/`criteria`/`obligations` (`instantiateCase` always
+   seeds `entities: []`); `apps/web`'s `DemoLauncher.tsx` calls only
+   `startDemo({ demoId })` and nothing else. Before this task, that gap was
+   masked by `run-service.ts` never invoking Strands at all, so it never
+   surfaced. It surfaced immediately once real investigation runs meant
+   real candidates had to exist to focus/investigate. Registering the pack
+   at boot (this task, see above) was necessary and in scope; fully
+   automating candidate seeding was not (it is a `startDemo`/`DemoLauncher`
+   concern, not a `run-service.ts` one) and is left as an explicit,
+   documented follow-up. Both this task's own integration test and the
+   manual smoke test below work around it by seeding the four real
+   candidate `EntityRecord`s via `@pax/scenarios`' `buildCarPurchaseCandidateEntities`
+   -- notably, this **cannot** go through the existing `upsertOption`
+   command at all: `OptionAttributeInputSchema.value` is required, but two
+   of the real seeded attributes (`car.rear_cargo_crate_fit`/
+   `car.driving_comfort_rating`) are legitimately `status: 'unknown'` with
+   no value (CLAUDE.md: never fabricate), so only a direct
+   `option.upserted` `CaseEvent` append can express them -- meaning a real
+   future fix belongs doing the same thing, not routing through
+   `upsertOption`.
+5. **`InvestigationEngine.trigger`'s declared return type is `void |
+   Promise<void>`, not bare `void`.** A bare `void` return, overridden by
+   `CarPurchaseEngine`'s real `Promise<void>`, tripped
+   `@typescript-eslint/no-misused-promises`' "voidReturn" check. Widening
+   the interface's own declared type is the standard fix and costs nothing
+   -- `RunService` still never awaits the result either way; the call site
+   is explicitly `void`-marked since an implementation is contractually
+   required to never let that promise reject.
+6. **The engine never calls `reviewProposal`.** Round 2 ends at
+   `proposal.proposed` (`status: 'pending'`), exactly matching CLAUDE.md
+   "The model may propose candidate events and recommendations. It may
+   never approve a consequential decision." A human approves through the
+   existing, unmodified `reviewProposal` command.
+7. **A genuinely unreachable-without-mocking failure edge case, and what it
+   revealed.** Testing a "case does not exist" failure path directly
+   (`engine.trigger` against a caseId that was never created) surfaced that
+   `runs.case_id` and `activity_events.case_id` **both** have `NOT NULL`
+   foreign keys to `cases.id` -- so for a case that genuinely never
+   existed, *neither* `RunStore.updateStatus('failed')` nor the
+   `run.failed` `ActivityStore.append` can durably succeed, and the
+   original implementation's best-effort `catch {}` blocks silently
+   swallowed both, violating CLAUDE.md's "never... silently swallow the
+   failure" more literally than intended. Fixed by logging via
+   `console.error` unconditionally, first, before attempting either durable
+   write (the same last-resort pattern `app.ts`'s own top-level error
+   middleware already uses) -- verified with a dedicated test spying on
+   `console.error`.
+
+**Verification commands and results, in order:**
+
+- `pnpm --filter @pax/agent typecheck` -- clean.
+- `pnpm --filter @pax/agent test --coverage` -- **374 tests passing** (33
+  files); `car-purchase-engine.ts` itself: 88.67% statements / 72.27%
+  branches / 100% functions / 88.96% lines -- the uncovered branches are
+  exclusively defensive "the real Graph produced no `ExecutionResult` for
+  node X" throw guards, unreachable through the real, correctly-functioning
+  Graph without invasively mocking it (the same accepted tradeoff this
+  codebase's own `car-purchase-scenario.ts`/`car-purchase-graph.ts` already
+  carry, per this file's own prior entries).
+- `pnpm typecheck` (full workspace, 8 projects) -- clean.
+- `pnpm lint` (`eslint . --max-warnings=0 && check:source`) -- clean (235
+  files scanned). Two real findings fixed along the way: an `any`-typed
+  nested `toMatchObject({ error: expect.stringContaining(...) })` pattern
+  in the new test (replaced with a plain `JSON.stringify(...).toContain(...)`
+  check), and the `no-misused-promises`/`no-floating-promises` pair from
+  judgment call 5 above.
+- `pnpm format:check` -- clean after one `prettier --write` pass over the
+  two new/changed files.
+- `npx vitest run` (full workspace, root aggregate) -- **99 test files /
+  1507 tests passing**, including the scenario project.
+- `pnpm test:scenario` (`vitest run --project tests`) -- **1 file / 2 tests
+  passing**; `artifacts/verification/scenarios/car-purchase/assertion-report.json`
+  re-verified programmatically: **39/39 declarative assertions still
+  pass**, `passed: true` overall -- the existing scenario proof is
+  untouched by this task's additive edits.
+
+**Manual smoke test against the real, running server (not the test suite)
+-- exactly what was asked for, and exactly what was observed:**
+
+Started `apps/agent`'s real `startServer()` (`tsx src/server.ts`) against
+an isolated temporary `PAX_DATA_DIR` (a real file-backed SQLite database,
+WAL mode, real migrations applied at boot) on a real TCP port, then drove
+it purely over `curl` HTTP, polling rather than sleeping:
+
+1. `GET /health` -> `{"status":"ok","database":{"connected":true}}`.
+2. `GET /api/packs` -> the real `car-purchase` pack, confirming the boot
+   registration fix (judgment call 4) actually took effect.
+3. `POST /api/cases/demo {"demoId":"car-purchase"}` -> a real case, 0
+   entities (confirming the seeding gap in judgment call 4 exactly as
+   documented), 6 pack obligations, 5 criteria.
+4. Seeded the four real candidates via direct `option.upserted` events
+   (the `upsertOption` command genuinely cannot express two of the real
+   fixture's `status: 'unknown'` attributes -- see judgment call 4).
+5. `POST commands/focusOption` (`candidate-rav4`) -> accepted immediately.
+6. `POST /run` (`obligationId: "car.deal_normalization"`) -> returned a
+   real `runId` **immediately** (sub-second; never blocked on the
+   multi-second Graph run that followed).
+7. Polled `GET /api/cases/:caseId` once per second: by t=+1s the
+   recommendation was already `candidate-rav4` -- the real Graph run had
+   already completed asynchronously in the background, exactly as
+   designed.
+8. `GET /api/cases/:caseId/events?mode=poll` -> **88 real, ordered activity
+   events**, including genuine `skill.activated` (`listing-normalizer`,
+   `deal-analysis`, `safety-reliability`, `household-fit`,
+   `ownership-cost`), `specialist.started`/`specialist.completed` for all
+   six Graph nodes in real dependency order, real `tool.started`/
+   `tool.completed` pairs for every fixture tool call, a **genuine live
+   `ConsequenceGuard` intervention** (`intervention.confirmation_required`
+   for `propose_recommendation`, "creates a consequential artifact"),
+   `evidence.accepted`/`obligation.updated` events matching the fold logic
+   exactly, and a final `recommendation.ready`/`run.completed` pair.
+9. Drove the real `updateCriteria` (comfort reweight) ->
+   `defineCaseAttribute` (`custom.dog_crate_fit`, `agent_proposed`) ->
+   `reviewCaseExtension` (`confirm`) -> `updateCriteria` (add the
+   criterion) commands, all over real HTTP.
+10. `POST /run` again (same obligationId, no round flag anywhere) -> a new
+    real `runId`.
+11. Polled again: by t=+1s the recommendation had already flipped to
+    `candidate-crv`, a `proposal` with `status: "pending"` existed, and the
+    derived `case.custom.dog_crate_fit` obligation was present -- proving
+    the engine independently determined "round 2" from real state alone.
+12. `GET .../events?afterSequence=88&mode=poll` -> **78 more real events**:
+    a second full six-node Graph pass, `obligation.updated` for the derived
+    dog-crate obligation, `evidence.conflicted` superseding the stale
+    round-1 teaser-price evidence, the revised
+    `recommendation.ready` ("favoring candidate-crv"), and a final
+    `intervention.confirmation_required` ("A revised decision proposal is
+    awaiting human review") -- with **no `proposal.reviewed` event anywhere
+    in the stream**, confirming the engine never self-approves.
+13. Killed the server process (`kill -9`) and started a **completely new**
+    process against the same `PAX_DATA_DIR` -- log line
+    `migrationsApplied=0, migrationsAlreadyApplied=1` confirmed it reopened
+    the same durable database. `GET /api/cases/:caseId` and
+    `.../events?mode=poll` from the new process returned byte-identical
+    `eventSequence` (72), recommendation, proposal status, and all 166
+    persisted activity events -- genuine SQLite persistence across a real
+    process restart, not merely an in-memory illusion.
+
+This is the first time in this codebase's history a real browser session
+clicking "Investigate" against the live, running server would see a real
+AI investigation actually happen.
+
+**Known limitations, recorded honestly:**
+
+- The adjacent candidate-seeding gap (judgment call 4) is real and remains
+  unfixed; a truly turnkey live demo still needs either `startDemo` or
+  `DemoLauncher` to seed the four vehicle candidates automatically.
+- `home-energy-guardian` has no equivalent live engine or boot-time pack
+  registration yet -- `RunServiceDeps.engines` is deliberately pack-id-keyed
+  and ready for it, but building that adapter is a separate task.
+- The Runtime Inspector's detailed `runtime_events` SQLite table
+  (`db/schema.ts` already declares it) has no writer yet. This task's
+  engine streams the normal-workspace-facing `ActivityStore` events
+  (`PUBLIC_ACTIVITY_EVENT_TYPES`) live and correctly, but `model`/`context`/
+  `goal`/`session`/`error`-category `RuntimeDebugEvent`s (and
+  `intervention.proceed`/`.deny`/`.transform`) currently have no durable
+  home at all -- persisting the complete Runtime Inspector stream remains
+  separate, not-yet-built work.
+- A handful of defensive "the Graph produced no result for node X" throw
+  branches in `car-purchase-engine.ts` are unexercised by any test (see
+  coverage note above) -- intentionally, since exercising them would
+  require mocking the real Graph in a way that would undermine this task's
+  core requirement of genuinely running it.
+
+Final git SHA: not committed (per this task's explicit instruction not to
+run `git add`/`git commit`).
+
+## 2026-08-27 -- Self-hosted webfont binaries: closing the `global.css` "build TODO"
+
+**What this repairs:** `apps/web/src/styles/global.css`'s `@font-face`
+rules and `docs/design-system.md`'s "Font-loading strategy" section both
+documented an unfinished build TODO: the ten woff2 binaries the CSS
+references at `/fonts/**` were never added, so `apps/web/public/` did not
+exist at all. Every font request 404'd and, because there is no SPA
+fallback rewrite for `/fonts/*` paths, actually resolved to Vite's
+`index.html` (dev) -- the browser then failed to parse that HTML as a
+font ("Failed to decode downloaded font" / "OTS parsing error: invalid
+sfntVersion"). Screenshots and the demo video would have silently
+rendered in system-font fallbacks instead of Newsreader/Public Sans/IBM
+Plex Mono, undermining CLAUDE.md's deterministic-fonts requirement for
+Playwright visual baselines.
+
+**Fix:** added `@fontsource/newsreader@5.3.0`, `@fontsource/public-sans@5.3.0`,
+and `@fontsource/ibm-plex-mono@5.3.0` as ordinary `@pax/web` `dependencies`
+(`pnpm --filter @pax/web add ...`) -- npm-published, unmodified,
+OFL-1.1-licensed static-file redistributions of the same Google Fonts
+families, version-pinned via `pnpm-lock.yaml`. Copied (not symlinked) the
+exact Latin/normal weight files each package ships to the 10 destination
+paths `global.css` already named, renaming only (e.g.
+`newsreader-latin-400-normal.woff2` -> `newsreader-400.woff2`). Committing
+the binaries directly (rather than a postinstall/prebuild regeneration
+script) matches `docs/design-system.md`'s original "download ... and
+commit them" instruction and this repo's existing convention of having no
+install-time asset-generation scripts; the npm package pin is what makes
+the source traceable/reproducible, not a build step. Full source-to-
+destination mapping and the license conclusion are recorded in
+`docs/reuse-attribution.md` ("Self-hosted webfonts" entry). Rewrote
+`global.css`'s stale "IMPORTANT -- build TODO, not yet done" header
+comment and the matching paragraph in `docs/design-system.md` to state the
+files are real, committed, and where they came from.
+
+**Verification:**
+
+1. `xxd -l 4 <file>` on all 10 files in `apps/web/public/fonts/**`: every
+   file starts with `774f 4632` (`wOF2`), confirming valid woff2 binaries,
+   not HTML.
+2. Started the real Vite dev server (`pnpm --filter @pax/web exec vite
+   --port 5183`) and `curl`'d all 10 `/fonts/**` URLs: all returned
+   `HTTP 200`, `Content-Type: font/woff2`, and a `wOF2`-magic body (sizes
+   14.6-24.3 KB each) -- not the SPA `index.html` fallback.
+3. `pnpm --filter @pax/web build` succeeded; `dist/fonts/**` contains all
+   10 files, each byte-identical (`cmp`) to its `public/fonts/**` source
+   and each still `wOF2`-magic -- Vite's public-dir copy-through works in
+   the production build too.
+4. `pnpm --filter @pax/web typecheck` -- clean, no errors.
+5. `pnpm exec eslint .` (the full repo, isolated from `check-source.ts`) --
+   exit 0, no errors. The combined `pnpm lint` gate (`eslint . &&
+   check-source.ts`) currently fails, but on a single pre-existing,
+   unrelated finding in
+   `packages/scenarios/src/tools/household-event-lookup.test.ts:70`
+   (`[possible-secret]` on an unrelated test file from other in-flight
+   work) -- out of this task's scope
+   (`apps/web`-only, no `apps/agent`/other-package changes permitted) and
+   not touched.
+6. `pnpm exec prettier --check` on every file this task touched
+   (`global.css`, `apps/web/package.json`, `docs/reuse-attribution.md`,
+   `docs/design-system.md`, `docs/build-log.md`) -- all pass.
+
+**Files changed:** `apps/web/package.json` (+3 `@fontsource/*`
+dependencies), `pnpm-lock.yaml` (lockfile update for the same),
+`apps/web/src/styles/global.css` (comment rewrite only, no rule changes),
+`docs/design-system.md` (matching comment rewrite), 10 new binary files
+under `apps/web/public/fonts/**`, `docs/reuse-attribution.md` (new
+entry), this entry.
+
+**Known limitations:** no automated test asserts these binaries stay
+present or valid (e.g. a woff2-magic-byte check as part of `pnpm verify`)
+-- Playwright visual baselines (not yet built as of this entry) are the
+intended behavioral proof per `docs/reuse-attribution.md`'s "Test owner"
+note for this entry; a future task should confirm the baselines actually
+render in the intended families, not merely that they don't error.

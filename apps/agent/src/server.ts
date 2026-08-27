@@ -21,14 +21,17 @@ import type { Server } from 'node:http';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Application } from 'express';
-import { PackRegistry } from '@pax/packs';
+import { compileCarPurchasePack, PackRegistry } from '@pax/packs';
+import { buildCarPurchaseCandidateEntities } from '@pax/scenarios';
 import { buildApp } from './app.js';
 import { loadConfig, type PaxConfig } from './config.js';
 import type { PaxDatabase } from './db/connection.js';
 import { migrate, type MigrateResult } from './db/migrate.js';
+import { carPurchaseCapabilityCatalog } from './runtime/car-purchase-scenario.js';
+import { createCarPurchaseEngine } from './runtime/car-purchase-engine.js';
 import { createSystemClock, createSystemIdGenerator } from './runtime-ports.js';
 import { CommandService } from './services/command-service.js';
-import { RunService, SqliteRunStore } from './services/run-service.js';
+import { RunService, SqliteRunStore, type InvestigationEngine } from './services/run-service.js';
 import { SqliteActivityStore } from './store/activity-store.js';
 import { SqliteCaseStore } from './store/sqlite-case-store.js';
 
@@ -58,28 +61,54 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
 
   const caseStore = new SqliteCaseStore(database);
   const activityStore = new SqliteActivityStore(database);
-  // No built-in Decision Packs are registered here: the real
-  // `car-purchase`/`home-energy-guardian` manifests are separate,
-  // concurrently-built workstreams (see `docs/build-log.md`'s entry for
-  // this task). A later integration task registers them at boot; until
-  // then `GET /api/packs` and `POST /api/cases/demo` honestly report no
-  // installed packs rather than this task inventing a placeholder one.
-  const registry = new PackRegistry();
   const clock = createSystemClock();
   const idGenerator = createSystemIdGenerator();
+  const registry = new PackRegistry();
+  // The real `car-purchase` Decision Pack, compiled and registered at boot
+  // so a real browser session's `POST /api/cases/demo` (`demoId:
+  // "car-purchase"`) and `POST /api/cases/:caseId/run` have something real
+  // to run against -- this was a genuine, confirmed gap this task closed
+  // alongside the live run engine itself (see the dated `docs/build-log.md`
+  // entry: without a registered pack, no live case could ever be created at
+  // all). `home-energy-guardian`'s equivalent boot registration remains
+  // separate, not-yet-built work for that pack's own live-engine task.
+  const carPurchasePack = compileCarPurchasePack(carPurchaseCapabilityCatalog(), clock);
+  registry.register(carPurchasePack);
+  const skillsRootDir = fileURLToPath(new URL('../skills', import.meta.url));
+
+  const runStore = new SqliteRunStore(database);
+  const carPurchaseEngine = createCarPurchaseEngine({
+    caseStore,
+    activityStore,
+    runStore,
+    registry,
+    clock,
+    idGenerator,
+    skillsRootDir,
+  });
+  const engines: Readonly<Record<string, InvestigationEngine>> = {
+    [carPurchasePack.identity.id]: carPurchaseEngine,
+  };
+
   const commandService = new CommandService({
     caseStore,
     activityStore,
     registry,
     clock,
     idGenerator,
+    // Real gap closed alongside the live run engine (docs/build-log.md):
+    // instantiateCase always seeds entities: [], so without this a freshly
+    // started car-purchase demo case had no vehicle candidates for a live
+    // "Investigate" click to ever run against.
+    demoSeedEntities: { 'car-purchase': buildCarPurchaseCandidateEntities },
   });
   const runService = new RunService({
     caseStore,
     activityStore,
-    runStore: new SqliteRunStore(database),
+    runStore,
     clock,
     idGenerator,
+    engines,
   });
 
   const app = buildApp({

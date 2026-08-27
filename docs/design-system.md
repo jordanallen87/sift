@@ -154,10 +154,8 @@ at self-hosted files under `apps/web/public/fonts/**` (Vite serves
 `public/` at the site root, so `public/fonts/x.woff2` resolves to
 `/fonts/x.woff2` in both dev and the production build).
 
-**The woff2 binaries themselves are not part of this change.** A later
-task must download the following weights from Google Fonts' OFL-licensed
-sources (or fonts.google.com's "Download family" export) and commit them
-at exactly these paths — `global.css` already references them by name:
+**The woff2 binaries are real, committed files** at exactly these paths —
+`global.css` references them by name:
 
 ```
 apps/web/public/fonts/newsreader/newsreader-400.woff2
@@ -172,12 +170,20 @@ apps/web/public/fonts/ibm-plex-mono/ibm-plex-mono-400.woff2
 apps/web/public/fonts/ibm-plex-mono/ibm-plex-mono-500.woff2
 ```
 
-Until those files exist, every `@font-face` simply fails to load and each
-`--font-*` stack in `tokens.css` falls through to its system fallback
-(`Georgia`/serif, `-apple-system`/sans-serif, `ui-monospace`). The product
-is fully legible and functional with zero font files present — this is a
-progressive-enhancement fallback, not a hard dependency — which is what
-makes it safe to merge ahead of the binaries landing.
+Each file is an unmodified copy (renamed only) of the matching weight/style
+from the pinned `@fontsource/newsreader`, `@fontsource/public-sans`, and
+`@fontsource/ibm-plex-mono` npm packages — `@pax/web` `dependencies`, so
+the exact source version is lockfile-pinned and reproducible on a clean
+`pnpm install`, with no separate download step and no network access
+required at build or test time. See docs/reuse-attribution.md for the full
+source/license record.
+
+If a file were ever missing (e.g. a partial checkout), the corresponding
+`@font-face` would simply fail to load and its `--font-*` stack in
+`tokens.css` would fall through to its system fallback (`Georgia`/serif,
+`-apple-system`/sans-serif, `ui-monospace`) — the product stays legible and
+functional either way — but that fallback is not the expected state of a
+normal checkout.
 
 ### Type scale
 

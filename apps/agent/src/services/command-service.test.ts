@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { CaseState, CommandReceipt } from '@pax/contracts';
+import type { CaseState, CommandReceipt, EntityRecord } from '@pax/contracts';
 import { compilePack, PackRegistry } from '@pax/packs';
 import {
   createRegistryWithSyntheticPack,
@@ -128,6 +128,64 @@ describe('CommandService', () => {
       // string compare would incorrectly rank "2.1.3" above "2.1.10"),
       // which beats "1.0.0" (major).
       expect(result.value.snapshot?.pack.version).toBe('2.2.0');
+    });
+
+    it('seeds pack-specific demo entities (e.g. starting candidates) when demoSeedEntities configures the pack', () => {
+      // Real gap this closes: instantiateCase always seeds entities: [], and
+      // nothing else in the live product ever adds starting candidates to a
+      // freshly started case -- confirmed by apps/agent's real live-engine
+      // manual smoke test (docs/build-log.md). upsertOption cannot be used
+      // to seed these instead: OptionAttributeInputSchema.value is required
+      // and the handler hardcodes status: 'asserted', so an entity carrying
+      // a legitimately unknown-status attribute (no value; CLAUDE.md "never
+      // fabricate") can only be expressed as a direct option.upserted event
+      // -- exactly what demoSeedEntities lets a pack-boot wiring supply.
+      const unknownAttributeEntity: EntityRecord = {
+        id: 'candidate-demo',
+        kind: 'option',
+        label: 'Demo Candidate',
+        attributes: {
+          'car.price': {
+            definitionId: 'car.price',
+            label: 'Price',
+            origin: 'pack',
+            sourceIds: [],
+            status: 'unknown',
+            updatedAt: FIXED_NOW,
+          },
+        },
+        createdAt: FIXED_NOW,
+        updatedAt: FIXED_NOW,
+      };
+      const seededActivityStore = new InMemoryActivityStore();
+      const seededService = new CommandService({
+        caseStore: new MemoryCaseStore(),
+        activityStore: seededActivityStore,
+        registry: createRegistryWithSyntheticPack(),
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+        demoSeedEntities: { 'car-purchase': () => [unknownAttributeEntity] },
+      });
+
+      const result = seededService.startDemo('cmd-1', { demoId: 'car-purchase' });
+      requireOk(result);
+      const snapshot = requireSnapshot(result.value);
+
+      expect(snapshot.entities).toHaveLength(1);
+      expect(snapshot.entities[0]?.id).toBe('candidate-demo');
+      expect(snapshot.entities[0]?.attributes['car.price']?.status).toBe('unknown');
+      expect(result.value.acceptedSequence).toBe(snapshot.eventSequence);
+
+      const activity = seededActivityStore.replayFrom(snapshot.id, 0);
+      expect(activity.map((event) => event.summary)).toEqual([
+        'Started "Choose Our Next Car (test fixture)".',
+        'Added option "Demo Candidate".',
+      ]);
+    });
+
+    it('starts a case with no entities when the pack has no demoSeedEntities entry (unchanged default behavior)', () => {
+      const snapshot = startDemo();
+      expect(snapshot.entities).toHaveLength(0);
     });
   });
 

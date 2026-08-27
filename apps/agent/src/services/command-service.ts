@@ -123,6 +123,22 @@ export interface CommandServiceDeps {
   readonly registry: PackRegistry;
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
+  /**
+   * Demo id -> starting `EntityRecord`s for `startDemo` to seed onto the
+   * freshly created case, alongside its `pack`/`criteria`/`obligations`
+   * (`instantiateCase` always seeds `entities: []` -- packs-and-routing.md
+   * says nothing about starting candidates because that is demo-launcher
+   * behavior, not pack data). Optional so every pack/demo without an entry
+   * (and every existing test) keeps starting with zero entities unchanged.
+   *
+   * `upsertOption` cannot be reused to seed these instead:
+   * `OptionAttributeInputSchema.value` is required and the handler
+   * hardcodes `status: 'asserted'`, so an entity carrying a legitimately
+   * `status: 'unknown'` attribute (no value -- CLAUDE.md "never fabricate")
+   * can only be expressed as a direct `option.upserted` event, which is
+   * exactly what `startDemo` appends here.
+   */
+  readonly demoSeedEntities?: Readonly<Record<string, (clock: Clock) => readonly EntityRecord[]>>;
 }
 
 function compareSemver(a: string, b: string): number {
@@ -171,6 +187,7 @@ export class CommandService {
       reasons: [`Started the "${input.demoId}" demo from the launcher.`],
     };
     const seed = instantiateCase(pack, selection, this.deps.clock, this.deps.idGenerator);
+    const seedEntities = this.deps.demoSeedEntities?.[input.demoId]?.(this.deps.clock) ?? [];
 
     const events: CaseEvent[] = [
       {
@@ -200,6 +217,15 @@ export class CommandService {
         type: 'obligation.updated',
         payload: { obligation },
       })),
+      ...seedEntities.map((entity, index): CaseEvent => ({
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: seed.id,
+        sequence: 3 + seed.obligations.length + index,
+        timestamp: seed.createdAt,
+        commandId,
+        type: 'option.upserted',
+        payload: { entity },
+      })),
     ];
 
     const result = this.deps.caseStore.append(seed.id, events, 0, {
@@ -216,6 +242,16 @@ export class CommandService {
         phase: 'completed',
         summary: `Started "${pack.identity.name}".`,
       });
+      for (const entity of seedEntities) {
+        this.emitActivity({
+          timestamp: seed.createdAt,
+          caseId: result.snapshot.id,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: `Added option "${entity.label}".`,
+        });
+      }
     }
     return this.toReceipt(commandId, result);
   }

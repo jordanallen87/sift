@@ -185,6 +185,18 @@ function scanPossibleSecret(line: string): Pick<SourceFinding, 'message' | 'exce
     // applies above a length where "zero repeats by chance" stops being
     // plausible for an actual random secret.
     if (token.length >= 16 && new Set(token).size === token.length) continue;
+    // A long, strictly-lowercase, multi-segment kebab-case token (3+
+    // hyphen-joined alphanumeric words, e.g. a fixture id like
+    // "source-household-event-thermostat-failure-2026-07") is
+    // characteristic of a human-readable identifier, not a secret: real
+    // secret formats (API keys, base64/hex blobs, JWTs) essentially always
+    // either mix letter case or use a compact run with no natural
+    // word/hyphen boundaries -- the AWS-key and mixed-case-token tests
+    // above already prove those shapes still trip this scanner. Requiring
+    // 3+ segments (not just 1-2) keeps this narrow: an incidental single
+    // hyphen in an otherwise-random token still falls through to the
+    // entropy check below.
+    if (/^[a-z0-9]+(?:-[a-z0-9]+){2,}$/.test(token)) continue;
     if (shannonEntropy(token) > HIGH_ENTROPY_THRESHOLD) {
       return { message: 'High-entropy token resembling a secret', excerpt: redactExcerpt(line) };
     }

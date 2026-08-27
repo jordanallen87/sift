@@ -79,6 +79,31 @@ describe('checkSource', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('does not flag a long, all-lowercase, multi-segment kebab-case fixture id', () => {
+    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    writeFileSync(
+      join(dir, 'fixture.test.ts'),
+      "expect(item?.sourceId).toBe('source-household-event-event-thermostat-failure-2026-07');\n",
+    );
+
+    const result = checkSource({ rootDir: dir });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('still flags a hyphenated token that mixes case (not a plain kebab-case identifier)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    writeFileSync(
+      join(dir, 'config.ts'),
+      "export const SECRET = 'aZ9k-Q2mP-7xR4-tW1n-L8vB-3cJ6h-F5dS0';\n",
+    );
+
+    const result = checkSource({ rootDir: dir });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings.some((finding) => finding.rule === 'possible-secret')).toBe(true);
+  });
+
   it('still flags a high-entropy token that happens to contain repeated characters', () => {
     dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
     writeFileSync(

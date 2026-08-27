@@ -92,7 +92,8 @@ import {
   type ScenarioTrajectory,
 } from '@pax/scenarios';
 import { CommandService } from '../services/command-service.js';
-import { InMemoryActivityStore } from '../store/activity-store.js';
+import { InMemoryActivityStore, type ActivityStore } from '../store/activity-store.js';
+import type { CaseStore } from '../store/case-store.js';
 import { MemoryCaseStore } from '../store/memory-case-store.js';
 import { MemoryRunStore, RunService } from '../services/run-service.js';
 import {
@@ -122,7 +123,14 @@ export interface CarPurchaseScenarioResult {
   readonly caseId: string;
 }
 
-function carPurchaseCapabilityCatalog() {
+/**
+ * Exported (not merely a scenario-file-local helper) so `car-purchase-
+ * engine.ts` -- and `server.ts`'s real boot wiring -- can compile and
+ * register the exact same real `car-purchase` `CompiledDecisionPack` this
+ * scenario proves against, rather than duplicating this capability-catalog
+ * construction a second time.
+ */
+export function carPurchaseCapabilityCatalog() {
   return createCapabilityCatalog([
     ...CAR_PURCHASE_MANIFEST.skills.map((skill) => ({
       id: skill.id,
@@ -177,7 +185,7 @@ export function publisherFor(sourceId: string): string {
  * independent sources" sense, even though they are two distinct documents).
  */
 export function ensureSourcesExist(
-  caseStore: MemoryCaseStore,
+  caseStore: CaseStore,
   caseId: string,
   expectedSequence: number,
   sourceIds: readonly string[],
@@ -220,7 +228,7 @@ export function ensureSourcesExist(
 }
 
 /** Reloads `caseId`'s latest snapshot, throwing if it has somehow disappeared. Used after a batch of writes (a loop of `foldExecutionResult` calls, `ensureSourcesExist`) where re-reading the freshest state once, rather than threading a per-call return value through, keeps the caller's own `snapshot` variable a single, always-current source of truth. */
-export function loadSnapshotOrThrow(caseStore: MemoryCaseStore, caseId: string): CaseState {
+export function loadSnapshotOrThrow(caseStore: CaseStore, caseId: string): CaseState {
   const snapshot = caseStore.load(caseId);
   if (snapshot === undefined) {
     throw new Error(`car-purchase-scenario: case "${caseId}" unexpectedly disappeared`);
@@ -267,8 +275,8 @@ export interface FoldOptions {
  * rule.
  */
 export function foldExecutionResult(
-  caseStore: MemoryCaseStore,
-  activityStore: InMemoryActivityStore,
+  caseStore: CaseStore,
+  activityStore: ActivityStore,
   caseId: string,
   result: ExecutionResult,
   deps: CarPurchaseScenarioDeps,
@@ -531,7 +539,14 @@ async function drainGraph(
   return next.value;
 }
 
-function buildGraphDeps(
+/**
+ * Exported so `car-purchase-engine.ts` can build the same real
+ * `CarPurchaseGraphDeps` this scenario builds, from a live case snapshot
+ * instead of this file's own in-process seeded one -- see this file's own
+ * "genuinely reuse... by importing" instruction in the live-engine task that
+ * added this export.
+ */
+export function buildGraphDeps(
   caseState: CaseState,
   pack: CompiledDecisionPack,
   providers: CarPurchaseScriptedProviders,

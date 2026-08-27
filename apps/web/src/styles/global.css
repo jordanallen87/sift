@@ -11,9 +11,8 @@
  * Vite's static-asset convention: a file at public/fonts/x.woff2 is served
  * at /fonts/x.woff2 in both dev and the production build).
  *
- * IMPORTANT — build TODO, not yet done: the actual woff2 binaries are NOT
- * part of this change. A later task must add licensed files at exactly
- * these paths:
+ * The actual woff2 binaries are real, committed files at exactly these
+ * paths:
  *
  *   apps/web/public/fonts/newsreader/newsreader-400.woff2
  *   apps/web/public/fonts/newsreader/newsreader-500.woff2
@@ -28,14 +27,21 @@
  *
  * All three families (Newsreader, Public Sans, IBM Plex Mono) are SIL Open
  * Font License 1.1, so self-hosting the unmodified static files is
- * license-clean. See docs/design-system.md for source links and the exact
- * weights/styles to export.
+ * license-clean. Each file above is copied byte-for-byte (renamed only)
+ * from the pinned `@fontsource/newsreader`, `@fontsource/public-sans`, and
+ * `@fontsource/ibm-plex-mono` npm packages (version 5.3.0 at copy time) --
+ * an unmodified, npm-published, auditable redistribution of the same
+ * OFL-1.1 Google Fonts static files, listed as `@pax/web` dependencies in
+ * `apps/web/package.json` so the exact source version is lockfile-pinned.
+ * See docs/reuse-attribution.md for the full source/license record and
+ * docs/design-system.md for the typography rationale.
  *
- * Until those files exist, every @font-face below simply fails to load and
- * the browser falls through to the next family in each --font-* stack in
- * tokens.css (system-ui-equivalent stacks). The product is fully
- * functional and legible with no font files present; nothing here assumes
- * network access.
+ * Each @font-face below therefore loads successfully with no network
+ * access: the files are committed to the repository and served from
+ * apps/web/public/fonts/, so fixture/CI/offline builds work identically to
+ * a networked one. tokens.css's --font-* stacks still list a system
+ * fallback after each family for defense-in-depth (e.g. a corrupted file),
+ * but that fallback is not the expected runtime path.
  */
 
 @font-face {

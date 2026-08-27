@@ -58,12 +58,33 @@ export interface RunRecord {
   readonly status: RunStatus;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly traceId?: string;
+  readonly sessionId?: string;
+  /** A JSON-serializable summary of the run's outcome (e.g. `{ round, favoredOptionId }` on success, `{ error }` on failure). Never the raw `ExecutionResult`/case data itself -- see `car-purchase-engine.ts`. */
+  readonly result?: unknown;
 }
 
 interface IdempotentRunRecord {
   readonly caseId: string;
   readonly runId: string;
   readonly acceptedSequence: number;
+}
+
+/**
+ * A lifecycle advancement for an existing run row -- `queued -> running ->
+ * completed|failed` (this module's own header comment: "a real adapter will
+ * later update ... `status`"). `updatedAt` is always written; `traceId`/
+ * `sessionId`/`result` are written only when provided (`undefined` leaves
+ * the existing column value alone), since a `running` update typically only
+ * has a fresh `traceId`, while a terminal `completed`/`failed` update
+ * typically only has a fresh `result`.
+ */
+export interface RunStatusUpdate {
+  readonly status: RunStatus;
+  readonly updatedAt: string;
+  readonly traceId?: string;
+  readonly sessionId?: string;
+  readonly result?: unknown;
 }
 
 export interface RunStore {
@@ -76,6 +97,40 @@ export interface RunStore {
     acceptedSequence: number,
     createdAt: string,
   ): void;
+  /** Advances `runId`'s lifecycle status. The one mutation path a real Strands adapter (`car-purchase-engine.ts`) uses to report progress. Throws if `runId` was never created. */
+  updateStatus(runId: string, update: RunStatusUpdate): void;
+  /** The current durable record for `runId`, or `undefined` if it was never created. Read-only introspection (tests, a future run-status route) -- never used by `requestInvestigation` itself. */
+  load(runId: string): RunRecord | undefined;
+}
+
+/**
+ * A pack-scoped adapter that actually executes a queued run against the
+ * selected obligation (this module's own header comment: "a separate,
+ * not-yet-built task ... that will call into this same `RunStore` to
+ * advance a run's status" -- `car-purchase-engine.ts` is that task's real
+ * implementation for the `car-purchase` pack).
+ *
+ * `RunService` looks one up by the case's pinned `pack.id` in `deps.engines`
+ * and fires it after durably accepting the run, never awaiting it (the HTTP
+ * response has already been promised promptly -- architecture.md "Command
+ * and event flow": "The service returns a `CommandReceipt` promptly...").
+ * `trigger` returns `void` in this interface even though a real engine's
+ * implementation returns a `Promise` internally it tracks per-case
+ * completion with -- callers here are never meant to await it; the engine's
+ * own contract is that it never lets that promise reject (a genuine
+ * failure is reflected through `RunStore.updateStatus`/`ActivityStore`
+ * instead, never a swallowed rejection nothing awaits).
+ */
+export interface InvestigationEngine {
+  /**
+   * Declared `void | Promise<void>` (not bare `void`) so a real async
+   * implementation (`car-purchase-engine.ts`'s `CarPurchaseEngine`, which
+   * genuinely returns `Promise<void>` for tests to await deterministically)
+   * satisfies this interface without `@typescript-eslint/no-misused-
+   * promises` flagging a promise-returning override of a void-typed method.
+   * `RunService` itself still never awaits the result either way.
+   */
+  trigger(params: { caseId: string; runId: string; obligationId: string }): void | Promise<void>;
 }
 
 export class MemoryRunStore implements RunStore {
@@ -97,6 +152,25 @@ export class MemoryRunStore implements RunStore {
     acceptedSequence: number,
   ): void {
     this.idempotency.set(commandId, { caseId, runId, acceptedSequence });
+  }
+
+  updateStatus(runId: string, update: RunStatusUpdate): void {
+    const existing = this.runs.get(runId);
+    if (existing === undefined) {
+      throw new Error(`MemoryRunStore.updateStatus: run "${runId}" was not found`);
+    }
+    this.runs.set(runId, {
+      ...existing,
+      status: update.status,
+      updatedAt: update.updatedAt,
+      ...(update.traceId !== undefined ? { traceId: update.traceId } : {}),
+      ...(update.sessionId !== undefined ? { sessionId: update.sessionId } : {}),
+      ...(update.result !== undefined ? { result: update.result } : {}),
+    });
+  }
+
+  load(runId: string): RunRecord | undefined {
+    return this.runs.get(runId);
   }
 }
 
@@ -137,6 +211,62 @@ export class SqliteRunStore implements RunStore {
       )
       .run(commandId, caseId, JSON.stringify({ runId, acceptedSequence }), createdAt);
   }
+
+  updateStatus(runId: string, update: RunStatusUpdate): void {
+    this.database.sqlite
+      .prepare(
+        `UPDATE runs
+         SET status = ?,
+             updated_at = ?,
+             trace_id = COALESCE(?, trace_id),
+             session_id = COALESCE(?, session_id),
+             result = COALESCE(?, result)
+         WHERE id = ?`,
+      )
+      .run(
+        update.status,
+        update.updatedAt,
+        update.traceId ?? null,
+        update.sessionId ?? null,
+        update.result !== undefined ? JSON.stringify(update.result) : null,
+        runId,
+      );
+  }
+
+  load(runId: string): RunRecord | undefined {
+    const row = this.database.sqlite
+      .prepare(
+        `SELECT id, case_id as caseId, obligation_id as obligationId, status,
+                trace_id as traceId, session_id as sessionId, result,
+                created_at as createdAt, updated_at as updatedAt
+         FROM runs WHERE id = ?`,
+      )
+      .get(runId) as
+      | {
+          id: string;
+          caseId: string;
+          obligationId: string;
+          status: string;
+          traceId: string | null;
+          sessionId: string | null;
+          result: string | null;
+          createdAt: string;
+          updatedAt: string;
+        }
+      | undefined;
+    if (row === undefined) return undefined;
+    return {
+      id: row.id,
+      caseId: row.caseId,
+      obligationId: row.obligationId,
+      status: row.status as RunStatus,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      ...(row.traceId !== null ? { traceId: row.traceId } : {}),
+      ...(row.sessionId !== null ? { sessionId: row.sessionId } : {}),
+      ...(row.result !== null ? { result: JSON.parse(row.result) as unknown } : {}),
+    };
+  }
 }
 
 export interface RunServiceDeps {
@@ -145,6 +275,15 @@ export interface RunServiceDeps {
   readonly runStore: RunStore;
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
+  /**
+   * Pack id -> `InvestigationEngine`. Optional so every existing bookkeeping-
+   * only test (and any pack with no real engine wired yet) keeps working
+   * unchanged; `server.ts`'s real boot wiring supplies `{ 'car-purchase':
+   * carPurchaseEngine }`. When the case's pinned `pack.id` has no matching
+   * entry, `requestInvestigation` still accepts and durably records the run
+   * exactly as before -- it simply has nothing to fire.
+   */
+  readonly engines?: Readonly<Record<string, InvestigationEngine>>;
 }
 
 const QUEUED_STATUS: RunStatus = RUN_STATUSES[0];
@@ -240,6 +379,22 @@ export class RunService {
       type: 'run.queued',
       phase: 'queued',
       summary: `Investigation queued for obligation "${obligationId}".`,
+    });
+
+    // Fire-and-forget: kick off the real adapter for this case's pinned
+    // pack, without ever awaiting it -- the `RunReceipt` below must return
+    // promptly regardless of how long the underlying Graph run takes
+    // (architecture.md "Command and event flow"). Never fired on the
+    // idempotent-replay branch above: that commandId already triggered
+    // exactly one run, on its original call. `void`-marked deliberately
+    // (`InvestigationEngine.trigger` may return a real `Promise<void>`,
+    // e.g. `CarPurchaseEngine`'s) -- an implementation is contractually
+    // required to never let that promise reject (see that interface's own
+    // doc comment), so there is nothing here to `.catch`.
+    void this.deps.engines?.[snapshot.pack.id]?.trigger({
+      caseId: input.caseId,
+      runId,
+      obligationId,
     });
 
     return ok({
