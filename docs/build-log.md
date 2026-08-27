@@ -4495,3 +4495,188 @@ present or valid (e.g. a woff2-magic-byte check as part of `pnpm verify`)
 intended behavioral proof per `docs/reuse-attribution.md`'s "Test owner"
 note for this entry; a future task should confirm the baselines actually
 render in the intended families, not merely that they don't error.
+
+## 2026-08-27 -- Task 12 (Tier 1 scope): real Playwright E2E gate against the production build
+
+**What this closes:** `pnpm test:e2e` printed "not yet implemented"
+(`scripts/stage-not-implemented.ts`), `playwright.config.ts`'s `webServer`
+block was commented out, and `apps/agent`'s Express app never served the
+built `apps/web` bundle at all -- `pnpm verify` therefore always skipped
+the one gate CLAUDE.md calls out by name ("Playwright visual verification
+... is a release gate, not a screenshot generator"). This closes the Tier 1
+slice: the full car-purchase demo journey, reload persistence, an error
+path, keyboard operation, and axe scans, all against the real production
+Express+Vite build, at all four required viewports
+(390x844/430x900/480x900/1440x1000). The Energy journey and the Runtime
+Inspector's own Playwright coverage remain explicit, separate Tier 2/3
+scope per the plan file's own "Judge-visibility reweighting" section --
+not built here, not silently claimed.
+
+**Built:**
+
+- `apps/agent/src/app.ts`: added static hosting for `apps/web`'s built
+  `dist/` (`express.static(WEB_DIST_DIR)`, default options -- `GET /`
+  serves `index.html`, real assets serve from their real paths, anything
+  else correctly 404s). Guarded by `existsSync` so every existing
+  `/api/*`-only integration test is unaffected when `dist/` does not exist.
+  An earlier version of this change added a SPA catch-all fallback (serve
+  `index.html` for any unmatched `GET`); that was a genuine regression --
+  `App.tsx` has no client-side router at all, so there is no second app
+  route to fall back to, and the fallback silently turned every unknown
+  route into a fake `200`, breaking `app.test.ts`'s existing "responds 404
+  for an unknown route" contract test. Removed; `express.static` alone is
+  the correct, honest behavior here.
+- `playwright.config.ts`: wired the real `webServer` (`tsx
+  tests/e2e/helpers/test-server.ts`, health-checked at
+  `http://127.0.0.1:8080/health`), a `baseURL`, JSON reporter output, and
+  deterministic font-rendering launch args.
+- `tests/e2e/helpers/test-server.ts`: boots the real `startServer()` from
+  `apps/agent/src/server.ts` (same function `server.test.ts` already
+  exercises) against a fresh `mkdtempSync` `PAX_DATA_DIR` per run --
+  genuinely isolated from a developer's `.pax-data/pax.sqlite`. No test-only
+  server branch anywhere: `car-purchase-engine.ts`'s model provider is
+  unconditionally the scripted, deterministic one (confirmed by reading
+  that file, not assumed), so this suite is offline and deterministic by
+  construction, not by a special flag this task had to add.
+- `tests/e2e/helpers/console-guard.ts`, `helpers/layout-assertions.ts`,
+  `helpers/axe.ts`, `pages/pax-page.ts`: shared page-exception/console/
+  failed-request guard, right-pane geometry assertions (overflow, sticky
+  overlap, 44px touch targets, animation-disabling), a real
+  `@axe-core/playwright` wrapper (fails on `critical`/`serious`
+  violations only; logs `moderate`/`minor`), and a `PaxPage` page object
+  plus `postCommand`/`getCaseState` helpers that hit the exact same
+  `/api/cases/:caseId/commands/:commandName` route every visible control
+  and every WebMCP tool callback sends through.
+- Four spec files (`car-purchase-journey.spec.ts`, `reload-
+  persistence.spec.ts`, `error-recovery.spec.ts`,
+  `keyboard-accessibility.spec.ts`), each running across all four
+  viewport projects.
+- `apps/web/src/app/active-case-storage.ts` + `App.tsx`: reload
+  persistence was a genuine, confirmed gap, not merely untested --
+  `activeCaseId` was plain `useState`, never persisted anywhere, so any
+  page reload unconditionally returned to the launcher. Added a
+  `localStorage` pointer (never case *content*, only the id) plus a
+  mount-time verification effect (`GET /api/cases/:caseId`) that restores
+  the workspace on success and clears the stale pointer on a 404 --
+  falling back to the plain launcher instead of getting stuck on a
+  perpetual loading state. Covered by two new `App.test.tsx` unit tests in
+  addition to the E2E `reload-persistence.spec.ts`.
+- `apps/web/src/app/App.tsx`: `handleRequestInvestigation` now retries
+  once, automatically, on a real `409 CONFLICT` from `requestInvestigation`
+  -- a genuine race this task's own Playwright suite found under real
+  worker contention (the browser's SSE-delivered `eventSequence` one event
+  behind the server the instant "Request investigation" is pressed, e.g.
+  right after confirming a case-specific concern). Uses the conflict
+  envelope's own `actualSequence` (architecture.md: "Conflicts return the
+  latest sequence so ChatGPT can call `pax_get_case_context` before
+  retrying") rather than leaving the control silently re-enabled with no
+  feedback and no recovery. A second failure (or a non-conflict failure)
+  now surfaces a real `request-investigation-error` message, previously
+  swallowed entirely. Covered by a new `App.test.tsx` unit test plus a
+  strengthened existing one.
+- `apps/web/src/styles/tokens.css`: `--color-ink-muted` was a real,
+  measured WCAG AA `color-contrast` failure (axe, `critical`/`serious`) --
+  4.10-4.35:1 against essentially every `--color-status-*-bg` tint it is
+  actually rendered on throughout the app (ActivityTimeline timestamps,
+  evidence/run-status metadata), against a 4.5:1 requirement for normal
+  text. Darkened `#6b6e68` -> `#60635e` (computed via a relative-luminance
+  script against every status background plus surface/surface-sunken;
+  4.82:1 worst case, comfortable margin, hue/role preserved).
+- `apps/web/src/components/OptionComparison.tsx`: a real axe
+  `scrollable-region-focusable` failure -- the horizontally-scrollable
+  comparison table wrapper had no keyboard access path in Safari. Added
+  `tabIndex={0}` + `role="region"` + an accessible label.
+- `package.json`: `test:e2e` -> `pnpm --filter @pax/web build && playwright
+  test` (builds the production bundle `app.ts`'s static hosting serves,
+  then runs the real suite).
+- `scripts/verify.ts`: `test:e2e` stage flipped `not-implemented` ->
+  `real`, matching `test:scenario`'s earlier flip; updated the now-stale
+  header comment listing which stages are real vs. declared.
+- `eslint.config.js`: added a `tests/e2e/**/*.ts` globals block (Node +
+  browser -- `page.evaluate`/`addInitScript` callbacks reference
+  `document`/`localStorage` inside otherwise-Node test files).
+- `pnpm-workspace.yaml`: `overrides: { playwright-core: 1.62.1 }`. Adding
+  `@axe-core/playwright` pulled in a second, older `playwright-core`
+  (transitively via the pre-existing `@mermaid-js/mermaid-cli` ->
+  `puppeteer` chain), whose `Page` type is nominally incompatible with
+  `@playwright/test`'s own under `exactOptionalPropertyTypes` -- broke
+  `pnpm typecheck`. The override dedupes the whole workspace onto one
+  `playwright-core`, matching `@playwright/test`'s pin.
+
+**Judgment calls (recorded per CLAUDE.md):**
+
+- "Key WebMCP calls" without a browser that actually supports WebMCP: real
+  `document.modelContext` is genuinely absent from stock Chromium (already
+  confirmed this session), and no runtime polyfill exists in this codebase
+  by design (`model-context/adapter.ts`'s own header comment). Rather than
+  fabricate support that does not exist, the WebMCP-unavailable graceful
+  degradation is asserted directly (`webmcp-status-unsupported`), and the
+  two real product beats with no visible control yet (`updateCriteria`
+  criteria reweight; there is no criteria-editing UI in `apps/web` today)
+  are exercised via the identical `/api/cases/:caseId/commands/:name` HTTP
+  route every WebMCP tool callback and every visible control already send
+  through -- then the test proves the already-open, SSE-subscribed browser
+  reflects that external mutation live, with no click and no reload. This
+  is the concrete, observable meaning of "shared human-agent control," not
+  a shortcut around it.
+- The error-recovery spec's `409` is deliberately manufactured via
+  `page.route` rewriting the real `defineCaseAttribute` request's
+  `expectedSequence`, not raced. A genuine two-actor race would be flaky by
+  construction (CLAUDE.md prohibits flaky release-gate tests); this keeps
+  both sides of the exchange real (the server's real conflict check, the
+  client's real error-rendering path) while making only the input
+  deterministic.
+- `console-guard.ts` allows a `409` on `POST .../run` by default,
+  workspace-wide: it is a proven, self-healing product behavior (the
+  `handleRequestInvestigation` retry above), not a defect, so treating it
+  as a release-blocking "failed API call" would be wrong; every other
+  conflict/failure still fails the guard, and the one spec that
+  deliberately manufactures a real, unrecovered failure allowlists it
+  explicitly and locally instead of relying on this default.
+
+**Verification:**
+
+1. `pnpm --filter @pax/web build` -- clean production build.
+2. `pnpm test:e2e` -- 28/28 passing (4 spec files x 4 viewport projects,
+   7 test cases each counted once per project), run repeatedly (>5
+   consecutive full runs, plus >10 additional targeted reruns of the
+   previously-flaky test while diagnosing the conflict-retry race) with no
+   remaining flakes after the `App.tsx`/`pax-page.ts`/`console-guard.ts`
+   fixes above.
+3. `pnpm --filter @pax/web test` -- 425/425 (added: 2 reload-persistence
+   tests, 1 conflict-retry test, 1 strengthened existing test).
+4. `pnpm typecheck`, `pnpm lint`, `pnpm format:check` -- all clean across
+   the whole workspace.
+5. `pnpm verify` -- PASSED end-to-end (`format:check`, `lint`, `typecheck`,
+   `test:unit`, `test:scenario`, `test:e2e` all real and green;
+   `test:pack`/`test:integration`/`test:contract` remain honestly declared
+   `not-implemented`), confirmed on two separate clean runs.
+
+**Known limitations / explicitly out of scope for this entry:**
+
+- No Energy/Home-Energy-Guardian journey coverage, no Runtime Inspector
+  Playwright coverage, and no checked-in visual-diff screenshot baselines
+  yet -- all explicit Tier 2/3 scope per the plan file, not silently
+  dropped. `pnpm test:e2e` currently asserts semantic/state correctness
+  (testids, text, geometry, axe) at every required state rather than pixel
+  baselines; adding `toHaveScreenshot()` baselines is real, separate
+  follow-up work this entry does not claim.
+- Observed (not caused by this task): `pnpm test:unit` intermittently
+  failed with a different, unrelated `apps/agent/src/routes/*.test.ts`
+  test each time during this session, always passing cleanly when rerun in
+  isolation -- consistent with concurrent file writes from other in-flight
+  work (`apps/agent/src/authoring/`, `home-energy-swarm.ts`, `routes/
+  debug.ts`, all mid-edit elsewhere during this session) landing mid-read
+  by a running Vitest process, not a defect in this task's own changes.
+  Both `pnpm verify` runs recorded above landed on a quiescent moment and
+  passed clean.
+
+**Files changed:** `apps/agent/src/app.ts`, `playwright.config.ts`,
+`tests/e2e/**` (new), `apps/web/src/app/active-case-storage.ts` (new),
+`apps/web/src/app/App.tsx`, `apps/web/src/app/App.test.tsx`,
+`apps/web/src/styles/tokens.css`, `apps/web/src/components/
+OptionComparison.tsx`, `package.json`, `scripts/verify.ts`,
+`eslint.config.js`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, this entry.
+
+Final git SHA: not committed (per this task's scope -- no commit
+instruction was given).

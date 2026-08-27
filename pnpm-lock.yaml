@@ -4,16 +4,22 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  playwright-core: 1.62.1
+
 importers:
 
   .:
     devDependencies:
+      '@axe-core/playwright':
+        specifier: ^4.13.0
+        version: 4.13.0(playwright-core@1.62.1)
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.9.1(jiti@2.7.0)(supports-color@7.2.0))
       '@mermaid-js/mermaid-cli':
         specifier: ^11.16.0
-        version: 11.16.0(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(puppeteer@25.9.0)(tailwindcss@4.3.3)
+        version: 11.16.0(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(playwright-core@1.62.1)(puppeteer@25.9.0)(tailwindcss@4.3.3)
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
@@ -309,6 +315,11 @@ packages:
   '@aws/lambda-invoke-store@0.3.0':
     resolution: {integrity: sha512-sl4Bm6yiMNYrZKkqqDFWN0UfnWhlS8ivKxrYl+6t0gCLrqr8y3B2IqZZbFRkfaVVp7C/baApyh71P+LeE1A2sQ==}
     engines: {node: '>=18.0.0'}
+
+  '@axe-core/playwright@4.13.0':
+    resolution: {integrity: sha512-6YLx+kxXu5GJceG4ozFg+33a2EMTdjYwWGloJ3sb9Kta5pp+ZNS53uxGVog5JetIY8s++P5UrtX+cri+u0VAVg==}
+    peerDependencies:
+      playwright-core: 1.62.1
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -2209,7 +2220,7 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
     peerDependencies:
-      playwright-core: 1.57.0
+      playwright-core: 1.62.1
     peerDependenciesMeta:
       playwright-core:
         optional: true
@@ -2300,6 +2311,10 @@ packages:
 
   axe-core@4.12.1:
     resolution: {integrity: sha512-s7iGf5GaVMxEG0ENN9x+xTr7GFZCb1ZP/1uATUpCEK2X78nDB3RwbtFCo9pGAf9ru+VwoQ464DkaLEeRM08wJA==}
+    engines: {node: '>=4'}
+
+  axe-core@4.13.0:
+    resolution: {integrity: sha512-UzGt8zg7Ny8djbYMhxl2zuEevVa7r2gJjYY5Lwr1xM7+XU2nd6CkIWFTVcCIbAP63vSz71NaVyyuSk9lHKcy0A==}
     engines: {node: '>=4'}
 
   balanced-match@4.0.4:
@@ -4624,6 +4639,11 @@ snapshots:
 
   '@aws/lambda-invoke-store@0.3.0': {}
 
+  '@axe-core/playwright@4.13.0(playwright-core@1.62.1)':
+    dependencies:
+      axe-core: 4.13.0
+      playwright-core: 1.62.1
+
   '@babel/code-frame@7.29.7':
     dependencies:
       '@babel/helper-validator-identifier': 7.29.7
@@ -5447,11 +5467,11 @@ snapshots:
       mermaid: 11.17.2
     optional: true
 
-  '@mermaid-js/mermaid-cli@11.16.0(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(puppeteer@25.9.0)(tailwindcss@4.3.3)':
+  '@mermaid-js/mermaid-cli@11.16.0(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(playwright-core@1.62.1)(puppeteer@25.9.0)(tailwindcss@4.3.3)':
     dependencies:
       '@fortawesome/fontawesome-free': 7.3.1
       '@mermaid-js/layout-elk': 0.2.3(mermaid@11.17.2)
-      '@mermaid-js/mermaid-zenuml': 0.2.3(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(mermaid@11.17.2)(tailwindcss@4.3.3)
+      '@mermaid-js/mermaid-zenuml': 0.2.3(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(mermaid@11.17.2)(playwright-core@1.62.1)(tailwindcss@4.3.3)
       chalk: 5.6.2
       commander: 13.1.0
       import-meta-resolve: 4.2.0
@@ -5468,9 +5488,9 @@ snapshots:
       - playwright-core
       - tailwindcss
 
-  '@mermaid-js/mermaid-zenuml@0.2.3(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(mermaid@11.17.2)(tailwindcss@4.3.3)':
+  '@mermaid-js/mermaid-zenuml@0.2.3(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(mermaid@11.17.2)(playwright-core@1.62.1)(tailwindcss@4.3.3)':
     dependencies:
-      '@zenuml/core': 3.50.1(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(tailwindcss@4.3.3)
+      '@zenuml/core': 3.50.1(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(playwright-core@1.62.1)(tailwindcss@4.3.3)
       mermaid: 11.17.2
     transitivePeerDependencies:
       - '@babel/core'
@@ -6297,7 +6317,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.1
 
-  '@zenuml/core@3.50.1(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(tailwindcss@4.3.3)':
+  '@zenuml/core@3.50.1(@babel/core@8.0.1)(@babel/template@8.0.0)(@types/react@19.2.18)(playwright-core@1.62.1)(tailwindcss@4.3.3)':
     dependencies:
       '@floating-ui/react': 0.27.20(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@headlessui/react': 2.2.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -6316,6 +6336,7 @@ snapshots:
       tailwind-merge: 3.6.0
     optionalDependencies:
       '@napi-rs/canvas': 0.1.100
+      playwright-core: 1.62.1
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/template'
@@ -6392,6 +6413,8 @@ snapshots:
   axe-core@3.5.6: {}
 
   axe-core@4.12.1: {}
+
+  axe-core@4.13.0: {}
 
   balanced-match@4.0.4: {}
 

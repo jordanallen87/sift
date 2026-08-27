@@ -20,11 +20,17 @@
  *
  * Region order matches product.md's "Workspace layout" exactly: case header,
  * current focus, readiness, evidence and comparison, activity, recommendation
- * and approval. Region 7 (Runtime Inspector) is out of scope for this pass --
- * a separate build task owns docs/specs/debugging-and-observability.md's
- * full drill-in surface; rendering a non-functional stub for it here would
- * violate CLAUDE.md's "no placeholders" rule, so it is simply not rendered
- * yet rather than faked.
+ * and approval. Region 7 (Runtime Inspector) is the minimum-viable Overview +
+ * Timeline slice this task adds -- not the full six-view spec (Execution/
+ * State/Context/Errors remain later Tier-2 work). Reachable two ways, both
+ * feeding the same `inspectingRunId` state: an "Inspect run" control next to
+ * `LiveRunStatus` (enabled once a real `runId` exists this session) and a
+ * per-item "Inspect run" button `ActivityTimeline` renders for any streamed
+ * activity event that carries a `runId`. Per
+ * debugging-and-observability.md ("The inspector replaces the case body
+ * within the right pane and includes a clear return action; it is not a
+ * desktop-only modal"), opening it swaps out everything below `CaseHeader`
+ * for `RuntimeInspector`, which owns its own "Return to case" control.
  *
  * `readiness` is computed by calling the REAL `evaluateReadiness` from
  * `@pax/core` directly (this task added `@pax/core` as a runtime dependency
@@ -44,6 +50,8 @@ import {
   type EvidenceDisposition,
 } from '@pax/contracts';
 import { evaluateReadiness } from '@pax/core';
+import { PaxClientError } from '../api/pax-client.js';
+import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active-case-storage.js';
 import { DemoLauncher } from '../components/DemoLauncher.js';
 import { CaseHeader, type CaseHeaderConnectionState } from '../components/CaseHeader.js';
 import { ReadinessPanel } from '../components/ReadinessPanel.js';
@@ -58,6 +66,7 @@ import { CaseExtensionReviewCard } from '../components/CaseExtensionReviewCard.j
 import { LiveRunStatus, type LiveRunStatusReceipt } from '../components/LiveRunStatus.js';
 import { WebMcpStatus } from '../components/WebMcpStatus.js';
 import { ErrorState } from '../components/ErrorState.js';
+import { RuntimeInspector } from '../components/RuntimeInspector.js';
 import { useApiConfig, usePaxCommands, useWebMcpAdapter } from './AppProviders.js';
 import { useCaseEvents, type CaseEventsConnectionState } from '../hooks/use-case-events.js';
 import {
@@ -82,10 +91,23 @@ export function App() {
   const webMcpAdapter = useWebMcpAdapter();
 
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  // Reload persistence (product.md real-time contract: a mid-case reload
+  // must restore state from the server, not local state). Only a *pointer*
+  // to which case was open is ever read from `localStorage` synchronously
+  // here, at initial state -- it is not trusted as the active case until
+  // the verification effect below confirms the id still resolves against
+  // the real server. `null` means either nothing was stored, or nothing is
+  // being restored (both render the plain launcher immediately).
+  const [restoringCaseId, setRestoringCaseId] = useState<string | null>(() => readStoredCaseId());
   const [installedPacks, setInstalledPacks] = useState<CompiledDecisionPack[]>([]);
   const [lastRunReceipt, setLastRunReceipt] = useState<LiveRunStatusReceipt | null>(null);
+  // Runtime Inspector (Region 7, this task) -- the runId currently open in
+  // the Inspector, or `null` when the normal case body is showing. See this
+  // file's own header comment for how it is reached and closed.
+  const [inspectingRunId, setInspectingRunId] = useState<string | null>(null);
   const [resetPending, setResetPending] = useState(false);
   const [runRequestPending, setRunRequestPending] = useState(false);
+  const [runRequestError, setRunRequestError] = useState<string | null>(null);
   const [proposalReviewPending, setProposalReviewPending] = useState(false);
   const [proposalReviewError, setProposalReviewError] = useState<string | null>(null);
   const [dispositionPendingId, setDispositionPendingId] = useState<string | null>(null);
@@ -129,6 +151,58 @@ export function App() {
       cancelled = true;
     };
   }, [apiConfig]);
+
+  // Reload-restore verification: a stored caseId is never trusted directly
+  // (product.md "Canonical snapshots update only from committed case
+  // events") -- it is confirmed against the real `GET /api/cases/:caseId`
+  // route first. A case that no longer resolves (deleted, a stale id from a
+  // previous server/data directory, ...) clears the stored pointer and
+  // falls through to the plain launcher rather than leaving the workspace
+  // stuck showing a perpetual loading state.
+  useEffect(() => {
+    if (restoringCaseId === null) return;
+    let cancelled = false;
+    const baseUrl = apiConfig.baseUrl ?? '';
+    const fetchImpl = apiConfig.fetchImpl ?? fetch;
+    fetchImpl(`${baseUrl}/api/cases/${encodeURIComponent(restoringCaseId)}`)
+      .then((response) => {
+        if (cancelled) return;
+        if (response.ok) {
+          setActiveCaseId(restoringCaseId);
+        } else {
+          clearStoredCaseId();
+        }
+        setRestoringCaseId(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        clearStoredCaseId();
+        setRestoringCaseId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately runs once per mount (`restoringCaseId`'s initial value is
+    // only ever set once, from `readStoredCaseId()`) -- this effect's own
+    // `setRestoringCaseId(null)` calls do not re-trigger it because they
+    // move the value to `null`, which the guard above short-circuits on.
+  }, [restoringCaseId, apiConfig]);
+
+  // Persists the active case pointer (not its content -- see
+  // `active-case-storage.ts`'s header comment) so the effect above can
+  // restore it on a later reload. Also fires on a reset-demo/return-to-
+  // launcher transition, correctly overwriting or clearing the stored
+  // pointer.
+  useEffect(() => {
+    if (activeCaseId !== null) {
+      writeStoredCaseId(activeCaseId);
+    } else if (restoringCaseId === null) {
+      // Only clears once restoration (if any) has settled -- clearing while
+      // `restoringCaseId` is still non-null would erase the very pointer
+      // the verification effect above is about to check.
+      clearStoredCaseId();
+    }
+  }, [activeCaseId, restoringCaseId]);
 
   // WebMCP registration (webmcp.md "Registration lifecycle"): global read
   // tools register once per (adapter, commands) identity; `getActiveCase`/
@@ -186,6 +260,13 @@ export function App() {
     toolHandle?.setActiveCase(activeCaseId).catch(() => undefined);
   }, [toolHandle, activeCaseId]);
 
+  // Never leaves the Inspector open across a reset-demo/case change -- a
+  // stale `runId` from a case that no longer applies would otherwise still
+  // be showing when the new case's workspace renders.
+  useEffect(() => {
+    setInspectingRunId(null);
+  }, [activeCaseId]);
+
   const readiness = useMemo(() => (snapshot ? evaluateReadiness(snapshot) : null), [snapshot]);
 
   const handleResetDemo = useCallback(() => {
@@ -209,19 +290,45 @@ export function App() {
     (obligationId?: string) => {
       if (snapshot === null || activeCaseId === null) return;
       setRunRequestPending(true);
-      commands
-        .requestInvestigation({
-          caseId: activeCaseId,
-          expectedSequence: snapshot.eventSequence,
-          ...(obligationId !== undefined ? { obligationId } : {}),
-        })
-        .then((receipt) => {
-          setRunRequestPending(false);
-          setLastRunReceipt({ commandId: receipt.commandId, runId: receipt.runId });
-        })
-        .catch(() => {
-          setRunRequestPending(false);
-        });
+      setRunRequestError(null);
+
+      // A conflict here (a stale `expectedSequence`) is a real, expected
+      // occurrence of the real-time system, not just a test artifact: the
+      // browser's own SSE-delivered snapshot can be one event behind the
+      // server at the exact instant this control is pressed (e.g. right
+      // after confirming a case-specific concern). architecture.md's
+      // conflict envelope exists precisely so a caller can recover without
+      // asking the human to do anything: "Conflicts return the latest
+      // sequence so ChatGPT can call pax_get_case_context before retrying."
+      // This performs that same recovery for the visible control -- one
+      // automatic retry using the server-reported `actualSequence` -- before
+      // ever surfacing an error to the human.
+      const attempt = (expectedSequence: number, alreadyRetried: boolean): void => {
+        commands
+          .requestInvestigation({
+            caseId: activeCaseId,
+            expectedSequence,
+            ...(obligationId !== undefined ? { obligationId } : {}),
+          })
+          .then((receipt) => {
+            setRunRequestPending(false);
+            setLastRunReceipt({ commandId: receipt.commandId, runId: receipt.runId });
+          })
+          .catch((caught: unknown) => {
+            if (!alreadyRetried && caught instanceof PaxClientError && caught.code === 'CONFLICT') {
+              const details = caught.details as { actualSequence?: unknown } | undefined;
+              if (typeof details?.actualSequence === 'number') {
+                attempt(details.actualSequence, true);
+                return;
+              }
+            }
+            setRunRequestPending(false);
+            setRunRequestError(
+              caught instanceof Error ? caught.message : 'Could not request an investigation.',
+            );
+          });
+      };
+      attempt(snapshot.eventSequence, false);
     },
     [commands, snapshot, activeCaseId],
   );
@@ -281,6 +388,20 @@ export function App() {
   );
 
   if (activeCaseId === null) {
+    if (restoringCaseId !== null) {
+      // Avoids a launcher-then-workspace flash while the reload-restore
+      // verification effect above confirms the stored case still resolves.
+      return (
+        <div
+          data-testid="case-workspace-restoring"
+          aria-busy="true"
+          aria-live="polite"
+          className="mx-auto flex min-h-screen w-full max-w-[480px] items-center justify-center p-[var(--space-4)] text-[var(--color-ink-secondary)]"
+        >
+          Restoring your case…
+        </div>
+      );
+    }
     return <DemoLauncher onDemoStarted={handleDemoStarted} />;
   }
 
@@ -349,129 +470,168 @@ export function App() {
         </div>
       )}
 
-      <WebMcpStatus adapter={webMcpAdapter} />
+      {inspectingRunId !== null ? (
+        <RuntimeInspector
+          runId={inspectingRunId}
+          onClose={() => setInspectingRunId(null)}
+          apiConfig={apiConfig}
+        />
+      ) : (
+        <>
+          <WebMcpStatus adapter={webMcpAdapter} />
 
-      {streamError ? <ErrorState message={streamError} /> : null}
+          {streamError ? <ErrorState message={streamError} /> : null}
 
-      <section
-        data-testid="current-focus"
-        aria-labelledby="current-focus-heading"
-        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
-      >
-        <h2 id="current-focus-heading">Current focus</h2>
-        {activeFocus !== null ? (
-          <div data-testid="current-focus-detail" className="flex flex-col gap-[var(--space-1)]">
-            <p
-              data-testid="current-focus-obligation"
-              className="font-[var(--font-weight-semibold)] text-[var(--color-ink)]"
-            >
-              {focusedObligation?.label ?? activeFocus.obligationId}
-            </p>
-            <p
-              data-testid="current-focus-reason"
-              className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-            >
-              {activeFocus.reason}
-            </p>
-            <div className="flex flex-wrap gap-[var(--space-2)] text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]">
-              {activeFocus.skillId !== undefined ? (
-                <span data-testid="current-focus-skill">Skill: {activeFocus.skillId}</span>
-              ) : null}
-              {activeFocus.specialistId !== undefined ? (
-                <span data-testid="current-focus-specialist">
-                  Specialist: {activeFocus.specialistId}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <p
-            data-testid="current-focus-empty"
-            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+          <section
+            data-testid="current-focus"
+            aria-labelledby="current-focus-heading"
+            className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
           >
-            Nothing is being actively investigated right now.
-          </p>
-        )}
+            <h2 id="current-focus-heading">Current focus</h2>
+            {activeFocus !== null ? (
+              <div
+                data-testid="current-focus-detail"
+                className="flex flex-col gap-[var(--space-1)]"
+              >
+                <p
+                  data-testid="current-focus-obligation"
+                  className="font-[var(--font-weight-semibold)] text-[var(--color-ink)]"
+                >
+                  {focusedObligation?.label ?? activeFocus.obligationId}
+                </p>
+                <p
+                  data-testid="current-focus-reason"
+                  className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+                >
+                  {activeFocus.reason}
+                </p>
+                <div className="flex flex-wrap gap-[var(--space-2)] text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]">
+                  {activeFocus.skillId !== undefined ? (
+                    <span data-testid="current-focus-skill">Skill: {activeFocus.skillId}</span>
+                  ) : null}
+                  {activeFocus.specialistId !== undefined ? (
+                    <span data-testid="current-focus-specialist">
+                      Specialist: {activeFocus.specialistId}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <p
+                data-testid="current-focus-empty"
+                className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+              >
+                Nothing is being actively investigated right now.
+              </p>
+            )}
 
-        <button
-          type="button"
-          data-testid="request-investigation"
-          aria-busy={runRequestPending}
-          disabled={runRequestPending || snapshot === null}
-          onClick={() => {
-            handleRequestInvestigation();
-          }}
-          className="min-h-[var(--size-touch-target-min)] self-start rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {runRequestPending ? 'Requesting…' : 'Request investigation'}
-        </button>
+            <button
+              type="button"
+              data-testid="request-investigation"
+              aria-busy={runRequestPending}
+              disabled={runRequestPending || snapshot === null}
+              onClick={() => {
+                handleRequestInvestigation();
+              }}
+              className="min-h-[var(--size-touch-target-min)] self-start rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {runRequestPending ? 'Requesting…' : 'Request investigation'}
+            </button>
 
-        <LiveRunStatus receipt={lastRunReceipt} events={events} />
-      </section>
+            {runRequestError ? (
+              <p
+                role="alert"
+                data-testid="request-investigation-error"
+                className="text-[length:var(--font-size-sm)]"
+                style={{ color: 'var(--color-status-error-ink)' }}
+              >
+                {runRequestError}
+              </p>
+            ) : null}
 
-      <ReadinessPanel readiness={readiness} loading={snapshot === null} />
+            <LiveRunStatus receipt={lastRunReceipt} events={events} />
 
-      <section
-        data-testid="evidence-and-comparison-region"
-        aria-labelledby="evidence-and-comparison-heading"
-        className="flex flex-col gap-[var(--space-3)]"
-      >
-        <h2 id="evidence-and-comparison-heading" className="visually-hidden">
-          Evidence and comparison
-        </h2>
+            {lastRunReceipt?.runId !== undefined ? (
+              <button
+                type="button"
+                data-testid="open-runtime-inspector"
+                onClick={() => setInspectingRunId(lastRunReceipt.runId!)}
+                className="min-h-[var(--size-touch-target-min)] self-start rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-[var(--space-3)] text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+              >
+                Inspect run
+              </button>
+            ) : null}
+          </section>
 
-        <EvidenceList
-          items={evidenceItems}
-          loading={snapshot === null}
-          error={dispositionError}
-          onSetDisposition={handleSetDisposition}
-          dispositionPendingId={dispositionPendingId}
-        />
+          <ReadinessPanel readiness={readiness} loading={snapshot === null} />
 
-        <OptionEditor
-          caseId={activeCaseId}
-          expectedSequence={snapshot?.eventSequence ?? 0}
-          optionKind={optionKind}
-          optionLabel={optionLabel}
-          attributeDefinitions={snapshot?.attributeDefinitions ?? []}
-          options={snapshot?.entities ?? []}
-        />
+          <section
+            data-testid="evidence-and-comparison-region"
+            aria-labelledby="evidence-and-comparison-heading"
+            className="flex flex-col gap-[var(--space-3)]"
+          >
+            <h2 id="evidence-and-comparison-heading" className="visually-hidden">
+              Evidence and comparison
+            </h2>
 
-        <OptionComparison
-          options={snapshot?.entities ?? []}
-          attributeDefinitions={snapshot?.attributeDefinitions ?? []}
-          presentation={activePack?.presentation ?? null}
-          selectedOptionId={snapshot?.selectedOptionId ?? null}
-        />
+            <EvidenceList
+              items={evidenceItems}
+              loading={snapshot === null}
+              error={dispositionError}
+              onSetDisposition={handleSetDisposition}
+              dispositionPendingId={dispositionPendingId}
+            />
 
-        <CustomConcernForm
-          caseId={activeCaseId}
-          expectedSequence={snapshot?.eventSequence ?? 0}
-          applicableKinds={applicableKinds}
-        />
+            <OptionEditor
+              caseId={activeCaseId}
+              expectedSequence={snapshot?.eventSequence ?? 0}
+              optionKind={optionKind}
+              optionLabel={optionLabel}
+              attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+              options={snapshot?.entities ?? []}
+            />
 
-        <CaseExtensionReviewCard
-          caseId={activeCaseId}
-          expectedSequence={snapshot?.eventSequence ?? 0}
-          extension={pendingExtension}
-        />
-      </section>
+            <OptionComparison
+              options={snapshot?.entities ?? []}
+              attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+              presentation={activePack?.presentation ?? null}
+              selectedOptionId={snapshot?.selectedOptionId ?? null}
+            />
 
-      <ActivityTimeline events={snapshot === null ? null : events} loading={snapshot === null} />
+            <CustomConcernForm
+              caseId={activeCaseId}
+              expectedSequence={snapshot?.eventSequence ?? 0}
+              applicableKinds={applicableKinds}
+            />
 
-      <RecommendationCard
-        recommendation={snapshot?.recommendation ?? null}
-        withheld={withheld}
-        loading={snapshot === null}
-        sources={sources}
-      />
+            <CaseExtensionReviewCard
+              caseId={activeCaseId}
+              expectedSequence={snapshot?.eventSequence ?? 0}
+              extension={pendingExtension}
+            />
+          </section>
 
-      <ApprovalCard
-        proposal={snapshot?.proposal ?? null}
-        onReview={handleReviewProposal}
-        reviewPending={proposalReviewPending}
-        error={proposalReviewError}
-      />
+          <ActivityTimeline
+            events={snapshot === null ? null : events}
+            loading={snapshot === null}
+            onInspectRun={setInspectingRunId}
+          />
+
+          <RecommendationCard
+            recommendation={snapshot?.recommendation ?? null}
+            withheld={withheld}
+            loading={snapshot === null}
+            sources={sources}
+          />
+
+          <ApprovalCard
+            proposal={snapshot?.proposal ?? null}
+            onReview={handleReviewProposal}
+            reviewPending={proposalReviewPending}
+            error={proposalReviewError}
+          />
+        </>
+      )}
     </div>
   );
 }

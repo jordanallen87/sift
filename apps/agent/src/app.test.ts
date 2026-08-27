@@ -11,6 +11,7 @@ import { CommandService } from './services/command-service.js';
 import { RunService, MemoryRunStore } from './services/run-service.js';
 import { InMemoryActivityStore } from './store/activity-store.js';
 import { MemoryCaseStore } from './store/memory-case-store.js';
+import { InMemoryRuntimeEventStore } from './store/runtime-event-store.js';
 
 /** Minimal, fully-wired (but in-memory-backed except for `database`) `BuildAppDeps`, for tests that only care about routes `buildApp` itself wires, not any one route's deep behavior (covered by `routes/*.test.ts`). */
 function testDeps(database: TestDatabase): BuildAppDeps {
@@ -18,6 +19,7 @@ function testDeps(database: TestDatabase): BuildAppDeps {
   const activityStore = new InMemoryActivityStore();
   const registry = new PackRegistry();
   const idGenerator = createSequentialIdGenerator();
+  const runStore = new MemoryRunStore();
   return {
     database,
     caseStore,
@@ -33,10 +35,12 @@ function testDeps(database: TestDatabase): BuildAppDeps {
     runService: new RunService({
       caseStore,
       activityStore,
-      runStore: new MemoryRunStore(),
+      runStore,
       clock: fixedClock,
       idGenerator,
     }),
+    runStore,
+    runtimeEventStore: new InMemoryRuntimeEventStore(),
   };
 }
 

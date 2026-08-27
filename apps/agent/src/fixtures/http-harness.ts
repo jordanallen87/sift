@@ -19,17 +19,22 @@ import { CommandService } from '../services/command-service.js';
 import { RunService, SqliteRunStore } from '../services/run-service.js';
 import { SqliteActivityStore } from '../store/activity-store.js';
 import { SqliteCaseStore } from '../store/sqlite-case-store.js';
+import { SqliteRuntimeEventStore } from '../store/runtime-event-store.js';
 
 export interface HttpTestHarness {
   readonly app: Application;
   readonly database: TestDatabase;
   readonly caseStore: SqliteCaseStore;
   readonly activityStore: SqliteActivityStore;
+  readonly runStore: SqliteRunStore;
+  readonly runtimeEventStore: SqliteRuntimeEventStore;
   cleanup(): void;
 }
 
 export interface HttpTestHarnessOptions {
   readonly sseMaxQueueLength?: number;
+  /** Passed through to `buildApp`'s `debugEnabled` — lets `routes/debug.test.ts` exercise the "disabled" 404 path without a second harness implementation. Defaults to `true`. */
+  readonly debugEnabled?: boolean;
 }
 
 export function createHttpTestHarness(options: HttpTestHarnessOptions = {}): HttpTestHarness {
@@ -38,6 +43,8 @@ export function createHttpTestHarness(options: HttpTestHarnessOptions = {}): Htt
 
   const caseStore = new SqliteCaseStore(database);
   const activityStore = new SqliteActivityStore(database);
+  const runStore = new SqliteRunStore(database);
+  const runtimeEventStore = new SqliteRuntimeEventStore(database);
   const registry = createRegistryWithSyntheticPack();
   const idGenerator = createSequentialIdGenerator();
   const commandService = new CommandService({
@@ -50,7 +57,7 @@ export function createHttpTestHarness(options: HttpTestHarnessOptions = {}): Htt
   const runService = new RunService({
     caseStore,
     activityStore,
-    runStore: new SqliteRunStore(database),
+    runStore,
     clock: fixedClock,
     idGenerator,
   });
@@ -62,6 +69,9 @@ export function createHttpTestHarness(options: HttpTestHarnessOptions = {}): Htt
     registry,
     commandService,
     runService,
+    runStore,
+    runtimeEventStore,
+    debugEnabled: options.debugEnabled ?? true,
     sseHeartbeatIntervalMs: 60_000,
     ...(options.sseMaxQueueLength !== undefined
       ? { sseMaxQueueLength: options.sseMaxQueueLength }
@@ -73,6 +83,8 @@ export function createHttpTestHarness(options: HttpTestHarnessOptions = {}): Htt
     database,
     caseStore,
     activityStore,
+    runStore,
+    runtimeEventStore,
     cleanup: () => database.cleanup(),
   };
 }

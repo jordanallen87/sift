@@ -34,6 +34,7 @@ import { CommandService } from './services/command-service.js';
 import { RunService, SqliteRunStore, type InvestigationEngine } from './services/run-service.js';
 import { SqliteActivityStore } from './store/activity-store.js';
 import { SqliteCaseStore } from './store/sqlite-case-store.js';
+import { SqliteRuntimeEventStore } from './store/runtime-event-store.js';
 
 const DEFAULT_PORT = 8080;
 
@@ -77,10 +78,12 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
   const skillsRootDir = fileURLToPath(new URL('../skills', import.meta.url));
 
   const runStore = new SqliteRunStore(database);
+  const runtimeEventStore = new SqliteRuntimeEventStore(database);
   const carPurchaseEngine = createCarPurchaseEngine({
     caseStore,
     activityStore,
     runStore,
+    runtimeEventStore,
     registry,
     clock,
     idGenerator,
@@ -118,6 +121,9 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     registry,
     commandService,
     runService,
+    runStore,
+    runtimeEventStore,
+    debugEnabled: config.debugEnabled,
   });
 
   return new Promise((resolvePromise) => {

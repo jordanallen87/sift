@@ -23,6 +23,14 @@ afterAll(() => server.close());
 
 beforeEach(() => {
   FakeEventSource.reset();
+  // `App`'s reload-restore feature (`active-case-storage.ts`) persists a
+  // pointer to the active case id in `localStorage`. jsdom's `localStorage`
+  // is not reset between tests automatically (unlike a real browser's
+  // fresh-per-session storage in these tests' single shared jsdom window),
+  // so an earlier test's real `startDemo` would otherwise leak a stored
+  // caseId into every later test in this file, making `App` render the
+  // "Restoring your case…" state instead of the plain launcher it expects.
+  localStorage.clear();
 });
 
 function pollHandler(snapshot: CaseState, events: PublicActivityEvent[] = []) {
@@ -56,6 +64,48 @@ function runHandler(receipt: CommandReceipt & { runId: string }, onCall?: (body:
     onCall?.(await request.json());
     return HttpResponse.json(receipt);
   });
+}
+
+function debugRunHandler(runId: string) {
+  return http.get(`/api/debug/runs/${runId}`, () =>
+    HttpResponse.json({
+      overview: {
+        runId,
+        caseId: CASE_ID,
+        obligationId: 'car.deal_normalization',
+        traceId: 'trace-1',
+        sessionId: null,
+        status: 'completed',
+        startedAt: '2026-08-27T00:00:00.000Z',
+        completedAt: '2026-08-27T00:00:05.000Z',
+        durationMs: 5000,
+        eventCount: 1,
+        countsByCategory: { tool: 1 },
+        countsByLevel: { info: 1 },
+        errorCount: 0,
+        tokenUsage: null,
+        estimatedCostUsd: null,
+      },
+      events: [
+        {
+          schemaVersion: '1.0',
+          sequence: 0,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          traceId: 'trace-1',
+          caseId: CASE_ID,
+          runId,
+          category: 'tool',
+          name: 'tool.listing_reader',
+          phase: 'start',
+          level: 'info',
+          summary: 'Calling tool "listing_reader".',
+          attributes: {},
+          redactions: [],
+          id: 'debug-1',
+        },
+      ],
+    }),
+  );
 }
 
 const DEFAULT_PACK = buildFixtureCompiledPack({
@@ -136,6 +186,52 @@ describe('App', () => {
     );
 
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  describe('reload persistence', () => {
+    it('restores the active case from a stored caseId, verified against the real server, on a fresh mount', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, title: 'Restored case' });
+      localStorage.setItem('pax:activeCaseId', CASE_ID);
+      server.use(
+        http.get(`/api/cases/${CASE_ID}`, () => HttpResponse.json(snapshot)),
+        pollHandler(snapshot),
+        packsHandler([DEFAULT_PACK]),
+      );
+
+      render(
+        <AppProviders caseEventsConfig={{ createEventSource: createFakeEventSource }}>
+          <App />
+        </AppProviders>,
+      );
+
+      // Never flashes the launcher while restoration is being verified.
+      expect(screen.queryByTestId('demo-launcher')).not.toBeInTheDocument();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('case-header')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('case-header-title')).toHaveTextContent('Restored case');
+    });
+
+    it('clears a stale stored caseId and falls back to the launcher when the server no longer has that case', async () => {
+      localStorage.setItem('pax:activeCaseId', 'case-does-not-exist');
+      server.use(
+        http.get('/api/cases/case-does-not-exist', () =>
+          HttpResponse.json({ error: 'not found' }, { status: 404 }),
+        ),
+      );
+
+      render(
+        <AppProviders commandsClient={createFakePaxCommands()}>
+          <App />
+        </AppProviders>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('demo-launcher')).toBeInTheDocument();
+      });
+      expect(localStorage.getItem('pax:activeCaseId')).toBeNull();
+    });
   });
 
   describe('live workspace wiring', () => {
@@ -364,6 +460,68 @@ describe('App', () => {
         caseId: CASE_ID,
         expectedSequence: snapshot.eventSequence,
       });
+    });
+
+    it('automatically retries a requestInvestigation 409 conflict once, using the server-reported actual sequence', async () => {
+      // A real Playwright e2e run under worker contention found this
+      // exact race: the browser's SSE-delivered `snapshot.eventSequence`
+      // can be one event behind the server the instant this control is
+      // pressed. `App.tsx`'s `handleRequestInvestigation` recovers
+      // automatically using the conflict envelope's `actualSequence`
+      // (architecture.md: "Conflicts return the latest sequence so ChatGPT
+      // can call pax_get_case_context before retrying") rather than
+      // leaving the human stuck with a silently re-enabled button.
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      let callCount = 0;
+      server.use(
+        http.post('/api/cases/demo', () =>
+          HttpResponse.json(buildFakeCommandReceipt({ caseId: CASE_ID })),
+        ),
+        pollHandler(snapshot),
+        packsHandler([DEFAULT_PACK]),
+        http.post(`/api/cases/${CASE_ID}/run`, async ({ request }) => {
+          callCount += 1;
+          if (callCount === 1) {
+            return HttpResponse.json(
+              {
+                error: {
+                  code: 'CONFLICT',
+                  message:
+                    'The case has advanced since expectedSequence was read; refresh and retry.',
+                  retryable: true,
+                  expectedSequence: snapshot.eventSequence,
+                  actualSequence: snapshot.eventSequence + 1,
+                },
+                snapshot,
+              },
+              { status: 409 },
+            );
+          }
+          const body = (await request.json()) as { expectedSequence: number };
+          expect(body.expectedSequence).toBe(snapshot.eventSequence + 1);
+          return HttpResponse.json({
+            ...buildFakeCommandReceipt({ caseId: CASE_ID }),
+            runId: 'run-retry-1',
+          });
+        }),
+      );
+
+      const user = userEvent.setup();
+      render(
+        <AppProviders caseEventsConfig={{ createEventSource: createFakeEventSource }}>
+          <App />
+        </AppProviders>,
+      );
+      await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
+      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+
+      await user.click(screen.getByTestId('request-investigation'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('live-run-status-run-id')).toHaveTextContent('run-retry-1');
+      });
+      expect(callCount).toBe(2);
+      expect(screen.queryByTestId('request-investigation-error')).not.toBeInTheDocument();
     });
 
     it('approving a pending proposal calls reviewProposal with actor "human"', async () => {
@@ -786,6 +944,7 @@ describe('App', () => {
       expect(screen.getByTestId('request-investigation')).toHaveTextContent(
         'Request investigation',
       );
+      expect(screen.getByTestId('request-investigation-error')).toBeInTheDocument();
     });
 
     it('shows a generic error message on the ApprovalCard when reviewProposal rejects with a non-Error value', async () => {
@@ -882,6 +1041,128 @@ describe('App', () => {
       });
 
       expect(overflowRisks).toEqual([]);
+    });
+
+    describe('Runtime Inspector wiring', () => {
+      it('opens the real Runtime Inspector from the "Inspect run" control once a run exists, and returns to the case body on close', async () => {
+        const snapshot = buildFixtureCaseState({ id: CASE_ID });
+        server.use(
+          http.post('/api/cases/demo', () =>
+            HttpResponse.json(buildFakeCommandReceipt({ caseId: CASE_ID })),
+          ),
+          pollHandler(snapshot),
+          packsHandler([DEFAULT_PACK]),
+          runHandler({ ...buildFakeCommandReceipt({ caseId: CASE_ID }), runId: 'run-inspect-1' }),
+          debugRunHandler('run-inspect-1'),
+        );
+        const user = userEvent.setup();
+        render(
+          <AppProviders caseEventsConfig={{ createEventSource: createFakeEventSource }}>
+            <App />
+          </AppProviders>,
+        );
+        await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
+        await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+
+        // Not reachable before any run has ever been requested this session.
+        expect(screen.queryByTestId('open-runtime-inspector')).not.toBeInTheDocument();
+
+        await user.click(screen.getByTestId('request-investigation'));
+        await waitFor(() => {
+          expect(screen.getByTestId('open-runtime-inspector')).toBeInTheDocument();
+        });
+
+        await user.click(screen.getByTestId('open-runtime-inspector'));
+
+        await waitFor(() => {
+          expect(screen.getByTestId('runtime-inspector')).toBeInTheDocument();
+        });
+        expect(screen.getByTestId('runtime-inspector-run-id')).toHaveTextContent('run-inspect-1');
+        // The inspector genuinely replaces the case body -- current focus / activity / approval are gone while it is open.
+        expect(screen.queryByTestId('current-focus')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('activity-timeline')).not.toBeInTheDocument();
+        // The case header stays visible.
+        expect(screen.getByTestId('case-header')).toBeInTheDocument();
+
+        await waitFor(() => {
+          expect(screen.getByTestId('runtime-inspector-status')).toHaveTextContent('completed');
+        });
+
+        await user.click(screen.getByTestId('runtime-inspector-close'));
+
+        await waitFor(() => {
+          expect(screen.queryByTestId('runtime-inspector')).not.toBeInTheDocument();
+        });
+        expect(screen.getByTestId('current-focus')).toBeInTheDocument();
+      });
+
+      it('opens the Runtime Inspector from a correlated ActivityTimeline item', async () => {
+        const snapshot = buildFixtureCaseState({ id: CASE_ID });
+        renderLiveWorkspace(snapshot);
+        server.use(debugRunHandler('run-from-activity'));
+        await startDemoAndWait();
+
+        await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+        const source = FakeEventSource.instances.at(-1)!;
+        source.triggerOpen();
+        source.emit({
+          schemaVersion: '1.0',
+          eventId: 'evt-correlated',
+          sequence: 1,
+          timestamp: '2026-08-27T00:01:00.000Z',
+          caseId: CASE_ID,
+          runId: 'run-from-activity',
+          type: 'specialist.started',
+          phase: 'active',
+          summary: 'Deal analyst started working.',
+        });
+
+        await waitFor(() => {
+          expect(
+            screen.getByTestId('activity-item-inspect-run-evt-correlated'),
+          ).toBeInTheDocument();
+        });
+        await userEvent
+          .setup()
+          .click(screen.getByTestId('activity-item-inspect-run-evt-correlated'));
+
+        await waitFor(() => {
+          expect(screen.getByTestId('runtime-inspector-run-id')).toHaveTextContent(
+            'run-from-activity',
+          );
+        });
+      });
+
+      it('has no axe violations with the Runtime Inspector open', async () => {
+        const snapshot = buildFixtureCaseState({ id: CASE_ID });
+        server.use(
+          http.post('/api/cases/demo', () =>
+            HttpResponse.json(buildFakeCommandReceipt({ caseId: CASE_ID })),
+          ),
+          pollHandler(snapshot),
+          packsHandler([DEFAULT_PACK]),
+          runHandler({ ...buildFakeCommandReceipt({ caseId: CASE_ID }), runId: 'run-inspect-axe' }),
+          debugRunHandler('run-inspect-axe'),
+        );
+        const user = userEvent.setup();
+        const { container } = render(
+          <AppProviders caseEventsConfig={{ createEventSource: createFakeEventSource }}>
+            <App />
+          </AppProviders>,
+        );
+        await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
+        await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+        await user.click(screen.getByTestId('request-investigation'));
+        await waitFor(() =>
+          expect(screen.getByTestId('open-runtime-inspector')).toBeInTheDocument(),
+        );
+        await user.click(screen.getByTestId('open-runtime-inspector'));
+        await waitFor(() => {
+          expect(screen.getByTestId('runtime-inspector-status')).toHaveTextContent('completed');
+        });
+
+        expect(await axe(container)).toHaveNoViolations();
+      });
     });
   });
 });
