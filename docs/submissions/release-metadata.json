@@ -1,0 +1,33 @@
+{
+  "repositoryUrl": "https://github.com/jordanallen87/pax",
+  "deployedUrl": "https://pax-hackathon-production.up.railway.app",
+  "webmcpVideoUrl": "",
+  "agentsForHumansVideoUrl": "",
+  "railway": {
+    "workspace": "JAllen's Projects",
+    "projectName": "pax-hackathon",
+    "projectId": "1c02545d-5ed3-4ac6-82dc-fad2e09e8999",
+    "serviceName": "pax-hackathon",
+    "serviceId": "e98affa7-2756-4f5a-bbae-d3e84a06ced7",
+    "environment": "production",
+    "environmentId": "9e0c95c9-2f33-431a-93c3-1a592a069d00",
+    "volumeName": "pax-hackathon-volume",
+    "volumeId": "477985d7-abfe-4216-8281-fa01b3e7b508",
+    "volumeMountPath": "/data"
+  },
+  "agentCore": {
+    "deployed": false,
+    "reason": "No AWS credentials were available in the build environment this session. The Railway deployment runs PAX_EXECUTION_TARGET=local; the real /ping and /invocations routes (apps/agent/src/routes/agentcore.ts) are live and verified against that local-target deployment, but no AgentCore runtime/CloudWatch correlation evidence exists yet."
+  },
+  "webmcpTestClients": [],
+  "screenshotInventory": [],
+  "_todo": [
+    "Record the WebMCP demo video (docs/submissions/webmcp/demo-script.md) and set webmcpVideoUrl once uploaded (must be under 3:00).",
+    "Record the Agents for Humans demo video (docs/submissions/agents-for-humans/demo-script.md) and set agentsForHumansVideoUrl once uploaded (must be 5:00 or under).",
+    "Flip the GitHub repository to public before final submission (currently private) -- see README.md's Live demo section.",
+    "List the exact WebMCP test clients/browser versions actually used in webmcpTestClients once tested (e.g. 'ChatGPT in-app browser, build X' or 'Chrome NNN with WebMCP origin trial flag Y').",
+    "If AWS credentials become available, deploy to Bedrock AgentCore and fill in agentCore.deployed=true plus its own endpoint/CloudWatch correlation details.",
+    "Add a screenshotInventory once release screenshots are captured and reviewed.",
+    "Re-run `pnpm verify` and `pnpm test:submission` at the exact commit being submitted so release-verification-sha matches."
+  ]
+}
