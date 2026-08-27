@@ -25,6 +25,16 @@ export type { PaxDomainErrorOptions } from './errors.js';
 export { routePack, resolveSelectedPack } from './routing.js';
 export type { SemanticRoutingCandidate } from './routing.js';
 
+// Canonical Clock/IdGenerator ports (ports.ts), added during the Task 2
+// integration pass -- see that file's header comment for why this replaces
+// the previously-re-exported (and, for IdGenerator, actually incompatible)
+// copy from policy.ts. Every sibling module in this package still declares
+// its own local copy; those are harmless (Clock) or unused-in-practice
+// (policy.ts's differently-shaped IdGenerator) duplication, left as-is
+// rather than risk regressing already-green, fully-tested files. New code
+// should import from here.
+export type { Clock, IdGenerator } from './ports.js';
+
 // Human-only proposal review policy and the model-adaptability boundary
 // (policy.ts): docs/specs/architecture.md "Security and authority",
 // docs/specs/pack-authoring.md "Three-layer adaptability model".
@@ -35,8 +45,6 @@ export {
   reviewProposal,
 } from './policy.js';
 export type {
-  Clock,
-  IdGenerator,
   ModelChangeKind,
   ModelPermittedChangeKind,
   ModelProhibitedChangeKind,

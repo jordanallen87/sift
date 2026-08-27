@@ -1118,3 +1118,255 @@ pnpm --filter @pax/core exec vitest run --coverage
 
 Gate: **passed.** `packages/contracts` and `packages/core` are both real,
 tested, and integrated. Proceeding to Task 3 (compiled Decision Packs).
+
+### 2026-08-27 — Task 5 (persistence slice): `apps/agent` SQLite layer and Express skeleton
+
+Built the SQLite persistence layer and base Express service skeleton for
+`apps/agent`, scoped strictly to infrastructure that depends only on
+`@pax/contracts` and raw SQL/Express — **not** the case store, activity
+store, command service, run service, or `routes/{packs,cases,commands,runs,
+events}.ts`, since those need `applyCaseEvent`/`evaluateReadiness` from
+`packages/core`'s command-service integration, which is a separate,
+not-fully-wired-up-at-agent-level workstream. Nothing under
+`packages/core/`, `packages/packs/`, or the excluded `apps/agent/src/`
+subpaths was touched.
+
+**Added dependencies** (`apps/agent/package.json`; versions were the
+current npm `dist-tags` at install time): `better-sqlite3@^13.0.3`,
+`drizzle-orm@^0.45.2`, `express@^5.2.1`, `zod@^4.4.3` (matching
+`@pax/contracts`'s already-pinned `^4.4.3`), `@pax/contracts: workspace:*`;
+dev: `drizzle-kit@^0.31.10`, `@types/better-sqlite3@^9.6.0`,
+`@types/express@^5.0.6`, `supertest@^7.2.2`, `@types/supertest@^7.2.1`. Ran
+`pnpm install` from the repo root. `better-sqlite3`'s postinstall build
+script was blocked by pnpm's new build-approval gate
+(`ERR_PNPM_IGNORED_BUILDS`); added `better-sqlite3: true` to
+`pnpm-workspace.yaml`'s `allowBuilds` (it ships prebuilt native bindings —
+`prebuilds/darwin-arm64.node` etc. — so no local compiler toolchain was
+actually invoked; verified with a real `require('better-sqlite3')` +
+`PRAGMA` round-trip before writing any product code).
+
+**Files created:**
+
+- `apps/agent/src/db/schema.ts` — Drizzle `sqlite-core` definitions for all
+  seven required tables (`cases`, `case_events`, `activity_events`, `runs`,
+  `idempotency_keys`, `runtime_events`, `schema_migrations`), inspected
+  against the actually-installed `drizzle-orm@0.45.2`'s shipped `.d.ts`
+  files first (`sqliteTable`'s current non-deprecated
+  `(name, columns, (t) => [...])` array-form extra-config API,
+  `uniqueIndex(...).on(...)`, `.references(() => other.col, {onDelete})`)
+  rather than assumed from memory.
+- `apps/agent/drizzle.config.ts` + `apps/agent/drizzle/0001_initial.sql`
+  (plus `drizzle/meta/_journal.json` and `drizzle/meta/0001_snapshot.json`)
+  — generated verbatim via `npx drizzle-kit generate --name initial`
+  against `schema.ts` (not hand-written). drizzle-kit's own numbering
+  starts at `0000`; renamed the generated `0000_initial.sql` file to
+  `0001_initial.sql` per this task's explicit path, and updated the
+  `_journal.json` entry's `idx`/`tag` and the snapshot filename to match, so
+  a future `drizzle-kit generate` for a second migration still diffs
+  correctly. Added a `drizzle` line to the root `.prettierignore` (generated
+  artifact, like `dist`/`coverage`, not hand-authored source) and a
+  `db:generate` script to `apps/agent/package.json`.
+- `apps/agent/src/db/connection.ts` — `openDatabase(dataDir)` (creates the
+  directory recursively, opens `better-sqlite3` at `<dataDir>/pax.sqlite`,
+  sets `journal_mode = WAL`, `foreign_keys = ON`, `busy_timeout = 5000`, and
+  wraps it in a Drizzle `BetterSQLite3Database`) and
+  `createTestDatabase()`/`TestDatabase` for isolated tests. Deliberately
+  file-backed (a fresh `mkdtempSync` dir) rather than `:memory:` even for
+  the test helper — SQLite silently no-ops WAL mode for in-memory
+  databases, which would have made the WAL-enabled test meaningless.
+- `apps/agent/src/db/migrate.ts` — `applyMigrations(sqlite, migrationsDir?)`
+  and the higher-level `migrate(dataDir, options?)` (opens the DB via
+  `connection.ts` then applies migrations). Deliberately does **not** use
+  `drizzle-orm/better-sqlite3/migrator`'s built-in `migrate()` — that helper
+  is real (verified in its shipped source: `readMigrationFiles` +
+  `dialect.migrate`) but owns its own bookkeeping table shape (`id SERIAL
+  PRIMARY KEY, hash, created_at`, name configurable via `migrationsTable`)
+  outside of Drizzle's schema builder, whereas this task requires
+  `schema_migrations` to be one real, task-controlled table defined in
+  `schema.ts` like the other six. Instead, `migrate.ts` reads the same
+  drizzle-kit-*generated* `.sql` files itself, splits on
+  `--> statement-breakpoint` (drizzle's own multi-statement marker;
+  `better-sqlite3.exec()` can actually run multi-statement SQL directly, so
+  this is a parsing convenience, not a functional requirement), runs each
+  migration inside a `sqlite.transaction()`, and records it in
+  `schema_migrations`. Bootstrapping order resolves the obvious chicken/egg
+  problem (the ledger table is itself created *by* migration `0001`):
+  `readLedger()` checks `sqlite_master` for the table's existence first and
+  returns an empty ledger if it doesn't exist yet, rather than querying a
+  table that may not exist. Also added `MigrationIntegrityError`: an
+  already-applied migration whose file content no longer matches its
+  recorded hash throws instead of silently skipping (defends against a file
+  edited post-application).
+- `apps/agent/src/config.ts` — `loadConfig(env?)`, Zod-validated
+  (`zod@^4.4.3`, imported the same way as `@pax/contracts`), reading exactly
+  the nine variables named in this task plus applying exactly the literal
+  default values shown in the repo root `.env.example` (that file's own
+  header names it authoritative for "names, defaults, and meaning").
+  `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_HEADERS` are documented
+  there too but were out of this task's explicit variable list, so are not
+  validated here (left for the OTEL-wiring task). `PORT` is deliberately
+  **not** in this schema — undocumented in `.env.example`, and a standard
+  Node/Railway bootstrapping convention rather than Pax domain config;
+  handled directly in `server.ts`. All 9 issues from an invalid config are
+  collected via one `ConfigSchema.safeParse()` (Zod does not short-circuit
+  on the first failing field in a plain object schema) into one
+  `ConfigError` listing every problem at once.
+- `apps/agent/src/routes/health.ts` — `GET /health` returning
+  `{ status: 'ok', database: { connected: boolean } }`, where `connected`
+  comes from a real `sqlite.prepare('SELECT 1').get()` wrapped in
+  try/catch, not a hardcoded `true` (proven in `health.test.ts` by
+  monkey-patching `.prepare` to observe it is actually called, and by
+  closing the real connection and asserting `connected` flips to `false`).
+- `apps/agent/src/app.ts` — `buildApp({ database })` returns a bare Express
+  `Application` with no `.listen()` call, wiring only the health router.
+  Its top-of-file comment states plainly (no `TODO`/`FIXME`/`XXX`, to avoid
+  tripping `scripts/check-source.ts`'s marker gate) that
+  `packs`/`cases`/`commands`/`runs`/`events` routes are a later task once
+  `packages/core`'s command-service integration lands.
+- `apps/agent/src/server.ts` — `startServer(options?)`: loads config, runs
+  `migrate(dataDir)`, builds the app, and listens on `PORT` (default
+  `8080`), returning `{ app, database, server, config, migration }` instead
+  of only having a side effect, so tests can boot a real instance on an
+  ephemeral port (`{ port: 0 }`) against an isolated temp `dataDir` and
+  close it deterministically. Guarded by an `isMain()` check (same pattern
+  as `scripts/check-source.ts`) so importing the module never starts a real
+  listener as a side effect.
+
+**Judgment calls — real-column vs. JSON-blob split per table** (every
+table's full rationale is also documented inline in `schema.ts`):
+
+- `cases`: real columns for `id`, `title`, `status`, the four `pack`
+  sub-fields (`pack_id`/`pack_version`/`pack_compiled_hash`/
+  `pack_selected_by`), `event_sequence` (needed for the optimistic-
+  concurrency `expectedSequence` check in `architecture.md`'s command flow),
+  `created_at`/`updated_at`. The rest of `CaseState` (entities, criteria,
+  obligations, claims, sources, evidenceLinks, recommendation, proposal,
+  activeFocus, selection ids) is one `snapshot` JSON blob.
+- `case_events`: real columns for all of `CaseEvent`'s base fields (`id`
+  aliasing `eventId`, `case_id`, `sequence`, `type`, `command_id`,
+  `created_at` aliasing `timestamp`); the twelve discriminated `payload`
+  shapes stay one JSON blob since the shape varies by `type`.
+- `activity_events`: real columns for every field the SSE/polling contract
+  in `architecture.md` correlates or filters on (`case_id`, `sequence`,
+  `type`, `phase`, `command_id`, `run_id`, `obligation_id`, `agent_id`,
+  `debug_event_id`, `summary`); only the bounded `safeDetails` JSON record
+  stays a `data` blob.
+- `runs`: real columns for `status`, `obligation_id` (the run's "focus"),
+  `trace_id`/`session_id` (`RuntimeCorrelation` fields); `limits`
+  (`ExecutionLimits`) and `result` (`ExecutionResult`) stay JSON since
+  nothing in the spec filters/indexes on their internals. `RUN_STATUSES`
+  (`queued`/`running`/`completed`/`failed`) is inferred from
+  `PublicActivityEvent`'s `run.queued`/`run.started`/`run.completed`/
+  `run.failed` type suffixes — no spec names a `RunStatus` enum directly.
+- `idempotency_keys`: real columns for `id` (the idempotency key itself),
+  `case_id`, `command_name`; `result` (the serialized `CommandReceipt`/
+  `RunReceipt`) stays JSON. **Judgment call surfaced by this table**:
+  `architecture.md` describes a command carrying "an idempotency key *and*
+  client-generated `commandId`" as if they're two fields, but no schema in
+  `@pax/contracts` has a field for a separate idempotency key — modeled
+  `commandId` itself as the idempotency key (apposition reading), since
+  that's the only identifier the contracts actually carry. Flagged in
+  `schema.ts` for whichever task builds the real command service to revisit
+  if a genuinely distinct field turns up.
+- `runtime_events`: real columns for every field the Runtime Inspector
+  filters/correlates/navigates by (the full `RuntimeCorrelation` id set,
+  `category`, `name`, `phase`, `level`, `sequence`, `summary`); `attributes`/
+  `payload`/`tokenUsage`/`estimatedCostUsd`/`stateDiff`/`redactions` stay
+  one `data` JSON blob — several of those are typed bare `unknown` in the
+  spec itself (`runtime.ts`), so a JSON blob is the honest representation,
+  not a shortcut. `id` is a synthetic per-row identifier (`RuntimeDebugEvent`
+  has correlation ids but no event id of its own) — this is what
+  `activity_events.debug_event_id` points at.
+- `schema_migrations`: `id` (autoincrement), `name` (unique — the applied
+  migration's filename), `hash` (content hash, used by `migrate.ts`'s drift
+  check above), `applied_at`.
+- Added one uniqueness/index judgment call beyond what `architecture.md`
+  states explicitly: a unique `(run_id, sequence)` index on `runtime_events`,
+  mirroring the required `(case_id, sequence)` rule on `case_events`/
+  `activity_events` — grounded in `debugging-and-observability.md`'s
+  "`sequence` is monotonic within a run," not literally required by
+  `architecture.md`'s persistence table list, but the same integrity
+  pattern applied consistently.
+- All foreign keys use `ON DELETE CASCADE` (`case_events`, `activity_events`,
+  `runs`, `idempotency_keys` → `cases.id`; `runtime_events` → both
+  `runs.id` and `cases.id`) — verified with a real cascading-delete test,
+  not just declared.
+
+**TDD evidence**: every source file above has a same-directory `.test.ts`
+written first; each was run and confirmed to fail with "Cannot find module"
+(the real reason — not implemented yet) before its implementation was
+written — `config.test.ts` (8 cases: full defaults, full override coercion,
+empty-string-means-unset for both optional string vars, all-invalid-at-once
+error listing, the 30-day retention ceiling, an invalid `PAX_PUBLIC_ORIGIN`
+URL, a non-boolean `PAX_AUTHORING_ENABLED`), `db/connection.test.ts` (7:
+missing-dir creation, WAL actually enabled via `PRAGMA journal_mode`,
+foreign keys actually enabled, bounded busy timeout, a live drizzle-bound
+query, cross-call isolation, `cleanup()` actually removing the temp dir),
+`db/migrate.test.ts` (5: all seven tables created, second-run no-op with a
+single ledger row, `MigrationIntegrityError` on a tampered already-applied
+file, missing/nested dir creation via `migrate()`, idempotency across two
+full `migrate()` boots), `db/schema.test.ts` (9: WAL+FK sanity, real
+duplicate-insert failures for `(case_id, sequence)` on both `case_events`
+and `activity_events`, `(run_id, sequence)` on `runtime_events`, the
+`idempotency_keys` primary key, `schema_migrations.name`; two real
+dangling-foreign-key failures; one real cascading-delete proof),
+`routes/health.test.ts` (3: real `{connected:true}`, a `.prepare` spy
+proving a real query is issued rather than a hardcoded value,
+`{connected:false}` after closing the connection), `app.test.ts` (4: no
+`listen()` side effect, a real `/health` round-trip via supertest,
+`connected:false` propagating end-to-end, a real `404` for an unknown
+route), `server.test.ts` (2: a full real-socket boot + `fetch()` against an
+ephemeral port with an isolated temp `dataDir`, and idempotent migrations
+across two successive real boots of the same `dataDir`).
+
+**Repairs made during the loop** (each a real fail → fix → rerun cycle, not
+a weakened test): the tamper-detection `migrate.test.ts` case initially
+used a fake migration file that only created a `probe` table, so the
+runner's `INSERT INTO schema_migrations` failed with "no such table" — not
+an implementation bug, a test-fixture bug (a real generated migration
+always creates `schema_migrations` itself as part of its own DDL, since
+it's declared in `schema.ts`); fixed by making the fixture migration create
+`schema_migrations` too, matching what a real one always does.
+`process.env.PORT`/`process.env['PORT']` and an unnecessary `as
+typeof test.sqlite.prepare` cast in `health.test.ts` were real
+`noPropertyAccessFromIndexSignature`/`@typescript-eslint/
+no-unnecessary-type-assertion` lint findings, fixed directly. `drizzle.config.ts`
+was outside every tsconfig's `include`, breaking type-aware ESLint parsing
+("was not found by the project service") — added it to
+`apps/agent/tsconfig.json`'s `include`.
+
+**Verification commands and results:**
+
+```
+$ pnpm --filter @pax/agent test        # 7 files, 38 tests, all passing
+$ pnpm --filter @pax/agent typecheck   # 0 errors
+$ pnpm typecheck                       # workspace-wide, 8 packages, 0 errors
+$ pnpm test:unit                       # workspace-wide, 28 files, 488 tests, all passing
+$ npx eslint apps/agent --max-warnings=0   # clean
+$ npx prettier --check apps/agent          # clean
+$ pnpm lint                            # eslint . clean repo-wide; check:source flags exactly one
+                                        #   pre-existing finding, outside this task's scope
+                                        #   (packages/core/src/attributes.test.ts:44, a redacted-
+                                        #   secret test fixture in the concurrently-landed Task 2
+                                        #   core workstream, already committed as 654ef6a before
+                                        #   this task started) — nothing under apps/agent flagged
+$ pnpm format:check                    # clean except packages/core/src/index.ts, same reason
+                                        #   (concurrent workstream, not touched here)
+```
+
+`pnpm-workspace.yaml` gained `allowBuilds.better-sqlite3: true` (required
+for its prebuilt-binary postinstall step to run at all — without it,
+`require('better-sqlite3')` fails outright). Root `.prettierignore` gained
+a `drizzle` entry (generated migration output, not hand-authored).
+`apps/agent/tsconfig.json` gained `drizzle.config.ts` in `include`.
+
+**Result:** every file in this task's scope is real, tested, and green.
+Both repo-wide static gates (`lint`'s `check:source` stage and
+`format:check`) have exactly one pre-existing failure each, both entirely
+inside the concurrently-landing `packages/core` workstream and already
+committed before this task began — confirmed via `git log -- <path>` — not
+introduced or touched here. Gate: **passed** for everything in this task's
+scope. The case store, activity store, command service, run service, and
+`routes/{packs,cases,commands,runs,events}.ts` remain explicitly out of
+scope pending `packages/core`'s command-service integration, per this
+task's boundary.
