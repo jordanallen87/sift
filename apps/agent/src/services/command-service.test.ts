@@ -26,6 +26,30 @@ function requireSnapshot(receipt: CommandReceipt): CaseState {
   return receipt.snapshot;
 }
 
+/**
+ * A `CaseStore` wrapper whose `load()` always returns a fixed, deliberately
+ * stale snapshot while `append()`/`updateSelection()` (and everything else)
+ * still hit the real, since-advanced store. Simulates the real race
+ * `loadForMutation()`'s own pre-check cannot observe in a single
+ * synchronous test process: another command committing between this
+ * command's read and its write (architecture.md "Command and event flow" --
+ * exactly the optimistic-concurrency contract `append()`/`updateSelection()`
+ * enforce). Proves each command method's own `if (result.status ===
+ * 'applied')` branch correctly sees the non-`'applied'` outcome `append()`/
+ * `updateSelection()` can genuinely return, not just the one
+ * `loadForMutation()`'s pre-check already filters for.
+ */
+function staleReadCaseStore(real: MemoryCaseStore, staleSnapshot: CaseState) {
+  return {
+    load: (_caseId: string) => staleSnapshot,
+    append: real.append.bind(real),
+    updateSelection: real.updateSelection.bind(real),
+    peekIdempotent: real.peekIdempotent.bind(real),
+    subscribe: real.subscribe.bind(real),
+    resetDemo: real.resetDemo.bind(real),
+  };
+}
+
 describe('CommandService', () => {
   let caseStore: MemoryCaseStore;
   let activityStore: InMemoryActivityStore;
@@ -128,6 +152,35 @@ describe('CommandService', () => {
       // string compare would incorrectly rank "2.1.3" above "2.1.10"),
       // which beats "1.0.0" (major).
       expect(result.value.snapshot?.pack.version).toBe('2.2.0');
+    });
+
+    it('keeps the already-found highest version when a later-registered candidate has a lower version (reduce\'s "not greater" branch, not just its "greater" branch every other multi-version case above exercises)', () => {
+      const descendingVersionRegistry = new PackRegistry();
+      for (const version of ['2.0.0', '1.5.0']) {
+        descendingVersionRegistry.register(
+          compilePack(
+            syntheticCarPurchaseManifest({
+              identity: { ...syntheticCarPurchaseManifest().identity, version },
+            }),
+            syntheticCatalog(),
+            fixedClock,
+          ),
+        );
+      }
+      const descendingVersionService = new CommandService({
+        caseStore: new MemoryCaseStore(),
+        activityStore: new InMemoryActivityStore(),
+        registry: descendingVersionRegistry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = descendingVersionService.startDemo('cmd-1', { demoId: 'car-purchase' });
+      requireOk(result);
+      // "2.0.0" was registered (and found) first; "1.5.0" registered second
+      // must NOT overwrite it -- proving the reduce's ternary took its
+      // "candidate is not greater than latest" (false) branch.
+      expect(result.value.snapshot?.pack.version).toBe('2.0.0');
     });
 
     it('seeds pack-specific demo entities (e.g. starting candidates) when demoSeedEntities configures the pack', () => {
@@ -330,6 +383,45 @@ describe('CommandService', () => {
       });
       expect(result.status).toBe('conflict');
     });
+
+    it('persists optional sourceIds on an option attribute when the caller provides them (every other test above omits sourceIds entirely)', () => {
+      const snapshot = startDemo();
+      const result = service.upsertOption('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: {
+          label: 'Honda Civic',
+          kind: 'car',
+          attributes: [
+            {
+              definitionId: 'car.price',
+              value: { type: 'money', amount: 24000, currency: 'USD' },
+              sourceIds: ['source-1'],
+            },
+          ],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.entities[0]?.attributes['car.price']?.sourceIds).toEqual(['source-1']);
+    });
+
+    // `createAttributeRecord`'s `!recordResult.ok` branch (and therefore the
+    // `errors.length > 0` branch right after it) is not covered here,
+    // deliberately: it can only fail if `attributeValueStatusInvariantError`
+    // rejects the status/value pairing (impossible -- this method always
+    // passes the fixed pair `status: 'asserted'` with a `value` that
+    // `UpsertOptionInputSchema`'s `OptionAttributeInputSchema.value` already
+    // requires to be present) or if the final `AttributeRecordSchema.
+    // safeParse(candidate)` rejects a `definitionId`/`label`/`value`/
+    // `sourceIds` that has *already* passed validation against an identical
+    // or strictly narrower Zod schema one line above in `upsertOption`
+    // itself (`idString()` is a strict subset of `AttributeRecordShape`'s
+    // unconstrained `safeString(200)`, and `value`/`sourceIds` reuse the
+    // exact same `AttributeValueSchema`/`idString()` schema instances) --
+    // re-parsing already-valid data with the same schema cannot fail. Not
+    // reachable through any input that has already passed
+    // `UpsertOptionInputSchema.safeParse`.
   });
 
   describe('focusOption', () => {
@@ -406,6 +498,31 @@ describe('CommandService', () => {
       const second = service.focusOption('cmd-3', input);
       requireOk(second);
       expect(second.value.caseId).toBe(first.value.caseId);
+    });
+
+    it("returns a 409-shaped conflict when the underlying updateSelection() call itself detects the case has advanced (the \"if (result.status === 'applied')\" false path -- loadForMutation's own pre-check already catches every conflict every other test above produces, so only a genuine append()/updateSelection() race, simulated here, reaches it)", () => {
+      const { snapshot, optionId } = withOption();
+      const advanced = service.upsertOption('cmd-real', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: { label: 'Toyota Corolla', kind: 'car', attributes: [] },
+      });
+      requireOk(advanced);
+
+      const staleReadService = new CommandService({
+        caseStore: staleReadCaseStore(caseStore, snapshot),
+        activityStore,
+        registry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = staleReadService.focusOption('cmd-race', {
+        caseId: snapshot.id,
+        optionId,
+        expectedSequence: snapshot.eventSequence,
+      });
+      expect(result.status).toBe('conflict');
     });
   });
 
@@ -493,6 +610,53 @@ describe('CommandService', () => {
       const second = service.defineCaseAttribute('cmd-2', input);
       requireOk(second);
       expect(second.value.acceptedSequence).toBe(first.value.acceptedSequence);
+    });
+
+    it('carries optional unit and allowedValues through to the created definition when provided (draftInput() above never sets either)', () => {
+      const snapshot = startDemo();
+      const result = service.defineCaseAttribute('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        definition: {
+          id: 'custom.max_towing_capacity',
+          label: 'Max towing capacity',
+          valueType: 'number',
+          appliesTo: ['car'],
+          unit: 'lbs',
+          allowedValues: ['1500', '3500', '5000'],
+          evidenceExpectation: 'source',
+          comparison: 'higher_better',
+          reason: 'The household tows a small trailer.',
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.caseExtensions[0]?.definition.unit).toBe('lbs');
+      expect(updated.caseExtensions[0]?.definition.allowedValues).toEqual(['1500', '3500', '5000']);
+    });
+
+    it("returns a 409-shaped conflict when the underlying append() call itself detects the case has advanced (a genuine race, not one loadForMutation's pre-check already catches -- see focusOption's identical-purpose test above)", () => {
+      const snapshot = startDemo();
+      const advanced = service.upsertOption('cmd-real', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: { label: 'Toyota Corolla', kind: 'car', attributes: [] },
+      });
+      requireOk(advanced);
+
+      const staleReadService = new CommandService({
+        caseStore: staleReadCaseStore(caseStore, snapshot),
+        activityStore,
+        registry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = staleReadService.defineCaseAttribute(
+        'cmd-race',
+        draftInput(snapshot.id, snapshot.eventSequence),
+      );
+      expect(result.status).toBe('conflict');
     });
   });
 
@@ -611,6 +775,50 @@ describe('CommandService', () => {
       requireOk(second);
       expect(second.value.acceptedSequence).toBe(first.value.acceptedSequence);
     });
+
+    it('rejects a pending extension and records a "Rejected" activity summary (every other test above only ever confirms)', () => {
+      const { snapshot, extensionId } = withPendingExtension();
+      const result = service.reviewCaseExtension('cmd-3', {
+        caseId: snapshot.id,
+        extensionId,
+        decision: 'reject',
+        expectedSequence: snapshot.eventSequence,
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.caseExtensions[0]?.definition.confirmation).toBe('rejected');
+
+      const activity = activityStore.replayFrom(snapshot.id, 0);
+      expect(activity.some((event) => event.summary.includes('Rejected case extension'))).toBe(
+        true,
+      );
+    });
+
+    it('returns a 409-shaped conflict when the underlying append() call itself detects the case has advanced', () => {
+      const { snapshot, extensionId } = withPendingExtension();
+      const advanced = service.upsertOption('cmd-real', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: { label: 'Toyota Corolla', kind: 'car', attributes: [] },
+      });
+      requireOk(advanced);
+
+      const staleReadService = new CommandService({
+        caseStore: staleReadCaseStore(caseStore, snapshot),
+        activityStore,
+        registry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = staleReadService.reviewCaseExtension('cmd-race', {
+        caseId: snapshot.id,
+        extensionId,
+        decision: 'confirm',
+        expectedSequence: snapshot.eventSequence,
+      });
+      expect(result.status).toBe('conflict');
+    });
   });
 
   describe('updateCriteria', () => {
@@ -636,6 +844,127 @@ describe('CommandService', () => {
       const updated = requireSnapshot(result.value);
       expect(updated.criteria).toHaveLength(2);
       expect(updated.criteria.some((c) => c.id === 'range')).toBe(true);
+    });
+
+    it('rejects adding a user-defined criterion when the pinned pack disallows them (policy) -- the synthetic pack every other test uses has allowUserDefined: true, so this needs a differently-configured pack', () => {
+      const noUserDefinedRegistry = new PackRegistry();
+      noUserDefinedRegistry.register(
+        compilePack(
+          syntheticCarPurchaseManifest({
+            criteria: {
+              defaults: [
+                {
+                  id: 'price',
+                  label: 'Price',
+                  kind: 'hard_constraint',
+                  weight: 100,
+                  direction: 'lower_better',
+                  appliesToAttribute: 'car.price',
+                  origin: 'pack',
+                  status: 'active',
+                },
+              ],
+              allowUserDefined: false,
+              protectedCriterionIds: ['price'],
+            },
+          }),
+          syntheticCatalog(),
+          fixedClock,
+        ),
+      );
+      const restrictedService = new CommandService({
+        caseStore: new MemoryCaseStore(),
+        activityStore: new InMemoryActivityStore(),
+        registry: noUserDefinedRegistry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+      const startResult = restrictedService.startDemo('cmd-1', { demoId: 'car-purchase' });
+      requireOk(startResult);
+      const restrictedSnapshot = requireSnapshot(startResult.value);
+
+      const result = restrictedService.updateCriteria('cmd-2', {
+        caseId: restrictedSnapshot.id,
+        expectedSequence: restrictedSnapshot.eventSequence,
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'range',
+              label: 'Range',
+              kind: 'preference',
+              weight: 40,
+              direction: 'higher_better',
+            },
+          },
+        ],
+      });
+      expect(result.status).toBe('policy');
+    });
+
+    it('adds a criterion carrying optional target, appliesToAttribute, and question fields when provided (the "adds a new user-defined criterion" success test above sets none of them)', () => {
+      const snapshot = startDemo();
+      const result = service.updateCriteria('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'max-price-hard',
+              label: 'Max acceptable price',
+              kind: 'hard_constraint',
+              weight: 50,
+              direction: 'target',
+              target: { type: 'money', amount: 30000, currency: 'USD' },
+              appliesToAttribute: 'car.price',
+              question: 'What is the maximum acceptable out-the-door price?',
+            },
+          },
+        ],
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      const criterion = updated.criteria.find((c) => c.id === 'max-price-hard');
+      expect(criterion?.target).toEqual({ type: 'money', amount: 30000, currency: 'USD' });
+      expect(criterion?.appliesToAttribute).toBe('car.price');
+      expect(criterion?.question).toBe('What is the maximum acceptable out-the-door price?');
+    });
+
+    it('removes a non-protected, previously user-added criterion (success) -- every removal test elsewhere in this block only exercises rejection paths', () => {
+      const snapshot = startDemo();
+      const added = service.updateCriteria('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'range',
+              label: 'Range',
+              kind: 'preference',
+              weight: 40,
+              direction: 'higher_better',
+            },
+          },
+        ],
+      });
+      requireOk(added);
+      const afterAdd = requireSnapshot(added.value);
+
+      const result = service.updateCriteria('cmd-3', {
+        caseId: snapshot.id,
+        expectedSequence: afterAdd.eventSequence,
+        operations: [{ op: 'remove', criterionId: 'range' }],
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      // removeCriterion() marks the criterion 'excluded' rather than
+      // deleting the entry (packages/core/src/criteria.ts) -- both entries
+      // are still present, but "range" is no longer active.
+      expect(updated.criteria).toHaveLength(2);
+      const removed = updated.criteria.find((c) => c.id === 'range');
+      expect(removed?.status).toBe('excluded');
     });
 
     it('rejects removing a protected criterion (policy)', () => {
@@ -821,6 +1150,31 @@ describe('CommandService', () => {
       requireOk(second);
       expect(second.value.acceptedSequence).toBe(first.value.acceptedSequence);
     });
+
+    it('returns a 409-shaped conflict when the underlying append() call itself detects the case has advanced', () => {
+      const snapshot = startDemo();
+      const advanced = service.upsertOption('cmd-real', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: { label: 'Toyota Corolla', kind: 'car', attributes: [] },
+      });
+      requireOk(advanced);
+
+      const staleReadService = new CommandService({
+        caseStore: staleReadCaseStore(caseStore, snapshot),
+        activityStore,
+        registry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = staleReadService.updateCriteria('cmd-race', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        operations: [{ op: 'rename', criterionId: 'price', label: 'Price (renamed again)' }],
+      });
+      expect(result.status).toBe('conflict');
+    });
   });
 
   describe('submitSource', () => {
@@ -881,6 +1235,28 @@ describe('CommandService', () => {
       const second = service.submitSource('cmd-2', input);
       requireOk(second);
       expect(requireSnapshot(second.value).sources).toHaveLength(1);
+    });
+
+    it('captures optional publisher, publishedAt, and excerpt fields when the caller provides them (the "adds a source" success test above omits all three)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        source: {
+          url: 'https://example.com/review',
+          title: 'Consumer review',
+          publisher: 'Consumer Reports',
+          publishedAt: FIXED_NOW,
+          retrievedAt: FIXED_NOW,
+          excerpt: 'This car scored well in reliability testing.',
+          claims: [],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.sources[0]?.publisher).toBe('Consumer Reports');
+      expect(updated.sources[0]?.publishedAt).toBe(FIXED_NOW);
+      expect(updated.sources[0]?.excerpt).toBe('This car scored well in reliability testing.');
     });
   });
 
@@ -995,6 +1371,33 @@ describe('CommandService', () => {
       requireOk(second);
       expect(second.value.acceptedSequence).toBe(first.value.acceptedSequence);
     });
+
+    it('returns a 409-shaped conflict when the underlying append() call itself detects the case has advanced', () => {
+      const { snapshot, evidenceId } = withEvidence();
+      const advanced = service.upsertOption('cmd-real', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: { label: 'Toyota Corolla', kind: 'car', attributes: [] },
+      });
+      requireOk(advanced);
+
+      const staleReadService = new CommandService({
+        caseStore: staleReadCaseStore(caseStore, snapshot),
+        activityStore,
+        registry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = staleReadService.setEvidenceDisposition('cmd-race', {
+        caseId: snapshot.id,
+        evidenceId,
+        disposition: 'excluded',
+        reason: 'reason',
+        expectedSequence: snapshot.eventSequence,
+      });
+      expect(result.status).toBe('conflict');
+    });
   });
 
   describe('focusEvidence', () => {
@@ -1042,6 +1445,15 @@ describe('CommandService', () => {
       expect(requireSnapshot(result.value).selectedEvidenceId).toBe(evidenceId);
     });
 
+    it('rejects invalid input (validation)', () => {
+      const result = service.focusEvidence('cmd-3', {
+        caseId: '',
+        evidenceId: '',
+        expectedSequence: -1,
+      });
+      expect(result.status).toBe('validation');
+    });
+
     it('rejects an unknown evidenceId (validation)', () => {
       const { snapshot } = withEvidence();
       const result = service.focusEvidence('cmd-3', {
@@ -1079,6 +1491,31 @@ describe('CommandService', () => {
       const second = service.focusEvidence('cmd-3', input);
       requireOk(second);
       expect(second.value.caseId).toBe(first.value.caseId);
+    });
+
+    it('returns a 409-shaped conflict when the underlying updateSelection() call itself detects the case has advanced', () => {
+      const { snapshot, evidenceId } = withEvidence();
+      const advanced = service.upsertOption('cmd-real', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: { label: 'Toyota Corolla', kind: 'car', attributes: [] },
+      });
+      requireOk(advanced);
+
+      const staleReadService = new CommandService({
+        caseStore: staleReadCaseStore(caseStore, snapshot),
+        activityStore,
+        registry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = staleReadService.focusEvidence('cmd-race', {
+        caseId: snapshot.id,
+        evidenceId,
+        expectedSequence: snapshot.eventSequence,
+      });
+      expect(result.status).toBe('conflict');
     });
   });
 
@@ -1252,7 +1689,70 @@ describe('CommandService', () => {
       requireOk(second);
       expect(second.value.acceptedSequence).toBe(first.value.acceptedSequence);
     });
+
+    it('rejects a pending proposal when actor is human (success), recording a "Proposal rejected." activity summary (every other test above only ever approves or requests revision)', () => {
+      const { snapshot } = withPendingProposal();
+      const result = service.reviewProposal('cmd-3', {
+        caseId: snapshot.id,
+        proposalId: 'proposal-1',
+        actor: 'human',
+        decision: 'reject',
+        expectedSequence: snapshot.eventSequence,
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.proposal?.status).toBe('rejected');
+
+      const activity = activityStore.replayFrom(snapshot.id, 0);
+      expect(activity.some((event) => event.summary === 'Proposal rejected.')).toBe(true);
+    });
+
+    it('returns a 409-shaped conflict when the underlying append() call itself detects the case has advanced (applyProposalReview, shared by reviewProposal/requestRevision)', () => {
+      const { snapshot } = withPendingProposal();
+      const advanced = service.upsertOption('cmd-real', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: { label: 'Toyota Corolla', kind: 'car', attributes: [] },
+      });
+      requireOk(advanced);
+
+      const staleReadService = new CommandService({
+        caseStore: staleReadCaseStore(caseStore, snapshot),
+        activityStore,
+        registry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = staleReadService.reviewProposal('cmd-race', {
+        caseId: snapshot.id,
+        proposalId: 'proposal-1',
+        actor: 'human',
+        decision: 'approve',
+        expectedSequence: snapshot.eventSequence,
+      });
+      expect(result.status).toBe('conflict');
+    });
   });
+
+  // `applyProposalReview`'s `proposal === null` guard (right after the
+  // try/catch around `reviewProposalDomain`) is not covered here,
+  // deliberately: the method's own comment already documents why --
+  // `reviewProposalDomain` (the real `@pax/core` function under test
+  // throughout this describe block) only ever returns a `CaseState` with a
+  // non-null `proposal`; every input that would leave one unset is rejected
+  // via a thrown error first (caught above). Not reachable without directly
+  // replacing `@pax/core`'s real `reviewProposal`, which this suite
+  // deliberately never does.
+  //
+  // `applyProposalReview`'s `catch` block's `throw error;` re-throw (the
+  // `isPaxDomainError(error)` false path) is likewise not covered:
+  // `reviewProposalDomain` only ever throws `PolicyViolationError` or
+  // `ValidationFailedError` (both `PaxDomainError` subclasses,
+  // packages/core/src/errors.ts) -- confirmed by reading every throw site in
+  // packages/core/src/policy.ts. The `isPaxDomainError(error)` *true*
+  // branch is already covered above ("rejects reviewing a proposal id that
+  // does not match the pending one").
 
   // `checkIdempotent`'s "idempotency record references a case that no
   // longer exists" throw (see that method's own comment) is not reachable
@@ -1266,6 +1766,18 @@ describe('CommandService', () => {
   // consistency with `CaseStore`. Left as documented, provably-unreachable
   // defense-in-depth, the same treatment `case-store.ts`'s own analogous
   // "folding produced no snapshot" guard gets.
+
+  // `toReceipt`'s own `switch (result.status)` statement is not given a
+  // `default:` arm: `AppendResult['status']` is a closed, fully-enumerated
+  // union ('applied' | 'duplicate' | 'conflict' | 'not_found'), and every one
+  // of those four literal cases is genuinely exercised somewhere in this
+  // file ('applied'/'duplicate' throughout; 'conflict'/'not_found' by the
+  // race-simulation tests directly below). The switch's own implicit
+  // "matched no case" fallthrough is therefore not reachable by any value a
+  // real `CaseStore` can produce -- only by a `CaseStore` implementation
+  // that violates its own return-type contract, which this suite does not
+  // simulate (unlike the deliberate stale-`load()` race below, that would
+  // not be testing this file's real behavior, only a fabricated one).
 
   describe('toReceipt() conflict/not_found passthrough from CaseStore.append() itself', () => {
     // `loadForMutation()` already pre-checks `expectedSequence` against

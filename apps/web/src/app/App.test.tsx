@@ -1,5 +1,5 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
@@ -1163,6 +1163,462 @@ describe('App', () => {
 
         expect(await axe(container)).toHaveNoViolations();
       });
+    });
+  });
+
+  // Defensive branches this file's other tests do not naturally exercise --
+  // mostly "a promise resolves/rejects after this component (or its case
+  // generation) has already been torn down" guards, plus a handful of
+  // fallback-message/rendering branches whose "happy path" arm is already
+  // covered elsewhere in this file. Some genuinely reachable guards in this
+  // file (`handleResetDemo`'s `snapshot === null` check,
+  // `handleReviewProposal`'s `!snapshot?.proposal || activeCaseId === null`
+  // check, `handleSetDisposition`'s equivalent check, the `obligationId`
+  // parameter of `handleRequestInvestigation`, `review.reason` in
+  // `handleReviewProposal`'s command payload, and the `readiness?.blockers
+  // .length ?? 0` fallback) are NOT covered here because they are
+  // structurally unreachable from any real user interaction as this file
+  // currently wires things: their triggering control either never mounts
+  // (`CaseHeader`/`ApprovalCard`/`EvidenceList`'s action controls all
+  // require non-null data derived from `snapshot` before they render at
+  // all -- unlike "Request investigation", which always mounts, just
+  // disabled) or the value in question (`obligationId`, `review.reason`) is
+  // never produced by any current caller, or (`readiness`) the real
+  // `evaluateReadiness` never actually returns `null` for a non-null
+  // snapshot.
+  describe('defensive branches (post-teardown guards and rare fallback paths)', () => {
+    it('does not update installedPacks after unmount if the /api/packs fetch resolves late', async () => {
+      let releasePacks: (() => void) | undefined;
+      server.use(
+        http.get('/api/packs', async () => {
+          await new Promise<void>((resolve) => {
+            releasePacks = resolve;
+          });
+          return HttpResponse.json([DEFAULT_PACK]);
+        }),
+      );
+
+      const { unmount } = render(
+        <AppProviders commandsClient={createFakePaxCommands()}>
+          <App />
+        </AppProviders>,
+      );
+      await waitFor(() => expect(releasePacks).toBeDefined());
+
+      unmount();
+      expect(() => releasePacks?.()).not.toThrow();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      // No error was thrown by the late-arriving packs response landing
+      // after unmount -- the disposed guard skipped applying it.
+    });
+
+    it('ignores a malformed /api/packs payload that fails schema validation and falls back to the generic option label', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      server.use(
+        http.post('/api/cases/demo', () =>
+          HttpResponse.json(buildFakeCommandReceipt({ caseId: CASE_ID, commandId: 'cmd-start' })),
+        ),
+        pollHandler(snapshot),
+        http.get('/api/packs', () => HttpResponse.json([{ not: 'a valid compiled pack' }])),
+      );
+      const user = userEvent.setup();
+      render(
+        <AppProviders caseEventsConfig={{ createEventSource: createFakeEventSource }}>
+          <App />
+        </AppProviders>,
+      );
+      await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
+      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+
+      // Falls back to the generic 'option' label -- the malformed payload
+      // never made it past `InstalledPacksResponseSchema.safeParse`.
+      expect(screen.getByTestId('option-editor-new')).toHaveTextContent('Add option');
+    });
+
+    it('unmounting before the reload-restore verification fetch resolves does not apply a late activeCaseId/clear update', async () => {
+      localStorage.setItem('pax:activeCaseId', CASE_ID);
+      let releaseRestore: (() => void) | undefined;
+      server.use(
+        http.get(`/api/cases/${CASE_ID}`, async () => {
+          await new Promise<void>((resolve) => {
+            releaseRestore = resolve;
+          });
+          return HttpResponse.json(buildFixtureCaseState({ id: CASE_ID }));
+        }),
+      );
+
+      const { unmount } = render(
+        <AppProviders commandsClient={createFakePaxCommands()}>
+          <App />
+        </AppProviders>,
+      );
+      await waitFor(() => expect(releaseRestore).toBeDefined());
+
+      unmount();
+      expect(() => releaseRestore?.()).not.toThrow();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    it('unmounting before the reload-restore verification fetch rejects does not apply a late clear/restore update', async () => {
+      localStorage.setItem('pax:activeCaseId', CASE_ID);
+      let releaseFailure: (() => void) | undefined;
+      server.use(
+        http.get(`/api/cases/${CASE_ID}`, async () => {
+          await new Promise<void>((resolve) => {
+            releaseFailure = resolve;
+          });
+          return HttpResponse.error();
+        }),
+      );
+
+      const { unmount } = render(
+        <AppProviders commandsClient={createFakePaxCommands()}>
+          <App />
+        </AppProviders>,
+      );
+      await waitFor(() => expect(releaseFailure).toBeDefined());
+
+      unmount();
+      expect(() => releaseFailure?.()).not.toThrow();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    it('disposes the global WebMCP tool registration immediately if the component unmounts before registerPaxTools resolves', async () => {
+      // A subclass whose `registerTool` still performs the base class's real
+      // synchronous bookkeeping (so `disposeAll()`'s abort-listener wiring
+      // stays real) but leaves its OWN returned promise pending until this
+      // test releases it -- giving a deterministic window to unmount before
+      // `registerPaxTools(...).then(...)` in `App.tsx` ever runs.
+      class DelayedRegisterAdapter extends InMemoryModelContextAdapter {
+        readonly pendingReleases: (() => void)[] = [];
+        override registerTool(
+          ...args: Parameters<InMemoryModelContextAdapter['registerTool']>
+        ): Promise<void> {
+          void super.registerTool(...args);
+          return new Promise<void>((resolve) => {
+            this.pendingReleases.push(resolve);
+          });
+        }
+      }
+      const adapter = new DelayedRegisterAdapter();
+      server.use(http.get('/api/packs', () => HttpResponse.json([])));
+
+      const { unmount } = render(
+        <AppProviders commandsClient={createFakePaxCommands()} webMcpAdapter={adapter}>
+          <App />
+        </AppProviders>,
+      );
+      await waitFor(() => expect(adapter.pendingReleases.length).toBeGreaterThan(0));
+
+      unmount();
+      // `registerPaxTools` awaits its two `registerTool` calls sequentially
+      // (`pax_get_case_context` then `pax_list_packs`), so the second one
+      // only becomes pending once the first is released.
+      adapter.pendingReleases[0]?.();
+      await waitFor(() => expect(adapter.pendingReleases.length).toBeGreaterThan(1));
+      adapter.pendingReleases[1]?.();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // The `.then()` callback's own `disposed` check called
+      // `handle.disposeAll()` instead of committing the handle to state --
+      // every tool it had just (really) registered is unregistered again.
+      expect(adapter.registeredToolNames).toEqual([]);
+    });
+
+    it('the "Request investigation" control does nothing if invoked while snapshot is still null (bypasses the disabled attribute to prove the callback\'s own defensive guard)', async () => {
+      let runCalled = false;
+      server.use(
+        http.post('/api/cases/demo', () =>
+          HttpResponse.json(buildFakeCommandReceipt({ caseId: CASE_ID })),
+        ),
+        // Never resolves -- keeps `snapshot` null indefinitely, matching the
+        // real "loading" state this control is disabled during.
+        http.get(`/api/cases/${CASE_ID}/events`, () => new Promise(() => undefined)),
+        packsHandler([DEFAULT_PACK]),
+        http.post(`/api/cases/${CASE_ID}/run`, () => {
+          runCalled = true;
+          return HttpResponse.json({
+            ...buildFakeCommandReceipt({ caseId: CASE_ID }),
+            runId: 'run-should-not-happen',
+          });
+        }),
+      );
+      const user = userEvent.setup();
+      render(
+        <AppProviders caseEventsConfig={{ createEventSource: createFakeEventSource }}>
+          <App />
+        </AppProviders>,
+      );
+      await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
+      await waitFor(() => {
+        expect(screen.getByTestId('case-workspace-loading')).toBeInTheDocument();
+      });
+
+      const button = screen.getByTestId('request-investigation');
+      expect(button).toBeDisabled();
+      button.removeAttribute('disabled');
+      fireEvent.click(button);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(runCalled).toBe(false);
+    });
+
+    it('does not retry a requestInvestigation conflict when the server response lacks a usable actualSequence, and shows a recoverable error instead', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      let callCount = 0;
+      server.use(
+        http.post('/api/cases/demo', () =>
+          HttpResponse.json(buildFakeCommandReceipt({ caseId: CASE_ID })),
+        ),
+        pollHandler(snapshot),
+        packsHandler([DEFAULT_PACK]),
+        http.post(`/api/cases/${CASE_ID}/run`, () => {
+          callCount += 1;
+          // No top-level `snapshot` and no `actualSequence` -- fails the
+          // strict conflict-envelope schema, so the client falls back to the
+          // generic error-body shape instead, whose `details` carries no
+          // usable `actualSequence` at all.
+          return HttpResponse.json(
+            {
+              error: {
+                code: 'CONFLICT',
+                message: 'Stale sequence; refresh and retry.',
+                retryable: true,
+              },
+            },
+            { status: 409 },
+          );
+        }),
+      );
+      const user = userEvent.setup();
+      render(
+        <AppProviders caseEventsConfig={{ createEventSource: createFakeEventSource }}>
+          <App />
+        </AppProviders>,
+      );
+      await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
+      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+
+      await user.click(screen.getByTestId('request-investigation'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('request-investigation-error')).toHaveTextContent(
+          'Stale sequence; refresh and retry.',
+        );
+      });
+      expect(callCount).toBe(1);
+    });
+
+    it('shows the generic "Could not request an investigation." message when requestInvestigation rejects with a non-Error value', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      const commands = createFakePaxCommands({
+        startDemo: () => Promise.resolve(buildFakeCommandReceipt({ caseId: CASE_ID })),
+        requestInvestigation: vi.fn().mockRejectedValue('network gremlin'),
+      });
+      server.use(pollHandler(snapshot), packsHandler([DEFAULT_PACK]));
+      const user = userEvent.setup();
+      render(
+        <AppProviders
+          commandsClient={commands}
+          caseEventsConfig={{ createEventSource: createFakeEventSource }}
+        >
+          <App />
+        </AppProviders>,
+      );
+      await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
+      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+
+      await user.click(screen.getByTestId('request-investigation'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('request-investigation-error')).toHaveTextContent(
+          'Could not request an investigation.',
+        );
+      });
+    });
+
+    it('submitting a "Request revision" review calls reviewProposal with the typed instructions', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        recommendation: {
+          id: 'rec-1',
+          status: 'ready',
+          favoredOptionId: null,
+          rationale: 'Best overall fit.',
+          facts: [],
+          hypotheses: [],
+          confidence: 0.8,
+          limitations: [],
+          sourceIds: [],
+          resolvedObligationIds: [],
+          acceptedUncertaintyObligationIds: [],
+          generatedAt: '2026-08-27T00:00:00.000Z',
+        },
+        proposal: {
+          id: 'prop-1',
+          recommendationId: 'rec-1',
+          status: 'pending',
+          createdAt: '2026-08-27T00:00:00.000Z',
+        },
+      });
+      let capturedBody: unknown;
+      renderLiveWorkspace(snapshot);
+      server.use(
+        commandHandler('reviewProposal', buildFakeCommandReceipt({ caseId: CASE_ID }), (body) => {
+          capturedBody = body;
+        }),
+      );
+      const user = await startDemoAndWait();
+
+      await waitFor(() =>
+        expect(screen.getByTestId('approval-card-request-revision')).toBeInTheDocument(),
+      );
+      await user.click(screen.getByTestId('approval-card-request-revision'));
+      await user.type(
+        screen.getByTestId('approval-card-revision-instructions-input'),
+        'Please re-check the total price including fees.',
+      );
+      await user.click(screen.getByTestId('approval-card-revision-submit'));
+
+      await waitFor(() => {
+        expect(capturedBody).toMatchObject({
+          caseId: CASE_ID,
+          proposalId: 'prop-1',
+          actor: 'human',
+          decision: 'request_revision',
+          instructions: 'Please re-check the total price including fees.',
+        });
+      });
+    });
+
+    it('shows the generic "Could not submit this review." message when reviewProposal rejects with a non-Error value', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        recommendation: {
+          id: 'rec-1',
+          status: 'ready',
+          favoredOptionId: null,
+          rationale: 'Best overall fit.',
+          facts: [],
+          hypotheses: [],
+          confidence: 0.8,
+          limitations: [],
+          sourceIds: [],
+          resolvedObligationIds: [],
+          acceptedUncertaintyObligationIds: [],
+          generatedAt: '2026-08-27T00:00:00.000Z',
+        },
+        proposal: {
+          id: 'prop-1',
+          recommendationId: 'rec-1',
+          status: 'pending',
+          createdAt: '2026-08-27T00:00:00.000Z',
+        },
+      });
+      const commands = createFakePaxCommands({
+        startDemo: () => Promise.resolve(buildFakeCommandReceipt({ caseId: CASE_ID })),
+        reviewProposal: vi.fn().mockRejectedValue('server hiccup'),
+      });
+      server.use(pollHandler(snapshot), packsHandler([DEFAULT_PACK]));
+      const user = userEvent.setup();
+      render(
+        <AppProviders
+          commandsClient={commands}
+          caseEventsConfig={{ createEventSource: createFakeEventSource }}
+        >
+          <App />
+        </AppProviders>,
+      );
+      await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
+      await waitFor(() => expect(screen.getByTestId('approval-card-approve')).toBeInTheDocument());
+
+      await user.click(screen.getByTestId('approval-card-approve'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('approval-card-error')).toHaveTextContent(
+          'Could not submit this review.',
+        );
+      });
+    });
+
+    it('shows the generic "Could not update this evidence item." message when setEvidenceDisposition rejects with a non-Error value', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        evidenceLinks: [
+          {
+            id: 'evidence-1',
+            obligationId: 'obl-1',
+            level: 'E1',
+            verdict: 'pass',
+            disposition: 'included',
+            summary: 'Confirmed.',
+            stale: false,
+            createdAt: '2026-08-27T00:00:00.000Z',
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        ],
+      });
+      const commands = createFakePaxCommands({
+        startDemo: () => Promise.resolve(buildFakeCommandReceipt({ caseId: CASE_ID })),
+        setEvidenceDisposition: vi.fn().mockRejectedValue('server hiccup'),
+      });
+      server.use(pollHandler(snapshot), packsHandler([DEFAULT_PACK]));
+      const user = userEvent.setup();
+      render(
+        <AppProviders
+          commandsClient={commands}
+          caseEventsConfig={{ createEventSource: createFakeEventSource }}
+        >
+          <App />
+        </AppProviders>,
+      );
+      await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
+      await waitFor(() =>
+        expect(screen.getByTestId('evidence-card-set-excluded')).toBeInTheDocument(),
+      );
+
+      await user.click(screen.getByTestId('evidence-card-set-excluded'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('evidence-list-error')).toHaveTextContent(
+          'Could not update this evidence item.',
+        );
+      });
+    });
+
+    it('falls back to showing the raw obligationId in Current Focus when activeFocus references an obligation not present in the snapshot', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        obligations: [],
+        activeFocus: {
+          obligationId: 'obl-ghost',
+          reason: 'Investigating a concern raised mid-session.',
+          since: '2026-08-27T00:00:00.000Z',
+        },
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('current-focus-obligation')).toHaveTextContent('obl-ghost');
+      });
+    });
+
+    it('does not render Skill/Specialist chips in Current Focus when the real activeFocus does not carry them', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        activeFocus: {
+          obligationId: 'obl-1',
+          reason: 'Reviewing without a specific skill or specialist assigned yet.',
+          since: '2026-08-27T00:00:00.000Z',
+        },
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => expect(screen.getByTestId('current-focus-detail')).toBeInTheDocument());
+      expect(screen.queryByTestId('current-focus-skill')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('current-focus-specialist')).not.toBeInTheDocument();
     });
   });
 });

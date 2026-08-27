@@ -214,6 +214,28 @@ describe('EvidenceCard', () => {
       expect(onSetDisposition).toHaveBeenCalledWith('questioned', 'Reviewed by user');
     });
 
+    it('calls onSetDisposition with "excluded" and falls back to a default reason when left blank', async () => {
+      const onSetDisposition = vi.fn();
+      const user = userEvent.setup();
+      render(<EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />);
+
+      await user.clear(screen.getByLabelText(/reason/i));
+      await user.click(screen.getByTestId('evidence-card-set-excluded'));
+
+      expect(onSetDisposition).toHaveBeenCalledWith('excluded', 'Reviewed by user');
+    });
+
+    it('calls onSetDisposition with "questioned" and falls back to a default reason when left blank', async () => {
+      const onSetDisposition = vi.fn();
+      const user = userEvent.setup();
+      render(<EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />);
+
+      await user.clear(screen.getByLabelText(/reason/i));
+      await user.click(screen.getByTestId('evidence-card-set-questioned'));
+
+      expect(onSetDisposition).toHaveBeenCalledWith('questioned', 'Reviewed by user');
+    });
+
     it('disables the controls while a disposition change is pending', () => {
       render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} dispositionPending />);
       expect(screen.getByTestId('evidence-card-set-included')).toBeDisabled();

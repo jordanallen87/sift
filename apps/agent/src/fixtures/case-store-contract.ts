@@ -332,5 +332,102 @@ export function runCaseStoreContractTests(createStore: () => CaseStore): void {
       const result = store.append('case-1', [caseCreatedEvent('case-1')], 0);
       expect(result.status).toBe('applied');
     });
+
+    it("resetDemo() only removes idempotency records scoped to the reset case, leaving another case's record intact", () => {
+      const store = createStore();
+      store.append('case-1', [caseCreatedEvent('case-1')], 0, {
+        idempotency: { commandId: 'cmd-1', commandName: 'startDemo' },
+      });
+      store.append('case-2', [caseCreatedEvent('case-2')], 0, {
+        idempotency: { commandId: 'cmd-2', commandName: 'startDemo' },
+      });
+
+      store.resetDemo('case-1');
+
+      expect(store.peekIdempotent('cmd-1')).toBeUndefined();
+      expect(store.peekIdempotent('cmd-2')).toEqual({
+        caseId: 'case-2',
+        commandName: 'startDemo',
+        acceptedSequence: 1,
+      });
+    });
+
+    it('updateSelection() returns not_found (via the sequence-mismatch branch, not just the record check) when a non-zero expectedSequence is given for a case that does not exist', () => {
+      const store = createStore();
+      const result = store.updateSelection('missing', { selectedOptionId: 'x' }, 5, now);
+      expect(result.status).toBe('not_found');
+    });
+
+    it('updateSelection() sets selectedOptionId/selectedEvidenceId to an explicit null, and can set selectedEvidenceId/activeFocus to real values', () => {
+      const store = createStore();
+      store.append('case-1', [caseCreatedEvent('case-1')], 0);
+
+      const withOptionAndEvidence = store.updateSelection(
+        'case-1',
+        { selectedOptionId: 'option-1', selectedEvidenceId: 'evidence-1' },
+        1,
+        now,
+      );
+      expect(withOptionAndEvidence.status).toBe('applied');
+      if (withOptionAndEvidence.status !== 'applied') throw new Error('expected applied');
+      expect(withOptionAndEvidence.snapshot.selectedOptionId).toBe('option-1');
+      expect(withOptionAndEvidence.snapshot.selectedEvidenceId).toBe('evidence-1');
+
+      const withActiveFocus = store.updateSelection(
+        'case-1',
+        {
+          activeFocus: {
+            obligationId: 'obligation-1',
+            reason: 'Investigating price evidence.',
+            since: now,
+          },
+        },
+        1,
+        now,
+      );
+      expect(withActiveFocus.status).toBe('applied');
+      if (withActiveFocus.status !== 'applied') throw new Error('expected applied');
+      expect(withActiveFocus.snapshot.activeFocus).toEqual({
+        obligationId: 'obligation-1',
+        reason: 'Investigating price evidence.',
+        since: now,
+      });
+
+      const clearedToNull = store.updateSelection(
+        'case-1',
+        { selectedOptionId: null, selectedEvidenceId: null, activeFocus: null },
+        1,
+        now,
+      );
+      expect(clearedToNull.status).toBe('applied');
+      if (clearedToNull.status !== 'applied') throw new Error('expected applied');
+      expect(clearedToNull.snapshot.selectedOptionId).toBeNull();
+      expect(clearedToNull.snapshot.selectedEvidenceId).toBeNull();
+      expect(clearedToNull.snapshot.activeFocus).toBeNull();
+    });
+
+    it('subscribe() returns an empty replay (not a crash) for a case that was never created', () => {
+      const store = createStore();
+      const subscription = store.subscribe('missing');
+      expect(subscription.replay).toEqual([]);
+    });
+
+    it('subscribe().onEvent() registers a second listener for a case that already has one, and delivers a subsequent append to both', () => {
+      const store = createStore();
+      store.append('case-1', [caseCreatedEvent('case-1')], 0);
+
+      const firstReceived: CaseEvent[] = [];
+      const secondReceived: CaseEvent[] = [];
+      const subscription = store.subscribe('case-1', 1);
+      subscription.onEvent((event) => firstReceived.push(event));
+      subscription.onEvent((event) => secondReceived.push(event));
+
+      store.append('case-1', [criteriaUpdatedEvent('case-1', 2)], 1);
+
+      expect(firstReceived).toHaveLength(1);
+      expect(secondReceived).toHaveLength(1);
+      expect(firstReceived[0]?.sequence).toBe(2);
+      expect(secondReceived[0]?.sequence).toBe(2);
+    });
   });
 }

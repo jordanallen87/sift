@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   HOUSEHOLD_EVENT_LOOKUP_TOOL_ID,
   lookupHouseholdEvents,
@@ -105,5 +108,37 @@ describe('lookupHouseholdEvents', () => {
   it('checks the signal again mid-flight and honors a late abort', () => {
     const result = lookupHouseholdEvents({ signal: signalAbortingOnRead(2) });
     expect(result.status).toBe('cancelled');
+  });
+});
+
+describe('lookupHouseholdEvents -- no-events-at-all edge case (via fixtureBaseDir test seam)', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'pax-household-event-lookup-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('returns a not_found result with an empty-string query -- not "undefined" -- when neither eventId nor type is given and household-events.json has no events at all', () => {
+    writeFileSync(
+      join(tempDir, 'household-events.json'),
+      JSON.stringify({
+        _provenance: 'synthetic test fixture with zero events',
+        caseId: 'case-demo-energy-guardian',
+        householdId: 'household-demo-energy-01',
+        events: [],
+      }),
+    );
+
+    const result = lookupHouseholdEvents({ fixtureBaseDir: tempDir });
+    if (result.status !== 'not_found') {
+      throw new Error(`expected status "not_found", got "${result.status}"`);
+    }
+    expect(result.toolId).toBe(HOUSEHOLD_EVENT_LOOKUP_TOOL_ID);
+    expect(result.query).toBe('');
+    expect(result.message).toContain('undefined');
   });
 });

@@ -110,6 +110,19 @@ describe('ObligationStateSchema', () => {
       ObligationStateSchema.safeParse({ ...validObligationState(), status: 'done' }).success,
     ).toBe(false);
   });
+
+  it('rejects a case-extension obligation that omits its originating criterionId', () => {
+    const result = ObligationStateSchema.safeParse({
+      ...validObligationState(),
+      id: 'case.case-1.dog-crate-fit',
+      origin: 'case_extension',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toEqual(['criterionId']);
+      expect(result.error.issues[0]?.message).toContain('must record its originating criterionId');
+    }
+  });
 });
 
 describe('ClaimSchema', () => {

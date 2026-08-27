@@ -68,6 +68,15 @@ export interface HouseholdEventLookupResult {
 export interface HouseholdEventLookupInput {
   eventId?: string;
   type?: string;
+  /**
+   * Test-only fixture-directory override, passed straight through to
+   * `loadFixture`'s own `baseDir` option (fixture-loader.ts) -- lets a test
+   * exercise the "no events at all" `not_found` path (unreachable against
+   * the checked-in `household-events.json`, which always has two real
+   * events) without ever touching that checked-in fixture. Real callers
+   * never set this.
+   */
+  fixtureBaseDir?: string;
   signal?: AbortSignal;
 }
 
@@ -108,7 +117,10 @@ export function lookupHouseholdEvents(
     return cancelledResult(HOUSEHOLD_EVENT_LOOKUP_TOOL_ID);
   }
 
-  const fixture = loadFixture('household-events');
+  const fixture = loadFixture(
+    'household-events',
+    input.fixtureBaseDir !== undefined ? { baseDir: input.fixtureBaseDir } : {},
+  );
 
   if (isAborted(input.signal)) {
     return cancelledResult(HOUSEHOLD_EVENT_LOOKUP_TOOL_ID);

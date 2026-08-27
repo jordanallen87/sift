@@ -486,7 +486,21 @@ const SPECIALIST_OBLIGATION_ID: Record<
   'household-fit-analyst': 'car.household_fit',
 };
 
-async function drainGraph(
+/**
+ * Exported (not merely a scenario-file-local helper) so its per-event-shape
+ * defensive branches (a malformed/partial `RuntimeEvent` attribute -- a
+ * non-string `skillId`/`toolName`/`nodeId`, a missing `obligationId`, a
+ * `fields`/`handler` of the wrong shape) can be unit-tested directly against
+ * a small synthetic event stream, the same way `foldExecutionResult`/
+ * `ensureSourcesExist` are exported for isolated testing above. These shapes
+ * are never actually produced by the real, fully-scripted two-round Graph
+ * run this file drives (`event-normalizer.ts` always supplies a well-formed
+ * `skillId`/`toolName`/`nodeId`/`obligationId` for every real event it
+ * emits), so a synthetic stream is the only way to exercise this real
+ * defensive parsing without invasively reshaping the real Strands Graph's
+ * own output.
+ */
+export async function drainGraph(
   gen: AsyncGenerator<RuntimeEvent, CarPurchaseGraphResult, undefined>,
   trajectory: ScenarioTrajectory,
 ): Promise<CarPurchaseGraphResult> {

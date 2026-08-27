@@ -115,6 +115,8 @@ export interface BuildAppDeps {
   sseHeartbeatIntervalMs?: number;
   /** Passed through to `createEventsRouter` — overridable in tests exercising the slow-consumer resync path without needing genuine socket backpressure. */
   sseMaxQueueLength?: number;
+  /** Overridable in tests so the `existsSync(...)`/`express.static(...)` static-hosting branch below can be proven against a real (but disposable, test-local) directory without depending on whether `apps/web` has actually been built in this environment. Defaults to the real sibling `apps/web/dist` directory. */
+  webDistDir?: string;
 }
 
 const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -156,8 +158,9 @@ export function buildApp(deps: BuildAppDeps): Application {
     }),
   );
 
-  if (existsSync(WEB_DIST_DIR)) {
-    app.use(express.static(WEB_DIST_DIR));
+  const webDistDir = deps.webDistDir ?? WEB_DIST_DIR;
+  if (existsSync(webDistDir)) {
+    app.use(express.static(webDistDir));
   }
 
   // Final error-handling middleware (docs/specs/testing.md "HTTP

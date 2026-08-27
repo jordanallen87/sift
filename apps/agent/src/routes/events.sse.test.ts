@@ -8,10 +8,11 @@
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from 'node:http';
 import express from 'express';
 import request from 'supertest';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CaseState, CommandReceipt, PublicActivityEvent } from '@pax/contracts';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
+import type { ActivityStore } from '../store/activity-store.js';
 import { createEventsRouter } from './events.js';
 
 interface ParsedSseEvent {
@@ -80,6 +81,34 @@ function openSseConnection(
           events.push(...parsed.events);
         });
         resolve({ events, close: () => req.destroy() });
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+interface RawSseConnection {
+  raw: () => string;
+  close: () => void;
+}
+
+/**
+ * Like `openSseConnection`, but keeps the exact raw bytes instead of parsing
+ * them into discrete events -- `parseSseBuffer` deliberately discards
+ * `:`-prefixed comment lines (SSE heartbeats), so proving a heartbeat comment
+ * was (or was not) actually written needs the untouched raw text.
+ */
+function openRawSseConnection(port: number, path: string): Promise<RawSseConnection> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      { host: '127.0.0.1', port, path, method: 'GET' },
+      (res: IncomingMessage) => {
+        let buffer = '';
+        res.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf8');
+        });
+        resolve({ raw: () => buffer, close: () => req.destroy() });
       },
     );
     req.on('error', reject);
@@ -270,6 +299,198 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
     expect(payload.safeDetails?.resyncRequired).toBe(true);
 
     connection.close();
+  });
+
+  it('stops the initial replay loop as soon as resync has fired, never sending a later already-replayed event past the break', async () => {
+    // A third pre-existing command so there are 3 activity events to
+    // replay: `sseMaxQueueLength: 1` makes resync fire while sending the
+    // *second* replayed event, leaving the loop's `if (writer.closed)
+    // break;` check on the still-pending third one as the only thing that
+    // can stop it from also being sent.
+    harness = createHttpTestHarness({ sseMaxQueueLength: 1 });
+    const { caseId, expectedSequence } = await startDemo();
+    await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/selectPack`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send({ caseId, packId: 'car-purchase', expectedSequence });
+    await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/upsertOption`)
+      .set('Idempotency-Key', 'cmd-3')
+      .send({
+        caseId,
+        expectedSequence: expectedSequence + 1,
+        option: { label: 'Honda Civic', kind: 'car', attributes: [] },
+      });
+
+    const app = express();
+    app.use((_req, res, next) => {
+      const originalWrite = res.write.bind(res) as (...args: unknown[]) => boolean;
+      res.write = ((...args: unknown[]) => {
+        originalWrite(...args);
+        return false;
+      }) as typeof res.write;
+      next();
+    });
+    app.use(
+      createEventsRouter({
+        caseStore: harness.caseStore,
+        activityStore: harness.activityStore,
+        sseMaxQueueLength: 1,
+      }),
+    );
+    server = createServer(app);
+    await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (address === null || typeof address === 'string')
+      throw new Error('expected a real TCP address');
+
+    const connection = await openSseConnection(address.port, `/api/cases/${caseId}/events`);
+    await waitFor(() => connection.events.some((event) => event.event === 'case.snapshot'));
+    connection.close();
+
+    const replayedIds = connection.events
+      .filter((event) => event.event !== 'case.snapshot')
+      .map((event) => event.id);
+    expect(replayedIds).toEqual(['1', '2']);
+    // Sequence 3 was still in `subscription.replay` but the loop had
+    // already broken out by the time it would have been sent.
+    expect(connection.events.some((event) => event.id === '3')).toBe(false);
+  });
+
+  it('skips delivering a live activity event to an already-closed SSE writer instead of crashing or double-sending', async () => {
+    harness = createHttpTestHarness();
+    const { caseId } = await startDemo();
+
+    function burstEvent(sequence: number, summary: string): PublicActivityEvent {
+      return {
+        schemaVersion: '1.0',
+        eventId: `burst-${sequence}`,
+        sequence,
+        timestamp: '2026-08-27T00:00:00.000Z',
+        caseId,
+        type: 'command.accepted',
+        phase: 'completed',
+        summary,
+      };
+    }
+
+    // A fake ActivityStore whose subscribe() synchronously fires three live
+    // events back-to-back, entirely bypassing real network/timing -- the
+    // only fully deterministic way to prove a live event arriving *after*
+    // the writer already closed (event 2 pushes the fake maxQueueLength of 1
+    // past its threshold) is skipped, without racing real socket teardown.
+    const burstActivityStore: ActivityStore = {
+      append: () => {
+        throw new Error('not used by this test');
+      },
+      replayFrom: () => [],
+      latestSequence: () => 0,
+      subscribe: (_caseId, listener) => {
+        listener(burstEvent(1, 'first'));
+        listener(burstEvent(2, 'second (pushes past maxQueueLength, triggers resync)'));
+        listener(burstEvent(3, 'third (must be skipped -- writer already closed)'));
+        return { replay: [], unsubscribe: vi.fn() };
+      },
+    };
+
+    const app = express();
+    app.use((_req, res, next) => {
+      const originalWrite = res.write.bind(res) as (...args: unknown[]) => boolean;
+      res.write = ((...args: unknown[]) => {
+        originalWrite(...args);
+        return false;
+      }) as typeof res.write;
+      next();
+    });
+    app.use(
+      createEventsRouter({
+        caseStore: harness.caseStore,
+        activityStore: burstActivityStore,
+        sseMaxQueueLength: 1,
+      }),
+    );
+    server = createServer(app);
+    await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (address === null || typeof address === 'string')
+      throw new Error('expected a real TCP address');
+
+    const connection = await openSseConnection(address.port, `/api/cases/${caseId}/events`);
+    await waitFor(() => connection.events.some((event) => event.event === 'case.snapshot'));
+    connection.close();
+
+    expect(connection.events.some((event) => event.id === '1')).toBe(true);
+    expect(connection.events.some((event) => event.id === '2')).toBe(true);
+    expect(connection.events.some((event) => event.id === '3')).toBe(false);
+  });
+
+  it('sends a periodic heartbeat comment while the connection stays open', async () => {
+    harness = createHttpTestHarness();
+    const { caseId } = await startDemo();
+
+    const app = express();
+    app.use(
+      createEventsRouter({
+        caseStore: harness.caseStore,
+        activityStore: harness.activityStore,
+        heartbeatIntervalMs: 20,
+      }),
+    );
+    server = createServer(app);
+    await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (address === null || typeof address === 'string')
+      throw new Error('expected a real TCP address');
+
+    const connection = await openRawSseConnection(address.port, `/api/cases/${caseId}/events`);
+    await waitFor(() => connection.raw().includes(': heartbeat'));
+    connection.close();
+  });
+
+  it('never sends a heartbeat once the writer has already closed, however long the interval keeps ticking', async () => {
+    harness = createHttpTestHarness({ sseMaxQueueLength: 1 });
+    const { caseId, expectedSequence } = await startDemo();
+    // A second activity event so the initial replay alone exceeds maxQueueLength (1).
+    await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/selectPack`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send({ caseId, packId: 'car-purchase', expectedSequence });
+
+    const app = express();
+    app.use((_req, res, next) => {
+      const originalWrite = res.write.bind(res) as (...args: unknown[]) => boolean;
+      res.write = ((...args: unknown[]) => {
+        originalWrite(...args);
+        return false;
+      }) as typeof res.write;
+      next();
+    });
+    app.use(
+      createEventsRouter({
+        caseStore: harness.caseStore,
+        activityStore: harness.activityStore,
+        sseMaxQueueLength: 1,
+        heartbeatIntervalMs: 15,
+      }),
+    );
+    server = createServer(app);
+    await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (address === null || typeof address === 'string')
+      throw new Error('expected a real TCP address');
+
+    const connection = await openRawSseConnection(address.port, `/api/cases/${caseId}/events`);
+    await waitFor(() => connection.raw().includes('event: case.snapshot'));
+    // The resync path already set `writer.closed = true` and called
+    // `res.end()` synchronously, *before* the heartbeat interval (registered
+    // afterward, `heartbeatIntervalMs` later) ever gets its first tick --
+    // every subsequent tick during this bounded wait must see
+    // `writer.closed` and skip, however many times it fires before the real
+    // async socket-close teardown eventually clears the interval.
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    connection.close();
+
+    expect(connection.raw()).not.toContain(': heartbeat');
   });
 
   it('returns 404 for an unknown case instead of upgrading to SSE', async () => {

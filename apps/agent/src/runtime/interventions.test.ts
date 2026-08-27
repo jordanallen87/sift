@@ -6,6 +6,7 @@ import {
   Message,
   TextBlock,
   ToolResultBlock,
+  ToolUseBlock,
 } from '@strands-agents/sdk';
 import { describe, expect, it } from 'vitest';
 import type { Clock } from '@pax/core';
@@ -372,6 +373,33 @@ describe('RetrySteering', () => {
     expect(action.type).toBe('guide');
   });
 
+  it('guides when the last three calls (to other tools/args, none failed or duplicated) produced no new evidence', () => {
+    const ledger = new ToolLedger();
+    for (let i = 0; i < 3; i++) {
+      ledger.record({
+        toolName: `listing-reader-${i}`,
+        normalizedArgs: normalizeToolArgs({ candidateId: `candidate-${i}` }),
+        resultStatus: 'success',
+        sourceIds: [],
+        evidenceDelta: 0,
+        timestamp: FIXED_CLOCK.now(),
+      });
+    }
+    const { events, emit } = collector();
+    const handler = new RetrySteering({
+      ...baseDeps,
+      emit,
+      ledger,
+      attemptsUsedForObligation: 0,
+      maxAttemptsPerObligation: 3,
+    });
+    const action = handler.beforeToolCall(
+      beforeToolCall(buildStubAgent(), 'safety-reliability-lookup', { candidateId: 'new' }),
+    );
+    expect(action.type).toBe('guide');
+    expect(events[0]?.reason).toContain('no new source or claim');
+  });
+
   it('guides when a search repeats a prior query family', () => {
     const ledger = new ToolLedger();
     ledger.record({
@@ -482,6 +510,13 @@ describe('EvidenceQualitySteering', () => {
     expect(handler.afterModelCall(event).type).toBe('proceed');
   });
 
+  it('proceeds a final response whose text is empty/whitespace-only, without evaluating source/certainty rules', () => {
+    const { emit } = collector();
+    const handler = new EvidenceQualitySteering({ ...deps, emit });
+    const action = handler.afterModelCall(afterModelCallEndTurn(buildStubAgent(), '   '));
+    expect(action.type).toBe('proceed');
+  });
+
   it('guides a final response that cites no source id', () => {
     const { events, emit } = collector();
     const handler = new EvidenceQualitySteering({ ...deps, emit });
@@ -548,6 +583,46 @@ describe('OutputSanitizer', () => {
     expect(firstBlock?.type === 'textBlock' && firstBlock.text).not.toContain('<script>');
     expect(firstBlock?.type === 'textBlock' && firstBlock.text).toContain('Safe text');
     expect(firstBlock?.type === 'textBlock' && firstBlock.text).toContain('continues.');
+  });
+
+  it('leaves non-text content blocks untouched and only replaces the text block(s) that actually changed', () => {
+    const { emit } = collector();
+    const handler = new OutputSanitizer({ ...deps, emit });
+    const toolUse = new ToolUseBlock({
+      name: 'listing-reader',
+      toolUseId: 'tool-use-1',
+      input: {},
+    });
+    const cleanText = new TextBlock('Already safe text.');
+    const dirtyText = new TextBlock('Unsafe<script>alert(1)</script> text.');
+    const event = new AfterModelCallEvent({
+      agent: buildStubAgent(),
+      model: buildStubAgent().model,
+      invocationState: {},
+      attemptCount: 1,
+      stopData: {
+        message: new Message({ role: 'assistant', content: [toolUse, cleanText, dirtyText] }),
+        stopReason: 'endTurn',
+      },
+    });
+
+    const action = handler.afterModelCall(event);
+    expect(action.type).toBe('transform');
+    if (action.type === 'transform') {
+      action.apply(event);
+    }
+
+    const content = event.stopData?.message.content ?? [];
+    // The non-text block is skipped entirely (same reference, untouched).
+    expect(content[0]).toBe(toolUse);
+    // The already-clean text block is left as the exact same instance --
+    // sanitizing it would have been a no-op, so it is never replaced.
+    expect(content[1]).toBe(cleanText);
+    // Only the block that genuinely needed sanitizing was replaced.
+    expect(content[2]).not.toBe(dirtyText);
+    expect(content[2]?.type).toBe('textBlock');
+    expect(content[2]?.type === 'textBlock' && content[2].text).not.toContain('<script>');
+    expect(content[2]?.type === 'textBlock' && content[2].text).toContain('Unsafe');
   });
 
   it('proceeds when the model call produced no stopData (e.g. an error)', () => {

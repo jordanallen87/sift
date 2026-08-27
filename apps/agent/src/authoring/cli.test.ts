@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PackRegistry } from '@pax/packs';
-import { validManifest } from '@pax/packs/src/fixtures/manifest.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PackRegistry, compilePack } from '@pax/packs';
+import { validCatalog, validManifest } from '@pax/packs/src/fixtures/manifest.js';
 import { loadConfig } from '../config.js';
 import { parseCliArgs, runPackAuthorCli } from './cli.js';
 import type { AuthoringAnswers } from './demo-answers.js';
@@ -200,5 +200,124 @@ describe('runPackAuthorCli', () => {
     // Proves the CLI actually calls the real @pax/agent config loader, not a stand-in.
     const config = loadConfig({ PAX_AUTHORING_ENABLED: 'true' });
     expect(config.authoringEnabled).toBe(true);
+  });
+
+  it('falls back to console.error and reports "(none)" for the command name when called with no io option and an empty argv', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const code = runPackAuthorCli([], { env: { PAX_AUTHORING_ENABLED: 'true' } });
+      expect(code).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Unknown pax command "(none)"'),
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('falls back to the real process.env when no env override is given', () => {
+    const original = process.env['PAX_AUTHORING_ENABLED'];
+    process.env['PAX_AUTHORING_ENABLED'] = 'true';
+    try {
+      const { io, stdout } = collectIo();
+      const code = runPackAuthorCli(['pack:author', '--draft-root', draftRoot], {
+        io,
+        registry: new PackRegistry(),
+        clock: FIXED_CLOCK,
+      });
+      expect(code).toBe(0);
+      expect(stdout.some((l) => l.includes('[pack_validate] PASSED'))).toBe(true);
+    } finally {
+      if (original === undefined) delete process.env['PAX_AUTHORING_ENABLED'];
+      else process.env['PAX_AUTHORING_ENABLED'] = original;
+    }
+  });
+
+  it('runs successfully with the default in-memory PackRegistry and default wall clock when neither is provided', () => {
+    const { io, stdout } = collectIo();
+    const code = runPackAuthorCli(['pack:author', '--draft-root', draftRoot], {
+      io,
+      env: { PAX_AUTHORING_ENABLED: 'true' },
+    });
+    expect(code).toBe(0);
+    expect(stdout.some((l) => l.includes('[pack_validate] PASSED'))).toBe(true);
+    expect(stdout.some((l) => l.includes('[pack_test] PASSED'))).toBe(true);
+  });
+
+  it('deduplicates entries already present in the registry-derived installed catalog when merging in the static fixture catalog, instead of double-counting them', () => {
+    const { io: ioEmpty, stdout: stdoutEmpty } = collectIo();
+    runPackAuthorCli(['pack:author', '--draft-root', draftRoot], {
+      io: ioEmpty,
+      env: { PAX_AUTHORING_ENABLED: 'true' },
+      registry: new PackRegistry(),
+      clock: FIXED_CLOCK,
+    });
+    const countWithEmptyRegistry = Number(
+      stdoutEmpty.find((l) => l.startsWith('[pack_catalog]'))?.match(/(\d+)/)?.[1],
+    );
+
+    // Pre-register the real apartment-hunt fixture pack, whose
+    // resolvedCapabilities already cover the exact same
+    // skill/specialist/tool ids validCatalog() itself declares --
+    // buildCliCatalog's registry-derived entries and its validCatalog()
+    // fallback now genuinely overlap.
+    const overlappingRegistry = new PackRegistry();
+    overlappingRegistry.register(compilePack(validManifest(), validCatalog(), FIXED_CLOCK));
+    const { io: ioOverlap, stdout: stdoutOverlap } = collectIo();
+    runPackAuthorCli(['pack:author', '--draft-root', draftRoot], {
+      io: ioOverlap,
+      env: { PAX_AUTHORING_ENABLED: 'true' },
+      registry: overlappingRegistry,
+      clock: FIXED_CLOCK,
+    });
+    const countWithOverlappingRegistry = Number(
+      stdoutOverlap.find((l) => l.startsWith('[pack_catalog]'))?.match(/(\d+)/)?.[1],
+    );
+
+    // The union must not grow just because the same three ids are already
+    // present in the registry-derived catalog: they must be deduplicated,
+    // not appended a second time from the validCatalog() fallback.
+    expect(countWithOverlappingRegistry).toBe(countWithEmptyRegistry);
+  });
+
+  it('prints FAILED for pack_validate and pack_test and exits 1 without publishing when a custom --answers manifest does not compile', () => {
+    const answersPath = join(draftRoot, 'broken-answers.json');
+    writeFileSync(
+      answersPath,
+      JSON.stringify({ manifest: { schemaVersion: '1.0' }, scenarios: [] }),
+      'utf8',
+    );
+
+    const { io, stdout, stderr } = collectIo();
+    const registry = new PackRegistry();
+    const code = runPackAuthorCli(
+      ['pack:author', '--draft-root', draftRoot, '--draft-id', 'broken', '--answers', answersPath],
+      { io, env: { PAX_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
+    );
+    expect(code).toBe(1);
+    expect(stdout.some((l) => l.includes('[pack_validate] FAILED'))).toBe(true);
+    expect(stdout.some((l) => l.includes('[pack_test] FAILED'))).toBe(true);
+    expect(stderr.some((l) => l.includes('did not pass pack_test'))).toBe(true);
+    expect(registry.list()).toEqual([]);
+  });
+
+  it('propagates a non-PackPublishRejectedError thrown while publishing (a registry hash conflict) instead of treating it as a rejection', () => {
+    const registry = new PackRegistry();
+    // Pre-register a DIFFERENT compiled artifact under the exact same
+    // apartment-hunt@1.0.0 id+version the built-in demo will attempt to
+    // publish. The default validManifest()'s evaluation.scenarioIds differs
+    // from DEMO_AUTHORING_ANSWERS' own, so the two compile to different
+    // compiledHash values -- registry.register() then throws
+    // PackRegistryConflictError, a real error that is NOT a
+    // PackPublishRejectedError.
+    registry.register(compilePack(validManifest(), validCatalog(), FIXED_CLOCK));
+
+    const { io } = collectIo();
+    expect(() =>
+      runPackAuthorCli(
+        ['pack:author', '--draft-root', draftRoot, '--publish', '--confirmed-by', 'jordan'],
+        { io, env: { PAX_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
+      ),
+    ).toThrow(/already registered with a different compiledHash/);
   });
 });

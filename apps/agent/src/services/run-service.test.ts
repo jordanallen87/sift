@@ -1,9 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CaseEvent } from '@pax/contracts';
 import type { Clock, IdGenerator } from '@pax/core';
+import { createTestDatabase, type TestDatabase } from '../db/connection.js';
+import { applyMigrations } from '../db/migrate.js';
 import { InMemoryActivityStore } from '../store/activity-store.js';
 import { MemoryCaseStore } from '../store/memory-case-store.js';
-import { MemoryRunStore, RunService } from './run-service.js';
+import { SqliteCaseStore } from '../store/sqlite-case-store.js';
+import { MemoryRunStore, RunService, SqliteRunStore, type RunRecord } from './run-service.js';
 
 const now = '2026-08-27T00:00:00.000Z';
 
@@ -206,5 +209,109 @@ describe('RunService.requestInvestigation', () => {
     ).toThrow(
       /idempotency record for commandId "cmd-1" references case "case-1", which no longer exists/,
     );
+  });
+});
+
+function runRecord(overrides: Partial<RunRecord> = {}): RunRecord {
+  return {
+    id: 'run-1',
+    caseId: 'case-1',
+    obligationId: 'obligation-1',
+    status: 'queued',
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+describe('MemoryRunStore.updateStatus', () => {
+  it('throws (real integrity violation) when the run does not exist', () => {
+    const store = new MemoryRunStore();
+    expect(() => store.updateStatus('missing', { status: 'running', updatedAt: now })).toThrow(
+      /MemoryRunStore.updateStatus: run "missing" was not found/,
+    );
+  });
+
+  it('applies only the provided optional fields on the first status update, leaving traceId/sessionId/result absent when omitted', () => {
+    const store = new MemoryRunStore();
+    store.create(runRecord());
+
+    store.updateStatus('run-1', { status: 'running', updatedAt: now, traceId: 'trace-1' });
+
+    const loaded = store.load('run-1');
+    expect(loaded?.status).toBe('running');
+    expect(loaded?.traceId).toBe('trace-1');
+    expect(loaded?.sessionId).toBeUndefined();
+    expect(loaded?.result).toBeUndefined();
+    // Preserved from the original record via `...existing`, not overwritten.
+    expect(loaded?.obligationId).toBe('obligation-1');
+  });
+
+  it('applies sessionId and result on a later update while leaving an earlier-set traceId untouched (an omitted field never clears a prior value)', () => {
+    const store = new MemoryRunStore();
+    store.create(runRecord());
+    store.updateStatus('run-1', { status: 'running', updatedAt: now, traceId: 'trace-1' });
+
+    store.updateStatus('run-1', {
+      status: 'completed',
+      updatedAt: now,
+      sessionId: 'session-1',
+      result: { round: 1 },
+    });
+
+    const loaded = store.load('run-1');
+    expect(loaded?.status).toBe('completed');
+    expect(loaded?.sessionId).toBe('session-1');
+    expect(loaded?.result).toEqual({ round: 1 });
+    expect(loaded?.traceId).toBe('trace-1');
+  });
+});
+
+describe('SqliteRunStore', () => {
+  let test: TestDatabase | undefined;
+
+  afterEach(() => {
+    test?.cleanup();
+    test = undefined;
+  });
+
+  function createStore(): SqliteRunStore {
+    test = createTestDatabase();
+    applyMigrations(test.sqlite);
+    // `runs.case_id` foreign-keys onto `cases.id` (foreign_keys = ON), so a
+    // real case row must exist first.
+    new SqliteCaseStore(test).append('case-1', [caseCreatedEvent('case-1')], 0);
+    return new SqliteRunStore(test);
+  }
+
+  it('round-trips traceId/sessionId/result through real SQLite across two separate updateStatus() calls', () => {
+    const store = createStore();
+    store.create(runRecord());
+
+    store.updateStatus('run-1', { status: 'running', updatedAt: now, traceId: 'trace-1' });
+    let loaded = store.load('run-1');
+    expect(loaded?.status).toBe('running');
+    expect(loaded?.traceId).toBe('trace-1');
+    expect(loaded?.sessionId).toBeUndefined();
+    expect(loaded?.result).toBeUndefined();
+
+    store.updateStatus('run-1', {
+      status: 'completed',
+      updatedAt: now,
+      sessionId: 'session-1',
+      result: { round: 1 },
+    });
+    loaded = store.load('run-1');
+    expect(loaded?.status).toBe('completed');
+    expect(loaded?.sessionId).toBe('session-1');
+    expect(loaded?.result).toEqual({ round: 1 });
+    // COALESCE(?, trace_id) in the real UPDATE: an omitted field on this
+    // second call does not clear the value the first call durably wrote.
+    expect(loaded?.traceId).toBe('trace-1');
+  });
+
+  it('returns undefined for a run that was never created', () => {
+    const store = createStore();
+    expect(store.load('missing')).toBeUndefined();
   });
 });

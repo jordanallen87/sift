@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import type { InvokableTool, ToolContext } from '@strands-agents/sdk';
 import type { Clock, IdGenerator } from '@pax/core';
 import {
   createCapabilityCatalog,
@@ -10,10 +11,20 @@ import {
 } from '@pax/packs';
 import type { CapabilityCatalog } from '@pax/packs';
 import type { ExecutionRequest } from '@pax/contracts';
+import {
+  BILL_READER_TOOL_ID,
+  HOUSEHOLD_EVENT_LOOKUP_TOOL_ID,
+  TARIFF_LOOKUP_TOOL_ID,
+  USAGE_HISTORY_QUERY_TOOL_ID,
+  WEATHER_LOOKUP_TOOL_ID,
+} from '@pax/scenarios';
 import { ScriptedModelProvider } from './model-provider.js';
 import {
+  CALCULATOR_TOOL_ID,
   HOME_ENERGY_SWARM_NODE_IDS,
+  buildHomeEnergyFixtureTools,
   executeHomeEnergySwarm,
+  DEFAULT_SYNTHESIZER_VALIDATOR,
   PROPOSE_INSPECTION_TOOL_ID,
   type HomeEnergySequentialSpecialistId,
   type HomeEnergySwarmDeps,
@@ -622,4 +633,485 @@ describe('executeHomeEnergySwarm: intervention integrity', () => {
     );
     expect(passedEvent).toBeDefined();
   });
+});
+
+describe('buildHomeEnergyFixtureTools: real Strands tool.invoke() forwards optional input fields and context.cancelSignal', () => {
+  // `.invoke(input, context?)` is InvokableTool's own real, SDK-documented
+  // "useful for testing and standalone tool execution" method (tool.d.ts) --
+  // this exercises each fixture tool wrapper's real callback function
+  // directly, the same way a real Strands Agent invocation would, without
+  // needing a full Agent/Swarm run for every input/context permutation a
+  // live tool call already exercises far less directly.
+  function toolNamed(name: string): InvokableTool<unknown, unknown> {
+    const tool = buildHomeEnergyFixtureTools().find(
+      (entry): entry is InvokableTool<unknown, unknown> =>
+        'name' in entry && 'invoke' in entry && entry.name === name,
+    );
+    if (tool === undefined) throw new Error(`test: no fixture tool named "${name}"`);
+    return tool;
+  }
+
+  const withCancelSignal: ToolContext = {
+    cancelSignal: new AbortController().signal,
+  } as unknown as ToolContext;
+
+  it('bill-reader: forwards context.cancelSignal when provided and omits it when context is absent', async () => {
+    const withoutContext = await toolNamed(BILL_READER_TOOL_ID).invoke({});
+    const withContext = await toolNamed(BILL_READER_TOOL_ID).invoke({}, withCancelSignal);
+    expect(withoutContext).toBeDefined();
+    expect(withContext).toBeDefined();
+  });
+
+  it('usage-history-query: forwards an explicit cycleLabel and context.cancelSignal, and omits both when absent', async () => {
+    const noArgs = (await toolNamed(USAGE_HISTORY_QUERY_TOOL_ID).invoke({})) as {
+      data: { cycles: unknown[] };
+    };
+    const withLabel = (await toolNamed(USAGE_HISTORY_QUERY_TOOL_ID).invoke(
+      { cycleLabel: '2026-08' },
+      withCancelSignal,
+    )) as { data: { cycles: unknown[] } };
+    expect(noArgs.data.cycles.length).toBeGreaterThan(withLabel.data.cycles.length);
+  });
+
+  it('tariff-lookup: forwards an explicit tariffId and omits it when absent', async () => {
+    const both = (await toolNamed(TARIFF_LOOKUP_TOOL_ID).invoke({})) as {
+      data: { tariffs: unknown[] };
+    };
+    const filtered = (await toolNamed(TARIFF_LOOKUP_TOOL_ID).invoke(
+      { tariffId: 'tariff-standard-2026' },
+      withCancelSignal,
+    )) as { data: { tariffs: unknown[] } };
+    expect(both.data.tariffs.length).toBeGreaterThan(filtered.data.tariffs.length);
+  });
+
+  it('weather-lookup: forwards an explicit cycleLabel and context.cancelSignal, and omits both when absent', async () => {
+    const all = (await toolNamed(WEATHER_LOOKUP_TOOL_ID).invoke({})) as {
+      data: { cycles: unknown[] };
+    };
+    const filtered = (await toolNamed(WEATHER_LOOKUP_TOOL_ID).invoke(
+      { cycleLabel: '2026-08' },
+      withCancelSignal,
+    )) as { data: { cycles: unknown[] } };
+    expect(all.data.cycles.length).toBeGreaterThan(filtered.data.cycles.length);
+  });
+
+  it('household-event-lookup: forwards explicit eventId and type filters independently, and omits both when absent', async () => {
+    const all = (await toolNamed(HOUSEHOLD_EVENT_LOOKUP_TOOL_ID).invoke({})) as {
+      data: { events: unknown[] };
+    };
+    const byId = (await toolNamed(HOUSEHOLD_EVENT_LOOKUP_TOOL_ID).invoke(
+      { eventId: 'event-thermostat-failure-2026-07' },
+      withCancelSignal,
+    )) as { data: { events: unknown[] } };
+    const byType = (await toolNamed(HOUSEHOLD_EVENT_LOOKUP_TOOL_ID).invoke({
+      type: 'thermostat_malfunction',
+    })) as { data: { events: unknown[] } };
+    expect(all.data.events.length).toBeGreaterThan(byId.data.events.length);
+    expect(byType.data.events.length).toBeGreaterThan(0);
+  });
+
+  it('calculator: forwards an explicit thresholdPercent and context.cancelSignal, and omits both when absent', async () => {
+    const defaultThreshold = await toolNamed(CALCULATOR_TOOL_ID).invoke({});
+    const customThreshold = await toolNamed(CALCULATOR_TOOL_ID).invoke(
+      { thresholdPercent: 5 },
+      withCancelSignal,
+    );
+    expect(defaultThreshold).toBeDefined();
+    expect(customThreshold).toBeDefined();
+  });
+
+  it('propose_inspection: returns a proposed status carrying the given optionId/rationale', async () => {
+    const result = await toolNamed('propose_inspection').invoke({
+      optionId: 'request-hvac-inspection',
+      rationale: 'test rationale',
+    });
+    expect(result).toEqual({
+      status: 'proposed',
+      optionId: 'request-hvac-inspection',
+      rationale: 'test rationale',
+    });
+  });
+});
+
+describe('executeHomeEnergySwarm: defensive guards and configuration bounds', () => {
+  it('throws before any node runs when the compiled pack declares no specialist matching a required Swarm node id', async () => {
+    const { deps } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+    const brokenPack = {
+      ...deps.pack,
+      specialists: deps.pack.specialists.filter(
+        (specialist) => specialist.id !== 'anomaly-investigator',
+      ),
+    };
+
+    await expect(drain(executeHomeEnergySwarm({ ...deps, pack: brokenPack }))).rejects.toThrow(
+      /declares no specialist "anomaly-investigator"/,
+    );
+  });
+
+  it('throws before any node runs when skillsRootDir has no skill subdirectories', async () => {
+    const { deps } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+    const emptyRoot = mkdtempSync(join(tmpdir(), 'pax-empty-energy-skills-'));
+    writeFileSync(join(emptyRoot, 'not-a-skill.txt'), 'just a file');
+    try {
+      await expect(
+        drain(executeHomeEnergySwarm({ ...deps, skillsRootDir: emptyRoot })),
+      ).rejects.toThrow(/has no skill subdirectories/);
+    } finally {
+      rmSync(emptyRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('completes with no explicit resolveConfirmation resolver when decision-synthesizer never calls the consequential propose_inspection tool (round1)', async () => {
+    const { deps } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+    const { resolveConfirmation: _unused, ...depsWithoutConfirmation } = deps;
+    void _unused;
+
+    const { result } = await drain(executeHomeEnergySwarm(depsWithoutConfirmation));
+    expect(result.multiAgentResult.status).toBe('COMPLETED');
+    expect(result.proposedInspection).toBeUndefined();
+  });
+
+  it('threads a per-node alternativeTechniqueHints override into RetrySteering Guide feedback sent back to the model', async () => {
+    const { deps, providers } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+
+    const { events } = await drain(
+      executeHomeEnergySwarm({
+        ...deps,
+        alternativeTechniqueHints: {
+          'weather-analyst': 'Try the calculator tool instead of repeating weather-lookup.',
+        },
+      }),
+    );
+
+    const guideEvent = events.find(
+      (event) =>
+        event.category === 'intervention' &&
+        event.name === 'intervention.guide' &&
+        event.agentId === 'weather-analyst',
+    );
+    expect(guideEvent).toBeDefined();
+
+    // The hint is not part of the emitted RuntimeEvent's summary (that
+    // stays a fixed "RetrySteering: ..." reason string); it is only ever
+    // relayed as feedback text the resumed model call actually receives --
+    // verify it reached the real conversation, not merely that some guide
+    // fired for this node.
+    const weatherCallLog = providers['weather-analyst'].callLog;
+    const messageText = JSON.stringify(weatherCallLog.flatMap((call) => call.messages));
+    expect(messageText).toContain(
+      'Try: Try the calculator tool instead of repeating weather-lookup.',
+    );
+  });
+
+  it("bakes confirmed case-specific concerns and a non-empty criteria list into decision-synthesizer's system prompt", async () => {
+    const { deps } = buildDeps({
+      start: 'decision-synthesizer',
+      beat: 'round2',
+      costWeight: ROUND2_COST_WEIGHT,
+      conservationWeight: ROUND2_CONSERVATION_WEIGHT,
+    });
+    const depsWithExtension: HomeEnergySwarmDeps = {
+      ...deps,
+      responseOptionsRequest: {
+        ...deps.responseOptionsRequest,
+        caseExtensions: [
+          {
+            id: 'custom.gas_smell',
+            label: 'Occasional faint gas smell near the furnace',
+            valueType: 'string',
+            reason: 'Household reported an occasional faint gas smell near the furnace.',
+            origin: 'user',
+            confirmation: 'confirmed',
+          },
+        ],
+      },
+    };
+
+    await drain(executeHomeEnergySwarm(depsWithExtension));
+
+    const synthesizerProvider = deps.modelFor('decision-synthesizer') as ScriptedModelProvider;
+    const systemPrompt = synthesizerProvider.callLog[0]?.options?.systemPrompt;
+    const promptText =
+      typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt);
+    expect(promptText).toContain(
+      'Confirmed case-specific concerns: Occasional faint gas smell near the furnace',
+    );
+  });
+
+  it('falls back to "(none)" criteria text and omits the confirmed-concerns line when the case has no criteria or confirmed extensions', async () => {
+    const { deps } = buildDeps({
+      start: 'decision-synthesizer',
+      beat: 'round2',
+      costWeight: ROUND2_COST_WEIGHT,
+      conservationWeight: ROUND2_CONSERVATION_WEIGHT,
+    });
+    const depsWithoutCriteria: HomeEnergySwarmDeps = {
+      ...deps,
+      responseOptionsRequest: {
+        ...deps.responseOptionsRequest,
+        caseExtensions: [],
+        caseSummary: { ...deps.responseOptionsRequest.caseSummary, criteria: [] },
+      },
+    };
+
+    await drain(executeHomeEnergySwarm(depsWithoutCriteria));
+
+    const synthesizerProvider = deps.modelFor('decision-synthesizer') as ScriptedModelProvider;
+    const systemPrompt = synthesizerProvider.callLog[0]?.options?.systemPrompt;
+    const promptText =
+      typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt);
+    expect(promptText).toContain('Current criteria: (none).');
+    expect(promptText).not.toContain('Confirmed case-specific concerns');
+  });
+});
+
+describe('DEFAULT_SYNTHESIZER_VALIDATOR: direct unit coverage (see module header, judgment call 2)', () => {
+  // DEFAULT_SYNTHESIZER_VALIDATOR is exported specifically so its handoff
+  // extraction/validation logic can be unit-tested directly against a
+  // hand-built assistant Message, independent of a full Swarm run.
+  function messageWithToolUse(
+    input: Record<string, unknown> | undefined,
+  ): Parameters<typeof DEFAULT_SYNTHESIZER_VALIDATOR>[0] {
+    return {
+      role: 'assistant',
+      content:
+        input === undefined
+          ? []
+          : [
+              {
+                type: 'toolUseBlock',
+                toolUseId: 'test-tool-use',
+                name: 'strands_structured_output',
+                input,
+              },
+            ],
+    } as unknown as Parameters<typeof DEFAULT_SYNTHESIZER_VALIDATOR>[0];
+  }
+
+  // Validator's real signature is `(response, agent) => ...`; DEFAULT_SYNTHESIZER_VALIDATOR
+  // never reads its second parameter, so a placeholder satisfies the type
+  // without needing a real Strands Agent instance.
+  const FAKE_AGENT = {} as Parameters<typeof DEFAULT_SYNTHESIZER_VALIDATOR>[1];
+
+  it('fails when the response carries no strands_structured_output tool-use block at all', async () => {
+    const outcome = await DEFAULT_SYNTHESIZER_VALIDATOR(messageWithToolUse(undefined), FAKE_AGENT);
+    expect(outcome).toMatchObject({ passed: false });
+  });
+
+  it('fails when the handoff carries no message field', async () => {
+    const outcome = (await DEFAULT_SYNTHESIZER_VALIDATOR(
+      messageWithToolUse({ agentId: 'source-challenger' }),
+      FAKE_AGENT,
+    )) as { passed: boolean; feedback?: string };
+    expect(outcome.passed).toBe(false);
+    expect(outcome.feedback).toContain('must include a message');
+  });
+
+  it('fails when the handoff message cites no source id', async () => {
+    const outcome = (await DEFAULT_SYNTHESIZER_VALIDATOR(
+      messageWithToolUse({ message: 'No citation here.' }),
+      FAKE_AGENT,
+    )) as { passed: boolean; feedback?: string };
+    expect(outcome.passed).toBe(false);
+    expect(outcome.feedback).toContain('must cite at least one source');
+  });
+
+  it('passes when the handoff message is non-empty and cites a source id', async () => {
+    const outcome = await DEFAULT_SYNTHESIZER_VALIDATOR(
+      messageWithToolUse({ message: 'Recommend monitor-one-cycle per source-current-bill.' }),
+      FAKE_AGENT,
+    );
+    expect(outcome).toEqual({ passed: true });
+  });
+});
+
+describe('executeHomeEnergySwarm: handoff-context derivation edge cases and orchestration bound defaults', () => {
+  it('derives a generic handoff reason and zero evidenceDelta when a node hands off with no context field at all', async () => {
+    const { deps } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+    const provider = new ScriptedModelProvider({
+      beats: {
+        round1: [
+          {
+            toolCalls: [
+              {
+                name: 'strands_structured_output',
+                input: { agentId: 'rate-analyst', message: 'Handing off, per source-anomaly-x.' },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    provider.setBeat('round1');
+    const patchedModelFor: HomeEnergySwarmDeps['modelFor'] = (nodeId) =>
+      nodeId === 'anomaly-investigator' ? provider : deps.modelFor(nodeId);
+
+    const { result } = await drain(executeHomeEnergySwarm({ ...deps, modelFor: patchedModelFor }));
+
+    const firstHandoff = result.handoffs[0];
+    expect(firstHandoff?.from).toBe('anomaly-investigator');
+    expect(firstHandoff?.reason).toBe('handoff (no structured context provided)');
+    expect(firstHandoff?.evidenceDelta).toBe(0);
+    expect(result.contexts['anomaly-investigator']).toBeUndefined();
+  });
+
+  it("falls back to a disposition-based handoff reason when a node's context has no limitations and no claims", async () => {
+    const { deps } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+    const provider = new ScriptedModelProvider({
+      beats: {
+        round1: [
+          {
+            toolCalls: [
+              {
+                name: 'strands_structured_output',
+                input: {
+                  agentId: 'rate-analyst',
+                  message: 'Nothing further to report, per source-anomaly-x.',
+                  context: {
+                    obligationId: 'energy.anomaly',
+                    disposition: 'evidence_found',
+                    claims: [],
+                    evidenceResults: [],
+                    limitations: [],
+                    suggestedStatus: 'satisfied',
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    provider.setBeat('round1');
+    const patchedModelFor: HomeEnergySwarmDeps['modelFor'] = (nodeId) =>
+      nodeId === 'anomaly-investigator' ? provider : deps.modelFor(nodeId);
+
+    const { result } = await drain(executeHomeEnergySwarm({ ...deps, modelFor: patchedModelFor }));
+
+    expect(result.handoffs[0]?.reason).toBe('disposition: evidence_found');
+  });
+
+  it('discards a context value that does not conform to ExecutionResultSchema rather than surfacing malformed data', async () => {
+    const { deps } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+    const provider = new ScriptedModelProvider({
+      beats: {
+        round1: [
+          {
+            toolCalls: [
+              {
+                name: 'strands_structured_output',
+                input: {
+                  agentId: 'rate-analyst',
+                  message: 'Handing off with a malformed context, per source-anomaly-x.',
+                  context: { notAValidExecutionResult: true },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    provider.setBeat('round1');
+    const patchedModelFor: HomeEnergySwarmDeps['modelFor'] = (nodeId) =>
+      nodeId === 'anomaly-investigator' ? provider : deps.modelFor(nodeId);
+
+    const { result } = await drain(executeHomeEnergySwarm({ ...deps, modelFor: patchedModelFor }));
+
+    expect(result.contexts['anomaly-investigator']).toBeUndefined();
+    expect(result.handoffs[0]?.reason).toBe('handoff (no structured context provided)');
+  });
+
+  it('runs the real Swarm without explicit repetitive-handoff detection bounds when the compiled pack orchestration omits them', async () => {
+    const { deps } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+    const packWithoutBounds = {
+      ...deps.pack,
+      orchestration: {
+        ...deps.pack.orchestration,
+        repetitiveHandoffDetectionWindow: undefined,
+        repetitiveHandoffMinUniqueAgents: undefined,
+      },
+    };
+
+    const { result } = await drain(executeHomeEnergySwarm({ ...deps, pack: packWithoutBounds }));
+    expect(result.multiAgentResult.status).toBe('COMPLETED');
+    expect(result.repetitiveHandoffDetected).toBe(false);
+  });
+
+  it('overrides GoalLoop.maxAttempts via goalLoopMaxAttempts, surviving two failed decision-synthesizer attempts the default maxAttempts: 2 would not', async () => {
+    const { deps } = buildDeps({ start: 'decision-synthesizer', beat: 'round1' });
+    const provider = new ScriptedModelProvider({
+      beats: {
+        round1: [
+          {
+            toolCalls: [
+              { name: 'strands_structured_output', input: { message: 'No citation, attempt 1.' } },
+            ],
+          },
+          {
+            toolCalls: [
+              { name: 'strands_structured_output', input: { message: 'No citation, attempt 2.' } },
+            ],
+          },
+          {
+            toolCalls: [
+              {
+                name: 'strands_structured_output',
+                input: { message: 'Recommend monitor-one-cycle per source-current-bill.' },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    provider.setBeat('round1');
+    const patchedModelFor: HomeEnergySwarmDeps['modelFor'] = (nodeId) =>
+      nodeId === 'decision-synthesizer' ? provider : deps.modelFor(nodeId);
+
+    const { result } = await drain(
+      executeHomeEnergySwarm({ ...deps, modelFor: patchedModelFor, goalLoopMaxAttempts: 3 }),
+    );
+
+    expect(result.goalLoopResult?.attempts).toHaveLength(3);
+    expect(result.goalLoopResult?.attempts[0]?.passed).toBe(false);
+    expect(result.goalLoopResult?.attempts[1]?.passed).toBe(false);
+    expect(result.goalLoopResult?.attempts[2]?.passed).toBe(true);
+    expect(result.goalLoopResult?.passed).toBe(true);
+  });
+
+  // NOTE: a full-Swarm "exhausts every attempt without a valid handoff
+  // message" test (targeting line ~1090's `synthesizerOutput?.message ?? ''`
+  // fallback) was attempted here and abandoned: a `strands_structured_output`
+  // call missing the SDK's own forced handoff schema's required `message`
+  // field triggers an SDK-internal structured-output retry distinct from
+  // (and consuming raw ScriptedModelProvider turns ahead of) GoalLoop's own
+  // attempt counting, in a way that could not be bounded reliably within
+  // this task's time budget. `DEFAULT_SYNTHESIZER_VALIDATOR`'s own direct
+  // unit tests above already cover the "no message field" validation logic
+  // itself; the `?? ''` fallback on the final assembled result remains
+  // untested by a full run and is called out in this task's report as a
+  // documented residual gap.
 });

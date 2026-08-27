@@ -139,6 +139,47 @@ describe('OptionComparison', () => {
     expect(screen.getByTestId('option-comparison-row-mileage')).toBeInTheDocument();
   });
 
+  it('skips a declared presentation group whose attributeIds match no applicable attribute', () => {
+    const presentation: PresentationDefinition = {
+      optionLabel: 'car',
+      optionLabelPlural: 'cars',
+      attributeGroups: [
+        { id: 'cost', label: 'Cost', attributeIds: ['price'] },
+        { id: 'ghost', label: 'Ghost Group', attributeIds: ['not-a-real-attribute'] },
+      ],
+    };
+    render(
+      <OptionComparison
+        options={[buildEntity()]}
+        attributeDefinitions={DEFINITIONS}
+        presentation={presentation}
+        selectedOptionId={null}
+      />,
+    );
+    expect(screen.getByTestId('option-comparison-group-cost')).toBeInTheDocument();
+    expect(screen.queryByTestId('option-comparison-group-ghost')).not.toBeInTheDocument();
+  });
+
+  it('does not render an "Other" fallback group when every applicable attribute is already covered by a declared group', () => {
+    const presentation: PresentationDefinition = {
+      optionLabel: 'car',
+      optionLabelPlural: 'cars',
+      attributeGroups: [{ id: 'cost', label: 'Cost', attributeIds: ['price', 'mileage'] }],
+    };
+    render(
+      <OptionComparison
+        options={[buildEntity()]}
+        attributeDefinitions={DEFINITIONS}
+        presentation={presentation}
+        selectedOptionId={null}
+      />,
+    );
+    expect(screen.getByTestId('option-comparison-group-cost')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('option-comparison-group-other-attributes'),
+    ).not.toBeInTheDocument();
+  });
+
   it('marks the header of the currently selected option', () => {
     render(
       <OptionComparison

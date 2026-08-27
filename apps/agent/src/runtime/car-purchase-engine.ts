@@ -405,8 +405,19 @@ function scenarioDepsFrom(deps: CarPurchaseEngineDeps): CarPurchaseScenarioDeps 
   return { clock: deps.clock, idGenerator: deps.idGenerator, skillsRootDir: deps.skillsRootDir };
 }
 
-/** Folds round 1: every parallel specialist plus `source-challenger`, then a soft initial `recommendation.ready` lean (no proposal yet). Mirrors `car-purchase-scenario.ts`'s own round-1 fold. */
-function foldRound1(
+/**
+ * Folds round 1: every parallel specialist plus `source-challenger`, then a
+ * soft initial `recommendation.ready` lean (no proposal yet). Mirrors
+ * `car-purchase-scenario.ts`'s own round-1 fold.
+ *
+ * Exported (mirroring `car-purchase-scenario.ts`'s own `drainGraph` export,
+ * this task) purely so its defensive "the real Graph produced no result for
+ * node X" throw guards can be unit-tested directly against a hand-built
+ * `CarPurchaseGraphResult` -- a plain data object, not a Strands SDK
+ * instance -- without needing to coerce the real Graph itself into omitting
+ * a node's result.
+ */
+export function foldRound1(
   deps: CarPurchaseEngineDeps,
   caseId: string,
   graphResult: CarPurchaseGraphResult,
@@ -505,8 +516,17 @@ function foldRound1(
   return appended.snapshot;
 }
 
-/** Folds round 2: supersedes stale round-1 evidence, folds the revised specialist results, resolves `car.hard_constraints`/`car.shortlist` deterministically, records the revised recommendation, and creates (never approves) the decision proposal. Mirrors `car-purchase-scenario.ts`'s own round-2 fold. */
-function foldRound2(
+/**
+ * Folds round 2: supersedes stale round-1 evidence, folds the revised
+ * specialist results, resolves `car.hard_constraints`/`car.shortlist`
+ * deterministically, records the revised recommendation, and creates (never
+ * approves) the decision proposal. Mirrors `car-purchase-scenario.ts`'s own
+ * round-2 fold.
+ *
+ * Exported for the same direct-unit-testability reason as `foldRound1`
+ * above.
+ */
+export function foldRound2(
   deps: CarPurchaseEngineDeps,
   caseId: string,
   pack: CompiledDecisionPack,

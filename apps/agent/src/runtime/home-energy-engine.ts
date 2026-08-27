@@ -440,8 +440,11 @@ const KNOWN_RESPONSE_OPTION_IDS = RESPONSE_OPTIONS.map((option) => option.option
  * option id in parentheses immediately after "Recommend...", which this
  * regex targets first; a secondary substring scan against every known
  * option id is the fallback of last resort.
+ *
+ * Exported for the same direct-unit-testability reason as
+ * `foldHomeEnergyRound1`/`foldHomeEnergyRound2` above.
  */
-function extractFavoredResponseOptionId(text: string): string | null {
+export function extractFavoredResponseOptionId(text: string): string | null {
   const match = /Recommend[^()]*\(([a-z0-9-]+)\)/i.exec(text);
   const fromRecommendClause = match?.[1]?.toLowerCase();
   if (
@@ -483,8 +486,15 @@ function obligationIdsByStatus(
  * Swarm's one consequential effect, `propose_inspection`, is only ever
  * exercised in round 2). Mirrors `car-purchase-engine.ts`'s `foldRound1`
  * shape using the same reused fold helpers.
+ *
+ * Exported for the same direct-unit-testability reason
+ * `car-purchase-engine.ts`'s own `foldRound1`/`foldRound2` are: its
+ * defensive "the real Swarm produced no context for node X" throw guards
+ * can be tested directly against a hand-built plain-data
+ * `HomeEnergySwarmResult`, without needing to coerce the real Swarm itself
+ * into omitting a node's result.
  */
-function foldHomeEnergyRound1(
+export function foldHomeEnergyRound1(
   deps: HomeEnergyEngineDeps,
   caseId: string,
   swarmResult: HomeEnergySwarmResult,
@@ -623,8 +633,11 @@ function foldHomeEnergyRound1(
  * simplified to this pack's actual round-2 scope (no stale-evidence
  * supersession or hard-constraints re-derivation obligation exists for this
  * pack).
+ *
+ * Exported for the same direct-unit-testability reason as
+ * `foldHomeEnergyRound1` above.
  */
-function foldHomeEnergyRound2(
+export function foldHomeEnergyRound2(
   deps: HomeEnergyEngineDeps,
   caseId: string,
   swarmResult: HomeEnergySwarmResult,

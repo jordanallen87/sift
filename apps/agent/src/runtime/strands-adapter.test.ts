@@ -139,6 +139,22 @@ async function drain(
   return { events, result };
 }
 
+interface InvokableToolLike {
+  invoke(input: unknown, context?: unknown): Promise<unknown>;
+}
+
+function requireInvokable(entry: unknown): InvokableToolLike {
+  if (
+    typeof entry !== 'object' ||
+    entry === null ||
+    !('invoke' in entry) ||
+    typeof (entry as { invoke?: unknown }).invoke !== 'function'
+  ) {
+    throw new Error('expected an invokable tool');
+  }
+  return entry as InvokableToolLike;
+}
+
 describe('buildCarPurchaseFixtureTools', () => {
   it('wraps every real car-purchase fixture tool plus the gated propose_recommendation tool', () => {
     const tools = buildCarPurchaseFixtureTools();
@@ -153,8 +169,64 @@ describe('buildCarPurchaseFixtureTools', () => {
       ]),
     );
   });
+
+  it("invokes each fixture tool directly (the SDK's own public InvokableTool.invoke()) with no execution context, proving the optional `context?.cancelSignal` plumbing in every tool builder tolerates a missing context rather than throwing -- a real Strands Agent run always supplies a full ToolContext (cancelSignal included), so only a direct call like this ever exercises the omitted-context path", async () => {
+    const tools = buildCarPurchaseFixtureTools();
+    const byName = new Map(tools.map((entry) => ['name' in entry ? entry.name : undefined, entry]));
+
+    const listingResult = await requireInvokable(byName.get('listing-reader')).invoke({
+      candidateId: 'candidate-rav4',
+    });
+    expect(listingResult).toBeDefined();
+
+    const ownershipResult = await requireInvokable(byName.get('ownership-calculator')).invoke({
+      candidateId: 'candidate-rav4',
+    });
+    expect(ownershipResult).toBeDefined();
+
+    const safetyResult = await requireInvokable(byName.get('safety-reliability-lookup')).invoke({
+      candidateId: 'candidate-rav4',
+    });
+    expect(safetyResult).toBeDefined();
+
+    const householdFitResult = await requireInvokable(byName.get('household-fit-matrix')).invoke({
+      candidateId: 'candidate-rav4',
+    });
+    expect(householdFitResult).toBeDefined();
+  });
 });
 
+// Deliberately not covered here, with reasons (verified empirically against
+// the real installed @strands-agents/sdk@1.14.0, not guessed):
+//
+// - `describeError`'s `typeof error === 'string'` branch and its
+//   `JSON.stringify` fallback: `agent.invoke()`, `restoreCaseSnapshot`, and
+//   `saveCaseSnapshot` only ever reject/throw genuine `Error` instances
+//   (confirmed: forcing a real ScriptedModelProvider beat-exhaustion throw,
+//   below, always produces an `Error`, which the SDK propagates as-is) --
+//   `describeError` is private/unexported, so there is no other way to feed
+//   it a non-`Error` `unknown` value.
+// - `extractSkillName`'s null/non-object/array guards, its `typeof value ===
+//   'string'` false branch, and the `skillId !== undefined` false branch in
+//   `execute()`'s own `AfterToolCallEvent` hook: the real `AgentSkills`
+//   vended plugin's `skills` tool has its own Zod input schema requiring
+//   `skill_name: z.string().min(1)` (verified in the installed SDK's
+//   `dist/src/vended-plugins/skills/agent-skills.js`), so any tool call this
+//   hook ever sees with `event.result.status === 'success'` already has a
+//   well-formed string `skill_name` -- `extractSkillName` can only return
+//   `undefined` via a shape the SDK's own tool dispatch would already have
+//   rejected before `status: 'success'` was possible.
+// - The `!parsed.success` (invalid/missing structuredOutput) branch of the
+//   final `ExecutionResultSchema.safeParse(result?.structuredOutput)`:
+//   `Agent` is configured with `structuredOutputSchema: ExecutionResultSchema`
+//   (the identical schema object re-parsed here), and empirically the real
+//   Agent loop never resolves `agent.invoke()` with an invalid/absent
+//   structuredOutput -- it keeps re-prompting the model until either a valid
+//   one is produced or the model provider itself runs out of scripted turns
+//   and throws (the already-covered `invokeError` path below). Verified by
+//   scripting 1, 2, and 10 text-only turns in a row: every case ends in the
+//   provider's own "beat exhausted" throw, never a graceful invalid-result
+//   return.
 describe('execute()', () => {
   it('runs a real Agent through every plugin and intervention, ending in a validated ExecutionResult', async () => {
     const request = buildExecutionRequest();
@@ -219,6 +291,65 @@ describe('execute()', () => {
     ).toBe(true);
   });
 
+  it('runs ownership-calculator, safety-reliability-lookup, and household-fit-matrix too, proving each genuinely executes with a real SDK-supplied ToolContext (cancelSignal included) rather than only listing-reader', async () => {
+    const request = buildExecutionRequest({
+      allowedTools: [
+        'listing-reader',
+        'ownership-calculator',
+        'safety-reliability-lookup',
+        'household-fit-matrix',
+      ],
+    });
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          {
+            toolCalls: [{ name: 'ownership-calculator', input: { candidateId: 'candidate-rav4' } }],
+          },
+          {
+            toolCalls: [
+              { name: 'safety-reliability-lookup', input: { candidateId: 'candidate-rav4' } },
+            ],
+          },
+          {
+            toolCalls: [{ name: 'household-fit-matrix', input: { candidateId: 'candidate-rav4' } }],
+          },
+          { toolCalls: [{ name: 'strands_structured_output', input: VALID_EXECUTION_RESULT }] },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+
+    const { events, result } = await drain(
+      execute(
+        {
+          model: provider,
+          skillsRootDir: SKILLS_ROOT_DIR,
+          clock: FIXED_CLOCK,
+          idGenerator: fixedIdGenerator(),
+        },
+        request,
+      ),
+    );
+
+    expect(result).toEqual(VALID_EXECUTION_RESULT);
+    expect(
+      events.some(
+        (event) => event.name === 'tool.ownership-calculator' && event.phase === 'finish',
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (event) => event.name === 'tool.safety-reliability-lookup' && event.phase === 'finish',
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (event) => event.name === 'tool.household-fit-matrix' && event.phase === 'finish',
+      ),
+    ).toBe(true);
+  });
+
   it('denies a tool call outside the declared allowlist before it ever executes', async () => {
     const request = buildExecutionRequest({ allowedTools: [] });
     const provider = new ScriptedModelProvider({
@@ -251,6 +382,91 @@ describe('execute()', () => {
     expect(
       events.some((event) => event.name === 'tool.listing-reader' && event.phase === 'finish'),
     ).toBe(false);
+  });
+
+  it('denies a forbiddenToolIds tool via ConsequenceGuard even though it is within the declared allowlist', async () => {
+    const request = buildExecutionRequest({
+      allowedTools: ['listing-reader', 'ownership-calculator'],
+    });
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          {
+            toolCalls: [{ name: 'ownership-calculator', input: { candidateId: 'candidate-rav4' } }],
+          },
+          { toolCalls: [{ name: 'strands_structured_output', input: VALID_EXECUTION_RESULT }] },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+
+    const { events, result } = await drain(
+      execute(
+        {
+          model: provider,
+          skillsRootDir: SKILLS_ROOT_DIR,
+          clock: FIXED_CLOCK,
+          idGenerator: fixedIdGenerator(),
+          forbiddenToolIds: ['ownership-calculator'],
+        },
+        request,
+      ),
+    );
+
+    expect(result).toEqual(VALID_EXECUTION_RESULT);
+    const denyEvent = events.find(
+      (event) =>
+        event.category === 'intervention' &&
+        event.name === 'intervention.deny' &&
+        event.attributes['handler'] === 'ConsequenceGuard',
+    );
+    expect(denyEvent).toBeDefined();
+    expect(denyEvent?.summary).toContain('forbids');
+    // The forbidden tool never actually completed.
+    expect(
+      events.some(
+        (event) => event.name === 'tool.ownership-calculator' && event.phase === 'finish',
+      ),
+    ).toBe(false);
+  });
+
+  it('passes a custom alternativeTechniqueHint through to RetrySteering, which is exercised when the model repeats a prior query family', async () => {
+    const request = buildExecutionRequest();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          { toolCalls: [{ name: 'listing-reader', input: { candidateId: 'candidate-rav4' } }] },
+          // Same tool + same normalized args as the prior call: RetrySteering's
+          // matchesPriorQueryFamily rule guides (not denies) this second call.
+          { toolCalls: [{ name: 'listing-reader', input: { candidateId: 'candidate-rav4' } }] },
+          { toolCalls: [{ name: 'strands_structured_output', input: VALID_EXECUTION_RESULT }] },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+
+    const { events, result } = await drain(
+      execute(
+        {
+          model: provider,
+          skillsRootDir: SKILLS_ROOT_DIR,
+          clock: FIXED_CLOCK,
+          idGenerator: fixedIdGenerator(),
+          alternativeTechniqueHint: 'Try manufacturer-published spec sheets instead.',
+        },
+        request,
+      ),
+    );
+
+    expect(result).toEqual(VALID_EXECUTION_RESULT);
+    const guideEvent = events.find(
+      (event) =>
+        event.category === 'intervention' &&
+        event.name === 'intervention.guide' &&
+        event.attributes['handler'] === 'RetrySteering',
+    );
+    expect(guideEvent).toBeDefined();
+    expect(guideEvent?.summary).toContain('repeats a prior query family');
   });
 
   it('yields a run.failed error event and no ExecutionResult when structured output is never produced', async () => {

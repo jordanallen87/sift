@@ -12,12 +12,16 @@ import { describe, expect, it } from 'vitest';
 import type { Clock, IdGenerator } from '@pax/core';
 import { createCapabilityCatalog, compileCarPurchasePack, CAR_PURCHASE_MANIFEST } from '@pax/packs';
 import { buildCarPurchaseSeedEvents } from '@pax/scenarios';
-import type { ExecutionResult } from '@pax/contracts';
+import type { CaseEvent, CaseState, Claim, EvidenceLink, ExecutionResult } from '@pax/contracts';
 import { InMemoryActivityStore } from '../store/activity-store.js';
 import { MemoryCaseStore } from '../store/memory-case-store.js';
+import type { CaseStore } from '../store/case-store.js';
+import type { RuntimeEvent } from './event-normalizer.js';
+import type { CarPurchaseGraphResult } from './car-purchase-graph.js';
 import {
   buildExecutionRequestFor,
   dogCrateObligationTemplate,
+  drainGraph,
   ensureSourcesExist,
   extractCitedSourceIds,
   foldExecutionResult,
@@ -26,6 +30,52 @@ import {
   type CarPurchaseScenarioDeps,
 } from './car-purchase-scenario.js';
 import { emptyScenarioTrajectory } from '@pax/scenarios';
+
+/**
+ * A `CaseStore` whose `load()` always answers with a deliberately stale
+ * snapshot while `append()`/`updateSelection()`/every other method delegate
+ * to the real, since-advanced store -- the same real-race simulation
+ * `command-service.test.ts`'s own `withStaleReadStore` documents ("another
+ * request committing between this function's own read and its later
+ * `append()` call"), reused here because `foldExecutionResult` performs its
+ * own internal `caseStore.load()` with no externally-supplied
+ * `expectedSequence` a test could otherwise control directly.
+ */
+function withStaleReadStore(real: MemoryCaseStore, staleSnapshot: CaseState): CaseStore {
+  return {
+    load: (_caseId: string) => staleSnapshot,
+    append: real.append.bind(real),
+    updateSelection: real.updateSelection.bind(real),
+    peekIdempotent: real.peekIdempotent.bind(real),
+    subscribe: real.subscribe.bind(real),
+    resetDemo: real.resetDemo.bind(real),
+  };
+}
+
+/** Appends one harmless real event (an unmodified re-application of the case's own first obligation) so the real store's `eventSequence` advances by exactly one past whatever a `staleSnapshot` captured earlier still reflects -- builds the genuine mismatch `withStaleReadStore`'s simulated race needs. */
+function advanceStoreByOneEvent(
+  caseStore: MemoryCaseStore,
+  caseId: string,
+  deps: CarPurchaseScenarioDeps,
+): void {
+  const current = loadSnapshotOrThrow(caseStore, caseId);
+  const obligation = current.obligations[0];
+  if (obligation === undefined) {
+    throw new Error('test setup: seeded case has no obligations to replay');
+  }
+  const event: CaseEvent = {
+    eventId: deps.idGenerator.next('event'),
+    caseId,
+    sequence: current.eventSequence + 1,
+    timestamp: deps.clock.now(),
+    type: 'obligation.updated',
+    payload: { obligation },
+  };
+  const result = caseStore.append(caseId, [event], current.eventSequence);
+  if (result.status !== 'applied') {
+    throw new Error(`test setup: failed to advance the store: ${result.status}`);
+  }
+}
 
 const FIXED_CLOCK: Clock = { now: () => '2026-08-27T00:00:00.000Z' };
 
@@ -153,6 +203,38 @@ describe('loadSnapshotOrThrow', () => {
 });
 
 describe('ensureSourcesExist', () => {
+  it('throws when the case does not exist', () => {
+    const caseStore = new MemoryCaseStore();
+    const deps: CarPurchaseScenarioDeps = {
+      clock: FIXED_CLOCK,
+      idGenerator: fixedIdGenerator(),
+      skillsRootDir: '/unused',
+    };
+    expect(() =>
+      ensureSourcesExist(
+        caseStore,
+        'missing-case',
+        0,
+        ['source-listing-candidate-rav4'],
+        deps.clock,
+      ),
+    ).toThrow(/not found while ensuring sources exist/);
+  });
+
+  it('throws when the real CaseStore.updateSelection() rejects a stale expectedSequence (a genuine optimistic-concurrency conflict)', () => {
+    const { caseStore, caseId, deps } = seedRealCase();
+    const before = loadSnapshotOrThrow(caseStore, caseId);
+    expect(() =>
+      ensureSourcesExist(
+        caseStore,
+        caseId,
+        before.eventSequence + 1,
+        ['source-listing-candidate-rav4'],
+        deps.clock,
+      ),
+    ).toThrow(/failed to record sources for case/);
+  });
+
   it('is a no-op when every cited source already exists', () => {
     const { caseStore, caseId, deps } = seedRealCase();
     const before = loadSnapshotOrThrow(caseStore, caseId);
@@ -263,5 +345,336 @@ describe('foldExecutionResult', () => {
         { attemptsToRecord: 1 },
       ),
     ).toThrow(/not found/);
+  });
+
+  it('throws when the case has somehow disappeared before folding begins', () => {
+    const activityStore = new InMemoryActivityStore();
+    const trajectory = emptyScenarioTrajectory();
+    const deps: CarPurchaseScenarioDeps = {
+      clock: FIXED_CLOCK,
+      idGenerator: fixedIdGenerator(),
+      skillsRootDir: '/unused',
+    };
+    expect(() =>
+      foldExecutionResult(
+        new MemoryCaseStore(),
+        activityStore,
+        'missing-case',
+        CLEAN_RESULT,
+        deps,
+        trajectory,
+        { attemptsToRecord: 1 },
+      ),
+    ).toThrow(/not found while folding an ExecutionResult/);
+  });
+
+  const NO_EVIDENCE_RESULT: ExecutionResult = {
+    obligationId: 'car.ownership_cost',
+    disposition: 'no_evidence',
+    claims: [],
+    evidenceResults: [],
+    limitations: ['Nothing found yet.'],
+    suggestedStatus: 'open',
+  };
+
+  it('throws when the real CaseStore.append() rejects the evidence.accepted append due to a concurrent write (simulated via withStaleReadStore, the same real-race technique command-service.test.ts uses)', () => {
+    const { caseStore, caseId, deps } = seedRealCase();
+    // Pre-create CLEAN_RESULT's cited source for real (correct sequence) so
+    // ensureSourcesExist's own internal check inside foldExecutionResult is
+    // a no-op, and the very first append this call makes is the
+    // evidence.accepted append under test.
+    const before = loadSnapshotOrThrow(caseStore, caseId);
+    ensureSourcesExist(
+      caseStore,
+      caseId,
+      before.eventSequence,
+      ['source-ownership-calculator-candidate-rav4'],
+      deps.clock,
+    );
+    const staleSnapshot = loadSnapshotOrThrow(caseStore, caseId);
+    advanceStoreByOneEvent(caseStore, caseId, deps);
+
+    const activityStore = new InMemoryActivityStore();
+    const trajectory = emptyScenarioTrajectory();
+    expect(() =>
+      foldExecutionResult(
+        withStaleReadStore(caseStore, staleSnapshot),
+        activityStore,
+        caseId,
+        CLEAN_RESULT,
+        deps,
+        trajectory,
+        { attemptsToRecord: 0 },
+      ),
+    ).toThrow(/failed to append evidence for obligation/);
+  });
+
+  it('throws when the real CaseStore.append() rejects an obligation-attempt append due to a concurrent write', () => {
+    const { caseStore, caseId, deps } = seedRealCase();
+    const staleSnapshot = loadSnapshotOrThrow(caseStore, caseId);
+    advanceStoreByOneEvent(caseStore, caseId, deps);
+
+    const activityStore = new InMemoryActivityStore();
+    const trajectory = emptyScenarioTrajectory();
+    expect(() =>
+      foldExecutionResult(
+        withStaleReadStore(caseStore, staleSnapshot),
+        activityStore,
+        caseId,
+        NO_EVIDENCE_RESULT,
+        deps,
+        trajectory,
+        { attemptsToRecord: 1 },
+      ),
+    ).toThrow(/failed to record an attempt for/);
+  });
+
+  it("throws when the obligation is gone by the time the post-loop status check runs (attemptsToRecord: 0 skips the loop's own per-iteration existence check)", () => {
+    const { caseStore, caseId, deps } = seedRealCase();
+    const activityStore = new InMemoryActivityStore();
+    const trajectory = emptyScenarioTrajectory();
+
+    expect(() =>
+      foldExecutionResult(
+        caseStore,
+        activityStore,
+        caseId,
+        { ...NO_EVIDENCE_RESULT, obligationId: 'car.does_not_exist' },
+        deps,
+        trajectory,
+        { attemptsToRecord: 0 },
+      ),
+    ).toThrow(/not found on case/);
+  });
+
+  it('throws when the real CaseStore.append() rejects the obligation-advance append due to a concurrent write', () => {
+    const { caseStore, caseId, deps } = seedRealCase();
+
+    // Manually record satisfying evidence.accepted directly (bypassing
+    // foldExecutionResult entirely) so car.ownership_cost's E2 completion
+    // rule is already met by the stored evidence/claim/source while the
+    // obligation's own `status` is still "open" -- 'evidence.accepted'
+    // never itself touches `obligations` (reducer.ts's own case only folds
+    // evidenceLinks/claims), exactly the real gap foldExecutionResult's own
+    // trailing advanceObligation() call exists to close.
+    const before = loadSnapshotOrThrow(caseStore, caseId);
+    ensureSourcesExist(
+      caseStore,
+      caseId,
+      before.eventSequence,
+      ['source-ownership-calculator-candidate-rav4'],
+      deps.clock,
+    );
+    const afterSource = loadSnapshotOrThrow(caseStore, caseId);
+    const evidenceLink: EvidenceLink = {
+      id: deps.idGenerator.next('ev'),
+      obligationId: 'car.ownership_cost',
+      sourceId: 'source-ownership-calculator-candidate-rav4',
+      level: 'E3',
+      verdict: 'pass',
+      disposition: 'included',
+      summary: 'Manually recorded for this test.',
+      stale: false,
+      createdAt: FIXED_CLOCK.now(),
+      updatedAt: FIXED_CLOCK.now(),
+    };
+    const claim: Claim = {
+      id: deps.idGenerator.next('claim'),
+      obligationId: 'car.ownership_cost',
+      statement: 'Manually recorded for this test.',
+      stance: 'supports',
+      confidence: 0.9,
+      sourceIds: ['source-ownership-calculator-candidate-rav4'],
+      stale: false,
+      createdAt: FIXED_CLOCK.now(),
+    };
+    const evEvent: CaseEvent = {
+      eventId: deps.idGenerator.next('event'),
+      caseId,
+      sequence: afterSource.eventSequence + 1,
+      timestamp: FIXED_CLOCK.now(),
+      type: 'evidence.accepted',
+      payload: { evidenceLink, claim },
+    };
+    const evAppend = caseStore.append(caseId, [evEvent], afterSource.eventSequence);
+    if (evAppend.status !== 'applied') {
+      throw new Error(`test setup: failed to record manual evidence: ${evAppend.status}`);
+    }
+    const staleSnapshot = evAppend.snapshot;
+    expect(staleSnapshot.obligations.find((o) => o.id === 'car.ownership_cost')?.status).toBe(
+      'open',
+    );
+    advanceStoreByOneEvent(caseStore, caseId, deps);
+
+    const activityStore = new InMemoryActivityStore();
+    const trajectory = emptyScenarioTrajectory();
+    expect(() =>
+      foldExecutionResult(
+        withStaleReadStore(caseStore, staleSnapshot),
+        activityStore,
+        caseId,
+        { ...NO_EVIDENCE_RESULT, obligationId: 'car.ownership_cost' },
+        deps,
+        trajectory,
+        { attemptsToRecord: 0 },
+      ),
+    ).toThrow(/failed to advance obligation/);
+  });
+});
+
+describe('drainGraph', () => {
+  const FAKE_GRAPH_RESULT = {
+    multiAgentResult: {},
+    nodeStartOrder: [],
+    nodeFinishOrder: [],
+    executionResults: {},
+    decisionSynthesizerText: '',
+    proposedRecommendation: undefined,
+    goalLoopResult: undefined,
+  } as unknown as CarPurchaseGraphResult;
+
+  /** Builds a minimal, well-formed synthetic `RuntimeEvent`, the same normalized shape `event-normalizer.ts` actually emits -- overridden per test to reach a specific defensive branch `drainGraph` never sees from the real, fully-scripted Graph run (which never emits a malformed attribute shape). */
+  function fakeEvent(overrides: Partial<RuntimeEvent> = {}): RuntimeEvent {
+    return {
+      schemaVersion: '1.0',
+      sequence: 0,
+      timestamp: FIXED_CLOCK.now(),
+      traceId: 'trace-1',
+      caseId: 'case-1',
+      runId: 'run-1',
+      category: 'tool',
+      name: 'test.event',
+      phase: 'finish',
+      level: 'info',
+      summary: 'synthetic test event',
+      attributes: {},
+      redactions: [],
+      ...overrides,
+    };
+  }
+
+  async function* stream(
+    events: readonly RuntimeEvent[],
+  ): AsyncGenerator<RuntimeEvent, CarPurchaseGraphResult, undefined> {
+    // No real async work: this synthetic generator only needs to satisfy
+    // drainGraph's real AsyncGenerator input type, matching the same
+    // synchronous-body-in-an-async-generator shape car-purchase-graph.ts's
+    // own executeCarPurchaseGraph uses.
+    await Promise.resolve();
+    for (const event of events) yield event;
+    return FAKE_GRAPH_RESULT;
+  }
+
+  it('ignores a skill.activated event whose skillId is not a string or whose obligationId is missing, but records a well-formed one', async () => {
+    const trajectory = emptyScenarioTrajectory();
+    const result = await drainGraph(
+      stream([
+        fakeEvent({
+          category: 'skill',
+          name: 'skill.activated',
+          attributes: { skillId: 42 },
+          obligationId: 'car.deal_normalization',
+        }),
+        fakeEvent({
+          category: 'skill',
+          name: 'skill.activated',
+          attributes: { skillId: 'deal-normalization' },
+          obligationId: undefined,
+        }),
+        fakeEvent({
+          category: 'skill',
+          name: 'skill.activated',
+          attributes: { skillId: 'deal-normalization' },
+          obligationId: 'car.deal_normalization',
+        }),
+      ]),
+      trajectory,
+    );
+    expect(trajectory.skillActivations).toEqual([
+      { skillId: 'deal-normalization', obligationId: 'car.deal_normalization' },
+    ]);
+    expect(result).toBe(FAKE_GRAPH_RESULT);
+  });
+
+  it('ignores a context.injected event whose fields attribute is not an array', async () => {
+    const trajectory = emptyScenarioTrajectory();
+    await drainGraph(
+      stream([
+        fakeEvent({
+          category: 'context',
+          name: 'context.injected',
+          attributes: { fields: 'not-an-array' },
+        }),
+        fakeEvent({
+          category: 'context',
+          name: 'context.injected',
+          attributes: { fields: ['title', 42, 'criteria'] },
+        }),
+      ]),
+      trajectory,
+    );
+    expect(trajectory.contextInjections).toEqual([{ fields: ['title', 'criteria'] }]);
+  });
+
+  it('ignores an intervention event whose handler is not a string, and one whose action is not a recognized intervention name', async () => {
+    const trajectory = emptyScenarioTrajectory();
+    await drainGraph(
+      stream([
+        fakeEvent({
+          category: 'intervention',
+          name: 'intervention.guide',
+          attributes: { handler: 7 },
+        }),
+        fakeEvent({
+          category: 'intervention',
+          name: 'intervention.unrecognized',
+          attributes: { handler: 'ConsequenceGuard' },
+        }),
+        fakeEvent({
+          category: 'intervention',
+          name: 'intervention.guide',
+          attributes: { handler: 'ConsequenceGuard' },
+        }),
+      ]),
+      trajectory,
+    );
+    expect(trajectory.interventions).toEqual([{ action: 'guide', handler: 'ConsequenceGuard' }]);
+  });
+
+  it('ignores a finished tool event whose toolName attribute is not a string', async () => {
+    const trajectory = emptyScenarioTrajectory();
+    await drainGraph(
+      stream([
+        fakeEvent({ category: 'tool', phase: 'finish', attributes: { toolName: 99 } }),
+        fakeEvent({
+          category: 'tool',
+          phase: 'finish',
+          attributes: { toolName: 'fixture_lookup' },
+        }),
+      ]),
+      trajectory,
+    );
+    expect(trajectory.toolCalls).toEqual([{ toolId: 'fixture_lookup' }]);
+  });
+
+  it('records a finished graph node in graphNodes without treating it as a specialistsInvoked entry when its id is not one of the six real car-purchase Graph node ids', async () => {
+    const trajectory = emptyScenarioTrajectory();
+    await drainGraph(
+      stream([
+        fakeEvent({
+          category: 'graph',
+          phase: 'finish',
+          attributes: { nodeId: 'not-a-real-graph-node' },
+        }),
+        fakeEvent({
+          category: 'graph',
+          phase: 'finish',
+          attributes: { nodeId: 'deal-analyst' },
+        }),
+      ]),
+      trajectory,
+    );
+    expect(trajectory.graphNodes).toEqual(['not-a-real-graph-node', 'deal-analyst']);
+    expect(trajectory.specialistsInvoked).toEqual(['deal-analyst']);
   });
 });

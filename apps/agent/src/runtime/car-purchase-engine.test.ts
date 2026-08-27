@@ -11,22 +11,34 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fileURLToPath } from 'node:url';
-import type { CaseEvent, CaseState, CommandReceipt, RunReceipt } from '@pax/contracts';
+import type {
+  CaseEvent,
+  CaseState,
+  CommandReceipt,
+  ExecutionResult,
+  RunReceipt,
+} from '@pax/contracts';
 import type { Clock, IdGenerator } from '@pax/core';
 import { compileCarPurchasePack, PackRegistry } from '@pax/packs';
 import { buildCarPurchaseCandidateEntities } from '@pax/scenarios';
+import type { MultiAgentResult } from '@strands-agents/sdk/multiagent';
 import { createTestDatabase, type TestDatabase } from '../db/connection.js';
 import { applyMigrations } from '../db/migrate.js';
 import { CommandService } from '../services/command-service.js';
 import { RunService, SqliteRunStore, type RunRecord } from '../services/run-service.js';
 import { SqliteActivityStore } from '../store/activity-store.js';
+import type { CaseStore } from '../store/case-store.js';
 import { SqliteCaseStore } from '../store/sqlite-case-store.js';
 import { SqliteRuntimeEventStore } from '../store/runtime-event-store.js';
 import { carPurchaseCapabilityCatalog } from './car-purchase-scenario.js';
+import type { CarPurchaseGraphResult } from './car-purchase-graph.js';
 import {
   createCarPurchaseEngine,
   determineCarPurchaseRound,
+  foldRound1,
+  foldRound2,
   type CarPurchaseEngine,
+  type CarPurchaseEngineDeps,
 } from './car-purchase-engine.js';
 
 const SKILLS_ROOT_DIR = fileURLToPath(new URL('../../skills', import.meta.url));
@@ -141,6 +153,8 @@ function buildLiveStack(): {
   runService: RunService;
   engine: CarPurchaseEngine;
   idGenerator: IdGenerator;
+  registry: PackRegistry;
+  pack: ReturnType<typeof compileCarPurchasePack>;
 } {
   const database = createTestDatabase();
   test = database;
@@ -193,6 +207,8 @@ function buildLiveStack(): {
     runService,
     engine,
     idGenerator,
+    registry,
+    pack,
   };
 }
 
@@ -530,4 +546,426 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
     expect(failedActivity).toBeDefined();
     expect(failedActivity?.summary).toContain('is not registered');
   });
+});
+
+describe('foldRound1 / foldRound2 (direct unit tests via a hand-built CarPurchaseGraphResult)', () => {
+  // foldRound1/foldRound2 are exported (see their own doc comments in
+  // car-purchase-engine.ts) purely so their defensive "the real Graph
+  // produced no result for node X" throw guards, and other branches that
+  // depend only on the *shape* of a CarPurchaseGraphResult rather than on
+  // anything Strands-SDK-specific, can be tested directly against a
+  // hand-built plain-data CarPurchaseGraphResult -- never a mocked Graph or
+  // Agent.
+
+  function executionResult(
+    obligationId: string,
+    overrides: Partial<ExecutionResult> = {},
+  ): ExecutionResult {
+    return {
+      obligationId,
+      disposition: 'evidence_found',
+      claims: [
+        {
+          statement: 'Some finding.',
+          stance: 'supports',
+          confidence: 0.8,
+          sourceIds: ['source-listing-candidate-rav4'],
+        },
+      ],
+      evidenceResults: [
+        {
+          sourceId: 'source-listing-candidate-rav4',
+          level: 'E1',
+          verdict: 'pass',
+          summary: 'Listing.',
+        },
+      ],
+      limitations: [],
+      suggestedStatus: 'satisfied',
+      ...overrides,
+    };
+  }
+
+  function fakeGraphResult(
+    overrides: Partial<CarPurchaseGraphResult> = {},
+  ): CarPurchaseGraphResult {
+    return {
+      multiAgentResult: {} as MultiAgentResult,
+      nodeStartOrder: [],
+      nodeFinishOrder: [],
+      executionResults: {
+        'deal-analyst': executionResult('car.deal_normalization'),
+        'ownership-cost-analyst': executionResult('car.ownership_cost'),
+        'safety-reliability-analyst': executionResult('car.safety_reliability'),
+        'household-fit-analyst': executionResult('car.household_fit'),
+        'source-challenger': executionResult('car.deal_normalization'),
+      },
+      decisionSynthesizerText: 'Recommend candidate-rav4 per source-listing-candidate-rav4.',
+      proposedRecommendation: {
+        candidateIds: ['candidate-rav4'],
+        rationale: 'strongest overall',
+      },
+      goalLoopResult: undefined,
+      ...overrides,
+    };
+  }
+
+  function seededCase(): {
+    deps: CarPurchaseEngineDeps;
+    caseId: string;
+    snapshot: CaseState;
+  } {
+    const { caseStore, activityStore, runStore, runtimeEventStore, registry, pack, idGenerator } =
+      buildLiveStack();
+    const deps: CarPurchaseEngineDeps = {
+      caseStore,
+      activityStore,
+      runStore,
+      runtimeEventStore,
+      registry,
+      clock: FIXED_CLOCK,
+      idGenerator,
+      skillsRootDir: SKILLS_ROOT_DIR,
+    };
+    const commandService = new CommandService({
+      caseStore,
+      activityStore,
+      registry,
+      clock: FIXED_CLOCK,
+      idGenerator,
+    });
+    const startResult = commandService.startDemo('cmd-start', { demoId: 'car-purchase' });
+    requireOkCommand(startResult);
+    let snapshot = requireSnapshot(startResult.value);
+    const caseId = snapshot.id;
+    snapshot = seedRealCandidates(caseStore, caseId, snapshot, FIXED_CLOCK, idGenerator);
+    void pack;
+    return { deps, caseId, snapshot };
+  }
+
+  it('foldRound1 throws when the Graph produced no result for a parallel specialist (deal-analyst)', () => {
+    const { deps, caseId } = seededCase();
+    const graphResult = fakeGraphResult({
+      executionResults: { 'ownership-cost-analyst': executionResult('car.ownership_cost') },
+    });
+    expect(() => foldRound1(deps, caseId, graphResult)).toThrow(
+      /round1 produced no ExecutionResult for "deal-analyst"/,
+    );
+  });
+
+  it('foldRound1 throws when the Graph produced no result for source-challenger', () => {
+    const { deps, caseId } = seededCase();
+    const graphResult = fakeGraphResult({
+      executionResults: {
+        'deal-analyst': executionResult('car.deal_normalization'),
+        'ownership-cost-analyst': executionResult('car.ownership_cost'),
+        'safety-reliability-analyst': executionResult('car.safety_reliability'),
+        'household-fit-analyst': executionResult('car.household_fit'),
+      },
+    });
+    expect(() => foldRound1(deps, caseId, graphResult)).toThrow(
+      /round1 produced no ExecutionResult for "source-challenger"/,
+    );
+  });
+
+  it('foldRound1 throws when decision-synthesizer never called propose_recommendation', () => {
+    const { deps, caseId } = seededCase();
+    const graphResult = fakeGraphResult({ proposedRecommendation: undefined });
+    expect(() => foldRound1(deps, caseId, graphResult)).toThrow(
+      /round1 decision-synthesizer never called propose_recommendation/,
+    );
+  });
+
+  it('foldRound1 records a null favoredOptionId when propose_recommendation carried an empty candidateIds array', () => {
+    const { deps, caseId } = seededCase();
+    const graphResult = fakeGraphResult({
+      proposedRecommendation: { candidateIds: [], rationale: 'no clear winner' },
+    });
+    const snapshot = foldRound1(deps, caseId, graphResult);
+    expect(snapshot.recommendation?.favoredOptionId).toBeNull();
+  });
+
+  it('foldRound2 throws when the Graph produced no result for deal-analyst', () => {
+    const { deps, caseId, snapshot } = seededCase();
+    const graphResult = fakeGraphResult({
+      executionResults: { 'household-fit-analyst': executionResult('car.household_fit') },
+    });
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    expect(() => foldRound2(deps, caseId, pack, graphResult)).toThrow(
+      /round2 produced no ExecutionResult for "deal-analyst"/,
+    );
+    void snapshot;
+  });
+
+  it('foldRound2 throws when the Graph produced no result for household-fit-analyst', () => {
+    const { deps, caseId } = seededCase();
+    const graphResult = fakeGraphResult({
+      executionResults: { 'deal-analyst': executionResult('car.deal_normalization') },
+    });
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    expect(() => foldRound2(deps, caseId, pack, graphResult)).toThrow(
+      /round2 produced no ExecutionResult for "household-fit-analyst"/,
+    );
+  });
+
+  it('foldRound2 throws when the Graph produced no result for source-challenger', () => {
+    const { deps, caseId } = seededCase();
+    const graphResult = fakeGraphResult({
+      executionResults: {
+        'deal-analyst': executionResult('car.deal_normalization'),
+        'household-fit-analyst': executionResult('car.household_fit'),
+      },
+    });
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    expect(() => foldRound2(deps, caseId, pack, graphResult)).toThrow(
+      /round2 produced no ExecutionResult for "source-challenger"/,
+    );
+  });
+
+  it('foldRound2 throws when decision-synthesizer never called propose_recommendation', () => {
+    const { deps, caseId } = seededCase();
+    const graphResult = fakeGraphResult({ proposedRecommendation: undefined });
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    expect(() => foldRound2(deps, caseId, pack, graphResult)).toThrow(
+      /round2 decision-synthesizer never called propose_recommendation/,
+    );
+  });
+
+  it('foldRound2 records a null favoredOptionId when propose_recommendation carried an empty candidateIds array', () => {
+    const { deps, caseId } = seededCase();
+    const graphResult = fakeGraphResult({
+      proposedRecommendation: { candidateIds: [], rationale: 'no clear winner' },
+    });
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    const snapshot = foldRound2(deps, caseId, pack, graphResult);
+    expect(snapshot.recommendation?.favoredOptionId).toBeNull();
+  });
+
+  it('foldRound2 derives the case.custom.dog_crate_fit obligation on a case that has none yet, and skips re-deriving it on a second call', () => {
+    const { deps, caseId } = seededCase();
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    const graphResult = fakeGraphResult();
+
+    const firstPass = foldRound2(deps, caseId, pack, graphResult);
+    const derived = firstPass.obligations.find((o) => o.id === 'case.custom.dog_crate_fit');
+    expect(derived).toBeDefined();
+
+    // Second call against the now-already-derived obligation exercises
+    // ensureDogCrateObligation's early-return branch instead of re-deriving.
+    const secondPass = foldRound2(deps, caseId, pack, fakeGraphResult());
+    const derivedAgain = secondPass.obligations.filter((o) => o.id === 'case.custom.dog_crate_fit');
+    expect(derivedAgain).toHaveLength(1);
+  });
+
+  it('foldRound2 records no evidence.conflicted supersession event when there is no stale round-1 teaser-price evidence to supersede', () => {
+    const { deps, caseId } = seededCase();
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    const graphResult = fakeGraphResult();
+
+    const snapshot = foldRound2(deps, caseId, pack, graphResult);
+    const conflictedActivity = deps.activityStore
+      .replayFrom(caseId, 0)
+      .find((event) => event.type === 'evidence.conflicted');
+    expect(conflictedActivity).toBeUndefined();
+    expect(snapshot.recommendation).not.toBeNull();
+  });
+
+  /**
+   * Wraps a real `CaseStore`, forcing a genuine `'conflict'` `AppendResult`
+   * for exactly the one `append()` call whose event batch `matches` --
+   * every other call (including `load`/`peekIdempotent`/`updateSelection`/
+   * `subscribe`/`resetDemo`) delegates straight to the real store. This is
+   * a substitute for our own `CaseStore` interface (a plain data/store
+   * contract this codebase already depends on), never a Strands SDK type --
+   * the same category of real, legitimate test double
+   * `command-service.test.ts`'s own established "stale read" store wrappers
+   * already use to force a real, otherwise-hard-to-schedule concurrent-write
+   * race deterministically.
+   */
+  function caseStoreConflictingOn(
+    real: CaseStore,
+    matches: (events: readonly CaseEvent[]) => boolean,
+  ): CaseStore {
+    return {
+      load: (caseId) => real.load(caseId),
+      peekIdempotent: (commandId) => real.peekIdempotent(commandId),
+      append: (caseId, events, expectedSequence, options) => {
+        if (matches(events)) {
+          const snapshot = real.load(caseId);
+          if (snapshot === undefined) throw new Error('test: case unexpectedly missing');
+          return {
+            status: 'conflict',
+            expectedSequence,
+            actualSequence: snapshot.eventSequence,
+            snapshot,
+          };
+        }
+        return real.append(caseId, events, expectedSequence, options);
+      },
+      updateSelection: (caseId, patch, expectedSequence, updatedAt, idempotency) =>
+        real.updateSelection(caseId, patch, expectedSequence, updatedAt, idempotency),
+      subscribe: (caseId, fromSequence) => real.subscribe(caseId, fromSequence),
+      resetDemo: (caseId) => real.resetDemo(caseId),
+    };
+  }
+
+  it('foldRound1 throws a real, inspectable error when recording the round1 recommendation hits a genuine append conflict', () => {
+    const { deps, caseId } = seededCase();
+    const conflictingCaseStore = caseStoreConflictingOn(deps.caseStore, (events) =>
+      events.some((event) => event.type === 'recommendation.ready'),
+    );
+    const graphResult = fakeGraphResult();
+    expect(() =>
+      foldRound1({ ...deps, caseStore: conflictingCaseStore }, caseId, graphResult),
+    ).toThrow(/failed to record the round1 recommendation.*status "conflict"/);
+  });
+
+  it('foldRound2 throws a real, inspectable error when recording the round2 recommendation hits a genuine append conflict', () => {
+    const { deps, caseId } = seededCase();
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    const conflictingCaseStore = caseStoreConflictingOn(deps.caseStore, (events) =>
+      events.some((event) => event.type === 'recommendation.ready'),
+    );
+    const graphResult = fakeGraphResult();
+    expect(() =>
+      foldRound2({ ...deps, caseStore: conflictingCaseStore }, caseId, pack, graphResult),
+    ).toThrow(/failed to record the round2 recommendation.*status "conflict"/);
+  });
+
+  it('foldRound2 throws a real, inspectable error when creating the decision proposal hits a genuine append conflict', () => {
+    const { deps, caseId } = seededCase();
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    const conflictingCaseStore = caseStoreConflictingOn(deps.caseStore, (events) =>
+      events.some((event) => event.type === 'proposal.proposed'),
+    );
+    const graphResult = fakeGraphResult();
+    expect(() =>
+      foldRound2({ ...deps, caseStore: conflictingCaseStore }, caseId, pack, graphResult),
+    ).toThrow(/failed to create the decision proposal.*status "conflict"/);
+  });
+
+  it('foldRound2 throws a real, inspectable error when deriving the case.custom.dog_crate_fit obligation hits a genuine append conflict', () => {
+    const { deps, caseId } = seededCase();
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    const conflictingCaseStore = caseStoreConflictingOn(deps.caseStore, (events) =>
+      events.some((event) => event.type === 'obligation.updated'),
+    );
+    const graphResult = fakeGraphResult();
+    expect(() =>
+      foldRound2({ ...deps, caseStore: conflictingCaseStore }, caseId, pack, graphResult),
+    ).toThrow(
+      /failed to append the derived "case\.custom\.dog_crate_fit" obligation.*status "conflict"/,
+    );
+  });
+
+  it('foldRound2 throws a real, inspectable error when superseding stale round-1 teaser-price evidence hits a genuine append conflict', () => {
+    const { deps, caseId, snapshot } = seededCase();
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+
+    // Seed one non-stale teaser-price evidence link, exactly the shape
+    // round1's own fold would have left behind, so foldRound2's
+    // staleLinks.length > 0 branch is genuinely entered before the
+    // conflicting append is attempted.
+    const seedEvent: CaseEvent = {
+      eventId: deps.idGenerator.next('event'),
+      caseId,
+      sequence: snapshot.eventSequence + 1,
+      timestamp: FIXED_CLOCK.now(),
+      type: 'evidence.accepted',
+      payload: {
+        evidenceLink: {
+          id: deps.idGenerator.next('ev'),
+          obligationId: 'car.deal_normalization',
+          sourceId: 'source-dealer-offer-candidate-rav4',
+          level: 'E2',
+          verdict: 'degraded',
+          disposition: 'included',
+          summary: 'Round-1 teaser-price evidence.',
+          stale: false,
+          createdAt: FIXED_CLOCK.now(),
+          updatedAt: FIXED_CLOCK.now(),
+        },
+      },
+    };
+    const seeded = deps.caseStore.append(caseId, [seedEvent], snapshot.eventSequence);
+    if (seeded.status !== 'applied') throw new Error('test setup: failed to seed stale evidence');
+
+    const conflictingCaseStore = caseStoreConflictingOn(deps.caseStore, (events) =>
+      events.some((event) => event.type === 'evidence.conflicted'),
+    );
+    const graphResult = fakeGraphResult();
+    expect(() =>
+      foldRound2({ ...deps, caseStore: conflictingCaseStore }, caseId, pack, graphResult),
+    ).toThrow(/failed to supersede round1 teaser-price evidence.*status "conflict"/);
+  });
+
+  it('foldRound2 throws a real, inspectable error when recording car.hard_constraints evidence hits a genuine append conflict', () => {
+    const { deps, caseId } = seededCase();
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+    const conflictingCaseStore = caseStoreConflictingOn(deps.caseStore, (events) =>
+      events.some(
+        (event) =>
+          event.type === 'evidence.accepted' &&
+          event.payload.evidenceLink.obligationId === 'car.hard_constraints',
+      ),
+    );
+    const graphResult = fakeGraphResult();
+    expect(() =>
+      foldRound2({ ...deps, caseStore: conflictingCaseStore }, caseId, pack, graphResult),
+    ).toThrow(/failed to record car\.hard_constraints evidence.*status "conflict"/);
+  });
+});
+
+describe('createCarPurchaseEngine: in-flight-run tracking', () => {
+  it('a second trigger for the same case queues behind the first rather than racing it, and both settle', async () => {
+    const { engine, runStore, caseStore, activityStore, commandService, idGenerator } =
+      buildLiveStack();
+    const startResult = commandService.startDemo('cmd-start', { demoId: 'car-purchase' });
+    requireOkCommand(startResult);
+    const snapshot = requireSnapshot(startResult.value);
+    const caseId = snapshot.id;
+    seedRealCandidates(caseStore, caseId, snapshot, FIXED_CLOCK, idGenerator);
+    void activityStore;
+
+    runStore.create({
+      id: 'run-a',
+      caseId,
+      obligationId: 'car.deal_normalization',
+      status: 'queued',
+      createdAt: FIXED_CLOCK.now(),
+      updatedAt: FIXED_CLOCK.now(),
+    });
+    runStore.create({
+      id: 'run-b',
+      caseId,
+      obligationId: 'car.deal_normalization',
+      status: 'queued',
+      createdAt: FIXED_CLOCK.now(),
+      updatedAt: FIXED_CLOCK.now(),
+    });
+
+    // Deliberately not awaited between the two triggers: the second
+    // trigger's Promise is chained behind the first's in-flight promise
+    // (createCarPurchaseEngine's own inFlightByCase map), so by the time
+    // the *first* run's `.finally` cleanup fires, the map already points
+    // at the *second* run's promise -- exercising the "don't delete a
+    // newer run's in-flight entry" branch.
+    const first = engine.trigger({
+      caseId,
+      runId: 'run-a',
+      obligationId: 'car.deal_normalization',
+    });
+    const second = engine.trigger({
+      caseId,
+      runId: 'run-b',
+      obligationId: 'car.deal_normalization',
+    });
+
+    await Promise.all([first, second]);
+
+    const recordA = runStore.load('run-a');
+    const recordB = runStore.load('run-b');
+    expect(recordA?.status).toBe('completed');
+    expect(recordB?.status).toBe('completed');
+  }, 30_000);
 });

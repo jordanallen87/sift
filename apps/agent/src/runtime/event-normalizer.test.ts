@@ -2,6 +2,7 @@ import {
   Agent,
   AfterModelCallEvent,
   AfterToolCallEvent,
+  BeforeModelCallEvent,
   BeforeToolCallEvent,
   Message,
   TextBlock,
@@ -13,6 +14,7 @@ import {
   hashContent,
   normalizeAfterModelCall,
   normalizeAfterToolCall,
+  normalizeBeforeModelCall,
   normalizeBeforeToolCall,
   normalizeContextInjection,
   normalizeGoalValidation,
@@ -182,6 +184,31 @@ describe('normalizeBeforeToolCall / normalizeAfterToolCall', () => {
   });
 });
 
+describe('normalizeBeforeModelCall', () => {
+  it('falls back to "unknown" for modelId and omits projectedInputTokens when the real Model reports neither (no test in strands-adapter.test.ts\'s real Agent runs ever sees this: a real ScriptedModelProvider always has a configured modelId)', () => {
+    const agent = buildStubAgent();
+    // `updateConfig` is the SDK's own real public API (`Model.updateConfig`,
+    // used identically by `strands-adapter.ts`'s wiring) -- not a bypass of
+    // it -- and is the only way to put a real Model instance into the
+    // `modelId: undefined` state a differently-configured live provider
+    // could genuinely report.
+    agent.model.updateConfig({ modelId: undefined } as unknown as Parameters<
+      typeof agent.model.updateConfig
+    >[0]);
+    const event = new BeforeModelCallEvent({
+      agent,
+      model: agent.model,
+      invocationState: {},
+    });
+
+    const debugEvent = normalizeBeforeModelCall(event, CTX, 0);
+    expect(debugEvent.category).toBe('model');
+    expect(debugEvent.phase).toBe('start');
+    expect(debugEvent.attributes['modelId']).toBe('unknown');
+    expect(debugEvent.attributes).not.toHaveProperty('projectedInputTokens');
+  });
+});
+
 describe('normalizeAfterModelCall', () => {
   it('normalizes a completed model call, including the stop reason', () => {
     const agent = buildStubAgent();
@@ -235,6 +262,29 @@ describe('normalizeSkillActivation', () => {
     expect(debugEvent.obligationId).toBe('car.hard_constraints');
     expect(debugEvent.attributes['skillId']).toBe('deal-analysis');
     expect(debugEvent.attributes['reason']).toBe('activated via the skills tool');
+  });
+
+  it('omits obligationId and agentId from attributes when neither the context nor params supply them', () => {
+    // Real gap: every other test in this describe block uses CTX, which
+    // always carries an obligationId, and always passes params.agentId --
+    // so the `ctx.obligationId !== undefined`/`params.agentId !== undefined`
+    // conditional spreads never see their false side. A skill can activate
+    // outside any obligation-scoped run (e.g. a future non-obligation-bound
+    // context), so both fields are genuinely optional.
+    const ctxWithoutObligation: NormalizerContext = {
+      traceId: 'trace-1',
+      runId: 'run-1',
+      caseId: 'case-1',
+    };
+    const debugEvent = normalizeSkillActivation(
+      { skillId: 'deal-analysis', reason: 'activated via the skills tool' },
+      ctxWithoutObligation,
+      0,
+    );
+    expect(debugEvent.obligationId).toBeUndefined();
+    expect(debugEvent.attributes).not.toHaveProperty('obligationId');
+    expect(debugEvent.attributes).not.toHaveProperty('agentId');
+    expect(debugEvent.attributes['skillId']).toBe('deal-analysis');
   });
 });
 
@@ -336,6 +386,16 @@ describe('normalizeSessionEvent', () => {
     expect(debugEvent.attributes['restored']).toBe(false);
     expect(debugEvent.summary).toContain('No prior session snapshot');
   });
+
+  it('includes a snapshotId in attributes when the caller provides one (neither existing test above ever does)', () => {
+    const debugEvent = normalizeSessionEvent(
+      { kind: 'snapshot_restored', snapshotId: 'snapshot-1', restored: true },
+      CTX,
+      0,
+    );
+    expect(debugEvent.attributes['snapshotId']).toBe('snapshot-1');
+    expect(debugEvent.summary).toBe('Restored a session snapshot.');
+  });
 });
 
 describe('normalizeRunError', () => {
@@ -345,5 +405,20 @@ describe('normalizeRunError', () => {
     expect(debugEvent.name).toBe('run.failed');
     expect(debugEvent.level).toBe('error');
     expect(debugEvent.summary).toBe('agent invocation failed: boom');
+  });
+});
+
+describe('buildCorrelation (exercised through any normalizer -- normalizeRunError here, since it needs no other fixture)', () => {
+  it('stamps spanId, parentSpanId, and requestId onto the correlation when the NormalizerContext provides them (forward-compat OTEL fields -- module header: "carries spanId/parentSpanId fields for forward compatibility"; CTX never sets them, so no other test in this file exercises this)', () => {
+    const ctxWithOtel: NormalizerContext = {
+      ...CTX,
+      spanId: 'span-1',
+      parentSpanId: 'span-0',
+      requestId: 'request-1',
+    };
+    const debugEvent = normalizeRunError('boom', ctxWithOtel, 0);
+    expect(debugEvent.spanId).toBe('span-1');
+    expect(debugEvent.parentSpanId).toBe('span-0');
+    expect(debugEvent.requestId).toBe('request-1');
   });
 });

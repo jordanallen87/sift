@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { CustomConcernForm } from './CustomConcernForm.js';
@@ -142,6 +142,52 @@ describe('CustomConcernForm', () => {
         evidenceExpectation: 'verification',
         comparison: 'higher_better',
       },
+    });
+  });
+
+  it('ignores a second form submission while a submit is already in flight', async () => {
+    const user = userEvent.setup();
+    let resolveDefine: (value: unknown) => void = () => undefined;
+    const pending = new Promise((resolve) => {
+      resolveDefine = resolve;
+    });
+    const { commands, container } = renderForm({
+      defineCaseAttribute: vi.fn().mockReturnValue(pending),
+    });
+
+    await user.type(screen.getByLabelText(/concern id/i), 'pet_sensory_fit');
+    await user.type(screen.getByLabelText(/label/i), 'Pet sensory fit');
+    await user.type(screen.getByLabelText(/why this matters/i), 'Reason text here.');
+    await user.click(screen.getByTestId('custom-concern-form-submit'));
+    expect(commands.defineCaseAttribute).toHaveBeenCalledTimes(1);
+
+    // The submit button itself is disabled while submitting, so this
+    // directly submits the underlying `<form>` element -- the exact
+    // defensive path the `submitting` half of `handleSubmit`'s guard exists
+    // for (e.g. a real browser's implicit Enter-to-submit behavior racing an
+    // in-flight submission).
+    fireEvent.submit(container.querySelector('form')!);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(commands.defineCaseAttribute).toHaveBeenCalledTimes(1);
+
+    resolveDefine(buildFakeCommandReceipt());
+  });
+
+  it('shows the generic "Could not define this concern." message when defineCaseAttribute rejects with a non-Error value', async () => {
+    const user = userEvent.setup();
+    renderForm({
+      defineCaseAttribute: vi.fn().mockRejectedValue('pack rejected this'),
+    });
+
+    await user.type(screen.getByLabelText(/concern id/i), 'pet_sensory_fit');
+    await user.type(screen.getByLabelText(/label/i), 'Pet sensory fit');
+    await user.type(screen.getByLabelText(/why this matters/i), 'Reason text here.');
+    await user.click(screen.getByTestId('custom-concern-form-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('custom-concern-form-error')).toHaveTextContent(
+        'Could not define this concern.',
+      );
     });
   });
 

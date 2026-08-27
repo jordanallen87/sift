@@ -11,7 +11,13 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fileURLToPath } from 'node:url';
-import type { CommandReceipt, RunReceipt } from '@pax/contracts';
+import type {
+  CaseEvent,
+  CaseState,
+  CommandReceipt,
+  ExecutionResult,
+  RunReceipt,
+} from '@pax/contracts';
 import type { Clock, IdGenerator } from '@pax/core';
 import { compileHomeEnergyGuardianPack, PackRegistry } from '@pax/packs';
 import { buildHomeEnergyResponseOptionEntities } from '@pax/scenarios';
@@ -20,13 +26,19 @@ import { applyMigrations } from '../db/migrate.js';
 import { CommandService } from '../services/command-service.js';
 import { RunService, SqliteRunStore, type RunRecord } from '../services/run-service.js';
 import { SqliteActivityStore } from '../store/activity-store.js';
+import type { CaseStore } from '../store/case-store.js';
 import { SqliteCaseStore } from '../store/sqlite-case-store.js';
 import { SqliteRuntimeEventStore } from '../store/runtime-event-store.js';
+import type { HomeEnergySwarmResult } from './home-energy-swarm.js';
 import {
   createHomeEnergyEngine,
   determineHomeEnergyRound,
+  extractFavoredResponseOptionId,
+  foldHomeEnergyRound1,
+  foldHomeEnergyRound2,
   homeEnergyCapabilityCatalog,
   type HomeEnergyEngine,
+  type HomeEnergyEngineDeps,
 } from './home-energy-engine.js';
 
 const SKILLS_ROOT_DIR = fileURLToPath(new URL('../../skills', import.meta.url));
@@ -91,6 +103,8 @@ function buildLiveStack(): {
   runService: RunService;
   engine: HomeEnergyEngine;
   idGenerator: IdGenerator;
+  registry: PackRegistry;
+  pack: ReturnType<typeof compileHomeEnergyGuardianPack>;
 } {
   const database = createTestDatabase();
   test = database;
@@ -144,6 +158,8 @@ function buildLiveStack(): {
     runService,
     engine,
     idGenerator,
+    registry,
+    pack,
   };
 }
 
@@ -414,4 +430,310 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
     expect(failedActivity).toBeDefined();
     expect(failedActivity?.summary).toContain('is not registered');
   });
+});
+
+describe('extractFavoredResponseOptionId', () => {
+  it('extracts the option id from a "Recommend...(option-id)" clause when it names a known option', () => {
+    expect(
+      extractFavoredResponseOptionId('Recommend monitoring (monitor-one-cycle) for now.'),
+    ).toBe('monitor-one-cycle');
+  });
+
+  it('falls back to a substring scan when the "Recommend...(...)" clause names something other than a known option id', () => {
+    expect(
+      extractFavoredResponseOptionId(
+        'Recommend a wait-and-see approach (not-a-real-option) -- specifically change-rate-plan.',
+      ),
+    ).toBe('change-rate-plan');
+  });
+
+  it('falls back to a substring scan when there is no "Recommend...(...)" clause at all', () => {
+    expect(
+      extractFavoredResponseOptionId(
+        'The best option here is request-hvac-inspection given the facts.',
+      ),
+    ).toBe('request-hvac-inspection');
+  });
+
+  it('returns null when the text names no known response option anywhere', () => {
+    expect(extractFavoredResponseOptionId('No option is clearly favored yet.')).toBeNull();
+  });
+});
+
+describe('foldHomeEnergyRound1 / foldHomeEnergyRound2 (direct unit tests via a hand-built HomeEnergySwarmResult)', () => {
+  function executionResult(
+    obligationId: string,
+    overrides: Partial<ExecutionResult> = {},
+  ): ExecutionResult {
+    return {
+      obligationId,
+      disposition: 'evidence_found',
+      claims: [
+        {
+          statement: 'Some finding.',
+          stance: 'supports',
+          confidence: 0.8,
+          sourceIds: ['source-current-bill-household-demo-energy-01'],
+        },
+      ],
+      evidenceResults: [
+        {
+          sourceId: 'source-current-bill-household-demo-energy-01',
+          level: 'E1',
+          verdict: 'pass',
+          summary: 'Bill.',
+        },
+      ],
+      limitations: [],
+      suggestedStatus: 'satisfied',
+      ...overrides,
+    };
+  }
+
+  function fakeSwarmResult(overrides: Partial<HomeEnergySwarmResult> = {}): HomeEnergySwarmResult {
+    return {
+      multiAgentResult: {} as HomeEnergySwarmResult['multiAgentResult'],
+      nodeStartOrder: [],
+      nodeFinishOrder: [],
+      handoffs: [],
+      contexts: {
+        'anomaly-investigator': executionResult('energy.anomaly'),
+        'rate-analyst': executionResult('energy.rate_change'),
+        'weather-analyst': executionResult('energy.weather'),
+        'home-systems-analyst': executionResult('energy.household_change'),
+        'source-challenger': executionResult('energy.response_options'),
+      },
+      decisionSynthesizerText: 'Recommend monitoring for now (monitor-one-cycle).',
+      proposedInspection: undefined,
+      goalLoopResult: undefined,
+      repetitiveHandoffDetected: false,
+      ...overrides,
+    };
+  }
+
+  function seededCase(): {
+    deps: HomeEnergyEngineDeps;
+    caseId: string;
+    snapshot: CaseState;
+  } {
+    const { caseStore, activityStore, runStore, runtimeEventStore, registry, idGenerator } =
+      buildLiveStack();
+    const deps: HomeEnergyEngineDeps = {
+      caseStore,
+      activityStore,
+      runStore,
+      runtimeEventStore,
+      registry,
+      clock: FIXED_CLOCK,
+      idGenerator,
+      skillsRootDir: SKILLS_ROOT_DIR,
+    };
+    const commandService = new CommandService({
+      caseStore,
+      activityStore,
+      registry,
+      clock: FIXED_CLOCK,
+      idGenerator,
+      demoSeedEntities: { 'home-energy-guardian': buildHomeEnergyResponseOptionEntities },
+    });
+    const startResult = commandService.startDemo('cmd-start', { demoId: 'home-energy-guardian' });
+    requireOkCommand(startResult);
+    const snapshot = requireOkSnapshot(startResult.value);
+    return { deps, caseId: snapshot.id, snapshot };
+  }
+
+  function requireOkSnapshot(receipt: CommandReceipt): CaseState {
+    if (receipt.snapshot === undefined) throw new Error('receipt has no snapshot');
+    return receipt.snapshot;
+  }
+
+  it('foldHomeEnergyRound1 throws when the Swarm produced no context for a sequential specialist (weather-analyst)', () => {
+    const { deps, caseId } = seededCase();
+    const swarmResult = fakeSwarmResult({
+      contexts: {
+        'anomaly-investigator': executionResult('energy.anomaly'),
+        'rate-analyst': executionResult('energy.rate_change'),
+        'home-systems-analyst': executionResult('energy.household_change'),
+        'source-challenger': executionResult('energy.response_options'),
+      },
+    });
+    expect(() => foldHomeEnergyRound1(deps, caseId, swarmResult)).toThrow(
+      /round1 produced no context for "weather-analyst"/,
+    );
+  });
+
+  it('foldHomeEnergyRound1 throws when the Swarm produced no context for source-challenger', () => {
+    const { deps, caseId } = seededCase();
+    const swarmResult = fakeSwarmResult({
+      contexts: {
+        'anomaly-investigator': executionResult('energy.anomaly'),
+        'rate-analyst': executionResult('energy.rate_change'),
+        'weather-analyst': executionResult('energy.weather'),
+        'home-systems-analyst': executionResult('energy.household_change'),
+      },
+    });
+    expect(() => foldHomeEnergyRound1(deps, caseId, swarmResult)).toThrow(
+      /round1 produced no context for "source-challenger"/,
+    );
+  });
+
+  it("foldHomeEnergyRound1 throws when decision-synthesizer's text names no known response option", () => {
+    const { deps, caseId } = seededCase();
+    const swarmResult = fakeSwarmResult({ decisionSynthesizerText: 'No clear option yet.' });
+    expect(() => foldHomeEnergyRound1(deps, caseId, swarmResult)).toThrow(
+      /round1 decision-synthesizer text named no known response option/,
+    );
+  });
+
+  it('foldHomeEnergyRound1 de-duplicates limitations collected across multiple node contexts, and skips a context entry that is genuinely absent (e.g. decision-synthesizer, which this Swarm never populates in contexts)', () => {
+    const { deps, caseId } = seededCase();
+    const shared = 'A shared open question both nodes reported.';
+    // Built as a loosely-typed record then cast: `exactOptionalPropertyTypes`
+    // forbids an object *literal* from assigning `undefined` to an optional
+    // property directly, but the real runtime shape collectLimitations'
+    // `context?.limitations ?? []` guard defends against (a key present in
+    // `contexts` with a genuinely `undefined` value) is exactly this.
+    const contextsWithGenuinelyAbsentEntry: Record<string, ExecutionResult | undefined> = {
+      'anomaly-investigator': executionResult('energy.anomaly', { limitations: [shared] }),
+      'rate-analyst': executionResult('energy.rate_change', { limitations: [shared] }),
+      'weather-analyst': executionResult('energy.weather'),
+      'home-systems-analyst': executionResult('energy.household_change'),
+      'source-challenger': executionResult('energy.response_options'),
+      // decision-synthesizer is a valid HomeEnergySwarmNodeId but this
+      // Swarm's own NodeResultEvent hook never populates a `contexts` entry
+      // for it (see home-energy-swarm.ts).
+      'decision-synthesizer': undefined,
+    };
+    const swarmResult = fakeSwarmResult({
+      contexts: contextsWithGenuinelyAbsentEntry,
+    });
+    const snapshot = foldHomeEnergyRound1(deps, caseId, swarmResult);
+    expect(snapshot.recommendation?.limitations).toEqual([shared]);
+  });
+
+  it('foldHomeEnergyRound2 throws when the reweighted text names no known response option and no inspection was proposed', () => {
+    const { deps, caseId } = seededCase();
+    const swarmResult = fakeSwarmResult({ decisionSynthesizerText: 'Still no clear winner.' });
+    expect(() => foldHomeEnergyRound2(deps, caseId, swarmResult)).toThrow(
+      /round2 decision-synthesizer text named no known response option/,
+    );
+  });
+
+  it('foldHomeEnergyRound2 prefers the real proposedInspection.optionId over text-parsing when both are present', () => {
+    const { deps, caseId } = seededCase();
+    const swarmResult = fakeSwarmResult({
+      decisionSynthesizerText:
+        'Recommend monitoring (monitor-one-cycle) -- wait, actually inspect.',
+      proposedInspection: { optionId: 'request-hvac-inspection', rationale: 'root cause fix' },
+    });
+    const snapshot = foldHomeEnergyRound2(deps, caseId, swarmResult);
+    expect(snapshot.recommendation?.favoredOptionId).toBe('request-hvac-inspection');
+    expect(snapshot.proposal).not.toBeNull();
+  });
+
+  it('foldHomeEnergyRound2 leaves no pending proposal when decision-synthesizer never called propose_inspection', () => {
+    const { deps, caseId } = seededCase();
+    const swarmResult = fakeSwarmResult();
+    const snapshot = foldHomeEnergyRound2(deps, caseId, swarmResult);
+    expect(snapshot.recommendation?.favoredOptionId).toBe('monitor-one-cycle');
+    expect(snapshot.proposal).toBeNull();
+  });
+
+  /** Same real-`CaseStore`-substitute technique as `car-purchase-engine.test.ts`'s own `caseStoreConflictingOn`. */
+  function caseStoreConflictingOn(
+    real: CaseStore,
+    matches: (events: readonly CaseEvent[]) => boolean,
+  ): CaseStore {
+    return {
+      load: (caseId) => real.load(caseId),
+      peekIdempotent: (commandId) => real.peekIdempotent(commandId),
+      append: (caseId, events, expectedSequence, options) => {
+        if (matches(events)) {
+          const snapshot = real.load(caseId);
+          if (snapshot === undefined) throw new Error('test: case unexpectedly missing');
+          return {
+            status: 'conflict',
+            expectedSequence,
+            actualSequence: snapshot.eventSequence,
+            snapshot,
+          };
+        }
+        return real.append(caseId, events, expectedSequence, options);
+      },
+      updateSelection: (caseId, patch, expectedSequence, updatedAt, idempotency) =>
+        real.updateSelection(caseId, patch, expectedSequence, updatedAt, idempotency),
+      subscribe: (caseId, fromSequence) => real.subscribe(caseId, fromSequence),
+      resetDemo: (caseId) => real.resetDemo(caseId),
+    };
+  }
+
+  it('foldHomeEnergyRound1 throws a real, inspectable error when recording the round1 recommendation hits a genuine append conflict', () => {
+    const { deps, caseId } = seededCase();
+    const conflictingCaseStore = caseStoreConflictingOn(deps.caseStore, (events) =>
+      events.some((event) => event.type === 'recommendation.ready'),
+    );
+    const swarmResult = fakeSwarmResult();
+    expect(() =>
+      foldHomeEnergyRound1({ ...deps, caseStore: conflictingCaseStore }, caseId, swarmResult),
+    ).toThrow(/failed to record the round1 recommendation.*status "conflict"/);
+  });
+
+  it('foldHomeEnergyRound2 throws a real, inspectable error when recording the round2 recommendation hits a genuine append conflict', () => {
+    const { deps, caseId } = seededCase();
+    const conflictingCaseStore = caseStoreConflictingOn(deps.caseStore, (events) =>
+      events.some((event) => event.type === 'recommendation.ready'),
+    );
+    const swarmResult = fakeSwarmResult();
+    expect(() =>
+      foldHomeEnergyRound2({ ...deps, caseStore: conflictingCaseStore }, caseId, swarmResult),
+    ).toThrow(/failed to record the round2 recommendation.*status "conflict"/);
+  });
+
+  it('foldHomeEnergyRound2 throws a real, inspectable error when creating the decision proposal hits a genuine append conflict', () => {
+    const { deps, caseId } = seededCase();
+    const conflictingCaseStore = caseStoreConflictingOn(deps.caseStore, (events) =>
+      events.some((event) => event.type === 'proposal.proposed'),
+    );
+    const swarmResult = fakeSwarmResult({
+      decisionSynthesizerText: 'Recommend inspecting the HVAC system.',
+      proposedInspection: { optionId: 'request-hvac-inspection', rationale: 'root cause fix' },
+    });
+    expect(() =>
+      foldHomeEnergyRound2({ ...deps, caseStore: conflictingCaseStore }, caseId, swarmResult),
+    ).toThrow(/failed to create the decision proposal.*status "conflict"/);
+  });
+});
+
+describe('createHomeEnergyEngine: in-flight-run tracking', () => {
+  it('a second trigger for the same case queues behind the first rather than racing it, and both settle', async () => {
+    const { engine, runStore, commandService } = buildLiveStack();
+    const startResult = commandService.startDemo('cmd-start', { demoId: 'home-energy-guardian' });
+    requireOkCommand(startResult);
+    const caseId = startResult.value.snapshot!.id;
+
+    runStore.create({
+      id: 'run-a',
+      caseId,
+      obligationId: 'energy.anomaly',
+      status: 'queued',
+      createdAt: FIXED_CLOCK.now(),
+      updatedAt: FIXED_CLOCK.now(),
+    });
+    runStore.create({
+      id: 'run-b',
+      caseId,
+      obligationId: 'energy.anomaly',
+      status: 'queued',
+      createdAt: FIXED_CLOCK.now(),
+      updatedAt: FIXED_CLOCK.now(),
+    });
+
+    const first = engine.trigger({ caseId, runId: 'run-a', obligationId: 'energy.anomaly' });
+    const second = engine.trigger({ caseId, runId: 'run-b', obligationId: 'energy.anomaly' });
+
+    await Promise.all([first, second]);
+
+    expect(runStore.load('run-a')?.status).toBe('completed');
+    expect(runStore.load('run-b')?.status).toBe('completed');
+  }, 30_000);
 });

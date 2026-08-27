@@ -320,4 +320,154 @@ describe('DynamicAttributeField', () => {
     // Only the placeholder "Select…" option -- no allowedValues declared.
     expect(select.querySelectorAll('option')).toHaveLength(1);
   });
+
+  it('treats a non-numeric raw value as undefined (Number.isFinite guard) rather than emitting NaN', () => {
+    // A real HTML `<input type="number">` sanitizes its own `.value` to
+    // either a syntactically valid finite-number string or `''` (confirmed
+    // directly against this project's installed jsdom), so a normal keypress
+    // can never itself deliver a non-numeric raw string to this handler.
+    // `toNumberOrUndefined`'s `Number.isFinite` guard still exists as a real
+    // safety net against a raw string that bypasses that sanitization (e.g.
+    // a programmatic `dispatchEvent`, browser extension, or assistive-tech
+    // input) -- exercised here by overriding the native `value` accessor the
+    // same low-level way such a bypass would.
+    const onChange = vi.fn();
+    render(
+      <DynamicAttributeField
+        definition={buildDefinition({ id: 'seats', label: 'Seats', valueType: 'number' })}
+        value={undefined}
+        onChange={onChange}
+      />,
+    );
+    const input = screen.getByLabelText('Seats');
+    Object.defineProperty(input, 'value', {
+      value: 'not-a-number',
+      configurable: true,
+      writable: true,
+    });
+    fireEvent.change(input);
+
+    expect(onChange).toHaveBeenCalledWith(undefined);
+  });
+
+  it('falls back the money currency to "USD" when computing a new amount while the currency field has been cleared to empty', () => {
+    const { onChange } = renderControlled({
+      definition: buildDefinition({ id: 'price', label: 'Price', valueType: 'money' }),
+      initialValue: { type: 'money', amount: 500, currency: 'USD' },
+    });
+
+    fireEvent.change(screen.getByLabelText('Price currency'), { target: { value: '' } });
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'money', amount: 500, currency: '' });
+
+    fireEvent.change(screen.getByLabelText('Price amount'), { target: { value: '600' } });
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'money', amount: 600, currency: 'USD' });
+  });
+
+  it('does not emit a change when only the money currency is edited before any amount has ever been entered', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderControlled({
+      definition: buildDefinition({ id: 'price', label: 'Price', valueType: 'money' }),
+    });
+
+    await user.clear(screen.getByLabelText('Price currency'));
+    await user.type(screen.getByLabelText('Price currency'), 'eur');
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('renders the boolean checkbox unchecked by default when no value has been set yet', () => {
+    render(
+      <DynamicAttributeField
+        definition={buildDefinition({ id: 'awd', label: 'All-wheel drive', valueType: 'boolean' })}
+        value={undefined}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText('All-wheel drive')).not.toBeChecked();
+  });
+
+  it('does not emit a change when only the duration unit is edited before any amount has ever been entered', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderControlled({
+      definition: buildDefinition({
+        id: 'response-time',
+        label: 'Response time',
+        valueType: 'duration',
+      }),
+    });
+
+    await user.selectOptions(screen.getByLabelText('Response time unit'), 'hour');
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('clears an enum value to undefined when the placeholder "Select…" option is chosen again', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderControlled({
+      definition: buildDefinition({
+        id: 'drivetrain',
+        label: 'Drivetrain',
+        valueType: 'enum',
+        allowedValues: ['fwd', 'awd'],
+      }),
+      initialValue: { type: 'enum', value: 'awd' },
+    });
+
+    await user.selectOptions(screen.getByLabelText('Drivetrain'), '');
+
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('keeps the existing maximum when clearing an already-set range minimum (does not blank the whole range)', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderControlled({
+      definition: buildDefinition({ id: 'budget', label: 'Budget', valueType: 'range' }),
+    });
+
+    await user.type(screen.getByLabelText('Budget maximum'), '30000');
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'range', maximum: 30000 });
+
+    await user.type(screen.getByLabelText('Budget minimum'), '5');
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'range', minimum: 5, maximum: 30000 });
+
+    fireEvent.change(screen.getByLabelText('Budget minimum'), { target: { value: '' } });
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'range', maximum: 30000 });
+  });
+
+  it('preserves an existing minimum and carries the unit when setting, then clearing, the range maximum after the minimum is already set', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderControlled({
+      definition: buildDefinition({
+        id: 'budget',
+        label: 'Budget',
+        valueType: 'range',
+        unit: 'USD',
+      }),
+    });
+
+    await user.type(screen.getByLabelText('Budget minimum'), '20000');
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'range', minimum: 20000, unit: 'USD' });
+
+    await user.type(screen.getByLabelText('Budget maximum'), '35000');
+    expect(onChange).toHaveBeenLastCalledWith({
+      type: 'range',
+      minimum: 20000,
+      maximum: 35000,
+      unit: 'USD',
+    });
+
+    fireEvent.change(screen.getByLabelText('Budget maximum'), { target: { value: '' } });
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'range', minimum: 20000, unit: 'USD' });
+  });
+
+  it('clears a string_list value to undefined when the textarea is emptied down to only blank lines', () => {
+    const { onChange } = renderControlled({
+      definition: buildDefinition({ id: 'features', label: 'Features', valueType: 'string_list' }),
+      initialValue: { type: 'string_list', values: ['leather'] },
+    });
+
+    fireEvent.change(screen.getByLabelText('Features'), { target: { value: '   \n  ' } });
+
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
 });

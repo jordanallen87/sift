@@ -95,4 +95,91 @@ describe('packDiff', () => {
       packDiff(draftRoot, validCatalog(), new PackRegistry(), FIXED_CLOCK, { draftId: 'broken' }),
     ).toThrow(PackDiffValidationFailedError);
   });
+
+  it('ignores an unrelated pack id already in the registry and selects the higher of two installed major versions of the matching pack', () => {
+    const registry = new PackRegistry();
+    // A same-registry, different-id pack must be skipped by the id filter
+    // inside packDiff's registry scan rather than confusing the
+    // highest-installed-version search below.
+    registry.register(
+      compilePack(
+        validManifest({
+          identity: { ...validManifest().identity, id: 'other-pack', version: '9.9.9' },
+        }),
+        validCatalog(),
+        FIXED_CLOCK,
+      ),
+    );
+    registry.register(
+      compilePack(
+        validManifest({ identity: { ...validManifest().identity, version: '1.0.0' } }),
+        validCatalog(),
+        FIXED_CLOCK,
+      ),
+    );
+    registry.register(
+      compilePack(
+        validManifest({ identity: { ...validManifest().identity, version: '2.0.0' } }),
+        validCatalog(),
+        FIXED_CLOCK,
+      ),
+    );
+    scaffold(validManifest());
+
+    const result = packDiff(draftRoot, validCatalog(), registry, FIXED_CLOCK, {
+      draftId: 'apartment-hunt',
+    });
+
+    expect(result.installedVersion).toBe('2.0.0');
+  });
+
+  it('keeps the already-tracked higher installed version when a lower major version of the same pack is registered afterward', () => {
+    const registry = new PackRegistry();
+    registry.register(
+      compilePack(
+        validManifest({ identity: { ...validManifest().identity, version: '2.0.0' } }),
+        validCatalog(),
+        FIXED_CLOCK,
+      ),
+    );
+    registry.register(
+      compilePack(
+        validManifest({ identity: { ...validManifest().identity, version: '1.0.0' } }),
+        validCatalog(),
+        FIXED_CLOCK,
+      ),
+    );
+    scaffold(validManifest());
+
+    const result = packDiff(draftRoot, validCatalog(), registry, FIXED_CLOCK, {
+      draftId: 'apartment-hunt',
+    });
+
+    expect(result.installedVersion).toBe('2.0.0');
+  });
+
+  it('treats a minor-version difference as newer than the currently tracked installed version when the major versions of two installed packs match', () => {
+    const registry = new PackRegistry();
+    registry.register(
+      compilePack(
+        validManifest({ identity: { ...validManifest().identity, version: '1.0.0' } }),
+        validCatalog(),
+        FIXED_CLOCK,
+      ),
+    );
+    registry.register(
+      compilePack(
+        validManifest({ identity: { ...validManifest().identity, version: '1.1.0' } }),
+        validCatalog(),
+        FIXED_CLOCK,
+      ),
+    );
+    scaffold(validManifest());
+
+    const result = packDiff(draftRoot, validCatalog(), registry, FIXED_CLOCK, {
+      draftId: 'apartment-hunt',
+    });
+
+    expect(result.installedVersion).toBe('1.1.0');
+  });
 });

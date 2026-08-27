@@ -160,4 +160,74 @@ describe('useRuntimeInspector', () => {
     result.current.refresh();
     await waitFor(() => expect(callCount).toBe(2));
   });
+
+  it('reports the generic "unknown error" message (not a blank or [object Object] string) when the fetch rejects with a non-Error value', async () => {
+    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- deliberately a non-Error rejection value; that is exactly what this test exercises.
+    const fetchImpl = (() => Promise.reject('boom')) as unknown as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL, fetchImpl }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).toBe('An unknown error occurred.');
+  });
+
+  it('reports a recoverable error when the debug run response does not match its contract', async () => {
+    server.use(
+      http.get(`${BASE_URL}/api/debug/runs/${RUN_ID}`, () =>
+        HttpResponse.json({ not: 'a valid debug run response' }),
+      ),
+    );
+
+    const { result } = renderHook(() => useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).toContain('did not match its contract');
+    expect(result.current.overview).toBeNull();
+  });
+
+  it('unmounting after the response arrives but before its body finishes parsing does not apply a late overview/events update', async () => {
+    let resolveJson: ((value: unknown) => void) | undefined;
+    const fetchImpl = (() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          new Promise((resolve) => {
+            resolveJson = resolve;
+          }),
+      })) as unknown as typeof fetch;
+
+    const { result, unmount } = renderHook(() =>
+      useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL, fetchImpl }),
+    );
+    await waitFor(() => expect(resolveJson).toBeDefined());
+    expect(result.current.loading).toBe(true);
+
+    unmount();
+    expect(() =>
+      resolveJson?.({ overview: buildOverview(), events: [buildEvent()] }),
+    ).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    // The disposed guard skipped committing this now-stale overview/events
+    // payload to a component that no longer exists.
+  });
+
+  it('unmounting before a pending fetch rejects does not apply a late error state update', async () => {
+    let rejectFetch: ((reason?: unknown) => void) | undefined;
+    const fetchImpl = (() =>
+      new Promise((_resolve, reject) => {
+        rejectFetch = reject;
+      })) as unknown as typeof fetch;
+
+    const { unmount } = renderHook(() =>
+      useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL, fetchImpl }),
+    );
+    await waitFor(() => expect(rejectFetch).toBeDefined());
+
+    unmount();
+    expect(() => rejectFetch?.(new Error('late failure'))).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
 });

@@ -90,6 +90,19 @@ export function runActivityStoreContractTests(createStore: () => ActivityStore):
       expect((listener.mock.calls[0] as [PublicActivityEvent])[0].summary).toBe('after subscribe');
     });
 
+    it('subscribe() registers a second listener for a case that already has one, and delivers a subsequent append to both', () => {
+      const store = createStore();
+      const firstListener = vi.fn();
+      const secondListener = vi.fn();
+      store.subscribe('case-1', firstListener);
+      store.subscribe('case-1', secondListener);
+
+      store.append(draft('case-1', { summary: 'after both subscriptions' }));
+
+      expect(firstListener).toHaveBeenCalledTimes(1);
+      expect(secondListener).toHaveBeenCalledTimes(1);
+    });
+
     it('unsubscribe() stops further delivery', () => {
       const store = createStore();
       const listener = vi.fn();

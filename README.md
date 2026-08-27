@@ -79,6 +79,7 @@ runs the ordered release-gate stages defined in `scripts/verify.ts`, fails fast 
 | `lint`             | real   |
 | `typecheck`        | real   |
 | `test:unit`        | real   |
+| `test:coverage`    | real   |
 | `test:pack`        | real   |
 | `test:integration` | real   |
 | `test:contract`    | real   |
@@ -88,6 +89,8 @@ runs the ordered release-gate stages defined in `scripts/verify.ts`, fails fast 
 `pnpm verify` runs with no network access once dependencies and Playwright browsers are installed.
 
 Individual stages can be run directly, e.g. `pnpm test:unit`, `pnpm lint`, `pnpm typecheck`. `pnpm test:e2e` builds the production web bundle first and then runs the real Playwright suite (`pnpm --filter @pax/web build && playwright test`) against the real Express server at `390x844`, `430x900`, `480x900`, and `1440x1000` viewports.
+
+`pnpm test:coverage` (`vitest run --coverage`) runs the same full suite as `pnpm test:unit` but also measures coverage and enforces `vitest.config.ts`'s `coverage.thresholds` (branches 90%, functions/lines/statements 95%) — Vitest itself exits non-zero on a threshold miss, and `pnpm verify` fails the whole gate if it does. A coverage HTML/LCOV/JSON-summary report is written to `artifacts/verification/coverage/`.
 
 `pnpm test:deployed` is opt-in and exercises a **live** deployment rather than a local build — it needs `PAX_DEPLOYED_URL` set to the target's base URL, e.g.:
 

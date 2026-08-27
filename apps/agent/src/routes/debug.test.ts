@@ -1,8 +1,10 @@
+import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CommandReceipt, RuntimeDebugEvent } from '@pax/contracts';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
+import { createDebugRouter } from './debug.js';
 
 describe('GET /api/debug/runs/:runId', () => {
   let harness: HttpTestHarness | undefined;
@@ -192,6 +194,69 @@ describe('GET /api/debug/runs/:runId', () => {
 
     const response = await request(harness.app).get('/api/debug/runs/run-1?level=not-a-level');
     expect(response.status).toBe(400);
+  });
+
+  it('aggregates tokenUsage and estimatedCostUsd across events into the Overview when at least one event carries them', async () => {
+    harness = createHttpTestHarness();
+    const { caseId } = await startDemo();
+    seedRun(caseId, 'run-1');
+
+    harness.runtimeEventStore.append(
+      draftEvent('run-1', caseId, 0, {
+        category: 'model',
+        name: 'model.call',
+        tokenUsage: { input: 10, output: 5, total: 15 },
+        estimatedCostUsd: 0.001,
+      }),
+    );
+    harness.runtimeEventStore.append(
+      draftEvent('run-1', caseId, 1, {
+        category: 'model',
+        name: 'model.call',
+        tokenUsage: { input: 20, output: 8, total: 28 },
+        estimatedCostUsd: 0.002,
+      }),
+    );
+    // A third event with neither field set must not reset the running total
+    // to undefined/zero -- the aggregation only adds when present.
+    harness.runtimeEventStore.append(draftEvent('run-1', caseId, 2, {}));
+
+    const response = await request(harness.app).get('/api/debug/runs/run-1');
+    expect(response.status).toBe(200);
+
+    const body = asJson<{
+      overview: {
+        tokenUsage: { input: number; output: number; total: number } | null;
+        estimatedCostUsd: number | null;
+      };
+    }>(response.body);
+
+    expect(body.overview.tokenUsage).toEqual({ input: 30, output: 13, total: 43 });
+    expect(body.overview.estimatedCostUsd).toBeCloseTo(0.003, 10);
+  });
+
+  it('defaults to enabled when DebugRouterDeps.enabled is omitted entirely, not just when it is explicitly true', async () => {
+    harness = createHttpTestHarness();
+    const { caseId } = await startDemo();
+    seedRun(caseId, 'run-1');
+
+    // A separate minimal app around the exact same real stores, constructed
+    // via `createDebugRouter` directly with `enabled` left out of the deps
+    // object -- proving the `deps.enabled ?? true` default itself, which
+    // every `createHttpTestHarness()`-based test above always passes
+    // explicitly (`buildApp` always sets `enabled: options.debugEnabled ?? true`).
+    const app = express();
+    app.use(
+      createDebugRouter({
+        runStore: harness.runStore,
+        runtimeEventStore: harness.runtimeEventStore,
+      }),
+    );
+
+    const response = await request(app).get('/api/debug/runs/run-1');
+    expect(response.status).toBe(200);
+    const body = asJson<{ overview: { runId: string } }>(response.body);
+    expect(body.overview.runId).toBe('run-1');
   });
 
   it('returns a null durationMs/completedAt for a run still in progress', async () => {

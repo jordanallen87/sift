@@ -194,6 +194,24 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     });
   });
 
+  describe('POST /invocations: input defaulting when the input field is omitted', () => {
+    it("defaults input to {} for a commandName dispatch (still requiring the command's own required fields)", async () => {
+      harness = createHttpTestHarness();
+      const { caseId } = await startDemo();
+
+      const response = await request(harness.app)
+        .post('/invocations')
+        .set('Idempotency-Key', 'cmd-invoke-no-input')
+        .send({ caseId, commandName: 'selectPack' });
+
+      // No crash from spreading a missing `input` -- CommandService's own
+      // schema validation rejects the now-missing required `packId`/
+      // `expectedSequence` fields instead.
+      expect(response.status).toBe(400);
+      expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
+    });
+  });
+
   describe('POST /invocations: requestInvestigation dispatch (RunService, the real engine)', () => {
     it('creates a real, durably recorded run via action: "requestInvestigation"', async () => {
       harness = createHttpTestHarness();
@@ -214,6 +232,31 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
         .prepare('SELECT status FROM runs WHERE id = ?')
         .get(runId) as { status: string } | undefined;
       expect(row?.status).toBe('queued');
+    });
+
+    it('requires an Idempotency-Key header for action: "requestInvestigation" too, not just commandName dispatch', async () => {
+      harness = createHttpTestHarness();
+      const { caseId, expectedSequence } = await startDemo();
+
+      const response = await request(harness.app)
+        .post('/invocations')
+        .send({ caseId, action: 'requestInvestigation', input: { expectedSequence } });
+
+      expect(response.status).toBe(400);
+      expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
+    });
+
+    it('defaults input to {} for action: "requestInvestigation" (still requiring expectedSequence via RequestInvestigationInputSchema)', async () => {
+      harness = createHttpTestHarness();
+      const { caseId } = await startDemo();
+
+      const response = await request(harness.app)
+        .post('/invocations')
+        .set('Idempotency-Key', 'cmd-invoke-no-input-run')
+        .send({ caseId, action: 'requestInvestigation' });
+
+      expect(response.status).toBe(400);
+      expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
     });
 
     it('rejects commandName and action supplied together as a validation failure', async () => {

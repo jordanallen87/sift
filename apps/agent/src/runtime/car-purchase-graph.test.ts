@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { Clock, IdGenerator } from '@pax/core';
@@ -437,6 +440,238 @@ describe('executeCarPurchaseGraph', () => {
     const graphEvents = events.filter((event) => event.category === 'graph');
     expect(graphEvents.length).toBeGreaterThanOrEqual(CAR_PURCHASE_GRAPH_NODE_IDS.length);
     expect(result.nodeFinishOrder.sort()).toEqual([...CAR_PURCHASE_GRAPH_NODE_IDS].sort());
+  });
+
+  it('throws before any node runs when the compiled pack declares no specialist matching a required Graph node id', async () => {
+    const deps = buildDeps();
+    const brokenPack = {
+      ...deps.pack,
+      specialists: deps.pack.specialists.filter((specialist) => specialist.id !== 'deal-analyst'),
+    };
+
+    await expect(drain(executeCarPurchaseGraph({ ...deps, pack: brokenPack }))).rejects.toThrow(
+      /declares no specialist "deal-analyst"/,
+    );
+  });
+
+  it('DEFAULT_VALIDATOR rejects an empty decision-synthesizer response, then accepts a corrected retry (GoalLoop maxAttempts: 2)', async () => {
+    // An empty response passes through EvidenceQualitySteering untouched
+    // (interventions.ts's EvidenceQualitySteering.afterModelCall only
+    // steers a non-empty, uncited *endTurn* response -- an empty one
+    // `proceed()`s immediately), so it reaches DEFAULT_VALIDATOR directly
+    // and fails on its own empty-text check, independent of any other
+    // intervention.
+    const deps = buildDeps();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          { text: '' },
+          { text: 'Recommend candidate-rav4 per source-listing-candidate-rav4.' },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+    const patchedModelFor: CarPurchaseGraphDeps['modelFor'] = (nodeId) =>
+      nodeId === 'decision-synthesizer' ? provider : deps.modelFor(nodeId);
+
+    const { result } = await drain(executeCarPurchaseGraph({ ...deps, modelFor: patchedModelFor }));
+
+    expect(result.goalLoopResult?.passed).toBe(true);
+    expect(result.goalLoopResult?.attempts).toHaveLength(2);
+    expect(result.goalLoopResult?.attempts[0]?.passed).toBe(false);
+    expect(result.goalLoopResult?.attempts[0]?.feedback).toContain('must include text');
+    expect(result.goalLoopResult?.attempts[1]?.passed).toBe(true);
+  });
+
+  it('completes with no explicit resolveConfirmation resolver when decision-synthesizer never calls the consequential propose_recommendation tool', async () => {
+    const deps = buildDeps();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          {
+            text: 'Still evaluating candidates per source-listing-candidate-rav4; no clear leader has emerged yet.',
+          },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+    const patchedModelFor: CarPurchaseGraphDeps['modelFor'] = (nodeId) =>
+      nodeId === 'decision-synthesizer' ? provider : deps.modelFor(nodeId);
+
+    // Deliberately omit resolveConfirmation: ConsequenceGuard is still
+    // constructed for every node (the real code path this exercises), but
+    // never actually asked to resolve a confirmation since the tool it
+    // guards is never called.
+    const { resolveConfirmation: _unused, ...depsWithoutConfirmation } = deps;
+    void _unused;
+
+    const { result } = await drain(
+      executeCarPurchaseGraph({ ...depsWithoutConfirmation, modelFor: patchedModelFor }),
+    );
+
+    expect(result.goalLoopResult?.passed).toBe(true);
+    expect(result.proposedRecommendation).toBeUndefined();
+  });
+
+  it("bakes confirmed case-specific concerns and a non-empty criteria list into decision-synthesizer's system prompt", async () => {
+    const deps = buildDeps({
+      shortlistRequest: {
+        ...buildDeps().shortlistRequest,
+        caseExtensions: [
+          {
+            id: 'custom.pet_odor',
+            label: 'Lingering pet odor concern',
+            valueType: 'string',
+            reason: 'Household reported a lingering pet odor after the last inspection.',
+            origin: 'user',
+            confirmation: 'confirmed',
+          },
+        ],
+      },
+    });
+    const providers = new Map<string, ScriptedModelProvider>();
+    const patchedModelFor: CarPurchaseGraphDeps['modelFor'] = (nodeId) => deps.modelFor(nodeId);
+    void providers;
+
+    await drain(executeCarPurchaseGraph({ ...deps, modelFor: patchedModelFor }));
+
+    // The decision-synthesizer provider instance is whatever buildDeps()
+    // registered -- retrieve it the same way modelFor does.
+    const synthesizerProvider = deps.modelFor('decision-synthesizer') as ScriptedModelProvider;
+    const systemPrompt = synthesizerProvider.callLog[0]?.options?.systemPrompt;
+    const promptText =
+      typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt);
+    expect(promptText).toContain('Confirmed case-specific concerns: Lingering pet odor concern');
+  });
+
+  it('falls back to "(none)" criteria text and omits the confirmed-concerns line when the case has no criteria or confirmed extensions', async () => {
+    const base = buildDeps();
+    const deps = buildDeps({
+      shortlistRequest: {
+        ...base.shortlistRequest,
+        caseExtensions: [],
+        caseSummary: { ...base.shortlistRequest.caseSummary, criteria: [] },
+      },
+    });
+
+    await drain(executeCarPurchaseGraph(deps));
+
+    const synthesizerProvider = deps.modelFor('decision-synthesizer') as ScriptedModelProvider;
+    const systemPrompt = synthesizerProvider.callLog[0]?.options?.systemPrompt;
+    const promptText =
+      typeof systemPrompt === 'string' ? systemPrompt : JSON.stringify(systemPrompt);
+    expect(promptText).toContain('Current criteria: (none).');
+    expect(promptText).not.toContain('Confirmed case-specific concerns');
+  });
+
+  it('overrides GoalLoop.maxAttempts via goalLoopMaxAttempts, surviving two empty-response failures the default maxAttempts: 2 would not', async () => {
+    const deps = buildDeps();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          { text: '' },
+          { text: '' },
+          {
+            toolCalls: [
+              {
+                name: PROPOSE_RECOMMENDATION_TOOL_ID,
+                input: { candidateIds: ['candidate-rav4'], rationale: 'third time is the charm' },
+              },
+            ],
+          },
+          { text: 'Recommend candidate-rav4 per source-listing-candidate-rav4.' },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+    const patchedModelFor: CarPurchaseGraphDeps['modelFor'] = (nodeId) =>
+      nodeId === 'decision-synthesizer' ? provider : deps.modelFor(nodeId);
+
+    const { result } = await drain(
+      executeCarPurchaseGraph({ ...deps, modelFor: patchedModelFor, goalLoopMaxAttempts: 3 }),
+    );
+
+    expect(result.goalLoopResult?.attempts).toHaveLength(3);
+    expect(result.goalLoopResult?.attempts[0]?.passed).toBe(false);
+    expect(result.goalLoopResult?.attempts[1]?.passed).toBe(false);
+    expect(result.goalLoopResult?.passed).toBe(true);
+    expect(result.proposedRecommendation).toEqual({
+      candidateIds: ['candidate-rav4'],
+      rationale: 'third time is the charm',
+    });
+  });
+
+  it('runs the real Graph without an explicit maxConcurrency when the compiled pack orchestration omits it', async () => {
+    // compilePack requires a "graph" orchestration to declare maxConcurrency
+    // (packages/packs/src/compiler.ts), so every real compiled pack always
+    // has one -- this constructs the one CompiledDecisionPack shape the
+    // compiler itself would reject, purely to exercise the Graph
+    // constructor's own optional-field default.
+    const deps = buildDeps();
+    const packWithoutConcurrency = {
+      ...deps.pack,
+      orchestration: { ...deps.pack.orchestration, maxConcurrency: undefined },
+    };
+
+    const { result } = await drain(
+      executeCarPurchaseGraph({ ...deps, pack: packWithoutConcurrency }),
+    );
+    expect(result.multiAgentResult.status).toBe('COMPLETED');
+  });
+
+  it('throws before any node runs when skillsRootDir has no skill subdirectories', async () => {
+    const deps = buildDeps();
+    const emptyRoot = mkdtempSync(join(tmpdir(), 'pax-empty-skills-'));
+    writeFileSync(join(emptyRoot, 'not-a-skill.txt'), 'just a file, not a skill directory');
+    try {
+      await expect(
+        drain(executeCarPurchaseGraph({ ...deps, skillsRootDir: emptyRoot })),
+      ).rejects.toThrow(/has no skill subdirectories/);
+    } finally {
+      rmSync(emptyRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("captureProposal's BeforeToolCallEvent hook ignores a tool call other than propose_recommendation before the real one arrives", async () => {
+    const deps = buildDeps();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          // strands_structured_output is one of SDK_INTERNAL_TOOL_NAMES, so
+          // ScopeAuthorization allows it through even though it is not
+          // decision-synthesizer's own consequential tool -- exercising the
+          // real "some other tool fired first" branch in the module's own
+          // BeforeToolCallEvent hook without needing an invalid/denied call.
+          {
+            toolCalls: [
+              { name: 'strands_structured_output', input: { note: 'not the real proposal shape' } },
+            ],
+          },
+          {
+            toolCalls: [
+              {
+                name: PROPOSE_RECOMMENDATION_TOOL_ID,
+                input: {
+                  candidateIds: ['candidate-rav4'],
+                  rationale: 'confirmed after reflection',
+                },
+              },
+            ],
+          },
+          { text: 'Recommend candidate-rav4 per source-listing-candidate-rav4.' },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+    const patchedModelFor: CarPurchaseGraphDeps['modelFor'] = (nodeId) =>
+      nodeId === 'decision-synthesizer' ? provider : deps.modelFor(nodeId);
+
+    const { result } = await drain(executeCarPurchaseGraph({ ...deps, modelFor: patchedModelFor }));
+
+    expect(result.proposedRecommendation).toEqual({
+      candidateIds: ['candidate-rav4'],
+      rationale: 'confirmed after reflection',
+    });
   });
 
   it('denies a tool call outside a specialist node declared allowlist before it ever executes', async () => {

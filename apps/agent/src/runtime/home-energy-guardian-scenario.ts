@@ -172,8 +172,16 @@ const SEQUENTIAL_OBLIGATION_ID: Record<HomeEnergySequentialSpecialistId, string>
   'home-systems-analyst': 'energy.household_change',
 };
 
-/** Every non-empty `limitations` entry any node's captured context carried, de-duplicated. Mirrors `home-energy-engine.ts`'s own (unexported) `collectLimitations`. */
-function collectLimitations(contexts: HomeEnergySwarmResult['contexts']): string[] {
+/**
+ * Every non-empty `limitations` entry any node's captured context carried,
+ * de-duplicated. Mirrors `home-energy-engine.ts`'s own (unexported)
+ * `collectLimitations`. Exported (not merely a scenario-file-local helper)
+ * so its `context?.limitations ?? []` fallback -- reached only when a
+ * `contexts` map genuinely omits a node's context entirely, which the real
+ * Swarm run this file drives never does -- can be unit-tested directly
+ * against a small synthetic `contexts` map.
+ */
+export function collectLimitations(contexts: HomeEnergySwarmResult['contexts']): string[] {
   const seen = new Set<string>();
   for (const context of Object.values(contexts)) {
     for (const limitation of context?.limitations ?? []) {
@@ -244,13 +252,20 @@ function buildSwarmDeps(
  * Drains one real `executeHomeEnergySwarm` run's normalized `RuntimeEvent`
  * stream, folding every event category the required assertions need into
  * `trajectory` -- the Swarm-shaped analog of `car-purchase-scenario.ts`'s
- * own (unexported) `drainGraph`: `swarm.node_completed`/`swarm.handoff`
- * replace that function's `graph`-category handling; `skill`/`context`/
- * `intervention`/`tool` handling is identical; `goal` handling is new here
- * (car-purchase's Graph nodes use a plain `DEFAULT_VALIDATOR` with no
- * GoalLoop retry moment in its own demo trajectory).
+ * own (also exported, for the identical reason) `drainGraph`:
+ * `swarm.node_completed`/`swarm.handoff` replace that function's
+ * `graph`-category handling; `skill`/`context`/`intervention`/`tool`
+ * handling is identical; `goal` handling is new here (car-purchase's Graph
+ * nodes use a plain `DEFAULT_VALIDATOR` with no GoalLoop retry moment in its
+ * own demo trajectory). Exported so its per-event-shape defensive branches
+ * (a malformed/partial `RuntimeEvent` attribute, an unrecognized `goal.*`
+ * event name) can be unit-tested directly against a small synthetic event
+ * stream -- shapes the real, fully-scripted Swarm run never actually
+ * produces (`event-normalizer.ts` only ever emits `goal.validated`/
+ * `goal.validation_failed` for the `goal` category, and always supplies a
+ * well-formed `skillId`/`toolName`/`nodeId`/`from`/`to`).
  */
-async function drainSwarm(
+export async function drainSwarm(
   gen: AsyncGenerator<RuntimeEvent, HomeEnergySwarmResult, undefined>,
   trajectory: ScenarioTrajectory,
 ): Promise<HomeEnergySwarmResult> {

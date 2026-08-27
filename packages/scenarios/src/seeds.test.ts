@@ -10,10 +10,20 @@
 import { describe, expect, it } from 'vitest';
 import type { Clock, IdGenerator } from '@pax/core';
 import { CAR_PURCHASE_MANIFEST, compileCarPurchasePack, createCapabilityCatalog } from '@pax/packs';
+import { notFoundResult, okResult } from './tools/index.js';
+import type {
+  lookupHouseholdFit,
+  lookupSafetyReliability,
+  SafetyReliabilityClaim,
+} from './tools/index.js';
 import {
   buildCarPurchaseCandidateEntities,
   buildCarPurchaseSeedEvents,
   CAR_PURCHASE_CANDIDATE_IDS,
+  householdFitAttributes,
+  record,
+  safetyAttributes,
+  unwrapOk,
 } from './seeds.js';
 
 const FIXED_CLOCK: Clock = { now: () => '2026-08-27T00:00:00.000Z' };
@@ -176,5 +186,109 @@ describe('buildCarPurchaseSeedEvents', () => {
 
     expect(caseState.pack.id).toBe('car-purchase');
     expect(caseState.entities).toHaveLength(0); // instantiateCase alone never seeds entities
+  });
+});
+
+describe('unwrapOk', () => {
+  it('throws a descriptive error, rather than silently returning undefined, when given a non-"ok" ToolResult', () => {
+    const result = notFoundResult(
+      'some-fixture-tool',
+      'candidate-ghost',
+      'no such candidate on record',
+    );
+    expect(() => unwrapOk(result, 'looking up a fictional candidate')).toThrow(
+      'seeds.ts: expected an "ok" result while looking up a fictional candidate, got "not_found"',
+    );
+  });
+});
+
+describe('record', () => {
+  it('throws, rather than silently building an invalid AttributeRecord, when status "unknown" is paired with a value (violating the asserted/unknown invariant)', () => {
+    expect(() =>
+      record(FIXED_CLOCK, {
+        definitionId: 'car.make',
+        label: 'Make',
+        sourceIds: [],
+        status: 'unknown',
+        value: { type: 'text', value: 'should not be present for an unknown record' },
+      }),
+    ).toThrow(/seeds\.ts: failed to build attribute record "car\.make"/);
+  });
+});
+
+function syntheticSafetyClaim(
+  category: string,
+  rating: string,
+  sourceId: string,
+): SafetyReliabilityClaim {
+  return {
+    category,
+    rating,
+    notes: 'synthetic claim for a seeds.ts unit test',
+    sourceId,
+    publisher: 'Synthetic Publisher (test fixture)',
+    reportTitle: 'Synthetic Report (test fixture)',
+    url: 'https://example.com/synthetic-report',
+    retrievedAt: '2026-08-15',
+    publishedAt: '2026-08-01',
+  };
+}
+
+describe('safetyAttributes', () => {
+  it('skips (does not fabricate) an attribute for a SAFETY_CATEGORY_TO_ATTRIBUTE category with no recorded claim, rather than throwing or inventing a rating', () => {
+    const syntheticResult: ReturnType<typeof lookupSafetyReliability> = okResult(
+      'safety-reliability-lookup',
+      {
+        candidateId: 'candidate-synthetic',
+        // Only crash_safety has a claim; driver_assistance and reliability
+        // (also declared in SAFETY_CATEGORY_TO_ATTRIBUTE) do not.
+        claims: [
+          syntheticSafetyClaim('crash_safety', 'Top Safety Pick+', 'source-synthetic-crash'),
+        ],
+        disagreements: [],
+        evidence: [],
+      },
+    );
+
+    const attributes = safetyAttributes(FIXED_CLOCK, 'candidate-synthetic', syntheticResult);
+
+    expect(Object.keys(attributes)).toEqual(['car.crash_safety_rating']);
+    expect(attributes['car.driver_assistance_rating']).toBeUndefined();
+    expect(attributes['car.reliability_rating']).toBeUndefined();
+  });
+});
+
+describe('householdFitAttributes', () => {
+  it('skips (does not fabricate) an attribute for an unknown id with no HOUSEHOLD_FIT_UNKNOWN_TRANSLATION entry, rather than throwing or inventing a pack attribute id', () => {
+    const syntheticResult: ReturnType<typeof lookupHouseholdFit> = okResult(
+      'household-fit-matrix',
+      {
+        candidateId: 'candidate-synthetic',
+        knownFacts: [],
+        unknowns: [
+          {
+            id: 'unknown.some_untranslated_question',
+            definitionId: 'unknown.some_untranslated_question',
+            label: 'Some untranslated unknown question',
+            origin: 'pack',
+            sourceIds: [],
+            status: 'unknown',
+            updatedAt: FIXED_CLOCK.now(),
+            question: 'Some untranslated question no pack attribute maps to?',
+            reason: 'synthetic reason for a seeds.ts unit test',
+            resolutionPath: 'synthetic resolution path for a seeds.ts unit test',
+          },
+        ],
+        householdDogCrateProfile: {
+          crateCount: 0,
+          eachCrateDimensionsIn: { lengthIn: 0, widthIn: 0, heightIn: 0 },
+        },
+        evidence: [],
+      },
+    );
+
+    const attributes = householdFitAttributes(FIXED_CLOCK, 'candidate-synthetic', syntheticResult);
+
+    expect(Object.keys(attributes)).toHaveLength(0);
   });
 });

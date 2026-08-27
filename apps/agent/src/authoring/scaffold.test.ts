@@ -111,6 +111,20 @@ describe('packScaffold', () => {
       }),
     ).toThrow();
   });
+
+  it('accepts a single ".." climb inside an otherwise-matching skills/<id>/SKILL.md path and writes it back inside the draft directory (the allowlist bounds every id segment to at most a one-level climb -- see the module comment\'s "Reachability note")', () => {
+    const result = packScaffold(draftRoot, {
+      draftId: 'apartment-hunt',
+      files: [{ relativePath: 'skills/../SKILL.md', content: 'Body.' }],
+    });
+    // `skills/../SKILL.md` matches SCAFFOLDABLE_PATH_PATTERNS's
+    // `skills/<id>/SKILL.md` shape with id `".."`, and resolving it lands
+    // exactly back at the draft root (one level up from `skills/`, no
+    // further) -- still strictly inside the draft directory, so the
+    // resolve-containment check does not reject it.
+    const written = readFileSync(join(result.draftDir, 'SKILL.md'), 'utf8');
+    expect(written).toBe('Body.');
+  });
 });
 
 describe('walkDraftFiles', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import type { AttributeDefinition, EntityRecord } from '@pax/contracts';
@@ -206,6 +206,52 @@ describe('OptionEditor', () => {
 
     expect(screen.getByTestId('option-editor-save')).toBeDisabled();
     resolveUpsert(buildFakeCommandReceipt());
+  });
+
+  it('does nothing when the form is submitted with a blank/whitespace-only label', async () => {
+    const { commands } = renderEditor({}, { upsertOption: vi.fn() });
+
+    fireEvent.submit(screen.getByTestId('option-editor-form'));
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(commands.upsertOption).not.toHaveBeenCalled();
+  });
+
+  it('ignores a second form submission while a save is already in flight', async () => {
+    const user = userEvent.setup();
+    let resolveUpsert: (value: unknown) => void = () => undefined;
+    const pending = new Promise((resolve) => {
+      resolveUpsert = resolve;
+    });
+    const { commands } = renderEditor({}, { upsertOption: vi.fn().mockReturnValue(pending) });
+
+    await user.type(screen.getByLabelText('Option label'), 'Honda CR-V');
+    await user.click(screen.getByTestId('option-editor-save'));
+    expect(commands.upsertOption).toHaveBeenCalledTimes(1);
+
+    // The button itself is disabled while saving, so this directly submits
+    // the underlying `<form>` element -- the exact defensive path the
+    // `saving` half of `handleSubmit`'s guard exists for (e.g. a real
+    // browser's implicit Enter-to-submit behavior racing an in-flight save).
+    fireEvent.submit(screen.getByTestId('option-editor-form'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(commands.upsertOption).toHaveBeenCalledTimes(1);
+
+    resolveUpsert(buildFakeCommandReceipt());
+  });
+
+  it('shows the generic "Could not save this option." message when upsertOption rejects with a non-Error value', async () => {
+    const user = userEvent.setup();
+    renderEditor({}, { upsertOption: vi.fn().mockRejectedValue('network is down') });
+
+    await user.type(screen.getByLabelText('Option label'), 'Honda CR-V');
+    await user.click(screen.getByTestId('option-editor-save'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('option-editor-error')).toHaveTextContent(
+        'Could not save this option.',
+      );
+    });
   });
 
   it('has no axe violations', async () => {

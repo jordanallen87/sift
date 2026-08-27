@@ -77,6 +77,35 @@ describe('SqliteRuntimeEventStore persistence specifics', () => {
     expect(replay[0]?.summary).toBe('Calling tool "listing_reader".');
   });
 
+  it('preserves the optional requestId correlation field through persistence and listByRun()', () => {
+    const db = createTestDatabase();
+    applyMigrations(db.sqlite);
+    test = db;
+    insertCaseRow(db, 'case-1');
+    insertRunRow(db, 'run-1', 'case-1');
+    const store = new SqliteRuntimeEventStore(db);
+
+    store.append({
+      schemaVersion: '1.0',
+      sequence: 0,
+      timestamp: now,
+      traceId: 'trace-1',
+      requestId: 'request-abc-123',
+      caseId: 'case-1',
+      runId: 'run-1',
+      category: 'model',
+      name: 'model.call',
+      phase: 'start',
+      level: 'info',
+      summary: 'Calling the model.',
+      attributes: {},
+      redactions: [],
+    });
+
+    const [event] = store.listByRun('run-1');
+    expect(event?.requestId).toBe('request-abc-123');
+  });
+
   it('rejects a runtime event referencing a run that does not exist (foreign key)', () => {
     const db = createTestDatabase();
     applyMigrations(db.sqlite);

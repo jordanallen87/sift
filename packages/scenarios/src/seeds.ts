@@ -230,7 +230,17 @@ const HOUSEHOLD_FIT_UNKNOWN_TRANSLATION: Readonly<Record<string, string>> = {
   'unknown.driving_comfort': 'car.driving_comfort_rating',
 };
 
-function unwrapOk<T>(result: { status: string }, description: string): T {
+/**
+ * Exported (rather than kept module-private) purely so its own defensive
+ * "the fixture tool did not return `ok`" branch is directly unit-testable
+ * with a synthetic `ToolResult`, the same testability rationale
+ * `fixture-loader.ts` documents for exporting `parseFixtureJson` alongside
+ * `loadFixture`. Every real call site here only ever calls it with a real
+ * fixture tool's own result for one of the four fixed, fixture-declared
+ * `CAR_PURCHASE_CANDIDATE_IDS`, which always succeeds -- so the throw branch
+ * has no reachable real-data trigger and is exercised directly instead.
+ */
+export function unwrapOk<T>(result: { status: string }, description: string): T {
   if (result.status !== 'ok') {
     throw new Error(
       `seeds.ts: expected an "ok" result while ${description}, got "${result.status}"`,
@@ -239,7 +249,15 @@ function unwrapOk<T>(result: { status: string }, description: string): T {
   return (result as { status: 'ok'; data: T }).data;
 }
 
-function record(
+/**
+ * Exported for the same reason as `unwrapOk` above: every real call site
+ * passes a status/value pairing that is correct by construction (an
+ * `asserted`/`supported`/`conflicted` record always carries a real fixture-
+ * derived `value`; an `unknown` record never does), so
+ * `createAttributeRecord`'s own invariant-violation failure branch has no
+ * reachable real-data trigger here and is exercised directly instead.
+ */
+export function record(
   clock: Clock,
   input: {
     definitionId: string;
@@ -459,7 +477,15 @@ const SAFETY_CATEGORY_TO_ATTRIBUTE: Readonly<Record<string, string>> = {
   reliability: 'car.reliability_rating',
 };
 
-function safetyAttributes(
+/**
+ * Exported for direct unit testing of its own "no claim recorded for this
+ * category" skip branch: every real candidate in `safety-reliability-
+ * sources.json` carries a claim for all three
+ * `SAFETY_CATEGORY_TO_ATTRIBUTE` categories, so that branch has no reachable
+ * real-data trigger and is exercised directly with a synthetic
+ * `ToolResult` instead.
+ */
+export function safetyAttributes(
   clock: Clock,
   candidateId: string,
   result: ReturnType<typeof lookupSafetyReliability>,
@@ -500,7 +526,16 @@ function safetyAttributes(
   return attributes;
 }
 
-function householdFitAttributes(
+/**
+ * Exported for direct unit testing of its own "no pack-manifest attribute
+ * for this unknown id" skip branch: every real `unknown.*` id
+ * `household-fit-matrix.ts` ever produces (`unknown.
+ * rear_cargo_crate_compatibility`, `unknown.driving_comfort`) has an entry
+ * in `HOUSEHOLD_FIT_UNKNOWN_TRANSLATION`, so that branch has no reachable
+ * real-data trigger and is exercised directly with a synthetic
+ * `ToolResult` instead.
+ */
+export function householdFitAttributes(
   clock: Clock,
   candidateId: string,
   result: ReturnType<typeof lookupHouseholdFit>,
@@ -561,6 +596,12 @@ export function buildCarPurchaseCandidateEntities(clock: Clock): EntityRecord[] 
       calculateOwnershipCost({ candidateId }),
       `calculating ownership cost for "${candidateId}"`,
     );
+    // The `?? []` fallback has no reachable real-data trigger: `readListing`
+    // above (which must already have succeeded to reach this line -- see
+    // `unwrapOk`) resolves `candidateId` against the exact same cached
+    // `loadFixture('candidate-listings')` object `standardFeaturesByCandidateId`
+    // was built from, so any `candidateId` that survives `unwrapOk` is
+    // necessarily already a key in this map.
     const standardFeatures = standardFeaturesByCandidateId.get(candidateId) ?? [];
 
     const attributes: Record<string, AttributeRecord> = {

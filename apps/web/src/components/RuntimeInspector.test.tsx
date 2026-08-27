@@ -277,6 +277,165 @@ describe('RuntimeInspector', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
+  it('formats a sub-second duration in milliseconds rather than seconds', async () => {
+    server.use(debugHandler(buildOverview({ durationMs: 500 }), [buildEvent()]));
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-duration')).toHaveTextContent('500 ms');
+    });
+  });
+
+  it('renders the agent id on a Timeline item when the real event carries one', async () => {
+    server.use(debugHandler(buildOverview(), [buildEvent({ agentId: 'deal-analyst' })]));
+    const user = userEvent.setup();
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-1')).toHaveTextContent(
+        'agent: deal-analyst',
+      );
+    });
+  });
+
+  it('shows "(none)" for a real overview whose traceId is null rather than a blank cell', async () => {
+    server.use(debugHandler(buildOverview({ traceId: null }), [buildEvent()]));
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-trace-id')).toHaveTextContent('(none)');
+    });
+  });
+
+  it('re-fetches with the real server-side level filter when the Timeline level filter changes', async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get(`${BASE_URL}/api/debug/runs/${RUN_ID}`, ({ request }) => {
+        capturedUrl = new URL(request.url);
+        const level = capturedUrl.searchParams.get('level');
+        const events =
+          level === 'error'
+            ? [buildEvent({ id: 'debug-error', level: 'error', summary: 'A tool call failed.' })]
+            : [buildEvent()];
+        return HttpResponse.json({ overview: buildOverview(), events });
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+    await user.selectOptions(screen.getByTestId('runtime-inspector-filter-level'), 'error');
+
+    await waitFor(() => {
+      expect(capturedUrl?.searchParams.get('level')).toBe('error');
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-error')).toBeInTheDocument();
+    });
+  });
+
+  it('fetches through a caller-supplied fetchImpl override rather than the real global fetch', async () => {
+    const overview = buildOverview();
+    const events = [buildEvent()];
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ overview, events }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL, fetchImpl }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-status')).toHaveTextContent('completed');
+    });
+    expect(fetchImpl).toHaveBeenCalled();
+  });
+
+  it('renders token usage but not an estimated cost when only tokenUsage is present on the real overview', async () => {
+    server.use(
+      debugHandler(
+        buildOverview({
+          tokenUsage: { input: 120, output: 340, total: 460 },
+          estimatedCostUsd: null,
+        }),
+        [buildEvent()],
+      ),
+    );
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-token-usage')).toHaveTextContent(
+        '120 in / 340 out / 460 total',
+      );
+    });
+    expect(screen.queryByTestId('runtime-inspector-estimated-cost')).not.toBeInTheDocument();
+  });
+
+  it('renders an estimated cost but no token usage line when only estimatedCostUsd is present on the real overview', async () => {
+    server.use(
+      debugHandler(buildOverview({ tokenUsage: null, estimatedCostUsd: 0.0842 }), [buildEvent()]),
+    );
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-estimated-cost')).toHaveTextContent('$0.0842');
+    });
+    expect(screen.queryByTestId('runtime-inspector-token-usage')).not.toBeInTheDocument();
+  });
+
   it('renders at 390px width with no fixed-width overflow risk', async () => {
     server.use(debugHandler(buildOverview(), [buildEvent()]));
     const { overflowRisks, renderResult } = renderAtNarrowWidth(

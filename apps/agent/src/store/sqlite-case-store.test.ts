@@ -111,4 +111,120 @@ describe('SqliteCaseStore persistence specifics', () => {
       .get('case-1') as { eventSequence: number };
     expect(row.eventSequence).toBe(1);
   });
+
+  it('preserves a CaseEvent.commandId through persistence and subscribe() replay', () => {
+    const db = createTestDatabase();
+    applyMigrations(db.sqlite);
+    test = db;
+    const store = new SqliteCaseStore(db);
+
+    store.append(
+      'case-1',
+      [
+        {
+          eventId: 'ev-1',
+          caseId: 'case-1',
+          sequence: 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          type: 'case.created',
+          commandId: 'cmd-that-produced-this-event',
+          payload: {
+            title: 'Test case',
+            pack: {
+              id: 'car-purchase',
+              version: '1.0.0',
+              compiledHash: '0'.repeat(64),
+              selectedBy: 'user',
+              reasons: ['Selected from the launcher'],
+            },
+          },
+        },
+      ],
+      0,
+    );
+
+    const replay = store.subscribe('case-1').replay;
+    expect(replay).toHaveLength(1);
+    expect(replay[0]?.commandId).toBe('cmd-that-produced-this-event');
+  });
+
+  it('append() and updateSelection() both throw if an idempotency_keys row references a cases row that no longer exists (defensive invariant guard)', () => {
+    const db = createTestDatabase();
+    applyMigrations(db.sqlite);
+    test = db;
+    const store = new SqliteCaseStore(db);
+
+    store.append(
+      'case-1',
+      [
+        {
+          eventId: 'ev-1',
+          caseId: 'case-1',
+          sequence: 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          type: 'case.created',
+          payload: {
+            title: 'Test case',
+            pack: {
+              id: 'car-purchase',
+              version: '1.0.0',
+              compiledHash: '0'.repeat(64),
+              selectedBy: 'user',
+              reasons: ['Selected from the launcher'],
+            },
+          },
+        },
+      ],
+      0,
+      { idempotency: { commandId: 'cmd-1', commandName: 'selectPack' } },
+    );
+
+    // `idempotency_keys.case_id` has a real `ON DELETE CASCADE` foreign key
+    // against `cases.id`, so deleting a case through the normal schema
+    // (`resetDemo()`) always cascades its idempotency rows away too -- this
+    // orphaned state is otherwise unreachable. Toggling `foreign_keys` off
+    // for one direct delete is the only way to construct it, mirroring this
+    // file's own "pre-inserting a colliding row directly" technique above.
+    db.sqlite.pragma('foreign_keys = OFF');
+    db.sqlite.prepare('DELETE FROM cases WHERE id = ?').run('case-1');
+    db.sqlite.pragma('foreign_keys = ON');
+
+    expect(() =>
+      store.append(
+        'case-2',
+        [
+          {
+            eventId: 'ev-2',
+            caseId: 'case-2',
+            sequence: 1,
+            timestamp: '2026-08-27T00:00:00.000Z',
+            type: 'case.created',
+            payload: {
+              title: 'Test case 2',
+              pack: {
+                id: 'car-purchase',
+                version: '1.0.0',
+                compiledHash: '0'.repeat(64),
+                selectedBy: 'user',
+                reasons: ['Selected from the launcher'],
+              },
+            },
+          },
+        ],
+        0,
+        { idempotency: { commandId: 'cmd-1', commandName: 'selectPack' } },
+      ),
+    ).toThrow(
+      /idempotency record for commandId "cmd-1" references case "case-1", which no longer exists/,
+    );
+
+    expect(() =>
+      store.updateSelection('case-2', { selectedOptionId: 'x' }, 0, '2026-08-27T00:00:00.000Z', {
+        commandId: 'cmd-1',
+        commandName: 'selectPack',
+      }),
+    ).toThrow(
+      /idempotency record for commandId "cmd-1" references case "case-1", which no longer exists/,
+    );
+  });
 });

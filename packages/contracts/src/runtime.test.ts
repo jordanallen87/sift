@@ -3,6 +3,7 @@ import {
   ExecutionLimitsSchema,
   ExecutionRequestSchema,
   ExecutionResultSchema,
+  JsonPatchOperationSchema,
   RunPlanSchema,
   RuntimeCorrelationSchema,
   RuntimeDebugEventSchema,
@@ -233,6 +234,33 @@ describe('RuntimeCorrelationSchema', () => {
         agentId: 'deal-analyst',
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('JsonPatchOperationSchema', () => {
+  it('requires "value" for add/replace/test operations and accepts it once supplied', () => {
+    for (const op of ['add', 'replace', 'test'] as const) {
+      const missingValue = JsonPatchOperationSchema.safeParse({ op, path: '/x' });
+      expect(missingValue.success, `op "${op}" without value should fail`).toBe(false);
+
+      const withValue = JsonPatchOperationSchema.safeParse({ op, path: '/x', value: 'v' });
+      expect(withValue.success, `op "${op}" with value should succeed`).toBe(true);
+    }
+  });
+
+  it('requires "from" for move/copy operations and accepts it once supplied', () => {
+    for (const op of ['move', 'copy'] as const) {
+      const missingFrom = JsonPatchOperationSchema.safeParse({ op, path: '/x' });
+      expect(missingFrom.success, `op "${op}" without from should fail`).toBe(false);
+
+      const withFrom = JsonPatchOperationSchema.safeParse({ op, path: '/x', from: '/y' });
+      expect(withFrom.success, `op "${op}" with from should succeed`).toBe(true);
+    }
+  });
+
+  it('allows a "remove" operation to omit both value and from -- it needs neither', () => {
+    const result = JsonPatchOperationSchema.safeParse({ op: 'remove', path: '/x' });
+    expect(result.success).toBe(true);
   });
 });
 

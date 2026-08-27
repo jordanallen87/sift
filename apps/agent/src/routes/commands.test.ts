@@ -62,6 +62,22 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
   });
 
+  it("falls back to an empty body when no request body is sent at all, still requiring the command's own fields via validation", async () => {
+    harness = createHttpTestHarness();
+    const { caseId } = await startDemo();
+
+    // Deliberately no `.send(...)` at all -- no Content-Type header reaches
+    // the server, so `express.json()` never parses a body and `req.body`
+    // stays `undefined` (not even `{}`), exercising the
+    // `typeof req.body === 'object'` false branch of the fallback.
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/selectPack`)
+      .set('Idempotency-Key', 'cmd-no-body');
+
+    expect(response.status).toBe(400);
+    expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
+  });
+
   it('returns 400 when the body caseId does not match the URL caseId (validation)', async () => {
     harness = createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();

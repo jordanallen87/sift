@@ -132,6 +132,18 @@ export interface EnergyAnalysisResult {
 
 export interface CalculateEnergyAnalysisInput {
   thresholdPercent?: number;
+  /**
+   * Test-only fixture-directory override, threaded through to every
+   * `loadFixture` call this function makes (`current-bill`,
+   * `rate-schedules`, `weather-history`). Mirrors `loadFixture`'s own
+   * `baseDir` option (fixture-loader.ts), which exists "purely so tests can
+   * exercise ... disk-read failure paths ... without ever touching the
+   * checked-in fixtures" -- this option extends that same seam to
+   * fixture-*content* edge cases (for example, a rate-schedules fixture
+   * that declares no tariff effective before the current one) that the
+   * checked-in fixtures never exercise. Real callers never set this.
+   */
+  fixtureBaseDir?: string;
   signal?: AbortSignal;
 }
 
@@ -158,9 +170,11 @@ export function calculateEnergyAnalysis(
     return cancelledResult(ENERGY_CALCULATOR_TOOL_ID);
   }
 
-  const bill = loadFixture('current-bill');
-  const rateSchedules = loadFixture('rate-schedules');
-  const weatherHistory = loadFixture('weather-history');
+  const fixtureOptions =
+    input.fixtureBaseDir !== undefined ? { baseDir: input.fixtureBaseDir } : {};
+  const bill = loadFixture('current-bill', fixtureOptions);
+  const rateSchedules = loadFixture('rate-schedules', fixtureOptions);
+  const weatherHistory = loadFixture('weather-history', fixtureOptions);
 
   if (isAborted(input.signal)) {
     return cancelledResult(ENERGY_CALCULATOR_TOOL_ID);
@@ -330,6 +344,8 @@ export interface EvaluateResponseOptionsInput {
   conservationWeight?: number;
   maxRoughCost?: number;
   optionId?: string;
+  /** Test-only fixture-directory override -- see `CalculateEnergyAnalysisInput.fixtureBaseDir`. */
+  fixtureBaseDir?: string;
   signal?: AbortSignal;
 }
 
@@ -386,7 +402,10 @@ export function evaluateResponseOptions(
     return cancelledResult(ENERGY_CALCULATOR_TOOL_ID);
   }
 
-  const fixture = loadFixture('response-options');
+  const fixture = loadFixture(
+    'response-options',
+    input.fixtureBaseDir !== undefined ? { baseDir: input.fixtureBaseDir } : {},
+  );
 
   if (isAborted(input.signal)) {
     return cancelledResult(ENERGY_CALCULATOR_TOOL_ID);

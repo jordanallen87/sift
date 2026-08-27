@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PackCompilationError } from '@pax/packs';
 import { validCatalog, validManifest } from '@pax/packs/src/fixtures/manifest.js';
 import { packScaffold } from './scaffold.js';
 import { PackDraftNotFoundError, packValidate } from './validate.js';
@@ -148,5 +149,26 @@ describe('packValidate', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.issues.some((issue) => issue.step === 'draft_shape')).toBe(true);
+  });
+
+  it('rethrows a non-PackCompilationError raised while compiling (e.g. a clock whose now() is not a real ISO timestamp) instead of swallowing it as a validation issue', () => {
+    scaffoldManifest('apartment-hunt', validManifest());
+    // A manifest that fully passes DecisionPackManifestSchema and every
+    // compiler check still runs through compilePack's own final
+    // `CompiledDecisionPackSchema.parse(compiled)` defense-in-depth
+    // self-check (packages/packs/src/compiler.ts), which requires
+    // `compiledAt` to satisfy `z.iso.datetime()`. A Clock whose `now()`
+    // does not return a real ISO datetime string makes that final `.parse()`
+    // throw a raw ZodError -- a real, non-PackCompilationError exception
+    // compilePack can genuinely raise.
+    const brokenClock = { now: () => 'not-a-real-iso-timestamp' };
+    let caught: unknown;
+    try {
+      packValidate(draftRoot, validCatalog(), brokenClock, { draftId: 'apartment-hunt' });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeDefined();
+    expect(caught).not.toBeInstanceOf(PackCompilationError);
   });
 });

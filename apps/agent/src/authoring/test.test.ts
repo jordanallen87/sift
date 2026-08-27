@@ -110,4 +110,30 @@ describe('packTest', () => {
     expect(result.ok).toBe(false);
     expect(result.issues.some((issue) => issue.includes('does not match its filename'))).toBe(true);
   });
+
+  it('reports a scenario file that is valid JSON but fails AuthoringScenarioFileSchema (an unknown "kind") as a distinct load issue', () => {
+    const manifest = validManifest({
+      evaluation: { scenarioIds: ['apt-success'], requiresNegativeCase: true },
+    });
+    packScaffold(draftRoot, {
+      draftId: 'apartment-hunt',
+      files: [
+        { relativePath: 'pack.json', content: JSON.stringify(manifest) },
+        {
+          relativePath: 'scenarios/apt-success.json',
+          content: JSON.stringify({
+            id: 'apt-success',
+            packId: 'apartment-hunt',
+            kind: 'not-a-real-kind',
+            description: 'x',
+            steps: [],
+            assertions: [],
+          }),
+        },
+      ],
+    });
+    const result = packTest(draftRoot, validCatalog(), FIXED_CLOCK, { draftId: 'apartment-hunt' });
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.includes('failed validation'))).toBe(true);
+  });
 });

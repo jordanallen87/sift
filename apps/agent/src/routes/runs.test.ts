@@ -45,6 +45,21 @@ describe('POST /api/cases/:caseId/run', () => {
     expect(activity.some((event) => event.type === 'run.queued')).toBe(true);
   });
 
+  it('falls back to an empty body when no request body is sent at all, still requiring expectedSequence via validation', async () => {
+    harness = createHttpTestHarness();
+    const { caseId } = await startDemo();
+
+    // Deliberately no `.send(...)` at all -- no Content-Type header reaches
+    // the server, so `express.json()` never parses a body and `req.body`
+    // stays `undefined` (not even `{}`), exercising the
+    // `typeof req.body === 'object'` false branch of the fallback.
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/run`)
+      .set('Idempotency-Key', 'cmd-run-no-body');
+
+    expect(response.status).toBe(400);
+  });
+
   it('returns 400 without an Idempotency-Key header (validation)', async () => {
     harness = createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();

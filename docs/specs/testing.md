@@ -208,6 +208,7 @@ pnpm format:check       formatting only
 pnpm lint               lint with zero warnings
 pnpm typecheck          all workspace typechecks
 pnpm test:unit          unit, property, and component tests
+pnpm test:coverage      the full test:unit suite, with coverage measured and thresholds enforced
 pnpm test:pack          pack compiler, conformance, extension, and authoring-skill tests
 pnpm test:integration   HTTP, store, and Strands-adapter integration
 pnpm test:contract      WebMCP and AgentCore contracts
@@ -217,9 +218,11 @@ pnpm test:observability Runtime Inspector, trace correlation, redaction, and exp
 pnpm test:mutation      targeted core invariant mutation tests
 pnpm test:live          opt-in Bedrock tests
 pnpm test:deployed      opt-in public deployment tests
-pnpm verify             static + unit + pack + integration + contract + scenario + E2E
+pnpm verify             static + unit + coverage + pack + integration + contract + scenario + E2E
 pnpm verify:release     verify + mutation + build + Docker contract + submission checks
 ```
+
+`pnpm test:coverage` (`vitest run --coverage`) runs the identical `test.projects` suite `pnpm test:unit` runs, with V8 coverage collection turned on. It is a distinct stage rather than a flag added to `test:unit` itself because `test:pack`/`test:integration`/`test:contract` reuse `test:unit`'s own test files with explicit path filters (see `scripts/verify.ts`'s header comment) — coverage percentages are only meaningful measured once across the whole suite, not repeated over each path-filtered subset. Vitest enforces `vitest.config.ts`'s `coverage.thresholds` (branches 90%, functions/lines/statements 95%) itself and exits non-zero on a miss; `scripts/verify.ts` relies on that real exit code rather than re-implementing threshold arithmetic. Reports are written to `artifacts/verification/coverage/` (`text`, `html`, `lcov`, `json-summary`).
 
 `pnpm verify` must run without network access after dependencies and Playwright browsers are installed.
 

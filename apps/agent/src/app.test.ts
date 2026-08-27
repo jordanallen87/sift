@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HttpErrorBody } from '@pax/contracts';
@@ -88,6 +91,27 @@ describe('buildApp', () => {
     const response = await request(app).get('/health');
 
     expect(response.body).toMatchObject({ database: { connected: false } });
+  });
+
+  it('mounts express.static and serves the built web app when webDistDir exists (the existsSync true branch)', async () => {
+    test = createTestDatabase();
+    applyMigrations(test.sqlite);
+    const webDistDir = mkdtempSync(join(tmpdir(), 'pax-agent-test-web-dist-'));
+    try {
+      writeFileSync(
+        join(webDistDir, 'index.html'),
+        '<html><body>pax web dist marker</body></html>',
+      );
+      const app = buildApp({ ...testDeps(test), webDistDir });
+
+      const response = await request(app).get('/');
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/html');
+      expect(response.text).toContain('pax web dist marker');
+    } finally {
+      rmSync(webDistDir, { recursive: true, force: true });
+    }
   });
 
   it('responds 404 for an unknown route', async () => {

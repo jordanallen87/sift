@@ -1,8 +1,11 @@
+import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CaseState, CommandReceipt, HttpErrorBody, PublicActivityEvent } from '@pax/contracts';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
+import type { CaseStore } from '../store/case-store.js';
+import { createEventsRouter } from './events.js';
 
 interface PollResponse {
   snapshot: CaseState;
@@ -57,6 +60,43 @@ describe('GET /api/cases/:caseId/events?mode=poll (polling fallback)', () => {
     const body = asJson<PollResponse>(afterFirst.body);
     expect(body.events).toHaveLength(1);
     expect(body.events[0]?.sequence).toBe(2);
+  });
+
+  it('falls back to the pre-fetch snapshot if the case becomes momentarily unavailable between the initial existence check and the second, response-time read (defensive re-load fallback)', async () => {
+    harness = createHttpTestHarness();
+    const { caseId } = await startDemo();
+    const realCaseStore = harness.caseStore;
+
+    // A CaseStore whose load() answers the *first* call (the route's
+    // existence check) from the real store, then simulates the case having
+    // vanished for the *second* call (the route's own re-load "at response
+    // time") -- the one input that drives `?? snapshot`'s right-hand side.
+    let loadCalls = 0;
+    const flakyCaseStore: CaseStore = {
+      load: (id) => {
+        loadCalls += 1;
+        return loadCalls === 1 ? realCaseStore.load(id) : undefined;
+      },
+      peekIdempotent: (commandId) => realCaseStore.peekIdempotent(commandId),
+      append: (id, events, expectedSequence, options) =>
+        realCaseStore.append(id, events, expectedSequence, options),
+      updateSelection: (id, patch, expectedSequence, updatedAt, idempotency) =>
+        realCaseStore.updateSelection(id, patch, expectedSequence, updatedAt, idempotency),
+      subscribe: (id, fromSequence) => realCaseStore.subscribe(id, fromSequence),
+      resetDemo: (id) => realCaseStore.resetDemo(id),
+    };
+
+    const app = express();
+    app.use(
+      createEventsRouter({ caseStore: flakyCaseStore, activityStore: harness.activityStore }),
+    );
+
+    const response = await request(app).get(`/api/cases/${caseId}/events?mode=poll`);
+
+    expect(response.status).toBe(200);
+    const body = asJson<PollResponse>(response.body);
+    expect(body.snapshot.id).toBe(caseId);
+    expect(loadCalls).toBe(2);
   });
 
   it('returns not_found for an unknown case', async () => {

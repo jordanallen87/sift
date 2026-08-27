@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { axe } from 'jest-axe';
 import type { PublicActivityEvent } from '@pax/contracts';
 import { LiveRunStatus } from './LiveRunStatus.js';
@@ -77,6 +77,40 @@ describe('LiveRunStatus', () => {
     expect(history).toHaveTextContent('Queued');
     expect(history).toHaveTextContent('In progress');
     expect(history).toHaveTextContent('Completed');
+  });
+
+  it('deduplicates consecutive correlated events that share the same phase in the breadcrumb history', () => {
+    const events = [
+      buildEvent({
+        eventId: 'e1',
+        sequence: 1,
+        type: 'run.started',
+        phase: 'active',
+        summary: 'First specialist started.',
+      }),
+      buildEvent({
+        eventId: 'e2',
+        sequence: 2,
+        type: 'specialist.started',
+        phase: 'active',
+        summary: 'Second specialist started.',
+      }),
+      buildEvent({
+        eventId: 'e3',
+        sequence: 3,
+        type: 'run.completed',
+        phase: 'completed',
+        summary: 'Done.',
+      }),
+    ];
+    render(<LiveRunStatus receipt={{ commandId: 'cmd-1', runId: 'run-1' }} events={events} />);
+
+    const history = screen.getByTestId('live-run-status-history');
+    // Two consecutive real events both reporting the "active" phase collapse
+    // into a single breadcrumb step, not two -- the breadcrumb tracks
+    // distinct phases reached, not a raw one-per-event tally.
+    expect(within(history).getAllByText('In progress')).toHaveLength(1);
+    expect(within(history).getAllByText('Completed')).toHaveLength(1);
   });
 
   it('renders a failed run with an error tone', () => {

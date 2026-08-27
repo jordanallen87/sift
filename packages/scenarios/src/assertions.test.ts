@@ -97,6 +97,16 @@ describe('checkAssertion', () => {
     expect(outcome.passed).toBe(true); // vacuously ready: zero obligations
   });
 
+  it('fails a readiness assertion, with a message reporting the actual readiness and blockers, when the expected readiness does not match', () => {
+    const trajectory: ScenarioTrajectory = {
+      ...emptyScenarioTrajectory(),
+      finalCaseState: minimalCaseState(), // vacuously ready: true, blockers: []
+    };
+    const outcome = checkAssertion(trajectory, { kind: 'readiness', ready: false, blockers: [] });
+    expect(outcome.passed).toBe(false);
+    expect(outcome.message).toBe('readiness is true (expected false); blockers: ');
+  });
+
   it('forbidden_event_absent for decision.approved.actor.agent reads the dedicated counter', () => {
     const clean = emptyScenarioTrajectory();
     expect(

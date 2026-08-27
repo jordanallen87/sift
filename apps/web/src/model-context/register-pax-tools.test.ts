@@ -358,6 +358,32 @@ describe.each(CASE_TOOL_FIXTURES)(
   },
 );
 
+describe('pax_upsert_option: optionId-dependent ui.focusTarget', () => {
+  it('omits ui.focusTarget when optionId is not given (creating a brand-new option)', async () => {
+    const receipt = buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 5 });
+    const commandMock = vi.fn().mockResolvedValue(receipt);
+    const { adapter } = await setUpWithActiveCase('case-1', { upsertOption: commandMock });
+
+    const input = {
+      caseId: 'case-1',
+      expectedSequence: 1,
+      option: {
+        label: 'Honda Civic LX',
+        kind: 'car',
+        attributes: [
+          { definitionId: 'price', value: { type: 'money', amount: 25_000, currency: 'USD' } },
+        ],
+      },
+    };
+    const result = await invokeTool(adapter, 'pax_upsert_option', input);
+
+    expect(result.ok).toBe(true);
+    expect(result.ui.changed).toBe(true);
+    expect(result.ui.focusTarget).toBeUndefined();
+    expect(commandMock).toHaveBeenCalledWith(input);
+  });
+});
+
 describe('error envelope mapping (shared plumbing exercised through pax_select_pack)', () => {
   it('maps a POLICY rejection to an honest, unsuccessful envelope', async () => {
     const { adapter } = await setUpWithActiveCase('case-1', {
@@ -422,6 +448,27 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
     });
 
     expect(result.error).toEqual({ code: 'NOT_FOUND', retryable: false });
+  });
+
+  it('maps a PaxClientError that carries no code (the documented pax-client.ts parsing gap for an as-yet-unparsed error shape) to INTERNAL rather than an undefined code', async () => {
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      selectPack: vi.fn().mockRejectedValue(
+        new PaxClientError('Something went wrong.', {
+          status: 500,
+          retryable: false,
+        }),
+      ),
+    });
+
+    const result = await invokeTool(adapter, 'pax_select_pack', {
+      caseId: 'case-1',
+      packId: 'car-purchase',
+      expectedSequence: 1,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe('Something went wrong.');
+    expect(result.error).toEqual({ code: 'INTERNAL', retryable: false });
   });
 
   it('maps any unexpected thrown error to INTERNAL and never claims success', async () => {
@@ -679,6 +726,57 @@ describe('pax_get_case_context', () => {
     expect(contextResult.data?.selectedEvidenceId).toBe('ev-2');
   });
 
+  it('surfaces activeRun with the runId when activeFocus carries one', async () => {
+    const caseState = buildFixtureCaseState({
+      activeFocus: {
+        obligationId: 'car.hard_constraints',
+        reason: 'Investigating the household budget constraint.',
+        runId: 'run-42',
+        since: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => caseState,
+      listPacks: () => [],
+    });
+
+    const result = await invokeTool<{ activeRun: { runId: string } | null }>(
+      adapter,
+      'pax_get_case_context',
+      {},
+    );
+
+    expect(result.data?.activeRun).toEqual({ runId: 'run-42' });
+  });
+
+  it('reports activeRun as null when activeFocus exists but carries no runId (no run is currently correlated)', async () => {
+    const caseState = buildFixtureCaseState({
+      activeFocus: {
+        obligationId: 'car.hard_constraints',
+        reason: 'Awaiting a source before starting a run.',
+        since: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => caseState,
+      listPacks: () => [],
+    });
+
+    const result = await invokeTool<{ activeRun: { runId: string } | null }>(
+      adapter,
+      'pax_get_case_context',
+      {},
+    );
+
+    expect(result.data?.activeRun).toBeNull();
+  });
+
   it('returns VALIDATION for a non-empty input without reading case state', async () => {
     const getActiveCase = vi.fn().mockReturnValue(null);
     const adapter = new InMemoryModelContextAdapter();
@@ -735,6 +833,23 @@ describe('pax_list_packs', () => {
     const result = await invokeTool<unknown[]>(adapter, 'pax_list_packs', {});
 
     expect(result.data).toHaveLength(1);
+  });
+
+  it('returns VALIDATION and never calls listPacks for malformed input (ListPacksInputSchema is `.strict().object({})`, so any field at all is rejected)', async () => {
+    const listPacks = vi.fn().mockReturnValue([]);
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => null,
+      listPacks,
+    });
+
+    const result = await invokeTool(adapter, 'pax_list_packs', { thisFieldDoesNotExist: true });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+    expect(listPacks).not.toHaveBeenCalled();
   });
 });
 

@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { loadFixture } from './fixture-loader.js';
 import {
   ENERGY_CALCULATOR_TOOL_ID,
   calculateEnergyAnalysis,
@@ -6,6 +10,11 @@ import {
   type EnergyAnalysisResult,
   type ResponseOptionsEvaluationResult,
 } from './energy-calculator.js';
+
+/** Matches `energy-calculator.ts`'s own (unexported) `round2` exactly, so test-authored fixture values land on the same cent boundary the production code will independently recompute. */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
 
 /** See listing-reader.test.ts for the full rationale. */
 function signalAbortingOnRead(n: number): AbortSignal {
@@ -104,6 +113,78 @@ describe('calculateEnergyAnalysis', () => {
   });
 });
 
+describe('calculateEnergyAnalysis -- rate-schedules edge case with no tariff effective before the current one (via fixtureBaseDir test seam)', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'pax-energy-calculator-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('falls back to the current tariff as its own "prior" tariff (rateChangeAttributableAmount $0, 0% of a $0 total gap) when rate-schedules.json declares no tariff effective before the current one and the bill exactly matches the current-tariff baseline bill', () => {
+    // Real, checked-in fixtures as the starting point -- only the pieces
+    // needed to construct this otherwise-unreachable-with-real-data edge
+    // case are overridden; the weather-history fixture is copied verbatim
+    // so the current cycle's weatherAttribution lookup (billingPeriod join)
+    // keeps working unchanged.
+    const realBill = loadFixture('current-bill');
+    const realRateSchedules = loadFixture('rate-schedules');
+    const realWeatherHistory = loadFixture('weather-history');
+
+    const currentTariff = realRateSchedules.tariffs.find(
+      (tariff) => tariff.tariffId === realBill.tariffId,
+    );
+    if (!currentTariff) {
+      throw new Error(
+        'fixture invariant broken: current-bill.tariffId must resolve to a real tariff',
+      );
+    }
+
+    // Only the current tariff remains -- findPriorTariff has nothing earlier
+    // to find.
+    const noPriorTariffRateSchedules = {
+      ...realRateSchedules,
+      tariffs: realRateSchedules.tariffs.filter(
+        (tariff) => tariff.tariffId === currentTariff.tariffId,
+      ),
+    };
+
+    // The bill's actual amount is set to exactly what the current tariff
+    // would produce at baseline usage, so the total gap vs. the (fallback)
+    // "prior" tariff at baseline usage is exactly $0.
+    const billUnderCurrentTariffAtBaselineUsage = round2(
+      currentTariff.fixedMonthlyCustomerCharge.amount +
+        currentTariff.volumetricRatePerKwh.amount * realBill.baseline.usage.value,
+    );
+    const zeroGapBill = {
+      ...realBill,
+      currentAmount: {
+        amount: billUnderCurrentTariffAtBaselineUsage,
+        currency: realBill.currentAmount.currency,
+      },
+    };
+
+    writeFileSync(join(tempDir, 'current-bill.json'), JSON.stringify(zeroGapBill));
+    writeFileSync(join(tempDir, 'rate-schedules.json'), JSON.stringify(noPriorTariffRateSchedules));
+    writeFileSync(join(tempDir, 'weather-history.json'), JSON.stringify(realWeatherHistory));
+
+    const result = calculateEnergyAnalysis({ fixtureBaseDir: tempDir });
+    expectOk<EnergyAnalysisResult>(result);
+    const { rateChange } = result.data;
+    expect(rateChange.priorTariffId).toBe(currentTariff.tariffId);
+    expect(rateChange.currentTariffId).toBe(currentTariff.tariffId);
+    expect(rateChange.billUnderPriorTariffAtBaselineUsage.amount).toBe(
+      rateChange.billUnderCurrentTariffAtBaselineUsage.amount,
+    );
+    expect(rateChange.rateChangeAttributableAmount.amount).toBe(0);
+    expect(rateChange.totalGapVsPriorTariffAtActualUsage.amount).toBe(0);
+    expect(rateChange.rateChangeAttributablePercentOfTotalGap).toBe(0);
+  });
+});
+
 describe('evaluateResponseOptions', () => {
   it('scores all four real options, ranked by fitScore descending with the documented cost/root-cause formula (default equal weights)', () => {
     const result = evaluateResponseOptions();
@@ -142,6 +223,18 @@ describe('evaluateResponseOptions', () => {
     expectOk<ResponseOptionsEvaluationResult>(result);
     expect(result.data.options[0]?.optionId).toBe('request-hvac-inspection');
     expect(result.data.options[0]?.fitScore).toBe(1);
+  });
+
+  it('blends costScore and conservationScore with an equal (costScore + conservationScore) / 2 average -- not a weighted formula that would divide by zero -- when both costWeight and conservationWeight are 0', () => {
+    const result = evaluateResponseOptions({ costWeight: 0, conservationWeight: 0 });
+    expectOk<ResponseOptionsEvaluationResult>(result);
+    const byId = new Map(result.data.options.map((option) => [option.optionId, option]));
+    // request-hvac-inspection: costScore ~0.34, conservationScore 1 -> (0.34 + 1) / 2 = 0.67
+    expect(byId.get('request-hvac-inspection')?.fitScore).toBeCloseTo(0.67, 4);
+    // request-energy-audit: costScore 0, conservationScore 0 -> 0
+    expect(byId.get('request-energy-audit')?.fitScore).toBe(0);
+    // monitor-one-cycle: costScore 1, conservationScore 0 -> 0.5
+    expect(byId.get('monitor-one-cycle')?.fitScore).toBeCloseTo(0.5, 4);
   });
 
   it('flags withinBudget only when maxRoughCost is given, without dropping any option', () => {
@@ -206,5 +299,37 @@ describe('evaluateResponseOptions', () => {
   it('checks the signal again mid-flight and honors a late abort', () => {
     const result = evaluateResponseOptions({ signal: signalAbortingOnRead(2) });
     expect(result.status).toBe('cancelled');
+  });
+});
+
+describe('evaluateResponseOptions -- maxRoughCostAmongOptions 0 edge case (via fixtureBaseDir test seam)', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'pax-energy-calculator-response-options-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('scores every option a perfect 1.0 costScore instead of dividing by zero when every option in response-options.json is free (maxRoughCostAmongOptions 0)', () => {
+    const realResponseOptions = loadFixture('response-options');
+    const freeResponseOptions = {
+      ...realResponseOptions,
+      options: realResponseOptions.options.map((option) => ({
+        ...option,
+        roughCost: { amount: 0, currency: option.roughCost.currency },
+      })),
+    };
+    writeFileSync(join(tempDir, 'response-options.json'), JSON.stringify(freeResponseOptions));
+
+    const result = evaluateResponseOptions({ fixtureBaseDir: tempDir });
+    expectOk<ResponseOptionsEvaluationResult>(result);
+    expect(result.data.maxRoughCostAmongOptions).toBe(0);
+    expect(result.data.options.length).toBeGreaterThan(0);
+    for (const score of result.data.options) {
+      expect(score.costScore).toBe(1);
+    }
   });
 });

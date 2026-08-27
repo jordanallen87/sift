@@ -10,11 +10,26 @@
  * fails. `summary.md` is written alongside the report only when the run
  * failed.
  *
- * `format:check`, `lint`, `typecheck`, `test:unit`, `test:pack`,
- * `test:integration`, `test:contract`, `test:scenario`, and `test:e2e` are
- * all wired for real — every stage in `pnpm verify`'s composition per
- * testing.md now runs real commands rather than a declared
+ * `format:check`, `lint`, `typecheck`, `test:unit`, `test:coverage`,
+ * `test:pack`, `test:integration`, `test:contract`, `test:scenario`, and
+ * `test:e2e` are all wired for real — every stage in `pnpm verify`'s
+ * composition per testing.md now runs real commands rather than a declared
  * `not-implemented` placeholder.
+ *
+ * `test:coverage` (`vitest run --coverage`) is a real, distinct stage, not
+ * a redundant re-run of `test:unit`: `test:unit` (plain `vitest run`) never
+ * measures coverage at all, so `vitest.config.ts`'s `coverage.thresholds`
+ * (branches 90 / functions 95 / lines 95 / statements 95) were declared but
+ * never actually enforced by any real gate until this stage existed. Vitest
+ * itself enforces its configured thresholds and exits non-zero on a miss
+ * (see https://vitest.dev/guide/coverage — "Vitest will fail the run if
+ * thresholds ... are not met"), so this stage relies on the real `vitest`
+ * exit code rather than re-implementing threshold arithmetic here. It runs
+ * the same full `test.projects` suite `test:unit` does (coverage numbers
+ * are only meaningful measured across the whole suite, not a path-filtered
+ * subset like `test:pack`/`test:integration`/`test:contract` use), so it is
+ * placed immediately after `test:unit` rather than duplicated onto those
+ * narrower, already-real, differently-purposed subset stages.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
@@ -95,6 +110,7 @@ export const DEFAULT_STAGES: StageDefinition[] = [
   { name: 'lint', kind: 'real' },
   { name: 'typecheck', kind: 'real' },
   { name: 'test:unit', kind: 'real' },
+  { name: 'test:coverage', kind: 'real' },
   { name: 'test:pack', kind: 'real' },
   { name: 'test:integration', kind: 'real' },
   { name: 'test:contract', kind: 'real' },

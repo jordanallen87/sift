@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import type { CaseExtension } from '@pax/contracts';
@@ -140,6 +140,33 @@ describe('CaseExtensionReviewCard', () => {
         'Could not record this review.',
       );
     });
+  });
+
+  it('ignores a second review submission while one is already in flight (defends against a fast double-tap racing the disabled attribute)', async () => {
+    const user = userEvent.setup();
+    let resolveReview: (value: unknown) => void = () => undefined;
+    const pending = new Promise((resolve) => {
+      resolveReview = resolve;
+    });
+    const { commands } = renderCard({}, { reviewCaseExtension: vi.fn().mockReturnValue(pending) });
+
+    await user.click(screen.getByTestId('case-extension-review-card-confirm'));
+    expect(commands.reviewCaseExtension).toHaveBeenCalledTimes(1);
+
+    // Both controls are `disabled` the instant `pending` becomes true, so a
+    // normal (or even synthetic) click on either can no longer reach
+    // `submit()` -- this simulates the one real race that still can: a fast
+    // double-tap landing on the same frame the disabled attribute is being
+    // committed, which is exactly the scenario `submit()`'s own `pending`
+    // guard exists to make a no-op.
+    const rejectButton = screen.getByTestId('case-extension-review-card-reject');
+    rejectButton.removeAttribute('disabled');
+    fireEvent.click(rejectButton);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(commands.reviewCaseExtension).toHaveBeenCalledTimes(1);
+
+    resolveReview(buildFakeCommandReceipt());
   });
 
   it('renders no confirm/reject controls when nothing is pending review (extension is null)', () => {

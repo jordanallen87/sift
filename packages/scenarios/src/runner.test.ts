@@ -57,4 +57,25 @@ describe('runScenarioSteps', () => {
     await runScenarioSteps({ steps: [], executor });
     expect(called).toBe(false);
   });
+
+  it('skips a hole/undefined entry in steps (defensive guard against a sparse array) without calling the executor or throwing, then continues to the next real step', async () => {
+    const calls: { command: string; index: number }[] = [];
+    const executor: ScenarioCommandExecutor = {
+      execute: (s, index) => {
+        calls.push({ command: s.command, index });
+      },
+    };
+    const stepsWithAHole = [
+      step('startDemo'),
+      undefined,
+      step('focusOption'),
+    ] as unknown as readonly ScenarioStep[];
+
+    await runScenarioSteps({ steps: stepsWithAHole, executor });
+
+    expect(calls).toEqual([
+      { command: 'startDemo', index: 0 },
+      { command: 'focusOption', index: 2 },
+    ]);
+  });
 });

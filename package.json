@@ -13,6 +13,7 @@
     "lint": "eslint . --max-warnings=0 && tsx scripts/check-source.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --if-present run typecheck",
     "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:pack": "vitest run packages/packs/src apps/agent/src/authoring apps/agent/src/fixtures/apartment-hunt-extension.test.ts packages/core/src/extensions.test.ts",
     "test:integration": "vitest run apps/agent/src/routes apps/agent/src/store apps/agent/src/db apps/agent/src/app.test.ts apps/agent/src/runtime/strands-adapter.test.ts apps/agent/src/runtime/event-normalizer.test.ts apps/agent/src/runtime/interventions.test.ts apps/agent/src/runtime/plugins.test.ts apps/agent/src/runtime/model-provider.test.ts apps/agent/src/runtime/session-adapter.test.ts apps/agent/src/runtime/car-purchase-engine.test.ts apps/agent/src/runtime/home-energy-engine.test.ts",
     "test:contract": "vitest run apps/web/src/model-context/webmcp-contract.test.ts apps/agent/src/routes/agentcore.test.ts",
