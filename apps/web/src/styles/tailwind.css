@@ -1,0 +1,37 @@
+/*
+ * Tailwind CSS v4 entry point.
+ *
+ * Judgment call (recorded in full in docs/build-log.md's entry for this
+ * task): Pax uses a *token-first* integration rather than a `@theme` bridge.
+ * This file intentionally defines no `@theme` block and duplicates no
+ * value from tokens.css. Components reach Pax's actual design tokens via
+ * Tailwind's arbitrary-value syntax (`bg-[var(--color-surface)]`,
+ * `rounded-[var(--radius-xl)]`, `font-[family-name:var(--font-display)]`,
+ * ...) -- a literal `var(--...)` reference resolved by the normal CSS
+ * cascade against tokens.css's `:root` block, not by Tailwind's theme
+ * pipeline. This was chosen over a `--theme(inline)` bridge (e.g.
+ * `--color-paper: var(--color-paper);`) after confirming that `@theme`
+ * variables are *also* re-emitted as real `:root` custom properties in
+ * Tailwind's output CSS: a same-named bridge risks a later-in-cascade
+ * `:root { --color-paper: var(--color-paper) }` rule shadowing (and
+ * self-referentially invalidating) tokens.css's real
+ * `:root { --color-paper: #EEF1F0 }` definition, depending on generated
+ * stylesheet order. Arbitrary-value syntax has no such risk -- it reads
+ * the cascade directly -- at the cost of slightly more verbose class names.
+ * Ordinary Tailwind utilities with no Pax-specific meaning (`flex`, `gap-3`,
+ * `p-4`, responsive prefixes, ...) are used directly from Tailwind's default
+ * theme; see the docs/build-log.md entry for why the default numeric
+ * spacing scale already matches tokens.css's `--space-*` scale pixel for
+ * pixel, so no bridging is needed there either.
+ *
+ * Preflight (Tailwind's own CSS reset) is deliberately NOT imported.
+ * apps/web/src/styles/global.css already supplies Pax's own "small,
+ * deliberate reset" (that file's own description); importing Preflight too
+ * would silently re-normalize the same elements a second, more opinionated
+ * way. Importing `theme.css` + `utilities.css` directly (skipping
+ * `preflight.css`, which the plain `"tailwindcss"` entry point pulls in) is
+ * Tailwind v4's documented way to opt out of Preflight while keeping the
+ * default theme scale and the utility engine.
+ */
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);

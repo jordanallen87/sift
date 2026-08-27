@@ -1,0 +1,360 @@
+/**
+ * Same-origin typed HTTP client implementing `PaxCommands`
+ * (docs/specs/architecture.md "Shared command client"; the locked file map
+ * names this file directly:
+ * `apps/web/src/api/pax-client.ts   Same-origin typed HTTP client`).
+ *
+ * CLAUDE.md's "Non-negotiable product truths" requires that "Visible UI
+ * controls and WebMCP callbacks use the same command implementation." This
+ * module is that one implementation: every method validates its input
+ * against the real `@pax/contracts` Zod schema *before* sending anything
+ * (so a malformed call never reaches the network), POSTs to the real HTTP
+ * route, and validates the response against the real `CommandReceipt`/
+ * `RunReceipt` schema before returning it. A later task's WebMCP tool
+ * callbacks and this task's React components both call through the exact
+ * same `PaxCommands` instance obtained from `AppProviders`
+ * (`apps/web/src/app/AppProviders.tsx`) -- there is no separate WebMCP-only
+ * mutation path.
+ *
+ * Route mapping (architecture.md "HTTP service"):
+ * - `startDemo` -> `POST /api/cases/demo` (no case exists yet).
+ * - `requestInvestigation` -> `POST /api/cases/:caseId/run` (architecture.md
+ *   names this as its own route, distinct from the generic per-command
+ *   route, and its result always carries a `runId` -- `RunReceipt`, not the
+ *   more general `CommandReceipt`).
+ * - every other method -> `POST /api/cases/:caseId/commands/:commandName`,
+ *   where `:commandName` is the `PaxCommands` method name itself. This is
+ *   an inferred mapping: `commands.ts`'s own module comment notes that
+ *   `setEvidenceDisposition` and `requestRevision` have "no corresponding
+ *   `PaxCommands` method name ... in architecture.md" and that resolving
+ *   their real route is "an implementation decision for `apps/agent`/
+ *   `apps/web`, not a contracts concern." Routing them through the same
+ *   generic `/commands/:commandName` shape as the other nine keeps one
+ *   uniform, honest rule instead of a special case; the sibling HTTP-route
+ *   task is free to name its Express routes differently, since this client
+ *   only needs to be structurally correct and independently testable
+ *   (via MSW) until that route wiring lands.
+ *
+ * Every command carries a client-generated `commandId`
+ * (architecture.md "Command and event flow" step 1: "A UI action or WebMCP
+ * callback sends a validated command with an idempotency key and
+ * client-generated `commandId`"). Since no `commands.ts` input schema
+ * carries a `commandId`/idempotency field in its JSON body (by design --
+ * those schemas are pure business payloads), this client sends it as the
+ * `X-Pax-Command-Id` request header and reuses the same value as the
+ * `Idempotency-Key` header value, rather than inventing a body field the
+ * real contracts schema would reject (every command input schema is
+ * `.strict()`).
+ */
+import {
+  CommandReceiptSchema,
+  DefineCaseAttributeInputSchema,
+  FocusEvidenceInputSchema,
+  FocusOptionInputSchema,
+  HttpErrorBodySchema,
+  RequestInvestigationInputSchema,
+  RequestRevisionInputSchema,
+  ReviewCaseExtensionInputSchema,
+  ReviewProposalInputSchema,
+  RunReceiptSchema,
+  SelectPackInputSchema,
+  SetEvidenceDispositionInputSchema,
+  StartDemoInputSchema,
+  SubmitSourceInputSchema,
+  UpdateCriteriaInputSchema,
+  UpsertOptionInputSchema,
+  type CommandReceipt,
+  type DefineCaseAttributeInput,
+  type FocusEvidenceInput,
+  type FocusOptionInput,
+  type RequestInvestigationInput,
+  type RequestRevisionInput,
+  type ReviewCaseExtensionInput,
+  type ReviewProposalInput,
+  type RunReceipt,
+  type SelectPackInput,
+  type SetEvidenceDispositionInput,
+  type StartDemoInput,
+  type SubmitSourceInput,
+  type ToolErrorCode,
+  type UpdateCriteriaInput,
+  type UpsertOptionInput,
+} from '@pax/contracts';
+import { z } from 'zod';
+
+/**
+ * The `PaxCommands` interface (docs/specs/architecture.md "Shared command
+ * client", copied verbatim by method name, parameter, and return type).
+ * `@pax/contracts` deliberately exports only the per-method Zod input/output
+ * schemas, not this TypeScript interface itself -- it is owned here, the one
+ * place that both implements and (later) consumes it.
+ *
+ * Written as function-typed properties (`startDemo: (input) => Promise<...>`)
+ * rather than architecture.md's literal method-shorthand syntax
+ * (`startDemo(input): Promise<...>`): the two are behaviorally identical --
+ * same name, same parameter, same return type -- but method-shorthand marks
+ * a member as implicitly `this`-sensitive at the type level, which trips
+ * `@typescript-eslint/unbound-method` the moment a caller (or a test
+ * asserting `expect(commands.startDemo).toHaveBeenCalledWith(...)`)
+ * references a member without immediately invoking it. Every implementation
+ * of this interface (`createPaxClient` below, and
+ * `../test/fake-pax-commands.ts`) is a plain object of closures with no
+ * `this` dependency, so the property-arrow form is both accurate and avoids
+ * that footgun.
+ */
+export interface PaxCommands {
+  startDemo: (input: StartDemoInput) => Promise<CommandReceipt>;
+  selectPack: (input: SelectPackInput) => Promise<CommandReceipt>;
+  upsertOption: (input: UpsertOptionInput) => Promise<CommandReceipt>;
+  focusOption: (input: FocusOptionInput) => Promise<CommandReceipt>;
+  defineCaseAttribute: (input: DefineCaseAttributeInput) => Promise<CommandReceipt>;
+  reviewCaseExtension: (input: ReviewCaseExtensionInput) => Promise<CommandReceipt>;
+  focusEvidence: (input: FocusEvidenceInput) => Promise<CommandReceipt>;
+  updateCriteria: (input: UpdateCriteriaInput) => Promise<CommandReceipt>;
+  submitSource: (input: SubmitSourceInput) => Promise<CommandReceipt>;
+  requestInvestigation: (input: RequestInvestigationInput) => Promise<RunReceipt>;
+  reviewProposal: (input: ReviewProposalInput) => Promise<CommandReceipt>;
+  setEvidenceDisposition: (input: SetEvidenceDispositionInput) => Promise<CommandReceipt>;
+  requestRevision: (input: RequestRevisionInput) => Promise<CommandReceipt>;
+}
+
+export interface PaxClientErrorOptions {
+  status: number;
+  // `| undefined` is explicit, not redundant: with `exactOptionalPropertyTypes`
+  // (tsconfig.base.json) an optional field's value type must include
+  // `undefined` itself to be assignable *from* an already-optional source
+  // (`HttpError['code']` below is itself optional) -- otherwise passing
+  // `code: error.code` through to this options bag, and then through to the
+  // class field of the same shape, is a type error even though the field is
+  // marked `?`.
+  code?: ToolErrorCode | undefined;
+  retryable: boolean;
+  details?: unknown;
+}
+
+/** Thrown by every `PaxCommands` method on local-validation failure, a non-OK HTTP response, or a response that fails to validate against its expected receipt schema. */
+export class PaxClientError extends Error {
+  readonly status: number;
+  readonly code?: ToolErrorCode | undefined;
+  readonly retryable: boolean;
+  readonly details?: unknown;
+
+  constructor(message: string, options: PaxClientErrorOptions) {
+    super(message);
+    this.name = 'PaxClientError';
+    this.status = options.status;
+    this.code = options.code;
+    this.retryable = options.retryable;
+    this.details = options.details;
+  }
+
+  static fromErrorResponse(status: number, payload: unknown): PaxClientError {
+    const parsedBody = HttpErrorBodySchema.safeParse(payload);
+    if (parsedBody.success) {
+      const { error } = parsedBody.data;
+      return new PaxClientError(error.message, {
+        status,
+        code: error.code,
+        retryable: error.retryable,
+        details: error.details,
+      });
+    }
+    return new PaxClientError(`Pax service request failed with status ${status}.`, {
+      status,
+      retryable: status >= 500,
+    });
+  }
+}
+
+export interface CreatePaxClientOptions {
+  /** Same-origin by default (an empty string, so requests resolve against the page's own origin per architecture.md "Deployed browser requests remain same-origin"). Overridable for tests. */
+  baseUrl?: string;
+  /** Injectable fetch implementation for tests; defaults to the global `fetch`. */
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Deliberately typed with a plain, non-generic `z.ZodTypeAny` parameter and
+ * an `unknown` return, rather than a generic `<T>`/`<Schema extends
+ * z.ZodTypeAny>` signature whose return type tracks the specific schema
+ * passed in. Two problems ruled that out, both confirmed empirically against
+ * this exact codebase, not assumed:
+ *
+ * 1. A first version used `z.ZodType<T>` directly, generic over each
+ *    command's own inferred type (some, like `UpsertOptionInput`, nesting
+ *    the ten-branch discriminated `AttributeValue` union). `tsc --noEmit`
+ *    on that version reliably ran the compiler out of memory (confirmed
+ *    still failing at an 8 GB `--max-old-space-size` ceiling) typechecking
+ *    this file's nine per-command call sites, each forcing bidirectional
+ *    inference against zod v4's own multi-parameter `ZodType` generic.
+ * 2. A second version switched to `<Schema extends z.ZodTypeAny>` +
+ *    `z.infer<Schema>` (avoiding the OOM), but every call site passing a
+ *    concrete compiled schema (e.g. `CommandReceiptSchema`) then failed
+ *    with "Argument ... is not assignable to parameter of type
+ *    `ZodType<unknown, unknown, ...>` with `exactOptionalPropertyTypes:
+ *    true`" -- an assignability friction between a concrete `ZodObject` and
+ *    the abstract `ZodTypeAny` constraint under this repo's
+ *    `exactOptionalPropertyTypes: true` (tsconfig.base.json), which then
+ *    made every dependent inference collapse to `unknown`.
+ *
+ * Keeping the schema parameter's own type out of the generic signature
+ * altogether avoids both failure modes. Callers below regain the concrete
+ * type via a narrow, explicitly-commented `as` cast immediately after the
+ * adjacent `safeParse` call that actually enforces it at runtime -- the
+ * cast asserts a fact `safeParse` already checked, it does not bypass
+ * validation.
+ */
+function validate(schema: z.ZodTypeAny, value: unknown): unknown {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    throw new PaxClientError('Command input failed local validation.', {
+      status: 0,
+      code: 'VALIDATION',
+      retryable: false,
+      details: z.treeifyError(result.error),
+    });
+  }
+  return result.data;
+}
+
+async function postJson(
+  fetchImpl: typeof fetch,
+  url: string,
+  body: unknown,
+  outputSchema: z.ZodTypeAny,
+): Promise<unknown> {
+  const commandId = crypto.randomUUID();
+  const response = await fetchImpl(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Pax-Command-Id': commandId,
+      'Idempotency-Key': commandId,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const payload: unknown = await response.json().catch(() => undefined);
+
+  if (!response.ok) {
+    throw PaxClientError.fromErrorResponse(response.status, payload);
+  }
+
+  const parsed = outputSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new PaxClientError('Pax service returned a response that did not match its contract.', {
+      status: response.status,
+      code: 'INTERNAL',
+      retryable: false,
+      details: z.treeifyError(parsed.error),
+    });
+  }
+  return parsed.data;
+}
+
+/** Creates a `PaxCommands` client that sends every command to the real HTTP routes. Structurally complete and independently testable via a mocked `fetch`/MSW ahead of the real server routes landing. */
+export function createPaxClient(options: CreatePaxClientOptions = {}): PaxCommands {
+  const baseUrl = options.baseUrl ?? '';
+  const fetchImpl = options.fetchImpl ?? fetch;
+
+  // `TInput`/`TOutput` are supplied explicitly by each call site below
+  // (`genericCommand<SelectPackInput, CommandReceipt>(...)`), not inferred
+  // from the schema arguments -- see the comment above `validate` for why
+  // schema-driven inference is avoided here. `TInput extends { caseId:
+  // string }` is safe to state as a real generic bound in *this* position
+  // (a type parameter's own constraint, not a schema argument's type) since
+  // it does not touch zod's generic types at all; every real `PaxCommands`
+  // input is `.strict()`-shaped with a required `caseId: idString()` field
+  // (checked directly against commands.ts).
+  function genericCommand<TInput extends { caseId: string }, TOutput>(
+    commandName: string,
+    inputSchema: z.ZodTypeAny,
+    outputSchema: z.ZodTypeAny,
+  ): (input: TInput) => Promise<TOutput> {
+    return async (input: TInput): Promise<TOutput> => {
+      // `safeParse` (inside `validate`) already checked `input` against
+      // `inputSchema` at runtime; this cast reasserts that same fact to the
+      // type checker rather than bypassing it.
+      const validated = validate(inputSchema, input) as TInput;
+      const url = `${baseUrl}/api/cases/${encodeURIComponent(validated.caseId)}/commands/${commandName}`;
+      // Same justification as above: `outputSchema.safeParse` inside
+      // `postJson` already enforced this shape at runtime.
+      return postJson(fetchImpl, url, validated, outputSchema) as Promise<TOutput>;
+    };
+  }
+
+  return {
+    startDemo: async (input) => {
+      const validated = validate(StartDemoInputSchema, input) as StartDemoInput;
+      return postJson(
+        fetchImpl,
+        `${baseUrl}/api/cases/demo`,
+        validated,
+        CommandReceiptSchema,
+      ) as Promise<CommandReceipt>;
+    },
+    requestInvestigation: async (input) => {
+      const validated = validate(
+        RequestInvestigationInputSchema,
+        input,
+      ) as RequestInvestigationInput;
+      const url = `${baseUrl}/api/cases/${encodeURIComponent(validated.caseId)}/run`;
+      return postJson(fetchImpl, url, validated, RunReceiptSchema) as Promise<RunReceipt>;
+    },
+    selectPack: genericCommand<SelectPackInput, CommandReceipt>(
+      'selectPack',
+      SelectPackInputSchema,
+      CommandReceiptSchema,
+    ),
+    upsertOption: genericCommand<UpsertOptionInput, CommandReceipt>(
+      'upsertOption',
+      UpsertOptionInputSchema,
+      CommandReceiptSchema,
+    ),
+    focusOption: genericCommand<FocusOptionInput, CommandReceipt>(
+      'focusOption',
+      FocusOptionInputSchema,
+      CommandReceiptSchema,
+    ),
+    defineCaseAttribute: genericCommand<DefineCaseAttributeInput, CommandReceipt>(
+      'defineCaseAttribute',
+      DefineCaseAttributeInputSchema,
+      CommandReceiptSchema,
+    ),
+    reviewCaseExtension: genericCommand<ReviewCaseExtensionInput, CommandReceipt>(
+      'reviewCaseExtension',
+      ReviewCaseExtensionInputSchema,
+      CommandReceiptSchema,
+    ),
+    focusEvidence: genericCommand<FocusEvidenceInput, CommandReceipt>(
+      'focusEvidence',
+      FocusEvidenceInputSchema,
+      CommandReceiptSchema,
+    ),
+    updateCriteria: genericCommand<UpdateCriteriaInput, CommandReceipt>(
+      'updateCriteria',
+      UpdateCriteriaInputSchema,
+      CommandReceiptSchema,
+    ),
+    submitSource: genericCommand<SubmitSourceInput, CommandReceipt>(
+      'submitSource',
+      SubmitSourceInputSchema,
+      CommandReceiptSchema,
+    ),
+    reviewProposal: genericCommand<ReviewProposalInput, CommandReceipt>(
+      'reviewProposal',
+      ReviewProposalInputSchema,
+      CommandReceiptSchema,
+    ),
+    setEvidenceDisposition: genericCommand<SetEvidenceDispositionInput, CommandReceipt>(
+      'setEvidenceDisposition',
+      SetEvidenceDispositionInputSchema,
+      CommandReceiptSchema,
+    ),
+    requestRevision: genericCommand<RequestRevisionInput, CommandReceipt>(
+      'requestRevision',
+      RequestRevisionInputSchema,
+      CommandReceiptSchema,
+    ),
+  };
+}
