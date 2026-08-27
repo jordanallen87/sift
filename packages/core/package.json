@@ -9,5 +9,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@pax/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "fast-check": "^4.9.0"
   }
 }
