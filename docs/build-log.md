@@ -3528,3 +3528,29 @@ This was a foundational, silent gap in the actual release gate
 wide `pnpm test:unit` passes" claim was unknowingly relying on without it
 being true in the way anyone assumed. Caught now, before any further work
 built on top of an inaccurate baseline.
+
+### 2026-08-27 — investigated a single-run `test:unit` flake, not reproducible
+
+Immediately after committing the Strands adapter, `pnpm verify` failed at
+`test:unit` on exactly one test: `apps/agent/src/routes/cases.test.ts`
+> "reflects a later command in a subsequent GET (persistence check across
+two requests)" — `snapshot.entities` was `undefined` where a POST-then-GET
+sequence expected one upserted entity.
+
+Per CLAUDE.md's repair protocol, investigated rather than re-ran past it:
+- 8 consecutive isolated runs of `apps/agent/src/routes/cases.test.ts`
+  alone: 9/9 passing every time.
+- 3 consecutive full `pnpm test:unit` runs immediately after: 80 files /
+  1277 tests passing every time.
+- The test itself has no logical race to explain non-determinism: both HTTP
+  calls are sequentially `await`ed via `supertest` against the same
+  in-process Express app and SQLite connection within one test function --
+  there is no concurrent access for a real implementation bug to hide in.
+
+Conclusion: this was transient resource starvation at the exact moment
+`pnpm verify` ran (immediately following the large Strands-adapter commit,
+concurrent with a full 8-project typecheck and the newly-fixed, now much
+larger `test:unit` run all firing close together) -- plausibly a SQLite
+busy-timeout or Express response genuinely delayed under real CPU/memory
+pressure, not a code defect. Did not weaken, skip, or modify the test.
+Re-ran `pnpm verify` clean afterward for the final report.
