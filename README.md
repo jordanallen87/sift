@@ -73,17 +73,17 @@ pnpm verify
 
 runs the ordered release-gate stages defined in `scripts/verify.ts`, fails fast on the first real failure, and always writes a machine-readable report to `artifacts/verification/latest/report.json` (plus `summary.md` on failure). As of this writing the stages are:
 
-| Stage | Status |
-| --- | --- |
-| `format:check` | real |
-| `lint` | real |
-| `typecheck` | real |
-| `test:unit` | real |
-| `test:pack` | real |
-| `test:integration` | real |
-| `test:contract` | declared, not yet implemented — reported as `skipped`, never a fabricated pass |
-| `test:scenario` | real |
-| `test:e2e` | real |
+| Stage              | Status                                                                         |
+| ------------------ | ------------------------------------------------------------------------------ |
+| `format:check`     | real                                                                           |
+| `lint`             | real                                                                           |
+| `typecheck`        | real                                                                           |
+| `test:unit`        | real                                                                           |
+| `test:pack`        | real                                                                           |
+| `test:integration` | real                                                                           |
+| `test:contract`    | declared, not yet implemented — reported as `skipped`, never a fabricated pass |
+| `test:scenario`    | real                                                                           |
+| `test:e2e`         | real                                                                           |
 
 `pnpm verify` runs with no network access once dependencies and Playwright browsers are installed.
 
