@@ -15,10 +15,13 @@
 FROM node:22-bookworm-slim
 
 # python3/make/g++ are required to compile `better-sqlite3` (and any other
-# native addon) during `pnpm install`; removed via apt-get clean in the same
-# layer to keep the final image reasonably small without a second stage.
+# native addon) during `pnpm install`. `gosu` backs `docker-entrypoint.sh`'s
+# root -> `node` privilege drop (see that file's header comment for why a
+# plain Dockerfile `USER node` instruction is not enough on its own). All
+# three are removed via apt-get clean in the same layer to keep the final
+# image reasonably small without a second stage.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 make g++ \
+    && apt-get install -y --no-install-recommends python3 make g++ gosu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -47,9 +50,34 @@ COPY . .
 # from `apps/web/dist` (resolved relative to that source file at runtime).
 RUN pnpm --filter @pax/web build
 
+RUN chmod +x docker-entrypoint.sh
+
 ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080
+
+# docs/specs/strands-runtime.md "AgentCore contract": "The Docker image
+# exposes port 8080, runs as a non-root user, includes a health check, and
+# contains no development credentials." `/health` (routes/health.ts) --
+# not the AgentCore-specific `/ping` (routes/agentcore.ts) -- backs this
+# check: `/health` performs a real `SELECT 1` liveness query against the
+# live SQLite connection, so a genuinely broken container (e.g. a corrupted
+# or unwritable database) is actually detected. `/ping` always reports a
+# static `Healthy` once the process is up (per its own real AgentCore
+# contract, and AWS's own documented guidance against churning its status
+# outside that protocol's own polling) -- it is the right endpoint for
+# AgentCore's runtime to poll, but not the more failure-sensitive one this
+# generic container-orchestration health check should use. `node`'s own
+# `http` module avoids adding a `curl`/`wget` dependency to the image only
+# for this one check.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD node -e "require('http').get({host:'127.0.0.1',port:process.env.PORT||8080,path:'/health',timeout:4000},(res)=>{process.exit(res.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
+
+# Starts as root (no Dockerfile `USER` instruction -- `docker-entrypoint.sh`
+# itself performs the actual root -> non-root `node` privilege drop, after
+# fixing up ownership of the real configured data directory; see that
+# file's header comment for why that ordering matters).
+ENTRYPOINT ["./docker-entrypoint.sh"]
 
 # Migrations run automatically and idempotently at every boot
 # (`server.ts`'s own header comment: "safe on every boot, including every

@@ -155,6 +155,7 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     runService,
     runStore,
     runtimeEventStore,
+    clock,
     debugEnabled: config.debugEnabled,
   });
 

@@ -6,10 +6,14 @@
  * `POST /api/cases/demo`, `GET /api/cases/:caseId`,
  * `GET /api/cases/:caseId/events` (SSE + polling fallback),
  * `POST /api/cases/:caseId/commands/:commandName`,
- * `POST /api/cases/:caseId/run`, and `GET /api/debug/runs/:runId` (the
- * Runtime Inspector's Overview + Timeline query route, this task).
- * `/ping`/`/invocations` for AgentCore and the debug SSE/export routes
- * (`GET /api/debug/runs/:runId/events`, `GET /api/debug/runs/:runId/export`)
+ * `POST /api/cases/:caseId/run`, `GET /api/debug/runs/:runId` (the
+ * Runtime Inspector's Overview + Timeline query route), and
+ * `GET /ping` / `POST /invocations` (`routes/agentcore.ts` -- see that
+ * file's header comment for the real, doc-verified AgentCore contract;
+ * `/invocations` dispatches into the exact same `CommandService`/
+ * `RunService` command layer every other route here uses, not a separate
+ * implementation). The debug SSE/export routes (`GET
+ * /api/debug/runs/:runId/events`, `GET /api/debug/runs/:runId/export`)
  * remain separate, later work.
  *
  * `buildApp` deliberately has no `listen()` side effect — `server.ts` is
@@ -75,7 +79,9 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
 import type { PackRegistry } from '@pax/packs';
+import type { Clock } from '@pax/core';
 import type { PaxDatabase } from './db/connection.js';
+import { createAgentCoreRouter } from './routes/agentcore.js';
 import { createHealthRouter } from './routes/health.js';
 import { createCasesRouter } from './routes/cases.js';
 import { createCommandsRouter } from './routes/commands.js';
@@ -103,6 +109,8 @@ export interface BuildAppDeps {
   runtimeEventStore: RuntimeEventStore;
   /** `PAX_DEBUG_ENABLED` (config.ts). Defaults to `true`; `false` makes every `/api/debug/*` route respond `404`. */
   debugEnabled?: boolean;
+  /** Sources `GET /ping`'s `time_of_last_update` (`routes/agentcore.ts`) -- every Pax timestamp comes from an injected `Clock`, never `Date.now()` directly (CLAUDE.md). */
+  clock: Clock;
   /** Passed through to `createEventsRouter` — overridable in tests so an SSE test does not need to wait out a real 15s heartbeat interval. */
   sseHeartbeatIntervalMs?: number;
   /** Passed through to `createEventsRouter` — overridable in tests exercising the slow-consumer resync path without needing genuine socket backpressure. */
@@ -120,6 +128,14 @@ export function buildApp(deps: BuildAppDeps): Application {
   app.use(createCasesRouter({ commandService: deps.commandService, caseStore: deps.caseStore }));
   app.use(createCommandsRouter({ commandService: deps.commandService }));
   app.use(createRunsRouter({ runService: deps.runService }));
+  app.use(
+    createAgentCoreRouter({
+      commandService: deps.commandService,
+      runService: deps.runService,
+      caseStore: deps.caseStore,
+      clock: deps.clock,
+    }),
+  );
   app.use(
     createDebugRouter({
       runStore: deps.runStore,

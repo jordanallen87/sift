@@ -71,6 +71,7 @@ export function createHttpTestHarness(options: HttpTestHarnessOptions = {}): Htt
     runService,
     runStore,
     runtimeEventStore,
+    clock: fixedClock,
     debugEnabled: options.debugEnabled ?? true,
     sseHeartbeatIntervalMs: 60_000,
     ...(options.sseMaxQueueLength !== undefined

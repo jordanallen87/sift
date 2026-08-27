@@ -6,6 +6,7 @@ artifacts
 .pax-data
 playwright-report
 test-results
+.playwright-mcp
 .stryker-tmp
 reports
 pnpm-lock.yaml

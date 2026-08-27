@@ -41,6 +41,7 @@ function testDeps(database: TestDatabase): BuildAppDeps {
     }),
     runStore,
     runtimeEventStore: new InMemoryRuntimeEventStore(),
+    clock: fixedClock,
   };
 }
 

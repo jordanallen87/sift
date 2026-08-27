@@ -10,12 +10,11 @@
  * fails. `summary.md` is written alongside the report only when the run
  * failed.
  *
- * `format:check`, `lint`, `typecheck`, `test:unit`, `test:scenario`, and
- * `test:e2e` are wired for real. The remaining stages in `pnpm verify`'s
- * eventual composition (`test:pack`, `test:integration`, `test:contract` —
- * see testing.md) are declared here as `not-implemented` so the report
- * stays honest about what actually ran versus what is still stubbed; later
- * tasks flip each to `kind: 'real'` as they land.
+ * `format:check`, `lint`, `typecheck`, `test:unit`, `test:pack`,
+ * `test:integration`, `test:contract`, `test:scenario`, and `test:e2e` are
+ * all wired for real — every stage in `pnpm verify`'s composition per
+ * testing.md now runs real commands rather than a declared
+ * `not-implemented` placeholder.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
@@ -79,15 +78,17 @@ export interface RunVerificationOptions {
 
 /**
  * The real `pnpm verify` composition per docs/specs/testing.md. `test:pack`/
- * `test:integration` are real, named subsets of the same test files
- * `test:unit` already runs in full (`vitest run` with explicit path
- * arguments, filtered against the one root `test.projects` set) -- the same
- * relationship `test:scenario` already has to `test:unit` (the `tests`
+ * `test:integration`/`test:contract` are real, named subsets of the same
+ * test files `test:unit` already runs in full (`vitest run` with explicit
+ * path arguments, filtered against the one root `test.projects` set) -- the
+ * same relationship `test:scenario` already has to `test:unit` (the `tests`
  * project's scenario test is also picked up by a full unscoped
  * `test:unit` run). This is deliberate, not redundant: testing.md's
  * "Commands and gates" table names these as distinct, semantically-labeled
  * release-gate signals for CI/review, not a disjoint partition of the
- * suite. `test:contract` remains declared until its own task lands.
+ * suite. `test:contract` (WebMCP tool-catalog contract +
+ * `routes/agentcore.test.ts`'s AgentCore `/ping`/`/invocations` contract)
+ * is the last of the three to flip from `not-implemented` to `real`.
  */
 export const DEFAULT_STAGES: StageDefinition[] = [
   { name: 'format:check', kind: 'real' },
@@ -96,7 +97,7 @@ export const DEFAULT_STAGES: StageDefinition[] = [
   { name: 'test:unit', kind: 'real' },
   { name: 'test:pack', kind: 'real' },
   { name: 'test:integration', kind: 'real' },
-  { name: 'test:contract', kind: 'not-implemented' },
+  { name: 'test:contract', kind: 'real' },
   { name: 'test:scenario', kind: 'real' },
   { name: 'test:e2e', kind: 'real' },
 ];

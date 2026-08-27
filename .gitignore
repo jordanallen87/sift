@@ -16,6 +16,7 @@ artifacts/
 coverage/
 playwright-report/
 test-results/
+.playwright-mcp/
 .stryker-tmp/
 reports/mutation/
 
@@ -38,6 +39,9 @@ pnpm-debug.log*
 
 # Local tool state (Strata19 project index, not source)
 .strata19/
+
+# Local Claude Code session state, not source
+.claude/
 
 # Docker
 .docker/

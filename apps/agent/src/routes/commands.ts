@@ -6,6 +6,13 @@
  * `requestInvestigation` (its own `POST /api/cases/:caseId/run` route,
  * `routes/runs.ts` -- see `services/run-service.ts` for why that one is not
  * part of `CommandService` at all).
+ *
+ * `COMMAND_NAMES`/`CommandName`/`dispatchCommand` are exported for
+ * `routes/agentcore.ts` to reuse verbatim: `POST /invocations` genuinely
+ * dispatches into this exact same `CommandService` command table (a second
+ * transport onto the same real engine, per docs/specs/strands-runtime.md
+ * "AgentCore contract"), not a re-implemented or duplicated switch that
+ * could drift from this one.
  */
 import { Router } from 'express';
 import type { CommandReceipt } from '@pax/contracts';
@@ -17,7 +24,7 @@ export interface CommandsRouterDeps {
   readonly commandService: CommandService;
 }
 
-const COMMAND_NAMES = [
+export const COMMAND_NAMES = [
   'selectPack',
   'upsertOption',
   'focusOption',
@@ -30,13 +37,13 @@ const COMMAND_NAMES = [
   'requestRevision',
   'reviewProposal',
 ] as const;
-type CommandName = (typeof COMMAND_NAMES)[number];
+export type CommandName = (typeof COMMAND_NAMES)[number];
 
 function isCommandName(value: string): value is CommandName {
   return (COMMAND_NAMES as readonly string[]).includes(value);
 }
 
-function dispatch(
+export function dispatchCommand(
   service: CommandService,
   commandName: CommandName,
   commandId: string,
@@ -96,7 +103,10 @@ export function createCommandsRouter(deps: CommandsRouterDeps): Router {
       return;
     }
 
-    const result = dispatch(deps.commandService, commandName, commandId, { ...rawBody, caseId });
+    const result = dispatchCommand(deps.commandService, commandName, commandId, {
+      ...rawBody,
+      caseId,
+    });
     respondWithServiceResult(res, result);
   });
 
