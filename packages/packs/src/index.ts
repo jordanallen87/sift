@@ -1,12 +1,12 @@
 // @pax/packs -- the generic Decision Pack compiler, capability catalog,
-// registry, and conformance runner. See docs/specs/pack-authoring.md
-// "Compiler and registry" and docs/specs/packs-and-routing.md "Manifest
-// contract" for the specification this module implements.
+// registry, and conformance runner, plus the built-in Decision Pack
+// manifests. See docs/specs/pack-authoring.md "Compiler and registry" and
+// docs/specs/packs-and-routing.md "Manifest contract" for the
+// specification this module implements.
 //
-// The `car-purchase` and `home-energy-guardian` built-in pack manifests
-// (and their skills/specialists/fixture tools) are separate, later work;
-// this package only ships the generic machinery that compiles, resolves,
-// registers, and re-verifies any Decision Pack manifest.
+// The `home-energy-guardian` built-in pack manifest (and its skills/
+// specialists/fixture tools) is separate, later work; the `car-purchase`
+// manifest (this package's Tier-1 WebMCP-hero pack) ships here.
 
 // Deterministic canonical serialization and SHA-256 hashing
 // (canonicalize.ts): pack-authoring.md "Compiler and registry" step 11.
@@ -60,3 +60,8 @@ export type {
   PackConformanceCheckResult,
   PackConformanceReport,
 } from './conformance.js';
+
+// The real `car-purchase@1.0.0` Decision Pack manifest ("Choose Our Next
+// Car"), the Tier-1 WebMCP-hero pack (car-purchase.ts):
+// docs/specs/packs-and-routing.md "Choose Our Next Car Decision Pack".
+export { CAR_PURCHASE_MANIFEST, compileCarPurchasePack } from './car-purchase.js';

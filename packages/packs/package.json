@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pax Decision Pack compiler, registry, and conformance runner. Built-in car-purchase/home-energy-guardian manifests ship in a later task.",
+  "description": "Pax Decision Pack compiler, registry, and conformance runner, plus the built-in car-purchase manifest. The home-energy-guardian manifest ships in a later task.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
