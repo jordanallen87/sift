@@ -24,11 +24,13 @@
     "test:deployed": "tsx scripts/stage-not-implemented.ts test:deployed",
     "test:submission": "tsx scripts/stage-not-implemented.ts test:submission",
     "check:source": "tsx scripts/check-source.ts",
+    "docs:diagram": "tsx scripts/generate-diagram.ts",
     "verify": "tsx scripts/verify.ts",
     "verify:release": "tsx scripts/stage-not-implemented.ts verify:release"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@mermaid-js/mermaid-cli": "^11.16.0",
     "@playwright/test": "^1.62.1",
     "@stryker-mutator/core": "^10.0.0",
     "@stryker-mutator/vitest-runner": "^10.0.0",

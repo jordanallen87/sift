@@ -1,0 +1,349 @@
+/**
+ * Canonical case data model: `CaseState` and its nested shapes from
+ * docs/specs/architecture.md "Canonical data model", grounded further by
+ * pack-authoring.md's `EntityRecord` and packs-and-routing.md's
+ * `ObligationTemplate`.
+ *
+ * Several fields are named in `CaseState` (`ObligationState`, `Claim`,
+ * `Source`, `EvidenceLink`, `Recommendation`, `DecisionProposal`,
+ * `ActiveFocus`) without an accompanying interface anywhere in the spec set.
+ * Each is defined here as the minimal reasonable shape grounded in how the
+ * spec describes its behavior elsewhere; every such inference is flagged in
+ * a comment immediately above the schema.
+ */
+import { z } from 'zod';
+import {
+  AttributeDefinitionSchema,
+  AttributeRecordSchema,
+  CriterionSchema,
+  type Criterion,
+} from './attributes.js';
+import { EVIDENCE_LEVELS, ObligationTemplateSchema } from './packs.js';
+import { CaseExtensionSchema, type CaseExtension } from './extensions.js';
+
+// Re-exported so consumers of case.ts (which owns `CaseState.caseExtensions`)
+// do not also need to import from extensions.ts directly.
+export { CaseExtensionSchema };
+export type { CaseExtension };
+
+// Re-exported so consumers of case.ts (which owns `CaseState.criteria:
+// Criterion[]`) do not also need to import from attributes.ts directly.
+export { CriterionSchema };
+export type { Criterion };
+
+const HTML_OR_EXECUTABLE_PATTERN = /<\/?[a-zA-Z!]|javascript:|on[a-zA-Z]+\s*=\s*["']/;
+
+function safeString(maxLength: number) {
+  return z
+    .string()
+    .max(maxLength)
+    .refine((value) => !HTML_OR_EXECUTABLE_PATTERN.test(value), {
+      message: 'value must not contain HTML tags or executable expressions',
+    });
+}
+
+const idString = (maxLength = 200) =>
+  z
+    .string()
+    .min(1)
+    .max(maxLength)
+    .regex(/^[A-Za-z0-9._-]+$/, 'id must contain only letters, digits, ".", "_", or "-"');
+
+// --- EntityRecord (pack-authoring.md "Stable entity envelope") ---
+
+export const EntityRecordSchema = z
+  .object({
+    id: idString(),
+    kind: idString(),
+    label: safeString(300),
+    // Keyed by AttributeDefinition id (pack-defined or `custom.*`); an open
+    // `Record`, not `.strict()`, because the set of attribute ids is
+    // extensible per case (pack-authoring.md "Typed core with extensible
+    // domain data"). Bounded to a defensive maximum entry count below.
+    attributes: z
+      .record(z.string(), AttributeRecordSchema)
+      .refine((attributes) => Object.keys(attributes).length <= 500, {
+        message: 'an entity may not carry more than 500 attributes',
+      }),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+export type EntityRecord = z.infer<typeof EntityRecordSchema>;
+
+// --- ObligationState ---
+// Inferred: `deriveObligations(caseState): ObligationState[]` (architecture.md
+// "Deterministic core") returns the runtime projection of an
+// `ObligationTemplate` for one case. Grounded in: packs-and-routing.md's
+// "case obligation ... inherits pack bounds and evidence semantics, records
+// its originating criterion" (hence the optional `criterionId`, present only
+// for `origin: 'case_extension'`); strands-runtime.md's `ExecutionResult.
+// suggestedStatus` vocabulary (`open`/`satisfied`/`accepted_uncertainty`/
+// `blocked`); and product.md's "Readiness" region grouping obligations by
+// "satisfied, active, blocked, accepted uncertainty, and open" (adding the
+// `active` status for "currently being investigated").
+
+export const OBLIGATION_STATUSES = [
+  'open',
+  'active',
+  'satisfied',
+  'accepted_uncertainty',
+  'blocked',
+] as const;
+export type ObligationStatus = (typeof OBLIGATION_STATUSES)[number];
+
+const ObligationStateShape = ObligationTemplateSchema.extend({
+  status: z.enum(OBLIGATION_STATUSES),
+  attemptsUsed: z.number().int().min(0).max(20),
+  // Present only for `origin: 'case_extension'` obligations, linking back to
+  // the `Criterion` that produced them.
+  criterionId: idString().optional(),
+  updatedAt: z.iso.datetime(),
+}).strict();
+
+export const ObligationStateSchema = ObligationStateShape.superRefine((obligation, ctx) => {
+  if (obligation.origin === 'case_extension' && obligation.criterionId === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['criterionId'],
+      message: 'a case_extension obligation must record its originating criterionId',
+    });
+  }
+});
+export type ObligationState = z.infer<typeof ObligationStateSchema>;
+
+// --- Claim ---
+// Inferred: `CaseState.claims: Claim[]` has no field list. Grounded in
+// strands-runtime.md's `ExecutionResult.claims` shape (`statement`, `stance`,
+// `confidence`, `sourceIds`), adding a persisted `id`/`obligationId`/
+// `createdAt`/`stale` since canonical claims are addressable
+// (testing.md ScenarioAssertion `claim_linked: { claimId, sourceIds }`) and
+// can be invalidated when supporting evidence goes stale.
+
+export const CLAIM_STANCES = ['supports', 'opposes', 'neutral'] as const;
+export type ClaimStance = (typeof CLAIM_STANCES)[number];
+
+export const ClaimSchema = z
+  .object({
+    id: idString(),
+    obligationId: idString(),
+    entityId: idString().optional(),
+    statement: safeString(2000),
+    stance: z.enum(CLAIM_STANCES),
+    confidence: z.number().min(0).max(1),
+    sourceIds: z.array(idString()).max(50),
+    stale: z.boolean(),
+    createdAt: z.iso.datetime(),
+  })
+  .strict();
+export type Claim = z.infer<typeof ClaimSchema>;
+
+// --- Source ---
+// Inferred: `CaseState.sources: Source[]` has no field list. Grounded in
+// webmcp.md `pax_submit_source`'s input shape (`url`, `title`, `publisher`,
+// `publishedAt`, `retrievedAt`, `excerpt`), adding a persisted `id`/`origin`/
+// `verification`/`createdAt` per "submitted sources remain unverified until
+// source challenge and retain provenance" (webmcp.md).
+
+export const SOURCE_ORIGINS = ['fixture', 'user_submitted', 'agent_discovered'] as const;
+export type SourceOrigin = (typeof SOURCE_ORIGINS)[number];
+
+export const SOURCE_VERIFICATIONS = ['unverified', 'challenged', 'verified', 'rejected'] as const;
+export type SourceVerification = (typeof SOURCE_VERIFICATIONS)[number];
+
+export const SourceSchema = z
+  .object({
+    id: idString(),
+    url: z.url().max(2000),
+    title: safeString(500),
+    publisher: safeString(200).optional(),
+    publishedAt: z.iso.datetime().optional(),
+    retrievedAt: z.iso.datetime(),
+    excerpt: safeString(5000).optional(),
+    origin: z.enum(SOURCE_ORIGINS),
+    verification: z.enum(SOURCE_VERIFICATIONS),
+    createdAt: z.iso.datetime(),
+  })
+  .strict();
+export type Source = z.infer<typeof SourceSchema>;
+
+// --- EvidenceLink ---
+// Inferred: `CaseState.evidenceLinks: EvidenceLink[]` has no field list.
+// Grounded in strands-runtime.md's `ExecutionResult.evidenceResults` shape
+// (`sourceId`, `level`, `verdict`, `summary`) plus the canonical, core-owned
+// disposition/staleness layer described in webmcp.md `pax_set_evidence_
+// disposition` ("include, exclude, or question one evidence item ... does
+// not delete the source") and architecture.md ("evidence validity" is
+// core-owned). This is the "evidence item" `pax_focus_evidence`/
+// `CaseState.selectedEvidenceId` refer to.
+
+export const EVIDENCE_VERDICTS = ['pass', 'fail', 'error', 'degraded', 'skipped'] as const;
+export type EvidenceVerdict = (typeof EVIDENCE_VERDICTS)[number];
+
+export const EVIDENCE_DISPOSITIONS = ['included', 'excluded', 'questioned'] as const;
+export type EvidenceDisposition = (typeof EVIDENCE_DISPOSITIONS)[number];
+
+export const EvidenceLinkSchema = z
+  .object({
+    id: idString(),
+    obligationId: idString(),
+    claimId: idString().optional(),
+    sourceId: idString().optional(),
+    level: z.enum(EVIDENCE_LEVELS),
+    verdict: z.enum(EVIDENCE_VERDICTS),
+    disposition: z.enum(EVIDENCE_DISPOSITIONS),
+    dispositionReason: safeString(2000).optional(),
+    summary: safeString(2000),
+    stale: z.boolean(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+export type EvidenceLink = z.infer<typeof EvidenceLinkSchema>;
+
+// --- ActiveFocus ---
+// Inferred: `CaseState.activeFocus: ActiveFocus | null` has no field list.
+// Distinguished from the separate `selectedOptionId`/`selectedEvidenceId`
+// fields (which track the *user's or ChatGPT's* WebMCP-driven selection via
+// `pax_focus_option`/`pax_focus_evidence`): `activeFocus` is the *system's*
+// "Current focus" card from product.md's workspace layout ("the obligation
+// being investigated, why it is next, active skill, and active specialist").
+
+export const ActiveFocusSchema = z
+  .object({
+    obligationId: idString(),
+    reason: safeString(2000),
+    skillId: idString().optional(),
+    specialistId: idString().optional(),
+    runId: idString().optional(),
+    since: z.iso.datetime(),
+  })
+  .strict();
+export type ActiveFocus = z.infer<typeof ActiveFocusSchema>;
+
+// --- Recommendation ---
+// Inferred: `CaseState.recommendation: Recommendation | null` has no field
+// list. Grounded in strands-runtime.md's GoalLoop validator, which "checks
+// source linkage, resolved required obligations or accepted uncertainty,
+// allowed confidence, separation of fact and hypothesis, and absence of
+// forbidden effects" (hence `facts`/`hypotheses` as separate arrays,
+// `sourceIds`, `confidence`, `resolvedObligationIds`/
+// `acceptedUncertaintyObligationIds`), and testing.md's `recommendation:
+// { favoredOptionId }` scenario assertion. `status` distinguishes a fresh,
+// actionable recommendation (`ready`) from one a later criteria/evidence
+// change has invalidated (`stale`), matching the `recommendation.
+// invalidated`/`recommendation.ready` PublicActivityEvent types.
+
+export const RECOMMENDATION_STATUSES = ['ready', 'stale'] as const;
+export type RecommendationStatus = (typeof RECOMMENDATION_STATUSES)[number];
+
+export const RecommendationSchema = z
+  .object({
+    id: idString(),
+    status: z.enum(RECOMMENDATION_STATUSES),
+    favoredOptionId: idString().nullable(),
+    rationale: safeString(20_000),
+    facts: z.array(safeString(2000)).max(50),
+    hypotheses: z.array(safeString(2000)).max(50),
+    confidence: z.number().min(0).max(1),
+    limitations: z.array(safeString(2000)).max(50),
+    sourceIds: z.array(idString()).max(100),
+    resolvedObligationIds: z.array(idString()).max(100),
+    acceptedUncertaintyObligationIds: z.array(idString()).max(100),
+    generatedAt: z.iso.datetime(),
+  })
+  .strict();
+export type Recommendation = z.infer<typeof RecommendationSchema>;
+
+// --- DecisionProposal ---
+// Inferred: `CaseState.proposal: DecisionProposal | null` has no field list.
+// Grounded in `reviewProposal(caseState, decision): CaseState`
+// (architecture.md "Deterministic core") and "`reviewProposal` rejects
+// requests whose `actor` is not `human`" (architecture.md "Security and
+// authority"). `Actor` deliberately allows `'agent'` at the schema level —
+// the "human-only approval" rule is a core-reducer *behavior* under test
+// (testing.md: "an agent actor can never produce an approved decision"), not
+// a static type-level restriction; a schema that only permitted `'human'`
+// would make that rule untestable at the reducer boundary.
+
+export const ActorSchema = z.enum(['human', 'agent']);
+export type Actor = z.infer<typeof ActorSchema>;
+
+export const PROPOSAL_STATUSES = ['pending', 'approved', 'rejected', 'revision_requested'] as const;
+export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
+
+export const DecisionProposalSchema = z
+  .object({
+    id: idString(),
+    recommendationId: idString(),
+    status: z.enum(PROPOSAL_STATUSES),
+    createdAt: z.iso.datetime(),
+    reviewedAt: z.iso.datetime().optional(),
+    reviewedByActor: ActorSchema.optional(),
+    revisionInstructions: safeString(5000).optional(),
+  })
+  .strict();
+export type DecisionProposal = z.infer<typeof DecisionProposalSchema>;
+
+// --- CaseState (architecture.md "Canonical data model") ---
+
+export const CASE_STATUSES = [
+  'draft',
+  'investigating',
+  'waiting',
+  'ready',
+  'decided',
+  'failed',
+] as const;
+export type CaseStatus = (typeof CASE_STATUSES)[number];
+
+export const CASE_PACK_SELECTED_BY = ['user', 'router'] as const;
+
+export const CasePackPinSchema = z
+  .object({
+    id: idString(),
+    version: z.string().regex(/^\d+\.\d+\.\d+$/, 'version must be a semantic version'),
+    compiledHash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/, 'compiledHash must be a lowercase hex SHA-256'),
+    selectedBy: z.enum(CASE_PACK_SELECTED_BY),
+    reasons: z.array(safeString(500)).max(20),
+  })
+  .strict();
+export type CasePackPin = z.infer<typeof CasePackPinSchema>;
+
+export const CaseStateSchema = z
+  .object({
+    schemaVersion: z.literal('1.0'),
+    id: idString(),
+    title: safeString(300),
+    status: z.enum(CASE_STATUSES),
+    pack: CasePackPinSchema,
+    attributeDefinitions: z.array(AttributeDefinitionSchema).max(500),
+    entities: z.array(EntityRecordSchema).max(50),
+    criteria: z.array(CriterionSchema).max(200),
+    obligations: z.array(ObligationStateSchema).max(200),
+    // The durable record of every case-scoped concern this case has ever
+    // defined, pack-anticipated or not — added post-hoc after the parallel
+    // `packages/core` build surfaced that `evaluateReadiness` had no way to
+    // check an `origin: 'case_extension'` obligation's originating
+    // extension's `definition.confirmation` from `CaseState` alone (an
+    // unconfirmed agent-proposed extension's obligation must never count
+    // toward readiness per architecture.md's "Security and authority"
+    // section). Cross-referenced from `ObligationState.criterionId` via
+    // `CaseExtension.linkedCriterionId`.
+    caseExtensions: z.array(CaseExtensionSchema).max(200),
+    claims: z.array(ClaimSchema).max(1000),
+    sources: z.array(SourceSchema).max(500),
+    evidenceLinks: z.array(EvidenceLinkSchema).max(1000),
+    recommendation: RecommendationSchema.nullable(),
+    proposal: DecisionProposalSchema.nullable(),
+    activeFocus: ActiveFocusSchema.nullable(),
+    selectedOptionId: idString().nullable(),
+    selectedEvidenceId: idString().nullable(),
+    eventSequence: z.number().int().min(0),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+export type CaseState = z.infer<typeof CaseStateSchema>;

@@ -1,0 +1,318 @@
+import { describe, expect, it } from 'vitest';
+import {
+  CompiledDecisionPackSchema,
+  CompletionRuleSchema,
+  DecisionPackManifestSchema,
+  EntityTypeDefinitionSchema,
+  ObligationTemplateSchema,
+  OrchestrationDefinitionSchema,
+  PackEvaluationDefinitionSchema,
+  PolicyDefinitionSchema,
+  PresentationDefinitionSchema,
+  SkillReferenceSchema,
+  SpecialistDefinitionSchema,
+  ToolDeclarationSchema,
+} from './packs.js';
+
+function validObligation() {
+  return {
+    id: 'car.hard_constraints',
+    label: 'Hard constraints',
+    question: 'Which candidates satisfy budget and non-negotiable needs?',
+    category: 'constraints',
+    required: true,
+    priority: 100,
+    requiredEvidenceLevel: 'E1' as const,
+    maxAttempts: 2,
+    acceptedUncertaintyAllowed: false,
+    dependsOn: [],
+    preferredSkills: ['listing-normalizer'],
+    preferredSpecialists: ['deal-analyst'],
+    completionRule: {
+      minimumEvidenceLevel: 'E1' as const,
+      minimumIndependentSources: 1,
+      acceptedUncertaintyAllowed: false,
+    },
+    origin: 'pack' as const,
+  };
+}
+
+function validManifest() {
+  return {
+    schemaVersion: '1.0' as const,
+    identity: {
+      id: 'car-purchase',
+      version: '1.0.0',
+      name: 'Choose Our Next Car',
+      description: 'Compare shortlisted cars and dealer offers.',
+      tags: ['car', 'purchase'],
+    },
+    activation: {
+      intents: ['compare shortlisted cars'],
+      keywords: ['car', 'buy'],
+      artifactKinds: ['listing'],
+      entitySignals: ['car'],
+      exclusions: ['financing applications'],
+    },
+    entities: [{ id: 'car', label: 'Car', attributeIds: ['car.advertised_price'] }],
+    attributes: [
+      {
+        id: 'car.advertised_price',
+        label: 'Advertised price',
+        valueType: 'money' as const,
+        required: true,
+        appliesTo: ['car'],
+        evidenceExpectation: 'source' as const,
+        comparison: 'lower_better' as const,
+        sensitive: false,
+      },
+    ],
+    criteria: {
+      defaults: [
+        {
+          id: 'car.budget',
+          label: 'Stay within budget',
+          kind: 'hard_constraint' as const,
+          weight: 100,
+          direction: 'lower_better' as const,
+          origin: 'pack' as const,
+          status: 'active' as const,
+        },
+      ],
+      allowUserDefined: true,
+      protectedCriterionIds: ['car.budget'],
+    },
+    obligations: [validObligation()],
+    extensionPolicy: {
+      allowCaseAttributes: true,
+      allowCaseCriteria: true,
+      allowCaseObligations: true,
+      userConcernTemplateId: 'car.user_concern',
+    },
+    skills: [{ id: 'listing-normalizer', description: 'Normalizes listing data.' }],
+    specialists: [
+      {
+        id: 'deal-analyst',
+        description: 'Analyzes deal terms.',
+        allowedTools: ['listing-reader'],
+      },
+    ],
+    orchestration: {
+      strategy: 'graph' as const,
+      maxSteps: 6,
+      nodeTimeoutMs: 60_000,
+      totalTimeoutMs: 300_000,
+    },
+    tools: [
+      {
+        id: 'listing-reader',
+        description: 'Reads a seeded listing fixture.',
+        effect: 'read_only' as const,
+        requiresApproval: false,
+      },
+    ],
+    policies: [
+      {
+        id: 'shortlist-approval',
+        description: 'Advancing a candidate requires human approval.',
+        requiresHumanApproval: true,
+        appliesToToolIds: ['propose_recommendation'],
+      },
+    ],
+    presentation: {
+      optionLabel: 'Candidate car',
+      optionLabelPlural: 'Candidate cars',
+      attributeGroups: [
+        { id: 'pricing', label: 'Pricing', attributeIds: ['car.advertised_price'] },
+      ],
+    },
+    evaluation: {
+      scenarioIds: ['car-purchase-happy-path', 'car-purchase-teaser-price'],
+      requiresNegativeCase: true,
+    },
+  };
+}
+
+describe('CompletionRuleSchema', () => {
+  it('parses a valid completion rule', () => {
+    expect(
+      CompletionRuleSchema.safeParse({
+        minimumEvidenceLevel: 'E2',
+        minimumIndependentSources: 2,
+        acceptedUncertaintyAllowed: true,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an invalid evidence level', () => {
+    expect(
+      CompletionRuleSchema.safeParse({
+        minimumEvidenceLevel: 'E9',
+        minimumIndependentSources: 2,
+        acceptedUncertaintyAllowed: true,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('ObligationTemplateSchema', () => {
+  it('parses a valid obligation template', () => {
+    expect(ObligationTemplateSchema.safeParse(validObligation()).success).toBe(true);
+  });
+
+  it('rejects an obligation missing requiredEvidenceLevel', () => {
+    const { requiredEvidenceLevel: _omit, ...rest } = validObligation();
+    expect(ObligationTemplateSchema.safeParse(rest).success).toBe(false);
+  });
+
+  it('rejects an invalid origin', () => {
+    expect(
+      ObligationTemplateSchema.safeParse({ ...validObligation(), origin: 'model' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('EntityTypeDefinitionSchema / SkillReferenceSchema / SpecialistDefinitionSchema', () => {
+  it('parses valid values', () => {
+    expect(
+      EntityTypeDefinitionSchema.safeParse({ id: 'car', label: 'Car', attributeIds: [] }).success,
+    ).toBe(true);
+    expect(
+      SkillReferenceSchema.safeParse({ id: 'listing-normalizer', description: 'x' }).success,
+    ).toBe(true);
+    expect(
+      SpecialistDefinitionSchema.safeParse({
+        id: 'deal-analyst',
+        description: 'x',
+        allowedTools: ['listing-reader'],
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe('OrchestrationDefinitionSchema / ToolDeclarationSchema / PolicyDefinitionSchema', () => {
+  it('parses a valid graph orchestration definition', () => {
+    expect(
+      OrchestrationDefinitionSchema.safeParse({
+        strategy: 'graph',
+        maxSteps: 6,
+        nodeTimeoutMs: 60_000,
+        totalTimeoutMs: 300_000,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an unknown orchestration strategy', () => {
+    expect(
+      OrchestrationDefinitionSchema.safeParse({
+        strategy: 'freeform',
+        maxSteps: 6,
+        nodeTimeoutMs: 60_000,
+        totalTimeoutMs: 300_000,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('parses a valid read-only tool declaration', () => {
+    expect(
+      ToolDeclarationSchema.safeParse({
+        id: 'listing-reader',
+        description: 'Reads a fixture.',
+        effect: 'read_only',
+        requiresApproval: false,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('parses a valid policy definition', () => {
+    expect(
+      PolicyDefinitionSchema.safeParse({
+        id: 'shortlist-approval',
+        description: 'x',
+        requiresHumanApproval: true,
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe('PresentationDefinitionSchema / PackEvaluationDefinitionSchema', () => {
+  it('parses valid values', () => {
+    expect(
+      PresentationDefinitionSchema.safeParse({
+        optionLabel: 'Candidate car',
+        optionLabelPlural: 'Candidate cars',
+        attributeGroups: [],
+      }).success,
+    ).toBe(true);
+
+    expect(
+      PackEvaluationDefinitionSchema.safeParse({
+        scenarioIds: ['happy-path'],
+        requiresNegativeCase: true,
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe('DecisionPackManifestSchema', () => {
+  it('parses the full car-purchase-shaped manifest', () => {
+    const result = DecisionPackManifestSchema.safeParse(validManifest());
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('rejects a manifest with an unrecognized top-level key', () => {
+    expect(
+      DecisionPackManifestSchema.safeParse({ ...validManifest(), extraField: true }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a manifest with the wrong schemaVersion literal', () => {
+    expect(
+      DecisionPackManifestSchema.safeParse({ ...validManifest(), schemaVersion: '2.0' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects executable-looking content inside a manifest description', () => {
+    expect(
+      DecisionPackManifestSchema.safeParse({
+        ...validManifest(),
+        identity: {
+          ...validManifest().identity,
+          description: '<script>alert(1)</script>',
+        },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('CompiledDecisionPackSchema', () => {
+  it('parses a compiled pack with hash, compiledAt, and resolved capability metadata', () => {
+    const compiled = {
+      ...validManifest(),
+      compiledHash: 'a'.repeat(64),
+      compiledAt: '2026-08-27T00:00:00.000Z',
+      resolvedCapabilities: {
+        skillIds: ['listing-normalizer'],
+        specialistIds: ['deal-analyst'],
+        toolIds: ['listing-reader'],
+      },
+      runtimeValidators: {
+        attributeValidatorIds: ['car.advertised_price'],
+        obligationValidatorIds: ['car.hard_constraints'],
+      },
+    };
+    const result = CompiledDecisionPackSchema.safeParse(compiled);
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('rejects a compiledHash that is not a 64-character hex SHA-256', () => {
+    const compiled = {
+      ...validManifest(),
+      compiledHash: 'not-a-hash',
+      compiledAt: '2026-08-27T00:00:00.000Z',
+      resolvedCapabilities: { skillIds: [], specialistIds: [], toolIds: [] },
+      runtimeValidators: { attributeValidatorIds: [], obligationValidatorIds: [] },
+    };
+    expect(CompiledDecisionPackSchema.safeParse(compiled).success).toBe(false);
+  });
+});
