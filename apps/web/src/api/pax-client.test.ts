@@ -194,4 +194,146 @@ describe('createPaxClient', () => {
     expect(seenIds[0]).toBeTruthy();
     expect(new Set(seenIds).size).toBe(2);
   });
+
+  it('honors an explicit commandId override on both the header and Idempotency-Key', async () => {
+    let seenCommandId: string | null = null;
+    let seenIdempotencyKey: string | null = null;
+    server.use(
+      http.post(`${BASE_URL}/api/cases/demo`, ({ request }) => {
+        seenCommandId = request.headers.get('x-pax-command-id');
+        seenIdempotencyKey = request.headers.get('idempotency-key');
+        return HttpResponse.json(baseReceipt);
+      }),
+    );
+
+    const client = createPaxClient({ baseUrl: BASE_URL });
+    await client.startDemo({ demoId: 'car-purchase' }, { commandId: 'tool-call-42' });
+
+    expect(seenCommandId).toBe('tool-call-42');
+    expect(seenIdempotencyKey).toBe('tool-call-42');
+  });
+
+  it('rejects with an UNAVAILABLE/retryable PaxClientError when the signal is already aborted', async () => {
+    server.use(
+      http.post(`${BASE_URL}/api/cases/demo`, () => {
+        throw new Error('an already-aborted request must never reach the network');
+      }),
+    );
+
+    const client = createPaxClient({ baseUrl: BASE_URL });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      client.startDemo({ demoId: 'car-purchase' }, { signal: controller.signal }),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE', retryable: true });
+  });
+
+  it('rejects with an UNAVAILABLE/retryable PaxClientError when the signal aborts mid-request', async () => {
+    server.use(
+      http.post(`${BASE_URL}/api/cases/demo`, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return HttpResponse.json(baseReceipt);
+      }),
+    );
+
+    const client = createPaxClient({ baseUrl: BASE_URL });
+    const controller = new AbortController();
+    const pending = client.startDemo({ demoId: 'car-purchase' }, { signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ code: 'UNAVAILABLE', retryable: true });
+  });
+
+  it('forwards the signal so a genericCommand call can also be aborted', async () => {
+    server.use(
+      http.post(`${BASE_URL}/api/cases/case-1/commands/focusOption`, () => {
+        throw new Error('an already-aborted request must never reach the network');
+      }),
+    );
+
+    const client = createPaxClient({ baseUrl: BASE_URL });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      client.focusOption(
+        { caseId: 'case-1', optionId: 'candidate-rav4', expectedSequence: 0 },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE', retryable: true });
+  });
+
+  it('propagates a non-abort fetch failure as-is rather than mislabeling it UNAVAILABLE', async () => {
+    const client = createPaxClient({
+      baseUrl: BASE_URL,
+      fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')),
+    });
+
+    await expect(client.startDemo({ demoId: 'car-purchase' })).rejects.toThrow('Failed to fetch');
+  });
+
+  it('parses a real 409 conflict body into code/actualSequence/snapshot rather than a generic failure', async () => {
+    const snapshot = {
+      schemaVersion: '1.0' as const,
+      id: 'case-1',
+      title: 'Choose our next family car',
+      status: 'investigating' as const,
+      pack: {
+        id: 'car-purchase',
+        version: '1.0.0',
+        compiledHash: 'a'.repeat(64),
+        selectedBy: 'user' as const,
+        reasons: ['User selected this Decision Pack'],
+      },
+      attributeDefinitions: [],
+      entities: [],
+      criteria: [],
+      obligations: [],
+      caseExtensions: [],
+      claims: [],
+      sources: [],
+      evidenceLinks: [],
+      recommendation: null,
+      proposal: null,
+      activeFocus: null,
+      selectedOptionId: null,
+      selectedEvidenceId: null,
+      eventSequence: 4,
+      createdAt: '2026-08-27T00:00:00.000Z',
+      updatedAt: '2026-08-27T00:05:00.000Z',
+    };
+    server.use(
+      http.post(`${BASE_URL}/api/cases/case-1/commands/focusOption`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: 'CONFLICT',
+              message: 'Expected sequence 1 does not match the current sequence 4.',
+              retryable: true,
+              expectedSequence: 1,
+              actualSequence: 4,
+            },
+            snapshot,
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+
+    const client = createPaxClient({ baseUrl: BASE_URL });
+
+    await expect(
+      client.focusOption({ caseId: 'case-1', optionId: 'candidate-rav4', expectedSequence: 1 }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: 'CONFLICT',
+      retryable: true,
+      details: {
+        expectedSequence: 1,
+        actualSequence: 4,
+        snapshot,
+      },
+    });
+  });
 });

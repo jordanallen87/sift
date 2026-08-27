@@ -92,3 +92,118 @@ dossier" identity and validated against WCAG contrast independently. See
 rendered token system (a later task, once components exist) are the
 verification surface for this entry; no automated test exists yet for a
 CSS-custom-property file in isolation.
+
+## 2026-08-27 — Readiness, Evidence, Activity, and Recommendation/Approval components
+
+**Sources:**
+`/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/orchestration/ReadinessPanel.tsx`,
+`/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/ReadinessPanel.tsx`,
+`/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/inline/renderers/ApprovalGateCard.tsx`,
+`/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/inline/renderers/ReadinessStateCard.tsx`,
+`/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/hq/ActivityView.tsx`, and
+`/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/execute/activity-labels.ts`
+— all private-sibling-repository files inspected per `docs/reuse-source-map.md`'s
+"Praetor and Strata19 UI map" table, which names this exact
+source-to-destination mapping.
+
+**Ownership/license conclusion:** Praetor is a private sibling repository
+on this machine, not a published open-source package; no explicit
+open-source license file governs these components. Per
+`docs/reuse-source-map.md`'s rule ("If an applicable open-source license
+is not explicit, reimplement the concept and record that no source code
+was copied"), **no source code was copied.** Every Pax file below was
+written from scratch against Pax's own `@pax/contracts` types, Tailwind
+token classes, and `data-testid` conventions; only small structural/
+information-architecture ideas were adapted, each recorded individually.
+
+**Destinations:** `apps/web/src/components/ReadinessPanel.tsx`,
+`apps/web/src/components/ApprovalCard.tsx`,
+`apps/web/src/components/ActivityTimeline.tsx`,
+`apps/web/src/components/activity-labels.ts`.
+
+**What was adapted, and how it changed:**
+
+- **`ReadinessStateCard.tsx`'s fail-closed, non-vacuous-measurement
+  principle** — its own header comment states: "`ready === false` with an
+  empty `blockers` array is a real and important case ... it renders as
+  'Not ready' with the check fraction rather than as a blocker list that
+  appears to be loading forever." Adapted into `ReadinessPanel.tsx` as the
+  rule that a zero-obligation `ready: true` case must render "This case
+  has no required questions to resolve yet." rather than a bare "Ready" —
+  the same underlying principle (never let an absence of measurement look
+  like silent success) applied to Pax's different domain (obligations, not
+  spec-completeness checks). No code was copied; Praetor's file has no
+  bucket concept at all (it renders one ready/not-ready fact plus a check
+  fraction), so `ReadinessPanel.tsx`'s five-bucket layout, `blockers`
+  rendering, and all Tailwind/token markup are new.
+- **The orchestration `ReadinessPanel.tsx`'s blocker-taxonomy/bucket-
+  breakdown idea** — inspected for the general idea of grouping items into
+  named buckets with counts and rendering blockers as a distinct callout.
+  Not one line was reused: Praetor's version fetches its own data
+  (`getReadinessData(projectId)`), uses shadcn `Badge`/`Progress`
+  components and Tailwind color-scale classes (`bg-emerald-500` etc.) that
+  do not exist in Pax's token system, and models percentage-based
+  "required/recommended/optional" scoring, none of which matches Pax's
+  five-bucket `ObligationStatus` model. Pax's `ReadinessPanel.tsx` is
+  props-driven (never fetches), uses only `apps/web/src/styles/tokens.css`
+  CSS variables, and groups by the real `satisfied`/`active`/`blocked`/
+  `accepted_uncertainty`/`open` statuses instead.
+- **`ApprovalGateCard.tsx`'s "one clear primary action" idea** — its own
+  comment: "the approve/reject control itself is the envelope's single
+  `primaryAction`; the card never invents a second one, which is also how
+  'no self-approval' stays enforceable server-side rather than being a UI
+  convention." Adapted into `ApprovalCard.tsx` as: Approve is the single
+  visually primary (solid-fill) action; Reject and Request-revision remain
+  present (product.md requires all three) but are visually secondary
+  (outlined). Praetor's file renders a generic `envelope.payload`
+  (`subject`/`decision`/`requestedBy`/`rationale`) through a shared
+  `InlineCardShell`/`Badge` system with no revision-instructions form, no
+  stamp treatment, and no `actor` concept at all — none of that was
+  copied. The settled-state "stamp" (rotated, doubled-border badge) is
+  original work building `docs/design-system.md`'s own previously
+  documented-but-unbuilt "signature element," not adapted from Praetor.
+- **`ActivityView.tsx`'s chronological-grouping/label/detail-disclosure
+  information architecture** — inspected only for two ideas, both stated
+  explicitly in that file's own header comment: (1) route every enum value
+  through a safe-label table with a defensive fallback ("an event `kind`
+  this widget bundle has never seen must still never render as its raw
+  dotted token") and (2) lead each row with the human-meaningful fact
+  (when/what) before correlation ids, not the reverse. Adapted into
+  `ActivityTimeline.tsx`'s use of `activity-labels.ts` for every rendered
+  `type` and into leading each item with its mapped label/summary/
+  timestamp before its `data-event-id`/`data-debug-event-id` correlation
+  attributes. None of `ActivityView.tsx`'s actual code was reachable to
+  copy even if intended: it depends on Strata19's `CollectionRow`/
+  `CollectionSurface`/`EntityDetailProvider` primitives, a `fetchActivity`
+  data client, and `KIND_GROUPS`-based server refetching, none of which
+  exist in or apply to Pax.
+- **`activity-labels.ts` (Strata19's `execute/activity-labels.ts`) — the
+  label-registry pattern itself**, per `docs/reuse-source-map.md`'s literal
+  instruction: "Adapt the label-registry pattern so user-visible activity
+  never falls back to raw internal event names." Pax's
+  `apps/web/src/components/activity-labels.ts` reuses only that idea: one
+  exhaustive table (here, `PublicActivityEventType` → `{ label, tone }`,
+  enforced exhaustive at compile time via `satisfies Record<...>`) plus a
+  safe fallback for anything unrecognized. No code, types, or the dotted-
+  kind-humanization logic from the Strata19 file were copied — that file
+  is built around Strata19's own `kind` taxonomy (`work_item.created` etc.)
+  and a separate `enum-humanizer.ts` table-merging system that has no Pax
+  equivalent; Pax's table is instead grounded directly in the real,
+  closed `PUBLIC_ACTIVITY_EVENT_TYPES` union from `@pax/contracts` and
+  product.md's own terminology table (`Obligation` → "Question to
+  resolve", `Guide` → "Agent redirected", `Confirm` → "Your approval
+  needed") plus value-proposition.md's exact "Draft withheld" copy.
+
+**What was explicitly not adapted:** Praetor's `Badge`/`Progress`/
+shadcn component library, its Tailwind color-scale utility classes, its
+`CollectionRow`/`CollectionSurface`/`EntityDetailProvider`/
+`InlineCardShell` primitives, its data-fetching hooks
+(`getReadinessData`, `fetchActivity`), and its own domain types
+(`ReadinessBreakdown`, `ActivityEvent`, `InlineRendererPropsV1`) were read
+for structure only and none were imported, copied, or renamed into Pax.
+
+**Test owner:** `apps/web/src/components/ReadinessPanel.test.tsx`,
+`ApprovalCard.test.tsx`, `ActivityTimeline.test.tsx`, and
+`activity-labels.test.ts` — all written this session, each with RTL
+behavioral coverage of every state named above plus axe accessibility
+checks and a 390px narrow-viewport overflow check.

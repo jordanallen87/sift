@@ -1,0 +1,780 @@
+/**
+ * Behavioral tests for every registered Pax WebMCP tool's `execute` callback
+ * (docs/specs/webmcp.md "Tool catalog", "Tool result envelope",
+ * "Cancellation and concurrency"). Catalog-shape/contract assertions
+ * (exact names/descriptions/JSON schemas, registration-lifecycle mechanics,
+ * unsupported-browser fallback, the no-approval-tool proof) live in the
+ * dedicated `webmcp-contract.test.ts` instead of being duplicated here.
+ */
+import { describe, expect, it, vi } from 'vitest';
+import type { PaxCommands } from '../api/pax-client.js';
+import { PaxClientError } from '../api/pax-client.js';
+import {
+  buildFakeCommandReceipt,
+  buildFakeRunReceipt,
+  createFakePaxCommands,
+} from '../test/fake-pax-commands.js';
+import {
+  buildFixtureCaseState,
+  buildFixtureCompiledPack,
+  buildFixtureObligation,
+} from '../test/fixtures.js';
+import { InMemoryModelContextAdapter } from './adapter.js';
+import {
+  GLOBAL_PAX_TOOL_NAMES,
+  registerPaxTools,
+  type PaxWebMcpToolName,
+} from './register-pax-tools.js';
+
+interface AnyToolResult<TData = unknown> {
+  ok: boolean;
+  message: string;
+  data?: TData;
+  commandId?: string;
+  runId?: string;
+  caseId?: string;
+  sequence?: number;
+  ui: { changed: boolean; focusTarget?: string };
+  error?: { code: string; retryable: boolean };
+}
+
+/**
+ * Thin, explicitly-generic wrapper around `adapter.invoke` used by every
+ * test below. `InMemoryModelContextAdapter.invoke<TInput, TOutput>` defaults
+ * `TOutput` to `unknown` when a call site supplies no type argument (there
+ * is no parameter position for TypeScript to infer it from) -- calling
+ * through this single, explicitly-typed helper instead of casting the
+ * `unknown` result at each of the many call sites below keeps every
+ * assertion genuinely type-checked against `AnyToolResult` (optionally
+ * narrowed to a specific `data` shape via `TData`).
+ */
+async function invokeTool<TData = unknown>(
+  adapter: InMemoryModelContextAdapter,
+  name: string,
+  input: unknown,
+  context?: { signal?: AbortSignal },
+): Promise<AnyToolResult<TData>> {
+  return adapter.invoke<unknown, AnyToolResult<TData>>(name, input, context);
+}
+
+async function setUpWithActiveCase(
+  caseId: string,
+  overrides: Partial<PaxCommands> = {},
+): Promise<{ adapter: InMemoryModelContextAdapter; commands: PaxCommands }> {
+  const adapter = new InMemoryModelContextAdapter();
+  const commands = createFakePaxCommands(overrides);
+  const handle = await registerPaxTools({
+    adapter,
+    commands,
+    getActiveCase: () => null,
+    listPacks: () => [],
+  });
+  await handle.setActiveCase(caseId);
+  return { adapter, commands };
+}
+
+describe('registerPaxTools: registration lifecycle', () => {
+  it('registers only the two global read tools when no case is ever activated', async () => {
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => null,
+      listPacks: () => [],
+    });
+
+    expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_PAX_TOOL_NAMES].sort());
+  });
+
+  it('registers the ten case-scoped tools once an active case is set', async () => {
+    const { adapter } = await setUpWithActiveCase('case-1');
+    expect(adapter.registeredToolNames).toHaveLength(12);
+    expect(adapter.registeredToolNames).toContain('pax_select_pack');
+    expect(adapter.registeredToolNames).toContain('pax_request_revision');
+  });
+
+  it('aborts the previous case-scoped generation when the active case changes', async () => {
+    const adapter = new InMemoryModelContextAdapter();
+    const commands = createFakePaxCommands();
+    const handle = await registerPaxTools({
+      adapter,
+      commands,
+      getActiveCase: () => null,
+      listPacks: () => [],
+    });
+
+    await handle.setActiveCase('case-1');
+    const generationOne = adapter.getRegisteredTool('pax_focus_evidence');
+
+    await handle.setActiveCase('case-2');
+    const generationTwo = adapter.getRegisteredTool('pax_focus_evidence');
+
+    expect(generationOne).toBeDefined();
+    expect(generationTwo).toBeDefined();
+    expect(generationOne).not.toBe(generationTwo);
+
+    // The currently-registered tool is scoped to case-2 now; a caseId that
+    // was valid under the old (now-superseded) generation is rejected.
+    const result = await invokeTool(adapter, 'pax_focus_evidence', {
+      caseId: 'case-1',
+      evidenceId: 'ev-1',
+      expectedSequence: 1,
+    });
+    expect(result.error?.code).toBe('NOT_FOUND');
+  });
+
+  it('setActiveCase(null) unregisters the case-scoped tools, leaving only the two global tools', async () => {
+    const adapter = new InMemoryModelContextAdapter();
+    const commands = createFakePaxCommands();
+    const handle = await registerPaxTools({
+      adapter,
+      commands,
+      getActiveCase: () => null,
+      listPacks: () => [],
+    });
+
+    await handle.setActiveCase('case-1');
+    expect(adapter.registeredToolNames).toHaveLength(12);
+
+    await handle.setActiveCase(null);
+    expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_PAX_TOOL_NAMES].sort());
+  });
+
+  it('disposeAll unregisters every tool, global read tools included', async () => {
+    const adapter = new InMemoryModelContextAdapter();
+    const commands = createFakePaxCommands();
+    const handle = await registerPaxTools({
+      adapter,
+      commands,
+      getActiveCase: () => null,
+      listPacks: () => [],
+    });
+    await handle.setActiveCase('case-1');
+
+    handle.disposeAll();
+
+    expect(adapter.registeredToolNames).toEqual([]);
+  });
+
+  it('degrades gracefully on an unsupported adapter: never throws, never registers a tool', async () => {
+    const registerTool = vi.fn();
+    const unsupportedAdapter = {
+      supported: () => false,
+      registerTool,
+    };
+
+    const handle = await registerPaxTools({
+      adapter: unsupportedAdapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => null,
+      listPacks: () => [],
+    });
+    await handle.setActiveCase('case-1');
+    handle.disposeCaseTools();
+    handle.disposeAll();
+
+    expect(registerTool).not.toHaveBeenCalled();
+  });
+});
+
+interface CaseToolFixture {
+  toolName: PaxWebMcpToolName;
+  commandMethod: keyof PaxCommands;
+  buildInput: (caseId: string) => Record<string, unknown>;
+  expectedFocusTarget?: (input: Record<string, unknown>) => string | undefined;
+}
+
+const CASE_TOOL_FIXTURES: CaseToolFixture[] = [
+  {
+    toolName: 'pax_select_pack',
+    commandMethod: 'selectPack',
+    buildInput: (caseId) => ({ caseId, packId: 'car-purchase', expectedSequence: 1 }),
+  },
+  {
+    toolName: 'pax_focus_evidence',
+    commandMethod: 'focusEvidence',
+    buildInput: (caseId) => ({ caseId, evidenceId: 'ev-1', expectedSequence: 1 }),
+    expectedFocusTarget: (input) => input['evidenceId'] as string,
+  },
+  {
+    toolName: 'pax_focus_option',
+    commandMethod: 'focusOption',
+    buildInput: (caseId) => ({ caseId, optionId: 'opt-1', expectedSequence: 1 }),
+    expectedFocusTarget: (input) => input['optionId'] as string,
+  },
+  {
+    toolName: 'pax_upsert_option',
+    commandMethod: 'upsertOption',
+    buildInput: (caseId) => ({
+      caseId,
+      optionId: 'opt-1',
+      expectedSequence: 1,
+      option: {
+        label: 'Honda Civic LX',
+        kind: 'car',
+        attributes: [
+          {
+            definitionId: 'price',
+            value: { type: 'money', amount: 25_000, currency: 'USD' },
+          },
+        ],
+      },
+    }),
+    expectedFocusTarget: (input) => input['optionId'] as string,
+  },
+  {
+    toolName: 'pax_update_criteria',
+    commandMethod: 'updateCriteria',
+    buildInput: (caseId) => ({
+      caseId,
+      expectedSequence: 1,
+      operations: [{ op: 'reweight', criterionId: 'crit-1', weight: 40 }],
+    }),
+  },
+  {
+    toolName: 'pax_define_case_attribute',
+    commandMethod: 'defineCaseAttribute',
+    buildInput: (caseId) => ({
+      caseId,
+      expectedSequence: 1,
+      definition: {
+        id: 'custom.trunk_space',
+        label: 'Trunk space',
+        valueType: 'number',
+        appliesTo: ['car'],
+        evidenceExpectation: 'assertion',
+        comparison: 'higher_better',
+        reason: 'The user explicitly cares about cargo room.',
+      },
+    }),
+  },
+  {
+    toolName: 'pax_submit_source',
+    commandMethod: 'submitSource',
+    buildInput: (caseId) => ({
+      caseId,
+      expectedSequence: 1,
+      source: {
+        url: 'https://example.com/review',
+        title: 'Independent review',
+        retrievedAt: '2026-01-01T00:00:00.000Z',
+        claims: [{ statement: 'Good fuel economy.', appliesToEntityIds: ['opt-1'] }],
+      },
+    }),
+  },
+  {
+    toolName: 'pax_set_evidence_disposition',
+    commandMethod: 'setEvidenceDisposition',
+    buildInput: (caseId) => ({
+      caseId,
+      evidenceId: 'ev-1',
+      disposition: 'excluded',
+      reason: 'Duplicate of another source.',
+      expectedSequence: 1,
+    }),
+    expectedFocusTarget: (input) => input['evidenceId'] as string,
+  },
+  {
+    toolName: 'pax_request_investigation',
+    commandMethod: 'requestInvestigation',
+    buildInput: (caseId) => ({ caseId, expectedSequence: 1 }),
+  },
+  {
+    toolName: 'pax_request_revision',
+    commandMethod: 'requestRevision',
+    buildInput: (caseId) => ({
+      caseId,
+      proposalId: 'prop-1',
+      instructions: 'Reweight comfort higher.',
+      expectedSequence: 1,
+    }),
+    expectedFocusTarget: (input) => input['proposalId'] as string,
+  },
+];
+
+describe.each(CASE_TOOL_FIXTURES)(
+  '$toolName',
+  ({ toolName, commandMethod, buildInput, expectedFocusTarget }) => {
+    it('calls the shared PaxCommands method and returns an honest success envelope', async () => {
+      const isRunTool = toolName === 'pax_request_investigation';
+      const receipt = isRunTool
+        ? buildFakeRunReceipt({ caseId: 'case-1', acceptedSequence: 5, runId: 'run-9' })
+        : buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 5 });
+      const commandMock = vi.fn().mockResolvedValue(receipt);
+      const { adapter, commands } = await setUpWithActiveCase('case-1', {
+        [commandMethod]: commandMock,
+      });
+
+      const input = buildInput('case-1');
+      const result = await invokeTool(adapter, toolName, input);
+
+      expect(commands[commandMethod]).toHaveBeenCalledWith(input);
+      expect(commandMock).toHaveBeenCalledTimes(1);
+      expect(result.ok).toBe(true);
+      expect(result.commandId).toBe(receipt.commandId);
+      expect(result.caseId).toBe('case-1');
+      expect(result.sequence).toBe(5);
+      expect(result.ui.changed).toBe(true);
+      if (expectedFocusTarget) {
+        expect(result.ui.focusTarget).toBe(expectedFocusTarget(input));
+      }
+      if (isRunTool) {
+        expect(result.runId).toBe('run-9');
+      }
+    });
+
+    it('rejects a caseId that is not the active case, without calling PaxCommands', async () => {
+      const commandMock = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+      const { adapter } = await setUpWithActiveCase('case-1', {
+        [commandMethod]: commandMock,
+      });
+
+      const input = buildInput('some-other-case');
+      const result = await invokeTool(adapter, toolName, input);
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toEqual({ code: 'NOT_FOUND', retryable: false });
+      expect(commandMock).not.toHaveBeenCalled();
+    });
+
+    it('returns VALIDATION and never calls PaxCommands for malformed input', async () => {
+      const commandMock = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+      const { adapter } = await setUpWithActiveCase('case-1', {
+        [commandMethod]: commandMock,
+      });
+
+      // Every real input schema is `.strict()`; an unexpected extra field
+      // is guaranteed to fail validation regardless of the tool's own
+      // required fields.
+      const result = await invokeTool(adapter, toolName, {
+        caseId: 'case-1',
+        thisFieldDoesNotExist: true,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+      expect(commandMock).not.toHaveBeenCalled();
+    });
+  },
+);
+
+describe('error envelope mapping (shared plumbing exercised through pax_select_pack)', () => {
+  it('maps a POLICY rejection to an honest, unsuccessful envelope', async () => {
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      selectPack: vi.fn().mockRejectedValue(
+        new PaxClientError('Case already has evidence and cannot be reinterpreted.', {
+          status: 409,
+          code: 'POLICY',
+          retryable: false,
+        }),
+      ),
+    });
+
+    const result = await invokeTool(adapter, 'pax_select_pack', {
+      caseId: 'case-1',
+      packId: 'home-energy-guardian',
+      expectedSequence: 1,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe('Case already has evidence and cannot be reinterpreted.');
+    expect(result.error).toEqual({ code: 'POLICY', retryable: false });
+  });
+
+  it('maps a CONFLICT rejection and surfaces the latest sequence when the error carries one', async () => {
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      selectPack: vi.fn().mockRejectedValue(
+        new PaxClientError('Stale expectedSequence.', {
+          status: 409,
+          code: 'CONFLICT',
+          retryable: true,
+          details: { actualSequence: 7 },
+        }),
+      ),
+    });
+
+    const result = await invokeTool(adapter, 'pax_select_pack', {
+      caseId: 'case-1',
+      packId: 'home-energy-guardian',
+      expectedSequence: 1,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual({ code: 'CONFLICT', retryable: true });
+    expect(result.sequence).toBe(7);
+  });
+
+  it('maps a NOT_FOUND rejection honestly', async () => {
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      selectPack: vi.fn().mockRejectedValue(
+        new PaxClientError('Pack not found.', {
+          status: 404,
+          code: 'NOT_FOUND',
+          retryable: false,
+        }),
+      ),
+    });
+
+    const result = await invokeTool(adapter, 'pax_select_pack', {
+      caseId: 'case-1',
+      packId: 'not-a-real-pack',
+      expectedSequence: 1,
+    });
+
+    expect(result.error).toEqual({ code: 'NOT_FOUND', retryable: false });
+  });
+
+  it('maps any unexpected thrown error to INTERNAL and never claims success', async () => {
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      selectPack: vi.fn().mockRejectedValue(new Error('unexpected server error')),
+    });
+
+    const result = await invokeTool(adapter, 'pax_select_pack', {
+      caseId: 'case-1',
+      packId: 'car-purchase',
+      expectedSequence: 1,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual({ code: 'INTERNAL', retryable: false });
+  });
+
+  it('maps a pre-aborted call to UNAVAILABLE/retryable:true without ever calling PaxCommands', async () => {
+    const commandMock = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+    const { adapter } = await setUpWithActiveCase('case-1', { selectPack: commandMock });
+
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await invokeTool(
+      adapter,
+      'pax_select_pack',
+      { caseId: 'case-1', packId: 'car-purchase', expectedSequence: 1 },
+      { signal: controller.signal },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual({ code: 'UNAVAILABLE', retryable: true });
+    expect(commandMock).not.toHaveBeenCalled();
+  });
+
+  it('maps a mid-flight abort to UNAVAILABLE and discards the late response', async () => {
+    let resolveCommand!: (receipt: ReturnType<typeof buildFakeCommandReceipt>) => void;
+    const pending = new Promise<ReturnType<typeof buildFakeCommandReceipt>>((resolve) => {
+      resolveCommand = resolve;
+    });
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      selectPack: vi.fn().mockReturnValue(pending),
+    });
+
+    const controller = new AbortController();
+    const resultPromise = invokeTool(
+      adapter,
+      'pax_select_pack',
+      { caseId: 'case-1', packId: 'car-purchase', expectedSequence: 1 },
+      { signal: controller.signal },
+    );
+
+    controller.abort();
+    const result = await resultPromise;
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual({ code: 'UNAVAILABLE', retryable: true });
+
+    // The command eventually "completes" after the tool already reported
+    // cancellation -- this must not retroactively change anything the
+    // caller already observed.
+    resolveCommand(buildFakeCommandReceipt());
+    await Promise.resolve();
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects normally (not via abort) while a live, unaborted signal is attached, still mapping to an honest error envelope', async () => {
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      selectPack: vi
+        .fn()
+        .mockRejectedValue(new Error('downstream failure, unrelated to cancellation')),
+    });
+
+    const controller = new AbortController();
+    const result = await invokeTool(
+      adapter,
+      'pax_select_pack',
+      { caseId: 'case-1', packId: 'car-purchase', expectedSequence: 1 },
+      { signal: controller.signal },
+    );
+
+    expect(controller.signal.aborted).toBe(false);
+    expect(result.ok).toBe(false);
+    expect(result.error).toEqual({ code: 'INTERNAL', retryable: false });
+  });
+
+  it('includes the receipt snapshot in data when the server returns one', async () => {
+    const snapshot = buildFixtureCaseState({ id: 'case-1' });
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      selectPack: vi
+        .fn()
+        .mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1', snapshot })),
+    });
+
+    const result = await invokeTool(adapter, 'pax_select_pack', {
+      caseId: 'case-1',
+      packId: 'car-purchase',
+      expectedSequence: 1,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual(snapshot);
+  });
+});
+
+describe('pax_get_case_context', () => {
+  it('reports no active case honestly when none exists, without inventing data', async () => {
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => null,
+      listPacks: () => [],
+    });
+
+    const result = await invokeTool(adapter, 'pax_get_case_context', {});
+
+    expect(result).toEqual({
+      ok: true,
+      message: 'No case is currently active.',
+      data: null,
+      ui: { changed: false },
+    });
+  });
+
+  it('projects the active case to exactly the fields webmcp.md specifies', async () => {
+    const caseState = buildFixtureCaseState({
+      selectedEvidenceId: 'ev-1',
+      selectedOptionId: 'opt-1',
+      eventSequence: 42,
+    });
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => caseState,
+      listPacks: () => [],
+    });
+
+    const result = await invokeTool<{
+      caseId: string;
+      pack: { id: string; version: string; compiledHash: string };
+      selectedEvidenceId: string | null;
+      selectedOptionId: string | null;
+    }>(adapter, 'pax_get_case_context', {});
+
+    expect(result.ok).toBe(true);
+    expect(result.caseId).toBe('case-1');
+    expect(result.sequence).toBe(42);
+    expect(result.data?.caseId).toBe('case-1');
+    expect(result.data?.selectedEvidenceId).toBe('ev-1');
+    expect(result.data?.selectedOptionId).toBe('opt-1');
+    expect(result.data?.pack).toEqual({
+      id: 'car-purchase',
+      version: '1.0.0',
+      compiledHash: 'a'.repeat(64),
+    });
+  });
+
+  it('counts obligations by status into readiness', async () => {
+    const caseState = buildFixtureCaseState({
+      obligations: [
+        buildFixtureObligation({ id: 'obl-1', status: 'open' }),
+        buildFixtureObligation({ id: 'obl-2', status: 'satisfied' }),
+        buildFixtureObligation({ id: 'obl-3', status: 'satisfied' }),
+        buildFixtureObligation({ id: 'obl-4', status: 'blocked' }),
+      ],
+    });
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => caseState,
+      listPacks: () => [],
+    });
+
+    const result = await invokeTool<{ readiness: Record<string, number> }>(
+      adapter,
+      'pax_get_case_context',
+      {},
+    );
+
+    expect(result.data?.readiness).toEqual({
+      open: 1,
+      active: 0,
+      satisfied: 2,
+      accepted_uncertainty: 0,
+      blocked: 1,
+      total: 4,
+    });
+  });
+
+  it('surfaces a pending proposal as pendingHumanAction', async () => {
+    const caseState = buildFixtureCaseState({
+      proposal: {
+        id: 'prop-1',
+        recommendationId: 'rec-1',
+        status: 'pending',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => caseState,
+      listPacks: () => [],
+    });
+
+    const result = await invokeTool<{ pendingHumanAction: unknown }>(
+      adapter,
+      'pax_get_case_context',
+      {},
+    );
+
+    expect(result.data?.pendingHumanAction).toEqual({
+      kind: 'review_proposal',
+      proposalId: 'prop-1',
+    });
+  });
+
+  it('reflects a selection made through pax_focus_evidence once the caller applies the resulting state (state sync itself is a later task)', async () => {
+    let caseState = buildFixtureCaseState({ selectedEvidenceId: null });
+    const adapter = new InMemoryModelContextAdapter();
+    const handle = await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands({
+        focusEvidence: vi.fn().mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1' })),
+      }),
+      getActiveCase: () => caseState,
+      listPacks: () => [],
+    });
+    await handle.setActiveCase('case-1');
+
+    const focusResult = await invokeTool(adapter, 'pax_focus_evidence', {
+      caseId: 'case-1',
+      evidenceId: 'ev-2',
+      expectedSequence: 1,
+    });
+    expect(focusResult.ok).toBe(true);
+
+    // This registration layer calls PaxCommands and reports an honest
+    // envelope; it does not itself own live case-state sync (a later
+    // event-stream task's responsibility). The test applies the resulting
+    // change the way a real SSE-driven cache would, then confirms the read
+    // tool's projection picks it up on the next call.
+    caseState = { ...caseState, selectedEvidenceId: 'ev-2' };
+
+    const contextResult = await invokeTool<{ selectedEvidenceId: string | null }>(
+      adapter,
+      'pax_get_case_context',
+      {},
+    );
+    expect(contextResult.data?.selectedEvidenceId).toBe('ev-2');
+  });
+
+  it('returns VALIDATION for a non-empty input without reading case state', async () => {
+    const getActiveCase = vi.fn().mockReturnValue(null);
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase,
+      listPacks: () => [],
+    });
+
+    const result = await invokeTool(adapter, 'pax_get_case_context', { unexpected: true });
+
+    expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+    expect(getActiveCase).not.toHaveBeenCalled();
+  });
+});
+
+describe('pax_list_packs', () => {
+  it('projects installed packs to description, version, hash, and activation signals', async () => {
+    const pack = buildFixtureCompiledPack();
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => null,
+      listPacks: () => [pack],
+    });
+
+    const result = await invokeTool(adapter, 'pax_list_packs', {});
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual([
+      {
+        packId: 'car-purchase',
+        version: '1.0.0',
+        name: 'Choose Our Next Car',
+        description: pack.identity.description,
+        compiledHash: pack.compiledHash,
+        activation: pack.activation,
+      },
+    ]);
+  });
+
+  it('supports an async listPacks accessor', async () => {
+    const pack = buildFixtureCompiledPack();
+    const adapter = new InMemoryModelContextAdapter();
+    await registerPaxTools({
+      adapter,
+      commands: createFakePaxCommands(),
+      getActiveCase: () => null,
+      listPacks: () => Promise.resolve([pack]),
+    });
+
+    const result = await invokeTool<unknown[]>(adapter, 'pax_list_packs', {});
+
+    expect(result.data).toHaveLength(1);
+  });
+});
+
+describe('callback-vs-envelope equivalence', () => {
+  // A true visible-control-equivalence test (rendering a real UI control and
+  // asserting it dispatches the identical PaxCommands call) is explicitly
+  // out of scope for this pass: no visible control calls these commands yet
+  // (a later integration task wires that, per this task's brief). This
+  // test instead proves the in-scope half: calling a command directly
+  // through the shared `PaxCommands` client and calling the same command
+  // through its WebMCP tool produce envelopes built from the exact same
+  // `CommandReceipt` -- there is no second, divergent path.
+  it('builds the tool envelope from the same CommandReceipt fields the shared client returns', async () => {
+    const receipt = buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 3 });
+    const commandMock = vi.fn().mockResolvedValue(receipt);
+    const { adapter, commands } = await setUpWithActiveCase('case-1', { selectPack: commandMock });
+    const input = { caseId: 'case-1', packId: 'car-purchase', expectedSequence: 1 };
+
+    const directReceipt = await commands.selectPack(input);
+    const toolResult = await invokeTool(adapter, 'pax_select_pack', input);
+
+    expect(toolResult.commandId).toBe(directReceipt.commandId);
+    expect(toolResult.caseId).toBe(directReceipt.caseId);
+    expect(toolResult.sequence).toBe(directReceipt.acceptedSequence);
+    expect(commandMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('no tool can approve or reject a decision proposal', () => {
+  it('never calls commands.reviewProposal from any of the twelve registered tools', async () => {
+    const reviewProposal = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+    const { adapter, commands } = await setUpWithActiveCase('case-1', { reviewProposal });
+
+    for (const fixture of CASE_TOOL_FIXTURES) {
+      await invokeTool(adapter, fixture.toolName, fixture.buildInput('case-1'));
+    }
+    await invokeTool(adapter, 'pax_get_case_context', {});
+    await invokeTool(adapter, 'pax_list_packs', {});
+
+    expect(commands.reviewProposal).not.toHaveBeenCalled();
+    expect(reviewProposal).not.toHaveBeenCalled();
+  });
+});

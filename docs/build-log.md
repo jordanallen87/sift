@@ -2708,3 +2708,485 @@ surface, `packages/packs/src/car-purchase.ts`, `packages/scenarios/src/
 tools/`, the Strands adapter (`run-service.ts`'s durable bookkeeping is
 real; nothing invokes Strands yet), AgentCore `/ping`/`/invocations`, and
 the Runtime Inspector's `/api/debug/runs/*` routes -- none were touched.
+
+## 2026-08-27 -- Core decision-content workspace components (Readiness, Evidence, Activity, Recommendation/Approval)
+
+Built the four core decision-content region components from product.md's
+seven-region workspace layout: region 3 (Readiness), the evidence/claims/
+staleness slice of region 4 (Evidence and comparison -- option comparison
+itself is separate later work), region 5 (Activity), and region 6
+(Recommendation and approval). Followed `CaseHeader.tsx`'s established
+pattern exactly: props-driven presentational components with no internal
+fetching, stable `data-testid`s, accessible names/roles, token-first
+Tailwind via arbitrary-value utilities. Did not touch `App.tsx`,
+`AppProviders.tsx`, `DemoLauncher.tsx`, `CaseHeader.tsx`,
+`apps/web/src/model-context/`, or anything under `apps/agent/`/`packages/`.
+
+### Files created
+
+- `apps/web/src/components/activity-labels.ts` + `.test.ts` -- a
+  centralized, exhaustive `PublicActivityEventType` -> safe label/tone
+  registry (`satisfies Record<PublicActivityEventType, ...>` makes an
+  omitted event type a compile error, not just a runtime gap), plus
+  `STATUS_TONE_META` (ink/bg/border CSS-variable triads + a decorative icon
+  per the nine `docs/design-system.md` status tones, reused by every other
+  component below rather than five separate copies of the same token-name
+  mapping). `getActivityLabel()` accepts a loose `string` and falls back to
+  a safe generic label for anything unrecognized, so no caller is ever
+  tempted to fall back to a raw internal type string itself.
+- `apps/web/src/components/ReadinessPanel.tsx` + `.test.tsx` -- renders a
+  `ReadinessPanelData` prop (a deliberate structural mirror of
+  `packages/core/src/readiness.ts`'s real `ReadinessResult`, not an import
+  of it -- see the judgment call below). Always shows all five buckets
+  (satisfied/active/blocked/accepted-uncertainty/open) with an explicit
+  count even at zero, renders `blockers` as concrete reasons in a
+  `role="alert"` callout, and gives a non-vacuous "ready" message even for
+  a zero-obligation case ("This case has no required questions to resolve
+  yet.", never a bare "Ready").
+- `apps/web/src/components/EvidenceCard.tsx` + `EvidenceList.tsx` (+ their
+  `.test.tsx`) -- render `EvidenceLink`/`Claim`/`Source`-joined
+  `EvidenceItemData` items: verdict, disposition, claim stance/confidence,
+  a real source link, and an explicit textual+visual "Stale" indicator
+  (never color-only). Conflict is rendered from an explicit
+  `conflictingEvidenceIds?: string[]` field (matching
+  `EvidenceConflictedEventSchema`'s own payload shape) rather than derived
+  in the component -- see the judgment call below.
+- `apps/web/src/components/ActivityTimeline.tsx` + `.test.tsx` -- a
+  chronological (sorted by `sequence`) list of real `PublicActivityEvent`s,
+  rendered entirely through `activity-labels.ts` (a dedicated test proves
+  the raw `type` string, e.g. `evidence.conflicted`, never appears in the
+  rendered text). Each item carries `data-testid="activity-item-<id>"`
+  keyed by `debugEventId` falling back to `eventId`, plus explicit
+  `data-event-id`/`data-debug-event-id` attributes, so a later Runtime
+  Inspector task can wire click-to-open-exact-trace without this component
+  knowing the Inspector exists. Renders `safeDetails` as a compact
+  key/value list.
+- `apps/web/src/components/RecommendationCard.tsx` + `.test.tsx` -- renders
+  a real `Recommendation`: facts and hypotheses in two visually and
+  DOM-separately distinct containers (never merged into one list), a
+  distinct stale banner with explanatory text, and the `withheld` state
+  reproducing value-proposition.md's exact required copy verbatim ("Draft
+  withheld / This answer is plausible, but N required questions are still
+  unresolved. Pax is continuing the investigation before asking you to
+  decide."), with grammatical singular/plural handling for N=1 as an
+  explicit judgment call beyond what the spec's own N=3 example shows.
+- `apps/web/src/components/ApprovalCard.tsx` + `.test.tsx` -- renders a
+  real `DecisionProposal` with Approve as the single visually primary
+  action and Reject/Request-revision as secondary controls (all three
+  present, per product.md), a settled-state "stamp" treatment (rotated,
+  doubled-border badge) building the design-system's documented-but-unbuilt
+  signature element, and the human-only-approval proof (see below).
+
+### Judgment calls
+
+- **`ReadinessPanelData` is a structural duplicate of `@pax/core`'s real
+  `ReadinessResult`, not an import of it.** `apps/web` depends only on
+  `@pax/contracts` today (`CaseHeader.tsx`/`DemoLauncher.tsx` both only
+  import from there); adding a new `@pax/core` runtime dependency to the
+  browser app for one type would cross an architecture boundary this task
+  wasn't asked to move, and the task brief itself frames the prop as
+  "`ReadinessResult`-shaped" rather than "the real core type". Both
+  interfaces are built from the same `ObligationState` fields, so a real
+  `ReadinessResult` value is structurally assignable to `ReadinessPanelData`
+  with zero adaptation the moment a later wiring task passes one in.
+- **Evidence conflict is an explicit prop field, not derived in the UI.**
+  `EvidenceLink` carries no "conflicting" field of its own; only the
+  `evidence.conflicted` `CaseEvent`'s payload (`conflictingEvidenceIds`)
+  names a conflict. Rather than inventing conflict-detection logic in a
+  presentational component -- which would put evidence-validity judgment in
+  the UI layer, against CLAUDE.md's "The deterministic core, not an LLM,
+  owns ... evidence validity" -- `EvidenceItemData.conflictingEvidenceIds`
+  is an optional field a caller (eventually the reducer/core) supplies
+  directly, reusing the exact contracts vocabulary.
+- **`ApprovalCard` takes an `onReview` callback, not a `PaxCommands`
+  client.** Unlike `DemoLauncher` (which calls `usePaxCommands()` directly),
+  this task's brief requires these four components to be standalone and
+  not wired into `App.tsx`/`AppProviders.tsx`. A callback prop keeps
+  `ApprovalCard` decoupled from the command client entirely and is also
+  what makes the human-only-approval proof airtight: there is no `actor`
+  prop on `ApprovalCardProps` for a caller to pass through at all.
+- **`RecommendationCard`'s `sources` prop is optional** (`Record<string,
+  Source>` keyed by id) since a `Recommendation`-shaped prop alone only
+  carries `sourceIds: string[]`, not joined `Source` records. Falls back to
+  a plain `[source-id]` reference chip when a source isn't supplied,
+  degrading gracefully rather than rendering a broken link.
+- **`EvidenceItemData.claim`/`.source` are typed `Claim | undefined`/
+  `Source | undefined`, not just `Claim?`/`Source?`.** Under this repo's
+  `exactOptionalPropertyTypes: true`, a bare `?:` modifier forbids a test
+  builder from explicitly overriding an already-present default back to
+  "absent" (`buildItem({ claim: undefined })` fails to typecheck
+  otherwise); the explicit `| undefined` union keeps the same optionality
+  while allowing that override.
+- **Kept ApprovalCard read-only for evidence disposition and did not add
+  a disposition-change control to `EvidenceCard`.** The task's explicit
+  scope note lists only "the option editor/comparison, dynamic attribute
+  fields, custom-concern form, or WebMCP status components" as later work,
+  but interactive disposition editing (`setEvidenceDisposition`) reads as
+  the same category of "not this pass" -- these four components render
+  case-domain facts; the next wiring task can layer an edit affordance on
+  top of `EvidenceCard` without changing its rendering contract.
+
+### The human-only-approval proof (`ApprovalCard`)
+
+Two independent layers, both required by the task brief:
+
+1. **Structural (compile-time):** `ApprovalCardProps` has no `actor` field
+   at all -- there is no prop path for a caller to pass one through, let
+   alone spoof a non-`'human'` value. `ApprovalCard.test.tsx` asserts this
+   directly with a compile-time-only type expression
+   (`type AssertNoActorProp = 'actor' extends keyof ApprovalCardProps ? ... : true`)
+   that fails `pnpm --filter @pax/web typecheck` outright if a future edit
+   ever adds an `actor` prop.
+2. **Behavioral (runtime):** every call site inside `ApprovalCard.tsx` that
+   invokes `onReview` goes through one `submit()` helper that constructs
+   `{ actor: 'human', decision, ...details }` with `'human'` as a literal
+   -- grep the file for `actor:` and there is exactly one occurrence.
+   `ApprovalCard.test.tsx`'s "human-only approval" describe block spies on
+   `onReview` and asserts `actor: 'human'` on every call across
+   approve/reject/request_revision, plus one test that submits all three
+   in sequence and asserts every recorded call's `actor` is `'human'` with
+   no exceptions.
+
+### Verification commands and results (this session)
+
+```
+$ pnpm --filter @pax/web test --coverage
+  Test Files  15 passed (15)     (9 of these are this task's own new files;
+                                   the other 6 -- CaseHeader, DemoLauncher,
+                                   App, AppProviders, pax-client,
+                                   narrow-viewport, plus three model-context
+                                   files from a concurrently-running sibling
+                                   task -- were not touched by this task)
+  Tests  224 passed (224)
+  This task's own component files (activity-labels.ts, ReadinessPanel.tsx,
+  EvidenceCard.tsx, EvidenceList.tsx, ActivityTimeline.tsx,
+  RecommendationCard.tsx, ApprovalCard.tsx) are all at 100% statements/
+  functions/lines and >=94% branches each -- confirmed by an isolated run
+  restricted to `src/components` (136 tests, 9 files) showing 100%
+  statements/lines/functions and 99.47% branches for every file this task
+  authored; the only remaining branch gap anywhere in `src/components` or
+  `src/test` is one pre-existing line in `test/narrow-viewport.tsx` (not
+  created or touched by this task).
+
+$ pnpm --filter @pax/web typecheck
+  tsc --noEmit -p tsconfig.json -> clean for every file this task authored.
+  At the time of this session's final run, the aggregate command reports 5
+  errors, all in `apps/web/src/model-context/register-pax-tools.test.ts`
+  (an index-signature-access lint-adjacent TS4111 rule) -- that file is
+  under active concurrent edit by a sibling task building
+  `apps/web/src/model-context/` (explicitly out of this task's scope per
+  its own brief: "Do NOT touch ... apps/web/src/model-context/ (a sibling
+  agent owns that)"), confirmed via `git status --porcelain` showing that
+  whole directory as untracked/in-progress, not something this task
+  created or modified.
+
+$ pnpm lint   (repo-wide)
+  eslint . --max-warnings=0 && tsx scripts/check-source.ts -> 0 errors in
+  any file this task created or touched. Remaining errors at the time of
+  this session's final run are entirely in `apps/agent/src/runtime/
+  interventions.ts` and `apps/agent/src/runtime/model-provider.ts` (a
+  second concurrently-running sibling task building the Strands adapter,
+  also confirmed untracked/in-progress via `git status`) and the same
+  `apps/web/src/model-context/` files noted above -- none in this task's
+  scope or created by it.
+
+$ pnpm format:check   (repo-wide)
+  prettier --check . -> clean for every file this task created or touched
+  (ran `prettier --write` scoped explicitly to this task's own files only,
+  never on the sibling-owned `apps/agent/src/runtime/` or
+  `apps/web/src/model-context/` paths). Remaining warnings at the time of
+  this session's final run are entirely in those two sibling-owned,
+  concurrently-in-progress directories.
+```
+
+No test was skipped, focused, or weakened to reach these results. No
+placeholder screens, stub data, or fabricated states. `git add`/`git
+commit` were intentionally not run, per this task's explicit instruction.
+`apps/web/src/index.ts`'s barrel export was extended (additively, following
+`CaseHeader`/`DemoLauncher`'s existing pattern) with all seven new named
+exports and their prop types; `App.tsx`/`AppProviders.tsx` were not
+touched, so none of these four components render anywhere yet -- that
+wiring is explicitly later work per this task's brief.
+
+Out of scope, per this task's brief: the option editor/comparison, dynamic
+attribute fields, custom-concern form, WebMCP status components,
+`App.tsx`/`AppProviders.tsx` wiring, `apps/web/src/model-context/`, and
+everything under `apps/agent/`/`packages/` -- none were touched.
+
+## 2026-08-27 -- `apps/web/src/model-context/`: imperative WebMCP tool registration layer
+
+Built the WebMCP tool registration layer named in the locked file map
+(`apps/web/src/model-context/`), TDD-first, per docs/specs/webmcp.md's
+entire "Browser adapter," "Registration lifecycle," "Tool catalog," "Tool
+result envelope," "Cancellation and concurrency," and "Automated contract
+requirements" sections.
+
+### Files created
+
+- `apps/web/src/model-context/adapter.ts` -- `ModelContextAdapter`
+  interface (copied verbatim from webmcp.md), `BrowserModelContextAdapter`
+  (production, backed by a hand-rolled ambient `document.modelContext`
+  augmentation), `InMemoryModelContextAdapter` (test double: records every
+  `registerTool` call, exposes `getRegisteredTool`/`registeredToolNames`,
+  and an `invoke(name, input, context?)` seam tests use to call a
+  registered tool's `execute` directly with a given input and abort
+  signal).
+- `apps/web/src/model-context/adapter.test.ts` -- contract test for both
+  adapters: registration recording, per-call `invoke`, registration-signal
+  unregistration (including the already-aborted and
+  superseded-generation-does-not-clobber-newer-generation edge cases), and
+  the real `BrowserModelContextAdapter`'s `supported()`/`registerTool`
+  behavior with and without a stubbed `document.modelContext`.
+- `apps/web/src/model-context/case-context.ts` -- pure projection
+  functions: `buildCaseContextSummary(caseState)` projects full `CaseState`
+  down to exactly the field list webmcp.md's `pax_get_case_context` effect
+  text specifies (case summary, pack id/version/hash, criteria/attribute
+  definitions, options (`CaseState.entities`), readiness counts by
+  obligation status, active focus, selected option/evidence, recommendation,
+  active run correlation via `activeFocus.runId`, and `pendingHumanAction`
+  derived from a `status: 'pending'` proposal) -- deliberately omitting
+  `sources`/`claims`/`evidenceLinks`/`caseExtensions` (none appear in that
+  field list; `sources` in particular can carry up to 5000-character
+  excerpts, matching the spec's "omits ... oversized source bodies").
+  `buildPackSummary(pack)` projects a full `CompiledDecisionPack` down to
+  `{packId, version, name, description, compiledHash, activation}` per
+  `pax_list_packs`'s effect text.
+- `apps/web/src/model-context/tool-support.ts` -- shared plumbing every
+  tool's `execute` uses: `toToolInputSchema` (Zod-to-JSON-Schema, see
+  below), `mapErrorToEnvelope` (honest error-code mapping, see below),
+  `runAbortable` (per-call cancellation race, see below),
+  `validationFailureEnvelope`/`notActiveCaseEnvelope` helpers.
+- `apps/web/src/model-context/register-pax-tools.ts` -- `registerPaxTools`,
+  registering the exact 12-tool catalog and returning a
+  `PaxToolRegistrationHandle` (`setActiveCase`, `disposeCaseTools`,
+  `disposeAll`) a later App-level integration task drives.
+- `apps/web/src/model-context/register-pax-tools.test.ts` -- behavioral
+  tests for every tool's `execute`: registration lifecycle (global-once,
+  case-scoped register/re-register/unregister, graceful unsupported-adapter
+  degradation), a `describe.each` over all ten case-scoped tools proving
+  each calls its one real `PaxCommands` method with the validated input,
+  rejects a non-active `caseId` without calling `PaxCommands`, and returns
+  `VALIDATION` for malformed input without calling `PaxCommands`; shared
+  error-envelope mapping (`POLICY`/`CONFLICT`-with-sequence/`NOT_FOUND`/
+  `INTERNAL`/pre-aborted and mid-flight `UNAVAILABLE`, including a
+  non-abort rejection while a live unaborted signal is attached, and
+  snapshot-in-`data` inclusion); `pax_get_case_context` projection
+  correctness (no-active-case, full projection, readiness counts,
+  `pendingHumanAction`, a selection-reflected-in-subsequent-context test);
+  `pax_list_packs` (sync and async accessor); callback-vs-envelope
+  equivalence; and the no-approval-tool proof.
+- `apps/web/src/model-context/webmcp-contract.test.ts` -- the dedicated
+  contract test the task brief asked for as a separate deliverable: every
+  tool's name/description/JSON-schema checked against literal strings
+  copied by hand from webmcp.md (independent of `register-pax-tools.ts`'s
+  own source, so a drift between the two would fail this test);
+  unregister-on-case-change and unregister-on-(simulated-)unmount through
+  the real `InMemoryModelContextAdapter`; the unsupported-browser fallback
+  through the real `BrowserModelContextAdapter` (asserts `registerPaxTools`
+  never throws and never calls `registerTool` when unsupported); the
+  no-approval-tool proof (name-pattern check, `RequestRevisionInputSchema`
+  JSON-Schema property check, and a live invocation proving
+  `commands.reviewProposal` is never called); and a contract-level
+  callback-vs-envelope equivalence test.
+- `apps/web/src/test/fixtures.ts` -- `buildFixtureCaseState`,
+  `buildFixtureCompiledPack`, `buildFixtureObligation`: minimal
+  schema-valid builders (every field populated with the smallest value its
+  real `@pax/contracts` Zod schema accepts) shared by both new test files,
+  so fixtures track schema changes instead of hand-copied literals drifting
+  out of sync.
+
+### Zod-to-JSON-Schema approach
+
+Used zod v4's own built-in `z.toJSONSchema()` (confirmed present and
+working by running it directly against a `.strict()` schema from this
+workspace before writing any tool code -- it emits standard draft 2020-12
+JSON Schema, including `additionalProperties: false` from `.strict()`).
+`@pax/web` already depends on `zod@^4.4.3`; no new dependency was added.
+The workspace lockfile does carry `zod-to-json-schema@3.25.2`, but it is a
+transitive dependency of an MCP SDK used elsewhere in the workspace (under
+`hono`/`jose`/`pkce-challenge` in `pnpm-lock.yaml`), not something
+`@pax/web` itself depends on or needs -- reaching for zod's own native
+converter is simpler and avoids taking that package on directly.
+
+### WebMCP ambient types: hand-rolled, not a types package
+
+`document.modelContext` is declared in `adapter.ts` as a hand-rolled
+ambient `Document` interface augmentation, not via `webmcp-types` or
+`@mcp-b/webmcp-types`. Reasoning: this codebase calls exactly one method
+(`registerTool`), already fully specified by webmcp.md's own
+`ModelContextAdapter` interface; hand-rolling keeps that one declaration
+exact, avoids a new supply-chain dependency (and the offline-install risk
+of adding one mid-build) for a single `.d.ts` shape already fully known,
+and avoids importing a third-party package's possibly-broader
+`document.modelContext` surface this codebase does not use and has not
+verified against the current origin trial. No runtime WebMCP polyfill
+(`@mcp-b/webmcp-polyfill`, `@mcp-b/global`) was added anywhere -- production
+behavior depends solely on the real browser API being present, with
+`BrowserModelContextAdapter.supported()` as the feature-detection gate.
+
+### Registration lifecycle design
+
+`registerPaxTools(options)` registers the two global read tools
+(`pax_get_case_context`, `pax_list_packs`) once, under one
+`AbortController` only `disposeAll()` aborts, then returns a handle whose
+`setActiveCase(caseId | null)` registers/re-registers the ten case-scoped
+tools under a *fresh* `AbortController` each call, first aborting whichever
+generation it replaces. Every case-scoped tool's `execute` closes over the
+`caseId` it was registered with and rejects (`NOT_FOUND`, without calling
+`PaxCommands`) any input whose own `caseId` does not match -- "no tool
+operates on a case other than the active case without an explicit matching
+`caseId`" is enforced structurally, not by trusting the caller. If
+`adapter.supported()` is false, `registerPaxTools` short-circuits to an
+all-no-op handle before ever calling `adapter.registerTool` -- graceful
+degradation is enforced in this module itself, not left solely to a later
+caller remembering to check `supported()` first.
+
+### Read-only tools: injected accessors, not an invented fetch path
+
+`pax_get_case_context`/`pax_list_packs` take `getActiveCase: () => CaseState
+| null` and `listPacks: () => CompiledDecisionPack[] | Promise<...>` as
+constructor-time dependencies rather than this module performing its own
+`GET /api/cases/:caseId` / `GET /api/packs` fetch. Reasoning, stated
+explicitly rather than silently decided: `PaxCommands`
+(`apps/web/src/api/pax-client.ts`) is the *command* client per
+architecture.md's "Shared command client" -- it has no query methods at
+all, and no lightweight query client exists anywhere in `@pax/web` yet
+(`AppProviders.tsx`'s own doc comment defers "the event stream (SSE) and
+query-cache providers" to a later task). Inventing an ad hoc `fetch` here
+for two GET routes would risk guessing at a response shape a later task
+would have to un-invent, and would not violate the "same command
+implementation" rule in letter (that rule is about commands/mutations) but
+would violate it in spirit by adding a second, parallel way of reaching the
+server. This registration layer owns the honest, fully-tested read-side
+*behavior* (validation, projection to exactly the specified field list,
+envelope shape); a later integration task supplies the real accessors.
+
+### Confirmed: `PaxCommands` already has `setEvidenceDisposition`/`requestRevision`
+
+`packages/contracts/src/commands.ts`'s `PaxCommands` interface (echoed in
+`apps/web/src/api/pax-client.ts`) and `docs/specs/architecture.md` lines
+73-74 both list `setEvidenceDisposition(input): Promise<CommandReceipt>`
+and `requestRevision(input): Promise<CommandReceipt>` -- confirmed present
+before wiring `pax_set_evidence_disposition`/`pax_request_revision` through
+them.
+
+### The "no tool can approve a decision" proof
+
+Three independent layers:
+
+1. **Catalog-level:** `PAX_WEBMCP_TOOL_NAMES` (the full registered set) has
+   no `pax_review_proposal`/`pax_approve_*` entry --
+   `commands.reviewProposal` (the one `PaxCommands` method with `actor`/
+   `decision` fields that *can* approve or reject) is never referenced
+   anywhere in `register-pax-tools.ts`. `webmcp-contract.test.ts` asserts
+   no registered tool name matches an approval-shaped pattern.
+2. **Schema-level:** `pax_request_revision` is built from the real
+   `RequestRevisionInputSchema` (`packages/contracts/src/commands.ts`),
+   which has exactly `{caseId, proposalId, instructions, expectedSequence}`
+   -- no `decision`/`actor` field exists in its schema at all, unlike the
+   separate `ReviewProposalInputSchema`. This is not a contracts-layer bug
+   to flag: `commands.ts`'s own module comment already documents that
+   `pax_request_revision` has no corresponding `PaxCommands` method name in
+   architecture.md by design, and its shape is grounded directly in
+   webmcp.md's literal input list, which itself has no approval field.
+   `webmcp-contract.test.ts` asserts the tool's generated JSON Schema
+   `properties` are exactly those four keys.
+3. **Behavioral:** `register-pax-tools.test.ts` and `webmcp-contract.test.ts`
+   each invoke every one of the twelve registered tools (including
+   `pax_request_revision` with a fully valid input) against a fake
+   `PaxCommands` whose `reviewProposal` is spied on, and assert it is never
+   called.
+
+### Three real `pax-client.ts` gaps found and flagged, not silently worked around
+
+While implementing "Cancellation and concurrency" and "Retried mutations
+reuse an idempotency key," three real limitations in the already-built
+`apps/web/src/api/pax-client.ts` surfaced. None were fixed here (that file
+was out of this task's explicit framing as an already-built, read-only
+reference); each is worked around honestly at the tool-callback boundary
+and documented in code comments (`tool-support.ts`'s `runAbortable`
+doc comment, `register-pax-tools.ts`'s module doc comment) rather than
+silently papered over:
+
+1. **No `AbortSignal` parameter on any `PaxCommands` method.** `postJson`'s
+   `fetchImpl(url, { method, headers, body })` call has no `signal` field,
+   so no command call can forward cancellation to the underlying `fetch`.
+   This module's `runAbortable` still meets the *observable* contract
+   (stop waiting, return `UNAVAILABLE`/`retryable: true`, never apply a
+   late response) via a promise race against the browser-provided signal,
+   but the in-flight HTTP request itself is not network-aborted.
+   Recommended fix: an additive, optional `options?: { signal?: AbortSignal
+   }` second parameter on every `PaxCommands` method, threaded to
+   `fetchImpl`.
+2. **`PaxClientError.fromErrorResponse` does not parse
+   `HttpConflictResponseSchema`.** The documented `409` conflict body
+   (`{error: {code: 'CONFLICT', message, retryable, expectedSequence,
+   actualSequence}, snapshot}`) does not match `HttpErrorBodySchema`'s
+   `.strict()` shape (extra top-level `snapshot` key, extra `error.
+   expectedSequence`/`error.actualSequence` keys), so a real `409` today
+   silently degrades to a generic, code-less, `retryable: false`
+   `PaxClientError` -- losing the `actualSequence` webmcp.md requires
+   `pax_select_pack` (etc.) to surface on conflict. `tool-support.ts`'s
+   `mapErrorToEnvelope`/`extractActualSequence` are written to do the right
+   thing the moment this is fixed (defensively reading `error.details.
+   actualSequence` when present); tests exercise this mapping by directly
+   throwing a correctly-shaped `PaxClientError`, not through the real HTTP
+   path, since that path cannot produce one today.
+3. **No per-call idempotency-key override.** Every `PaxCommands` method
+   mints its own fresh `crypto.randomUUID()` for `X-Pax-Command-Id`/
+   `Idempotency-Key` with no way for a caller to supply one derived from
+   the browser's own tool-call ID, so "Retried mutations reuse an
+   idempotency key derived from the browser tool call ID" cannot work
+   end-to-end today. Not worked around with a parallel fetch path (that
+   would violate "same command implementation"); flagged here instead.
+
+### Out of scope, confirmed explicitly per this task's brief
+
+No visible control anywhere in `apps/web/src/components/` calls
+`PaxCommands` yet, so a true visible-control-equivalence test cannot exist
+yet either -- both test files' "callback-vs-envelope equivalence" tests
+prove the narrower, in-scope half (the WebMCP tool and a direct
+`PaxCommands` call resolve identical `CommandReceipt`-derived fields), with
+an inline comment noting the visible-control half explicitly as later
+integration work. `App.tsx`, `AppProviders.tsx`, `apps/web/src/components/`,
+`apps/agent/`, and `packages/` were not touched.
+
+### Verification commands and results (this session)
+
+```
+$ pnpm --filter @pax/web test --coverage
+  Test Files  16 passed (16)
+  Tests  248 passed (248)
+  All files  99.14% Stmts | 97.93% Branch | 100% Funcs | 99.12% Lines
+  (testing.md's global thresholds are 90% branches, 95% lines/functions/
+  statements -- comfortably exceeded)
+
+$ pnpm --filter @pax/web typecheck
+  tsc --noEmit -p tsconfig.json -> clean, no errors.
+
+$ pnpm lint   (repo-wide)
+  eslint . --max-warnings=0 && tsx scripts/check-source.ts -> 0 eslint
+  errors in any file this task created or touched (confirmed with a
+  scoped `eslint apps/web/src/model-context apps/web/src/test/fixtures.ts
+  --max-warnings=0` -> 0 problems). The aggregate command's remaining
+  failure is `check:source`'s secret-pattern scanner flagging two lines in
+  `apps/agent/src/runtime/event-normalizer.ts`/`.test.ts` (a sibling task's
+  in-progress, uncommitted redaction-pattern code, confirmed untracked via
+  `git status`) -- not created or touched by this task, and outside this
+  task's explicit scope (`apps/agent/`).
+
+$ pnpm format:check   (repo-wide)
+  prettier --check . -> clean for every file this task created or touched
+  (confirmed with a scoped `prettier --check apps/web/src/model-context
+  apps/web/src/test/fixtures.ts` -> "All matched files use Prettier code
+  style!"). Remaining warnings at the time of this session's final run are
+  two files under `apps/agent/src/runtime/`, the same sibling-owned,
+  concurrently in-progress directory -- not touched by this task.
+```
+
+No test was skipped, focused, or weakened to reach these results. No
+placeholder/stub tool behavior: every path (success, validation,
+not-found, conflict, policy, abort, internal) returns an honest envelope
+built from what the shared `PaxCommands` client (or the injected read
+accessors) actually returned. `git add`/`git commit` were intentionally
+not run, per this task's explicit instruction.

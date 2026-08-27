@@ -51,6 +51,7 @@ import {
   DefineCaseAttributeInputSchema,
   FocusEvidenceInputSchema,
   FocusOptionInputSchema,
+  HttpConflictResponseSchema,
   HttpErrorBodySchema,
   RequestInvestigationInputSchema,
   RequestRevisionInputSchema,
@@ -63,6 +64,7 @@ import {
   SubmitSourceInputSchema,
   UpdateCriteriaInputSchema,
   UpsertOptionInputSchema,
+  type CaseState,
   type CommandReceipt,
   type DefineCaseAttributeInput,
   type FocusEvidenceInput,
@@ -81,6 +83,24 @@ import {
   type UpsertOptionInput,
 } from '@pax/contracts';
 import { z } from 'zod';
+
+/**
+ * Per-call options every `PaxCommands` method accepts, added after the fact
+ * (see `docs/build-log.md`'s dated integration entry) once the WebMCP tool
+ * registration task found this client had no way to honor two behaviors
+ * `webmcp.md`'s "Cancellation and concurrency" section requires: "Each
+ * callback accepts the browser-provided abort signal and forwards it to
+ * fetch" and "Retried mutations reuse an idempotency key derived from the
+ * browser tool call ID." Both fields are optional and purely additive --
+ * every existing call site that omits this parameter keeps working exactly
+ * as before, with a freshly minted `commandId` and no abort wiring.
+ */
+export interface CommandCallOptions {
+  /** Forwarded directly to `fetch`. An already-aborted signal fails fast with a `PaxClientError` carrying `code: 'UNAVAILABLE'`/`retryable: true`, matching webmcp.md's required abort envelope. */
+  signal?: AbortSignal;
+  /** Overrides the client-generated `commandId`/idempotency key (sent as both `X-Pax-Command-Id` and `Idempotency-Key`). A WebMCP tool callback should derive this from the browser's own tool-call id so a retried call is recognized as the same command rather than double-applied. */
+  commandId?: string;
+}
 
 /**
  * The `PaxCommands` interface (docs/specs/architecture.md "Shared command
@@ -103,19 +123,43 @@ import { z } from 'zod';
  * that footgun.
  */
 export interface PaxCommands {
-  startDemo: (input: StartDemoInput) => Promise<CommandReceipt>;
-  selectPack: (input: SelectPackInput) => Promise<CommandReceipt>;
-  upsertOption: (input: UpsertOptionInput) => Promise<CommandReceipt>;
-  focusOption: (input: FocusOptionInput) => Promise<CommandReceipt>;
-  defineCaseAttribute: (input: DefineCaseAttributeInput) => Promise<CommandReceipt>;
-  reviewCaseExtension: (input: ReviewCaseExtensionInput) => Promise<CommandReceipt>;
-  focusEvidence: (input: FocusEvidenceInput) => Promise<CommandReceipt>;
-  updateCriteria: (input: UpdateCriteriaInput) => Promise<CommandReceipt>;
-  submitSource: (input: SubmitSourceInput) => Promise<CommandReceipt>;
-  requestInvestigation: (input: RequestInvestigationInput) => Promise<RunReceipt>;
-  reviewProposal: (input: ReviewProposalInput) => Promise<CommandReceipt>;
-  setEvidenceDisposition: (input: SetEvidenceDispositionInput) => Promise<CommandReceipt>;
-  requestRevision: (input: RequestRevisionInput) => Promise<CommandReceipt>;
+  startDemo: (input: StartDemoInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
+  selectPack: (input: SelectPackInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
+  upsertOption: (input: UpsertOptionInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
+  focusOption: (input: FocusOptionInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
+  defineCaseAttribute: (
+    input: DefineCaseAttributeInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  reviewCaseExtension: (
+    input: ReviewCaseExtensionInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  focusEvidence: (
+    input: FocusEvidenceInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  updateCriteria: (
+    input: UpdateCriteriaInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  submitSource: (input: SubmitSourceInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
+  requestInvestigation: (
+    input: RequestInvestigationInput,
+    options?: CommandCallOptions,
+  ) => Promise<RunReceipt>;
+  reviewProposal: (
+    input: ReviewProposalInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  setEvidenceDisposition: (
+    input: SetEvidenceDispositionInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  requestRevision: (
+    input: RequestRevisionInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
 }
 
 export interface PaxClientErrorOptions {
@@ -130,6 +174,13 @@ export interface PaxClientErrorOptions {
   code?: ToolErrorCode | undefined;
   retryable: boolean;
   details?: unknown;
+}
+
+/** Shape of `PaxClientError.details` specifically when `code === 'CONFLICT'` (a 409 response). */
+export interface PaxClientConflictDetails {
+  expectedSequence: number;
+  actualSequence: number;
+  snapshot: CaseState;
 }
 
 /** Thrown by every `PaxCommands` method on local-validation failure, a non-OK HTTP response, or a response that fails to validate against its expected receipt schema. */
@@ -149,6 +200,29 @@ export class PaxClientError extends Error {
   }
 
   static fromErrorResponse(status: number, payload: unknown): PaxClientError {
+    // Try the more specific 409 conflict shape first: `HttpConflictResponseSchema`
+    // is `.strict()` with an extra top-level `snapshot` field `HttpErrorBodySchema`
+    // does not declare, so a conflict body fails `HttpErrorBodySchema.safeParse`
+    // outright (an unknown key under `.strict()`) and previously fell straight
+    // through to the generic fallback below, silently discarding `actualSequence`
+    // and -- critically -- the latest `snapshot` webmcp.md requires ("Conflicts
+    // return the latest sequence so ChatGPT can call `pax_get_case_context`
+    // before retrying").
+    const parsedConflict = HttpConflictResponseSchema.safeParse(payload);
+    if (parsedConflict.success) {
+      const { error, snapshot } = parsedConflict.data;
+      return new PaxClientError(error.message, {
+        status,
+        code: error.code,
+        retryable: error.retryable,
+        details: {
+          expectedSequence: error.expectedSequence,
+          actualSequence: error.actualSequence,
+          snapshot,
+        },
+      });
+    }
+
     const parsedBody = HttpErrorBodySchema.safeParse(payload);
     if (parsedBody.success) {
       const { error } = parsedBody.data;
@@ -222,17 +296,35 @@ async function postJson(
   url: string,
   body: unknown,
   outputSchema: z.ZodTypeAny,
+  options: CommandCallOptions = {},
 ): Promise<unknown> {
-  const commandId = crypto.randomUUID();
-  const response = await fetchImpl(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Pax-Command-Id': commandId,
-      'Idempotency-Key': commandId,
-    },
-    body: JSON.stringify(body),
-  });
+  const commandId = options.commandId ?? crypto.randomUUID();
+  let response: Response;
+  try {
+    response = await fetchImpl(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Pax-Command-Id': commandId,
+        'Idempotency-Key': commandId,
+      },
+      body: JSON.stringify(body),
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
+    });
+  } catch (error) {
+    // `fetch` rejects with a `DOMException` named `AbortError` when its
+    // `signal` fires (before or during the request) -- webmcp.md requires
+    // "Cancellation produces `UNAVAILABLE` with `retryable: true`", not a
+    // raw, differently-shaped `DOMException` leaking out of this client.
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new PaxClientError('Pax command request was aborted.', {
+        status: 0,
+        code: 'UNAVAILABLE',
+        retryable: true,
+      });
+    }
+    throw error;
+  }
 
   const payload: unknown = await response.json().catch(() => undefined);
 
@@ -270,8 +362,8 @@ export function createPaxClient(options: CreatePaxClientOptions = {}): PaxComman
     commandName: string,
     inputSchema: z.ZodTypeAny,
     outputSchema: z.ZodTypeAny,
-  ): (input: TInput) => Promise<TOutput> {
-    return async (input: TInput): Promise<TOutput> => {
+  ): (input: TInput, options?: CommandCallOptions) => Promise<TOutput> {
+    return async (input: TInput, options?: CommandCallOptions): Promise<TOutput> => {
       // `safeParse` (inside `validate`) already checked `input` against
       // `inputSchema` at runtime; this cast reasserts that same fact to the
       // type checker rather than bypassing it.
@@ -279,27 +371,28 @@ export function createPaxClient(options: CreatePaxClientOptions = {}): PaxComman
       const url = `${baseUrl}/api/cases/${encodeURIComponent(validated.caseId)}/commands/${commandName}`;
       // Same justification as above: `outputSchema.safeParse` inside
       // `postJson` already enforced this shape at runtime.
-      return postJson(fetchImpl, url, validated, outputSchema) as Promise<TOutput>;
+      return postJson(fetchImpl, url, validated, outputSchema, options) as Promise<TOutput>;
     };
   }
 
   return {
-    startDemo: async (input) => {
+    startDemo: async (input, options) => {
       const validated = validate(StartDemoInputSchema, input) as StartDemoInput;
       return postJson(
         fetchImpl,
         `${baseUrl}/api/cases/demo`,
         validated,
         CommandReceiptSchema,
+        options,
       ) as Promise<CommandReceipt>;
     },
-    requestInvestigation: async (input) => {
+    requestInvestigation: async (input, options) => {
       const validated = validate(
         RequestInvestigationInputSchema,
         input,
       ) as RequestInvestigationInput;
       const url = `${baseUrl}/api/cases/${encodeURIComponent(validated.caseId)}/run`;
-      return postJson(fetchImpl, url, validated, RunReceiptSchema) as Promise<RunReceipt>;
+      return postJson(fetchImpl, url, validated, RunReceiptSchema, options) as Promise<RunReceipt>;
     },
     selectPack: genericCommand<SelectPackInput, CommandReceipt>(
       'selectPack',

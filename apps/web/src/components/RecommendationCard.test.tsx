@@ -1,0 +1,174 @@
+import { describe, expect, it } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { axe } from 'jest-axe';
+import type { Recommendation, Source } from '@pax/contracts';
+import { RecommendationCard } from './RecommendationCard.js';
+import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
+
+function buildRecommendation(overrides: Partial<Recommendation> = {}): Recommendation {
+  return {
+    id: 'recommendation-1',
+    status: 'ready',
+    favoredOptionId: 'option-1',
+    rationale: 'The Civic has the lowest total out-the-door cost among confirmed offers.',
+    facts: ['Dealer A confirmed $28,450 out-the-door.', 'Dealer B confirmed $29,100 out-the-door.'],
+    hypotheses: ['Dealer A may match Dealer B if asked directly.'],
+    confidence: 0.82,
+    limitations: ['Financing terms were not compared.'],
+    sourceIds: ['source-1'],
+    resolvedObligationIds: ['obligation-1'],
+    acceptedUncertaintyObligationIds: [],
+    generatedAt: '2026-08-27T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function buildSource(overrides: Partial<Source> = {}): Source {
+  return {
+    id: 'source-1',
+    url: 'https://dealer.example.com/quote/123',
+    title: 'Dealer A written quote',
+    retrievedAt: '2026-08-27T00:00:00.000Z',
+    origin: 'user_submitted',
+    verification: 'unverified',
+    createdAt: '2026-08-27T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('RecommendationCard', () => {
+  it('renders the initial/empty state when no recommendation exists and none was withheld', () => {
+    render(<RecommendationCard recommendation={null} />);
+    expect(screen.getByTestId('recommendation-card-empty')).toHaveTextContent(
+      /no recommendation yet/i,
+    );
+  });
+
+  it('renders a loading state', () => {
+    render(<RecommendationCard recommendation={null} loading />);
+    expect(screen.getByTestId('recommendation-card-loading')).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('renders the exact required "Draft withheld" copy for the premature-conclusion sequence', () => {
+    // docs/specs/value-proposition.md "Required visible copy" verbatim.
+    render(<RecommendationCard recommendation={null} withheld={{ unresolvedRequiredCount: 3 }} />);
+
+    const withheld = screen.getByTestId('recommendation-card-withheld');
+    expect(withheld).toHaveTextContent('Draft withheld');
+    expect(withheld).toHaveTextContent(
+      'This answer is plausible, but 3 required questions are still unresolved.',
+    );
+    expect(withheld).toHaveTextContent(
+      'Pax is continuing the investigation before asking you to decide.',
+    );
+  });
+
+  it('grammatically singularizes the withheld copy for exactly one unresolved question', () => {
+    render(<RecommendationCard recommendation={null} withheld={{ unresolvedRequiredCount: 1 }} />);
+    expect(screen.getByTestId('recommendation-card-withheld')).toHaveTextContent(
+      'This answer is plausible, but 1 required question is still unresolved.',
+    );
+  });
+
+  it('renders a ready recommendation with facts and hypotheses visually and textually distinct', () => {
+    render(<RecommendationCard recommendation={buildRecommendation()} />);
+
+    expect(screen.getByTestId('recommendation-card-status')).toHaveTextContent(/ready for review/i);
+    const facts = screen.getByTestId('recommendation-card-facts');
+    const hypotheses = screen.getByTestId('recommendation-card-hypotheses');
+    expect(facts).toHaveTextContent('Dealer A confirmed $28,450 out-the-door.');
+    expect(hypotheses).toHaveTextContent('Dealer A may match Dealer B if asked directly.');
+    // Distinct containers, not merged into one list.
+    expect(facts).not.toHaveTextContent('Dealer A may match Dealer B');
+    expect(hypotheses).not.toHaveTextContent('Dealer A confirmed $28,450');
+  });
+
+  it('renders honest empty-state copy when there are no facts, hypotheses, or sources yet', () => {
+    render(
+      <RecommendationCard
+        recommendation={buildRecommendation({ facts: [], hypotheses: [], sourceIds: [] })}
+      />,
+    );
+
+    expect(screen.getByTestId('recommendation-card-facts')).toHaveTextContent(
+      'No supporting facts recorded.',
+    );
+    expect(screen.getByTestId('recommendation-card-hypotheses')).toHaveTextContent(
+      'No open hypotheses.',
+    );
+    expect(screen.queryByTestId('recommendation-card-sources')).not.toBeInTheDocument();
+  });
+
+  it('renders limitations when present', () => {
+    render(<RecommendationCard recommendation={buildRecommendation()} />);
+    expect(screen.getByTestId('recommendation-card-limitations')).toHaveTextContent(
+      'Financing terms were not compared.',
+    );
+  });
+
+  it('does not render a limitations section when there are none', () => {
+    render(<RecommendationCard recommendation={buildRecommendation({ limitations: [] })} />);
+    expect(screen.queryByTestId('recommendation-card-limitations')).not.toBeInTheDocument();
+  });
+
+  it('renders a clickable source link when a joined Source is supplied', () => {
+    render(
+      <RecommendationCard
+        recommendation={buildRecommendation()}
+        sources={{ 'source-1': buildSource() }}
+      />,
+    );
+    const link = screen.getByTestId('recommendation-card-source-source-1');
+    expect(link).toHaveAttribute('href', 'https://dealer.example.com/quote/123');
+    expect(link).toHaveTextContent('Dealer A written quote');
+  });
+
+  it('falls back to a plain reference chip when no joined Source is supplied', () => {
+    render(<RecommendationCard recommendation={buildRecommendation()} />);
+    const chip = screen.getByTestId('recommendation-card-source-source-1');
+    expect(chip.tagName).not.toBe('A');
+    expect(chip).toHaveTextContent('[source-1]');
+  });
+
+  it('renders a stale recommendation with a distinct textual note, not just a color change', () => {
+    render(<RecommendationCard recommendation={buildRecommendation({ status: 'stale' })} />);
+
+    expect(screen.getByTestId('recommendation-card-status')).toHaveTextContent(/stale/i);
+    expect(screen.getByTestId('recommendation-card-stale-note')).toHaveTextContent(
+      /new evidence or a criteria change has invalidated this recommendation/i,
+    );
+  });
+
+  it('has no axe violations across empty, loading, withheld, ready, and stale states', async () => {
+    const { container: empty } = render(<RecommendationCard recommendation={null} />);
+    expect(await axe(empty)).toHaveNoViolations();
+
+    const { container: loading } = render(<RecommendationCard recommendation={null} loading />);
+    expect(await axe(loading)).toHaveNoViolations();
+
+    const { container: withheld } = render(
+      <RecommendationCard recommendation={null} withheld={{ unresolvedRequiredCount: 2 }} />,
+    );
+    expect(await axe(withheld)).toHaveNoViolations();
+
+    const { container: ready } = render(
+      <RecommendationCard recommendation={buildRecommendation()} />,
+    );
+    expect(await axe(ready)).toHaveNoViolations();
+
+    const { container: stale } = render(
+      <RecommendationCard recommendation={buildRecommendation({ status: 'stale' })} />,
+    );
+    expect(await axe(stale)).toHaveNoViolations();
+  });
+
+  it('renders at 390px width with no fixed-width overflow risk', () => {
+    const { overflowRisks } = renderAtNarrowWidth(
+      <RecommendationCard
+        recommendation={buildRecommendation()}
+        sources={{ 'source-1': buildSource() }}
+      />,
+    );
+    expect(overflowRisks).toEqual([]);
+  });
+});
