@@ -1,0 +1,250 @@
+# Decision Packs and Routing Specification
+
+## Purpose
+
+A **Decision Pack** is the validated, versioned method a case uses. It supplies domain vocabulary, default attributes and criteria, required questions, skills, specialist agents, allowed tools, orchestration bounds, policies, UI labels, and evaluation scenarios. It contains no arbitrary executable code.
+
+The generic Pax engine remains stable across domains. The selected pack changes what must be resolved and which bounded capabilities are available. The pack is a supervisory contract, not a rigid questionnaire: case-specific typed extensions let users add concerns the author did not anticipate.
+
+The complete authoring, extension, and compiler behavior is defined in `pack-authoring.md`.
+
+## Manifest contract
+
+```ts
+interface DecisionPackManifest {
+  schemaVersion: '1.0'
+  identity: {
+    id: string
+    version: string
+    name: string
+    description: string
+    tags: string[]
+  }
+  activation: {
+    intents: string[]
+    keywords: string[]
+    artifactKinds: string[]
+    entitySignals: string[]
+    exclusions: string[]
+  }
+  entities: EntityTypeDefinition[]
+  attributes: AttributeDefinition[]
+  criteria: {
+    defaults: CriterionDefinition[]
+    allowUserDefined: boolean
+    protectedCriterionIds: string[]
+  }
+  obligations: ObligationTemplate[]
+  extensionPolicy: {
+    allowCaseAttributes: boolean
+    allowCaseCriteria: boolean
+    allowCaseObligations: boolean
+    userConcernTemplateId: string
+  }
+  skills: SkillReference[]
+  specialists: SpecialistDefinition[]
+  orchestration: OrchestrationDefinition
+  tools: ToolDeclaration[]
+  policies: PolicyDefinition[]
+  presentation: PresentationDefinition
+  evaluation: PackEvaluationDefinition
+}
+
+interface CompiledDecisionPack extends DecisionPackManifest {
+  compiledHash: string
+  compiledAt: string
+  resolvedCapabilities: ResolvedCapabilityCatalog
+  runtimeValidators: CompiledValidatorReferences
+}
+```
+
+Manifest compilation rejects duplicate IDs, missing references, unknown capabilities, cycles without execution bounds, missing approval policies for consequential effects, invalid extension rules, UI fields the generic renderer cannot display, and evaluation suites without negative cases.
+
+## Flexible attributes and criteria
+
+Pack attributes are strongly typed defaults, not a closed entity object. Known fields such as `car.advertised_price` or `energy.billing_period` use declarative `AttributeDefinition` records. A case may add `custom.*` definitions when allowed by the pack.
+
+All values cross the shared discriminated `AttributeValue` Zod schema. This preserves validation while allowing a household to add concerns such as garage clearance, dog-crate fit, accessibility, sensory comfort, or a locally meaningful constraint without publishing another pack version.
+
+Users may add, remove, rename, and reweight non-protected criteria. When a custom criterion needs evidence, the core derives a case obligation from the pack's `userConcern` template. Required pack obligations and protected criteria cannot be removed. Unsupported concerns remain explicit unknowns and may request human evidence; the model cannot invent a tool or value.
+
+## Obligation template
+
+```ts
+interface ObligationTemplate {
+  id: string
+  label: string
+  question: string
+  category: string
+  required: boolean
+  priority: number
+  requiredEvidenceLevel: 'E0' | 'E1' | 'E2' | 'E3'
+  maxAttempts: number
+  acceptedUncertaintyAllowed: boolean
+  dependsOn: string[]
+  preferredSkills: string[]
+  preferredSpecialists: string[]
+  completionRule: CompletionRule
+  origin: 'pack' | 'case_extension'
+}
+```
+
+Evidence levels are:
+
+- `E0`: unverified statement or user-provided assertion;
+- `E1`: one traceable source or deterministic extraction;
+- `E2`: corroborated by two independent sources or one authoritative source;
+- `E3`: verified by a domain-specific deterministic check or explicit human attestation.
+
+A non-stale `error` or `degraded` evidence result blocks completion for that obligation. Failed and skipped results remain visible but do not raise evidence level.
+
+## Router input and output
+
+```ts
+interface RoutingInput {
+  explicitPackId?: string
+  activeCasePack?: { id: string; version: string; compiledHash: string }
+  userGoal: string
+  route: string
+  artifactKinds: string[]
+  entitySignals: string[]
+}
+
+interface RoutingCandidate {
+  packId: string
+  version: string
+  compiledHash: string
+  confidence: number
+  reasons: string[]
+  matchedSignals: string[]
+}
+
+interface RoutingDecision {
+  kind: 'selected' | 'needs_confirmation' | 'no_match'
+  selected: RoutingCandidate | null
+  candidates: RoutingCandidate[]
+}
+```
+
+## Routing algorithm
+
+Routing follows this order:
+
+1. If `explicitPackId` references an installed pack, select it with reason `User selected this Decision Pack`.
+2. If an active case is pinned, return that exact ID, version, and compiled hash. The router cannot change it.
+3. Compute a deterministic signal score from keywords, artifact kinds, entity signals, and exclusions.
+4. Ask a Strands router agent for structured candidate IDs and semantic confidence. The agent receives only registered pack metadata, never full pack instructions.
+5. Merge deterministic and semantic scores with weights `0.6` and `0.4`.
+6. Select automatically only when the top score is at least `0.75` and exceeds the second score by at least `0.20`.
+7. Otherwise return at most two candidates for user confirmation.
+8. Reject any candidate ID, version, or hash absent from the compiled registry.
+
+When the model is unavailable, deterministic routing remains functional for the two demos.
+
+The `0.6`/`0.4` merge weights and the `0.75`/`0.20` selection thresholds are constants tuned for this hackathon's two-pack catalog, not a derived or general-purpose routing algorithm result. Submission copy and demo narration must describe them as such rather than as a scientifically validated routing model.
+
+The UI always displays the selected Decision Pack and reasons. User override is available until the first evidence event. After evidence exists, changing packs requires starting a new case so evidence is never reinterpreted under different rules.
+
+## Pack selection versus adaptive execution
+
+Pack selection happens once per case. Skill, specialist, tool, and next-question selection happen on every engine move.
+
+```text
+Case: Choose our next family car
+Pinned pack: car-purchase@1.0.0#<compiledHash>
+
+Move 1: activate listing-normalizer; invoke deal-analyst
+Move 2: activate ownership-cost; invoke ownership-cost-analyst
+User adds: two dog crates must fit
+Move 3: create case extension; activate household-fit; request dimensions
+Move 4: record fit as unknown until human measurement or test drive
+```
+
+The runtime may change the run plan, skills, and specialists without changing the case's installed pack, required obligations, authority, or completion semantics.
+
+## Choose Our Next Car Decision Pack
+
+Pack ID: `car-purchase@1.0.0`  
+Orchestration: deterministic Strands Graph with bounded model work inside each node.
+
+### Activation
+
+- Intents: compare shortlisted cars, understand a dealer offer, choose what to test-drive, evaluate household vehicle fit.
+- Artifacts: household priorities, candidate details, listing or offer terms, ownership-cost assumptions, safety and reliability sources.
+- Exclusions: mechanical diagnosis, financing applications, negotiation/contact automation, reservations, scheduling, and purchases.
+
+### Required obligations
+
+| ID | Question | Evidence | Attempts |
+| --- | --- | --- | --- |
+| `car.hard_constraints` | Which candidates satisfy the household's budget and non-negotiable needs? | E1 | 2 |
+| `car.deal_normalization` | What is each candidate's comparable out-the-door price and which terms or add-ons are uncertain? | E2 | 2 |
+| `car.ownership_cost` | What is the comparable five-year ownership estimate under the same assumptions? | E2 | 2 |
+| `car.safety_reliability` | Which material safety and reliability differences are supported by traceable sources? | E2 | 3 |
+| `car.household_fit` | Which needs can be established from specifications and which require household judgment or a test drive? | E1 | 2 |
+| `car.shortlist` | Which candidate should advance, what could change that result, and what remains to verify? | E2 | 2 |
+
+### Extensions
+
+- `allowCaseAttributes`, `allowCaseCriteria`, and `allowCaseObligations` are true.
+- The `car.user_concern` template accepts hard constraints, preferences, and human-observation questions.
+- A user concern that cannot be established from available sources becomes a test-drive or household-measurement question instead of an invented score.
+- Required deal, cost, safety/reliability, household-fit, and shortlist obligations cannot be deleted.
+
+### Skills, specialists, and tools
+
+- Skills: `listing-normalizer`, `deal-analysis`, `ownership-cost`, `safety-reliability`, `household-fit`, `decision-synthesis`.
+- Specialists: `deal-analyst`, `ownership-cost-analyst`, `safety-reliability-analyst`, `household-fit-analyst`, `source-challenger`, `decision-synthesizer`.
+- Fixture tools: listing/offer reader, specification lookup, safety/reliability source lookup, ownership calculator, household-fit matrix.
+- Optional live tools: bounded public automotive source adapters and user/ChatGPT-submitted source intake. A model has no general internet access unless an installed tool explicitly supplies it.
+- Consequential effect: advancing candidates to the household's test-drive shortlist requires explicit human approval. The pack cannot contact a dealer, schedule a test drive, reserve a car, apply for financing, negotiate, or purchase anything.
+
+### Required adaptive moments
+
+- A teaser-price claim conflicts with mandatory add-ons and financing terms, making the prior deal score stale and activating `source-challenger`.
+- Selecting a candidate in the UI makes that exact candidate available to ChatGPT through WebMCP.
+- Reweighting driving comfort above fuel economy reopens household fit; Pax creates a test-drive question instead of fabricating a comfort score.
+- Adding an unanticipated household criterion creates a typed case extension and targeted investigation without recompiling the pack.
+- The favored shortlist candidate changes after normalized deal terms and the user's criteria update.
+
+## Home Energy Guardian Decision Pack
+
+Pack ID: `home-energy-guardian@1.0.0`  
+Orchestration: bounded Strands Swarm with deterministic readiness outside the Swarm.
+
+### Activation
+
+- Intents: unusual bill, household energy monitoring, rate-plan comparison, unexplained usage increase.
+- Artifacts: utility bill, usage history, rate schedule, weather history, household event log.
+- Exclusion: electrical danger, gas leak, fire, or medical equipment risk. The demo stops and presents emergency guidance.
+
+### Required obligations
+
+| ID | Question | Evidence | Attempts |
+| --- | --- | --- | --- |
+| `energy.anomaly` | Is the current bill materially abnormal? | E3 | 1 |
+| `energy.rate_change` | How much of the increase comes from tariff or fee changes? | E2 | 2 |
+| `energy.weather` | How much is explained by weather-normalized usage? | E2 | 2 |
+| `energy.household_change` | Did a household or appliance event plausibly change consumption? | E1 | 2 |
+| `energy.response_options` | Which actions fit the user's cost and conservation criteria? | E2 | 2 |
+
+### Extensions
+
+- `allowCaseAttributes`, `allowCaseCriteria`, and `allowCaseObligations` are true.
+- The `energy.user_concern` template can capture comfort, budget, environmental, equipment, accessibility, and household-specific questions.
+- Safety exclusions and emergency policies are protected and cannot be reweighted or removed.
+
+### Skills, specialists, and tools
+
+- Skills: `bill-normalizer`, `weather-comparison`, `rate-plan-analysis`, `home-event-correlation`, `decision-synthesis`.
+- Specialists: `anomaly-investigator`, `rate-analyst`, `weather-analyst`, `home-systems-analyst`, `source-challenger`, `decision-synthesizer`.
+- Tools: fixture bill reader, historical usage query, tariff lookup, weather lookup, household event lookup, calculator.
+- Consequential effects: requesting an inspection is a proposal requiring human confirmation. The pack does not schedule an appointment.
+
+### Required adaptive moments
+
+- The engine investigates the anomaly in the background before creating a human action.
+- Weather explains part but not all of the spike, causing the engine to activate home-event correlation.
+- Repeated work without evidence gain triggers steering and a specialist handoff.
+- Changing the criterion from lowest immediate cost to long-term waste reduction changes option ranking.
+- The system asks for confirmation before creating an inspection proposal.

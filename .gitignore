@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Local data and sessions
+.pax-data/
+.strands/
+
+# Generated verification/test artifacts
+artifacts/
+coverage/
+playwright-report/
+test-results/
+.stryker-tmp/
+reports/mutation/
+
+# Env and secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Editor and OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Local tool state (Strata19 project index, not source)
+.strata19/
+
+# Docker
+.docker/

@@ -1,0 +1,184 @@
+# Demo and Submission Specification
+
+## Fixture philosophy
+
+Both demonstrations use realistic, checked-in fictional data. Fixture tools perform real parsing, lookup, correlation, calculation, and source linking over that data. Model reasoning and Strands orchestration remain real in the live demo, while deterministic scripted models make the same scenario reliable in CI.
+
+The UI labels fixture cases as demonstrations. No fixture uses a real person's address, account number, vehicle identification number, or utility identifier.
+
+## Choose Our Next Car scenario — WebMCP hero
+
+### Seed artifacts
+
+- `household-profile.json`: budget, financing assumptions, commute, cargo/rear-seat needs, must-haves, and weighted preferences.
+- `candidate-listings.json`: four fictional shortlisted crossover listings with year, trim, advertised price, mileage, and source URL.
+- `dealer-offers.json`: out-the-door components, add-ons, APR, and term details, including one teaser price with conflicting mandatory terms.
+- `ownership-assumptions.json`: insurance, energy/fuel, maintenance, depreciation, and financing assumptions shared across candidates.
+- `safety-reliability-sources.json`: fictionalized source summaries with clear provenance and one material disagreement.
+- `household-fit.json`: specification-derived fit plus explicit unknowns requiring human judgment or a test drive.
+
+### Initial prompt
+
+> Help us choose which car should advance from our shortlist. Show us what the listings hide, what the evidence supports, and what we still need to learn on a test drive.
+
+### Required sequence
+
+1. Pax routes to Choose Our Next Car and displays at least two concrete reasons.
+2. The listing normalizer makes prices, terms, mileage, and trims comparable.
+3. The Graph runs deal, ownership-cost, safety/reliability, and household-fit specialists before source challenge and synthesis.
+4. Pax initially favors `candidate-rav4` under the seeded lowest-risk and fuel-cost preferences.
+5. The user selects `candidate-rav4` in the page and asks ChatGPT: `I love this one. What would have to be true for it to beat our current favorite?`
+6. ChatGPT calls `pax_get_case_context`, which returns that exact selected candidate, then requests focused deal investigation.
+7. A dealer offer conflicts with the advertised teaser price because of mandatory add-ons and a longer financing term. The prior deal score becomes stale and `source-challenger` activates.
+8. The user tells ChatGPT: `Driving comfort matters more to us than fuel economy.` ChatGPT calls `pax_update_criteria`.
+9. The user adds: `We also need two dog crates to fit behind the second row without folding the seats.` This field does not exist in the installed pack. ChatGPT calls `pax_define_case_attribute` and `pax_update_criteria`, creating `custom.dog_crate_fit` plus a case-specific evidence question.
+10. Pax uses known cargo dimensions where relevant but refuses to fabricate actual crate fit or driving comfort. It reopens household fit and creates explicit measurement/test-drive questions.
+11. Normalized deal economics and the criteria changes revise the favored option to `candidate-crv`.
+12. Pax proposes advancing the CR-V and one close alternative to the household's test-drive shortlist, with conditions that could change the ranking.
+13. The agent cannot advance a candidate itself. The user approves the shortlist through the visible UI.
+
+### Required final assertions
+
+- every included material claim has at least one source;
+- advertised and normalized out-the-door prices remain separately visible;
+- the stale teaser-price score remains in history;
+- the selected candidate in WebMCP context matches the page selection;
+- `source-challenger` appears in the trajectory;
+- a subjective unknown becomes a test-drive question rather than an invented score;
+- `custom.dog_crate_fit` persists as a typed case extension, creates a case obligation, and does not change the compiled pack hash;
+- the recommendation changes after deal normalization and criteria reweighting;
+- queued, specialist, skill, tool, evidence, guided/waiting, recommendation, and completion events appear in order without page refresh;
+- no `decision.approved` event has actor `agent`;
+- reload produces the same decided snapshot.
+
+## Home Energy Guardian scenario — AWS/Strands hero
+
+### Seed artifacts
+
+- `current-bill.json`: a bill 42% above the normalized baseline.
+- `usage-history.json`: 18 months of monthly usage and charges.
+- `rate-schedules.json`: prior and current tariffs and fixed fees.
+- `weather-history.json`: heating and cooling degree-day summaries.
+- `household-events.json`: HVAC maintenance and a newly failing thermostat event.
+- `response-options.json`: monitor, change plan, request energy audit, request HVAC inspection.
+
+### Initial instruction
+
+> Watch my household energy bills. Investigate unusual increases quietly and only ask me when there is something worth doing.
+
+### Required sequence
+
+1. A deterministic watcher creates a case after detecting the 42% anomaly.
+2. Pax routes to Home Energy Guardian without requiring a human choice.
+3. The anomaly check reaches E3 through deterministic baseline calculation.
+4. Rate and weather analysis explain part but not all of the increase.
+5. A plausible early `monitor-one-cycle` draft is rejected because household-change evidence is unresolved; the UI displays `Draft withheld`.
+6. Repeated weather work produces no evidence delta. `RetrySteering` guides the run away from weather and the Swarm hands off from `weather-analyst` to `home-systems-analyst`.
+7. The runtime activates home-event correlation rather than asking the user an open-ended question.
+8. The thermostat event creates a supported HVAC hypothesis and the source challenger checks it.
+9. Pax surfaces one human decision with three bounded options and stated remaining uncertainty.
+10. The user or ChatGPT reweights the criterion from lowest immediate cost to long-term waste reduction.
+11. The recommendation revises from `monitor-one-cycle` to `request-hvac-inspection` and passes GoalLoop validation.
+12. `ConsequenceGuard` emits `Confirm` and saves a session snapshot before an inspection proposal is created.
+13. The deterministic test restarts and restores the runtime, then the user approves creation of the proposal through the visible UI. The demo does not schedule anything.
+
+### Required final assertions
+
+- no human action is emitted before the engine completes rate, weather, and household-event investigation;
+- all autonomous tools are fixture-backed and read-only;
+- criterion reweighting invalidates the prior recommendation;
+- confirmation precedes proposal creation;
+- the trace contains AgentSkills activation, Context Injector use, a real Swarm handoff, `Guide`, GoalLoop rejection and recovery, and snapshot restoration;
+- no scheduling or purchase event exists;
+- reload produces the same approved proposal and case evidence.
+
+## WebMCP demo moments
+
+The recorded WebMCP demo must show the page already open in ChatGPT's in-app browser.
+
+Car-buying moment:
+
+1. The user selects the car they currently prefer.
+2. The user tells ChatGPT: `I love this one. What would have to be true for it to beat our current favorite?`
+3. ChatGPT calls `pax_get_case_context`, sees the selected candidate, and calls `pax_request_investigation` for its deal/fit obligations.
+4. The page visibly challenges the teaser price, shows normalized cost, and updates the ranking.
+5. The user says: `Driving comfort matters more than fuel economy.` ChatGPT calls `pax_update_criteria`; Pax creates test-drive questions rather than inventing evidence.
+6. The user adds the two-dog-crate requirement. ChatGPT defines the case attribute, and the page immediately shows the new concern and its unresolved evidence question.
+
+Energy moment:
+
+1. The user tells ChatGPT: `Long-term waste matters more than the cheapest immediate option.`
+2. ChatGPT calls `pax_update_criteria` and `pax_request_investigation`.
+3. The criteria UI, active skill, activity ledger, and recommendation update on the page.
+
+The video must show structured tool use rather than mouse automation.
+
+## Competition-specific video structures
+
+The submissions use separate edits. The complete scripts and live official requirements are maintained in `docs/submissions/`.
+
+### WebMCP video — under three minutes
+
+1. Show the working right-pane car case in the first 15 seconds.
+2. Demonstrate shared selected-option context through `pax_get_case_context`.
+3. Add an unanticipated household concern through WebMCP while work is active.
+4. Show the Strands Graph redirect, skill activation, stale recommendation, honest unknown, and revised shortlist.
+5. Show human-only approval and one correlated Runtime Inspector event.
+6. Close with WebMCP as a live steering channel between the human, ChatGPT, page, and Strands team.
+
+### Agents for Humans video — no longer than five minutes
+
+1. Establish the household energy problem and background anomaly trigger.
+2. Show real AgentSkills, rate/weather work, and Swarm activity.
+3. Show the premature monitoring draft rejected as `Draft withheld`.
+4. Show no-progress steering, specialist handoff, skill switch, thermostat evidence, and source challenge.
+5. Show confirmation, snapshot restoration, and human-only proposal approval.
+6. Show AgentCore/CloudWatch correlation when available, Runtime Inspector evidence, and the release report.
+7. Close with Pax as an agent designed to know when it has not earned the right to answer.
+
+## Submission deliverables
+
+The repository must contain:
+
+- `README.md` with problem, audience, features, architecture, setup, test, deployment, and demo instructions;
+- an MIT `LICENSE` visible at repository root;
+- `.env.example` containing names and explanations but no credentials;
+- architecture diagram source plus exported image;
+- public repository URL;
+- public web URL;
+- AgentCore deployment evidence and invocation instructions;
+- WebMCP testing instructions for ChatGPT and compatible Chrome;
+- automated verification report from the release commit;
+- separate public demo videos: WebMCP under three minutes with audio and AWS no longer than five minutes;
+- text descriptions tailored to each hackathon;
+- the shared release checklist and exhaustive competition-specific requirements checklists under `docs/submissions/`;
+- an optional AWS Builder post draft.
+
+## Automated submission checks
+
+`pnpm test:submission` fails when:
+
+- required files are missing;
+- README commands do not match package scripts;
+- license is absent or not MIT;
+- environment examples contain likely secrets;
+- architecture diagram source or export is missing;
+- fixture attribution is missing;
+- either deterministic scenario report is absent or failed;
+- the latest release verification SHA differs from the current Git SHA;
+- the WebMCP recording is three minutes or longer, or the AWS recording exceeds five minutes, once the video files are present;
+- required public URL fields remain unset in the release metadata.
+
+The checker maps machine-verifiable checklist requirements to release metadata, files, URLs, test reports, or scenario evidence. It must never mark eligibility, country, submitter type, learning, career-value, AWS Builder ID ownership, rule agreement, or other personal/legal attestations complete. Those remain visible human gates in the Markdown checklists.
+
+## Event-specific emphasis
+
+### OpenAI WebMCP Challenge
+
+Lead with the shared browser workspace: ChatGPT discovers page tools, acts on the current selection and state, and updates the same visual case the human controls. Emphasize usefulness, originality, thoughtful WebMCP use, and the quality of human-agent collaboration.
+
+### AWS Agents for Humans
+
+Lead with quiet background investigation, dynamic Strands skills and specialists, typed interventions, session persistence, AgentCore deployment, and escalation only for a real decision. Enter the Everyday Agents track.
+
+The two submissions describe one project honestly; neither claims features that exist only in documentation or deterministic test doubles.
