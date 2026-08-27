@@ -251,6 +251,32 @@ export const ProposalReviewedEventSchema = CaseEventBaseSchema.extend({
     .strict(),
 }).strict();
 
+/**
+ * Real, confirmed gap in the original `CaseEvent` taxonomy, added while
+ * building the car-purchase scenario engine
+ * (apps/agent/src/runtime/car-purchase-scenario.ts): no event anywhere in
+ * this file ever moves `CaseState.proposal` from `null` to a real, pending
+ * `DecisionProposal` -- `proposal.reviewed` only ever *reviews* an
+ * already-existing one (`policy.ts`'s `reviewProposal` throws
+ * `ValidationFailedError` when `caseState.proposal === null`). Something has
+ * to create the first pending proposal once a Strands run (car-purchase's
+ * `propose_recommendation` tool, gated by `ConsequenceGuard`'s `Confirm`)
+ * produces one; this is that event. `applyCaseEvent` (`reducer.ts`) folds it
+ * exactly like `recommendation.ready` folds a `Recommendation` -- a plain
+ * field replacement, no business-rule validation (whether a proposal may
+ * legally be created right now, e.g. "only when none is already pending", is
+ * the command/engine layer's job, matching this file's own "dumb reducer"
+ * convention documented in `reducer.ts`'s header comment).
+ */
+export const ProposalProposedEventSchema = CaseEventBaseSchema.extend({
+  type: z.literal('proposal.proposed'),
+  payload: z
+    .object({
+      proposal: DecisionProposalSchema,
+    })
+    .strict(),
+}).strict();
+
 export const CaseEventSchema = z.discriminatedUnion('type', [
   CaseCreatedEventSchema,
   CasePackSelectedEventSchema,
@@ -263,6 +289,7 @@ export const CaseEventSchema = z.discriminatedUnion('type', [
   ExtensionConfirmedEventSchema,
   RecommendationInvalidatedEventSchema,
   RecommendationReadyEventSchema,
+  ProposalProposedEventSchema,
   ProposalReviewedEventSchema,
 ]);
 export type CaseEvent = z.infer<typeof CaseEventSchema>;

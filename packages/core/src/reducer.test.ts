@@ -413,6 +413,30 @@ describe('applyCaseEvent: existing-case dispatch', () => {
     expect(next.eventSequence).toBe(1);
   });
 
+  it('proposal.proposed sets the case proposal to a pending DecisionProposal', () => {
+    const next = applyCaseEvent(
+      freshCase(),
+      baseEvent('proposal.proposed', {
+        sequence: 1,
+        payload: {
+          proposal: {
+            id: 'prop1',
+            recommendationId: 'rec1',
+            status: 'pending' as const,
+            createdAt: '2026-08-27T00:00:00.000Z',
+          },
+        },
+      }) as CaseEvent,
+    );
+    expect(next.proposal).toEqual({
+      id: 'prop1',
+      recommendationId: 'rec1',
+      status: 'pending',
+      createdAt: '2026-08-27T00:00:00.000Z',
+    });
+    expect(next.status).toBe('draft'); // proposal.proposed never advances case status by itself.
+  });
+
   it('proposal.reviewed sets status to decided only on an approved proposal', () => {
     const approved = applyCaseEvent(
       freshCase(),

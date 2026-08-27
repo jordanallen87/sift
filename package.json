@@ -16,7 +16,7 @@
     "test:pack": "tsx scripts/stage-not-implemented.ts test:pack",
     "test:integration": "tsx scripts/stage-not-implemented.ts test:integration",
     "test:contract": "tsx scripts/stage-not-implemented.ts test:contract",
-    "test:scenario": "tsx scripts/stage-not-implemented.ts test:scenario",
+    "test:scenario": "vitest run --project tests",
     "test:e2e": "tsx scripts/stage-not-implemented.ts test:e2e",
     "test:observability": "tsx scripts/stage-not-implemented.ts test:observability",
     "test:mutation": "tsx scripts/stage-not-implemented.ts test:mutation",

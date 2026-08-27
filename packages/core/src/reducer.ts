@@ -191,6 +191,9 @@ export function applyCaseEvent(caseState: CaseState | null, event: CaseEvent): C
     case 'recommendation.ready':
       return { ...caseState, ...base, recommendation: event.payload.recommendation };
 
+    case 'proposal.proposed':
+      return { ...caseState, ...base, proposal: event.payload.proposal };
+
     case 'proposal.reviewed':
       return {
         ...caseState,

@@ -152,6 +152,25 @@ describe('CaseEventSchema', () => {
     expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
   });
 
+  it('parses a proposal.proposed event carrying a pending DecisionProposal', () => {
+    const result = CaseEventSchema.safeParse({
+      type: 'proposal.proposed',
+      eventId: 'evt-3a',
+      caseId: 'case-1',
+      sequence: 11,
+      timestamp: '2026-08-27T00:00:00.000Z',
+      payload: {
+        proposal: {
+          id: 'proposal-1',
+          recommendationId: 'rec-1',
+          status: 'pending',
+          createdAt: '2026-08-27T00:00:00.000Z',
+        },
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
   it('parses a proposal.reviewed event', () => {
     const result = CaseEventSchema.safeParse({
       type: 'proposal.reviewed',

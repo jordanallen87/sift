@@ -3792,3 +3792,320 @@ this task's scope — "Do NOT touch ... packages/") or replaying the raw
 event flow" section notes is not how normal reads are served). Left
 honestly absent rather than fabricated; `EvidenceCard` still renders
 correctly without it (the conflict chip simply does not appear).
+
+## 2026-08-27 -- Real car-purchase Strands Graph and the "Choose Our Next Car" scenario
+
+Built the real, code-driven six-node car-purchase Strands `Graph` and the
+complete, passing "Choose Our Next Car" deterministic demo scenario
+(docs/specs/demos-and-submission.md's entire "Required sequence" and
+"Required final assertions"), executing the real core, compiled pack,
+Strands adapter layer, scripted model, interventions, fixture tools, and
+event store in process, end to end, twice (two Graph rounds).
+
+**Files created:**
+
+- `apps/agent/src/runtime/car-purchase-graph.ts` (+ `.test.ts`) -- the real
+  `Graph` (`deal-analyst`/`ownership-cost-analyst`/`safety-reliability-
+  analyst`/`household-fit-analyst` -\> `source-challenger` -\> `decision-
+  synthesizer`), code-driven from the compiled pack's `specialists[].
+  allowedTools`. The four parallel specialists and `source-challenger` are
+  each a real `Agent` wired through the exact composition
+  `strands-adapter.ts`'s single-agent `execute()` uses (`AgentSkills`, a
+  per-node `ContextInjector`, the same six ordered `InterventionHandler`s,
+  `structuredOutputSchema: ExecutionResultSchema`); `decision-synthesizer`
+  reuses `plugins.ts`'s `buildDecisionSynthesizerAgent` verbatim, per the
+  task's explicit instruction and the one-`GoalLoop`-per-agent limit. The
+  test proves real AND-semantics dependency ordering from the Graph's own
+  `BeforeNodeCallEvent`/`NodeResultEvent` hooks (source-challenger's start
+  index is strictly after all four parallel specialists' finish indices),
+  captures each node's validated `ExecutionResult`, captures decision-
+  synthesizer's `propose_recommendation` call and GoalLoop result, and
+  proves a tool call outside a node's declared allowlist is denied before
+  it executes.
+- `apps/agent/src/runtime/scripted-beats/car-purchase.ts` (+ `.test.ts`) --
+  the full two-round (`round1`/`round2`) scripted `ModelProvider` sequence
+  for all six nodes, one fresh `ScriptedModelProvider` instance per node
+  (required for correctness under real concurrent scheduling -- see
+  judgment call below). Every number cited in every claim/evidence summary
+  is the REAL fixture-tool output, verified directly against
+  `packages/scenarios/fixtures/car-purchase/*.json` and by actually running
+  `calculateOwnershipCost`/etc. while authoring the file (documented in
+  full in the file's own header comment).
+- `packages/scenarios/src/seeds.ts` (+ `.test.ts`) --
+  `buildCarPurchaseCandidateEntities`/`buildCarPurchaseSeedEvents`: loads
+  the four candidates into real `EntityRecord`s by calling the real fixture
+  tools (never re-deriving their math), plus the full `case.created` +
+  `criteria.updated` + `obligation.updated`[] + `option.upserted`[] seed
+  event sequence. Documents and works around two real, pre-existing
+  mismatches between the read-only fixture tools and the read-only pack
+  manifest (neither may be edited): `listing-reader.ts` never exposes
+  `standardFeatures` even though the pack requires it (read from
+  `loadFixture('candidate-listings')` directly instead); `household-fit-
+  matrix.ts`'s known-spec definition ids
+  (`car.cargo_width_between_wheel_wells_in`, ...) do not match the pack's
+  own attribute ids (`car.cargo_width_in`, ...) -- `HOUSEHOLD_FIT_
+  DEFINITION_ID_TRANSLATION` bridges them, dropping the one tool field
+  (`car.cargo_height_floor_to_ceiling_in`) the pack never declares at all.
+- `packages/scenarios/src/trajectory.ts`, `assertions.ts` (+ `.test.ts`),
+  `artifact-writer.ts` (+ `.test.ts`), `runner.ts` (+ `.test.ts`) --
+  `ScenarioTrajectory` (the apps-agnostic observed-trajectory shape),
+  `checkAssertion`/`checkAssertions` (every one of testing.md's 21
+  `ScenarioAssertion` kinds), `writeScenarioArtifacts` (final snapshot/
+  event log/trajectory/assertion report to
+  `artifacts/verification/scenarios/<scenarioId>/`), and the deliberately
+  minimal, apps-agnostic `runScenarioSteps` step iterator. `runner.ts` is
+  intentionally thin: a full generic runner would need to dispatch each
+  `ScenarioStep.command` against a real `PaxCommands` implementation for an
+  arbitrary pack, and `packages/scenarios` sits below `apps/agent` in the
+  workspace dependency graph, so it structurally cannot import the Strands
+  runtime that would execute one. Documented as explicit follow-up work.
+- `apps/agent/src/runtime/car-purchase-scenario.ts` (+ `.test.ts`) -- the
+  concrete engine: seeds the case, runs the real Graph twice, and drives
+  every other required beat (focus, criteria updates, case-attribute
+  definition/confirmation, human proposal review) through the real,
+  already-built `CommandService`/`RunService`/`MemoryCaseStore`/
+  `PackRegistry` (imported, not modified). Folds each specialist's
+  validated `ExecutionResult` into real `evidence.accepted`/
+  `obligation.updated` events via the real `@pax/core`
+  `advanceObligation`/`recordObligationAttempt`/`achievedEvidenceLevel`
+  machinery -- no hand-computed obligation status anywhere.
+- `tests/scenarios/car-purchase.scenario.ts` -- the declarative
+  `DemoScenario` (`@pax/contracts` `scenario.ts`): `steps[]` documents the
+  human/WebMCP-facing command sequence (illustrative placeholders for
+  `caseId`/`expectedSequence`, which only exist once a case is actually
+  created -- resolving those generically for an arbitrary pack is the same
+  follow-up work `runner.ts` defers); `assertions[]` is genuinely, actively
+  checked against the real trajectory.
+- `tests/scenarios/car-purchase.scenario.test.ts` -- runs
+  `runCarPurchaseScenario` for real and proves every required assertion
+  from demos-and-submission.md's "Required final assertions" against the
+  real causal trajectory (see full list below).
+- `tests/vitest.config.ts` + `vitest.config.ts`/`tsconfig.json` (root) --
+  wired a new root-level `tests` project into `test.projects` and
+  `tsconfig.json`'s `include`, mirroring `scripts/vitest.config.ts`'s exact
+  pattern for a non-package top-level test directory.
+
+**Real, confirmed gaps found and fixed in files NOT on this task's
+read-only list (both additive, both flagged loudly per CLAUDE.md):**
+
+1. No `CaseEvent` anywhere in `@pax/contracts`'s `events.ts` ever moves
+   `CaseState.proposal` from `null` to a real pending `DecisionProposal` --
+   `proposal.reviewed` only ever *reviews* an already-existing one
+   (`policy.ts`'s `reviewProposal` throws when `caseState.proposal ===
+   null`). Added `proposal.proposed` to the `CaseEvent` discriminated union
+   (`packages/contracts/src/events.ts`) and folded it in
+   `packages/core/src/reducer.ts`'s `applyCaseEvent`, exactly like
+   `recommendation.ready` folds a `Recommendation` -- a plain field
+   replacement, no business-rule validation (matching `reducer.ts`'s own
+   "dumb reducer" convention). Covered by new tests in both files'
+   `.test.ts` companions.
+2. `command-service.ts`'s `defineCaseAttribute`/`updateCriteria` do not
+   derive the case obligation pack-authoring.md's "userConcern template"
+   describes -- a real, pre-existing, and already-documented gap in that
+   file's own header comment ("Deliberately deferred to a later task").
+   `car-purchase-scenario.ts` derives it directly via `@pax/core`'s
+   `deriveObligations` with a synthesized `case_extension`-origin
+   `ObligationTemplate` (`case.custom.dog_crate_fit`) and appends the
+   resulting `obligation.updated` event itself; `command-service.ts` is
+   unmodified.
+
+**A genuine SDK-adjacent debugging finding that turned out to be my own
+bug, not an SDK quirk (documented in full so a future debugging session
+does not waste the same hour re-discovering it):** the six-node Graph run
+initially deadlocked on `decision-synthesizer` with `MultiAgentResult.
+status === 'INTERRUPTED'` even though `ConsequenceGuard`'s
+`resolveConfirmation: () => true` preemptively resolves its `Confirm`
+action inline (proven working for the single-agent case in
+`strands-adapter.test.ts`). Bisected via three from-scratch minimal
+repros (a bare single-node Graph, a 4-parallel-node Graph with the full
+six-intervention chain and real fixture tools, a 6-node Graph matching the
+real topology) that all completed cleanly, isolating the fault to
+`car-purchase-scenario.ts`'s own composition rather than any SDK
+concurrency/snapshot-restore nuance: `buildInterventions(...)`'s call site
+for `decision-synthesizer`'s own intervention set never actually forwarded
+`deps.resolveConfirmation` into the options object (a plain omitted field,
+not a type error, since the field is optional) -- so its real
+`ConsequenceGuard` had no preemptive resolver and genuinely, correctly
+raised an unanswered interrupt on `propose_recommendation`. One-line fix
+in `car-purchase-graph.ts`.
+
+**Judgment calls, recorded:**
+
+- **One `ScriptedModelProvider` instance per Graph node, not one shared
+  instance.** `ScriptedModelProvider.setBeat` is one mutable field; the
+  Graph runs the four parallel specialists concurrently
+  (`maxConcurrency: 4`, from the compiled pack), so a shared instance would
+  race regardless of `setBeat` sequencing. Per-node isolation sidesteps
+  this entirely and needed no SDK workaround.
+- **`decision-synthesizer` gets no `skill.activated`/`context.injected`
+  events in this Graph.** `buildDecisionSynthesizerAgent`'s
+  `DecisionSynthesizerConfig` (`plugins.ts`, read-only) has no `plugins`
+  field -- it always hardcodes `plugins: [goalLoop]` internally, so it
+  structurally cannot also receive `AgentSkills`/`ContextInjector` through
+  that function. Its `systemPrompt` bakes in the case-summary facts a
+  Context Injector would otherwise supply, as the closest honest
+  substitute without modifying the read-only file. The four parallel
+  specialists and `source-challenger` all genuinely emit both event types.
+- **`car.hard_constraints` is resolved deterministically, not through the
+  Graph.** It is not one of the six Graph nodes per strands-runtime.md's
+  own topology diagram. Every candidate shares identical standard safety
+  features in the real fixture data, so true out-the-door price against
+  the household's budget is the only discriminating fact -- a plain
+  deterministic filter the scenario engine computes directly once round 2's
+  normalized prices are known, matching CLAUDE.md's "the deterministic
+  core, not an LLM, owns ... readiness."
+- **Round 1's `propose_recommendation` call produces only a
+  `Recommendation` (a soft initial lean), not a `DecisionProposal`.** Only
+  round 2's call creates the real, human-reviewable `DecisionProposal` --
+  matching the required sequence precisely: step 12 ("Pax proposes
+  advancing the CR-V and one close alternative") is the first and only
+  moment a real proposal exists, and step 13 ("The agent cannot advance a
+  candidate itself") is the one human-approval gate in the whole scenario.
+- **Every constructed `Source` record is `verification: 'verified'`.**
+  Deterministic fixture-mode sources are pre-vetted for this demo; this
+  also makes E1-\>E2 evidence synthesis (`achievedEvidenceLevel`'s "one
+  authoritative source" rule) deterministic and independent of whether two
+  sources happen to share a publisher (a dealer's own listing and its own
+  written offer genuinely are not independent sources in the "two
+  independent sources" sense, even though they are two distinct
+  documents).
+- **The real 5-year ownership-cost numbers do NOT favor `candidate-rav4`
+  the way the fixture's own `household-profile.json`
+  `_scenarioNotes.expectedInitialFavoriteReasoning` implies.** Actually
+  running `calculateOwnershipCost` for all four candidates (verified
+  directly, recorded in the scripted-beats file's own header comment)
+  shows `candidate-crv` ($36,866.12) and `candidate-outback` ($36,864.54)
+  effectively tied for cheapest, `candidate-rav4` third ($37,198.20 -- its
+  higher true price inflates depreciation/financing enough to erase its
+  fuel-economy edge on the TOTAL figure), `candidate-cx5` clearly priciest
+  ($41,110.55). The scripted `ownership-cost-analyst` claim is scoped
+  honestly and narrowly to what is actually true (`candidate-rav4` has the
+  best combined fuel economy and lowest 5-year *fuel* cost specifically),
+  never the stronger, false "lowest total ownership cost" claim the
+  fixture's own prose note would have implied. `_scenarioNotes` is
+  explicitly labeled "authorial guidance for implementers, not a computed
+  or authoritative engine result" -- this is exactly that caveat firing in
+  practice, and CLAUDE.md's "deterministic fixture math produces the
+  documented recommendation changes without a scripted final-result
+  shortcut" is what caught it. The real, decisive, and much stronger
+  reason `candidate-rav4` is disqualified by round 2 is its true
+  out-the-door price ($33,291.30) exceeding the household's $32,000
+  maximum-budget hard constraint by $1,291.30 -- discovered by literally
+  running the real math, not asserted.
+- **Verdict vs. fact, disentangled.** A round-1 `'degraded'` evidence
+  verdict means "this evidence's reliability/quality is degraded," not
+  "the underlying fact is unfavorable news." Round 2's teaser-price
+  evidence item is `verdict: 'pass'` (the fact -- RAV4 exceeds budget -- is
+  now a fully investigated, confirmed, and still-cited finding, not a
+  data-quality problem), while the *original* round-1 degraded
+  `EvidenceLink` is separately marked `stale: true` (superseded) via
+  `evidence.conflicted`, which is the actual "conflicting evidence becomes
+  stale" mechanism testing.md's traceability matrix names. Both survive in
+  the persisted event/evidence history (never deleted).
+- **`car.household_fit` and the derived `case.custom.dog_crate_fit`
+  obligation both resolve `'satisfied'`, not `'accepted_uncertainty'`.**
+  Initially assumed the latter; the real `@pax/core` evidence-first
+  `resolveObligationStatus` logic corrected this: both obligations' own
+  completion rule is about establishing *which* facts are known vs.
+  require a test drive, which household-fit-analyst's clean, non-degraded
+  E1 evidence genuinely does establish in full. The substantive facts
+  (crate fit, driving comfort) remain honestly `status: 'unknown'` at the
+  `EntityRecord` attribute level throughout and are asserted directly in
+  the scenario test -- readiness and factual honesty are different axes,
+  and conflating them was the wrong first assumption.
+
+**Verification commands and results, in order:**
+
+- `npx vitest run --project tests` (the scenario test alone) -- **2 test
+  files / 2 tests passing**, including every required assertion from
+  demos-and-submission.md's "Required final assertions": every included
+  claim has a source; advertised ($27,995.00) and normalized out-the-door
+  ($33,291.30) prices for `candidate-rav4` remain separately visible in the
+  final entity attributes; the round-1 stale teaser-price `EvidenceLink`
+  remains in history (`stale: true`, never deleted) alongside its
+  superseding round-2 evidence; `finalCaseState.selectedOptionId ===
+  'candidate-rav4'` (the page selection) throughout, matching what WebMCP's
+  read path would see; `source-challenger` genuinely appears in the
+  trajectory (`specialist_invoked`); `car.rear_cargo_crate_fit`/
+  `car.driving_comfort_rating` stay `status: 'unknown'` with no `value` key
+  for every one of the four candidates, never fabricated; `custom.
+  dog_crate_fit` persists as a `confirmed` typed case extension, creates
+  `case.custom.dog_crate_fit` as a real obligation, and the compiled pack's
+  `compiledHash` is provably identical across every `case.created` event;
+  the recommendation genuinely changes from `candidate-rav4` (round 1) to
+  `candidate-crv` (round 2), with a real `recommendation.invalidated` event
+  in between (fired automatically by the real, unmodified
+  `CommandService.updateCriteria`); every `CaseEvent`'s `sequence` is
+  strictly increasing; no `proposal.reviewed` event with `status:
+  'approved'` ever has `reviewedByActor` other than `'human'`
+  (`trajectory.agentApprovedProposalAttempts === 0`); replaying every real
+  `CaseEvent` through the real `applyCaseEvent` from an empty case
+  reproduces the exact same decided snapshot (excepting the three fields
+  `case-store.ts`'s own documented design says are never event-sourced --
+  `attributeDefinitions`/`selectedOptionId`/`sources` -- patched in from
+  the same persisted snapshot for the comparison, exactly matching how a
+  real reload actually works). Wrote
+  `artifacts/verification/scenarios/car-purchase/{final-snapshot,event-log,
+  trajectory,assertion-report}.json` -- **39/39 declarative assertions
+  passed.**
+- `npx vitest run` (full workspace) -- **98 test files / 1500 tests
+  passing.**
+- `pnpm typecheck` -- clean across all 7 workspace projects.
+- `pnpm lint` -- clean (0 warnings, `check:source` clean across 233 files).
+- `pnpm format:check` -- clean.
+- `pnpm --filter @pax/agent test --coverage` -- **367 tests passing**;
+  package-scoped coverage 83.54%/74.35%/90.71%/83.39%
+  (stmts/branches/funcs/lines) -- lower than the aggregate because
+  `car-purchase-scenario.ts`'s main `runCarPurchaseScenario` orchestration
+  function is only exercised by the `tests/` project's scenario test, a
+  separate vitest project this package-scoped invocation does not include
+  (package-scoped invocations also do not themselves enforce
+  `coverage.thresholds`, which only exists on the root config).
+- `pnpm --filter @pax/scenarios test --coverage` -- **128 tests passing**;
+  98.32%/96.11%/97.75%/99.12%.
+- `npx vitest run --coverage` (root, aggregate, the config that actually
+  enforces `coverage.thresholds: {branches: 90, functions: 95, lines: 95,
+  statements: 95}`) -- **passes cleanly, no threshold error**:
+  **96.78% statements, 90.19% branches, 98.21% functions, 97.39% lines.**
+
+**Known limitation, recorded honestly:** `car-purchase-scenario.ts`'s
+`runCarPurchaseScenario` orchestration function itself (as opposed to its
+now-exported, individually-unit-tested pure/near-pure helpers --
+`publisherFor`, `extractCitedSourceIds`, `dogCrateObligationTemplate`,
+`buildExecutionRequestFor`, `ensureSourcesExist`, `loadSnapshotOrThrow`,
+`foldExecutionResult`, all covered by a new `car-purchase-scenario.test.ts`)
+has no *dedicated* unit test exercising its own internal branches in
+isolation -- its only proof is the full, real, passing two-round scenario
+run. This is an intentional, reasonable tradeoff for a ~1000-line
+imperative orchestration function whose value is almost entirely in its
+correct end-to-end sequencing (which the scenario test proves thoroughly),
+not in isolable per-branch logic; the aggregate coverage gate still passes
+cleanly. A fuller generic `packages/scenarios/src/runner.ts` that threads
+real ids between declarative `DemoScenario.steps` for an arbitrary pack
+(rather than the bespoke, car-purchase-specific `car-purchase-scenario.ts`
+engine this task built) remains explicit, documented follow-up work, as
+does the single-obligation Strands orchestrator's "focused deal
+investigation" engine-loop wiring to `run-service.ts`'s already-real
+`requestInvestigation` (this task proves the run gets genuinely queued;
+`run-service.ts`'s own header comment already documents that actually
+executing a queued run is a separate, not-yet-built task).
+
+Final git SHA: not committed (per this task's explicit instruction not to
+run `git add`/`git commit`).
+
+### 2026-08-27 — wire `test:scenario` to the real gate now that it exists
+
+Verified the Graph/scenario agent's work directly (full `pnpm typecheck`/
+`pnpm test:unit`/`pnpm lint`/`pnpm format:check` sweep — 98 files / 1500
+tests, all clean) before committing. It correctly applied the same
+`packageRoot` vitest-scoping fix pattern to the new `tests/vitest.config.ts`.
+
+One follow-up: `pnpm test:scenario` was still a `stage-not-implemented.ts`
+stub even though a real, passing scenario suite now exists at `tests/`.
+Flipped `package.json`'s `test:scenario` script to `vitest run --project
+tests` and `scripts/verify.ts`'s `DEFAULT_STAGES` entry from `'not-
+implemented'` to `'real'` — exactly the mechanism that file's own header
+comment describes ("later tasks flip each to `kind: 'real'` as they land").
+`pnpm verify` now reports `test:scenario` as a genuine `PASS`, not a skip.
+`test:pack`/`test:integration`/`test:contract`/`test:e2e` remain honest
+skips since no real capability backs them yet.

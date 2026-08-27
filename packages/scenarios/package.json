@@ -12,6 +12,10 @@
   },
   "dependencies": {
     "@pax/contracts": "workspace:*",
+    "@pax/core": "workspace:*",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@pax/packs": "workspace:*"
   }
 }
