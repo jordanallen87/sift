@@ -29,7 +29,14 @@
  *     `RuntimeEvent` it yields into the real `ActivityStore` AS THE GRAPH
  *     PROGRESSES (`drainGraphToActivity` below) -- never buffered until the
  *     end, matching architecture.md "Command and event flow": "Runtime
- *     activity events stream immediately";
+ *     activity events stream immediately" -- and, additively (this task),
+ *     into the real Runtime Inspector persistence path
+ *     (`store/runtime-event-store.ts`'s `RuntimeEventStore`, writing to the
+ *     `runtime_events` table `db/schema.ts` declared but that had no writer
+ *     anywhere in this codebase before this task). Both writes happen from
+ *     the exact same drained `RuntimeEvent`, so `runtime_events` and
+ *     `activity_events` stay two honest projections of one real stream, not
+ *     two independently-derived ones;
  *  4. folds every specialist's validated `ExecutionResult` into real
  *     `CaseEvent`s via the scenario's own `foldExecutionResult`/
  *     `ensureSourcesExist` (also reused, not reimplemented -- both had
@@ -109,6 +116,7 @@ import type { RunStatus } from '../db/schema.js';
 import type { InvestigationEngine, RunStore } from '../services/run-service.js';
 import type { ActivityStore } from '../store/activity-store.js';
 import type { CaseStore } from '../store/case-store.js';
+import type { RuntimeEventStore } from '../store/runtime-event-store.js';
 import {
   CAR_PURCHASE_PARALLEL_SPECIALIST_IDS,
   executeCarPurchaseGraph,
@@ -158,6 +166,15 @@ export interface CarPurchaseEngineDeps {
   readonly caseStore: CaseStore;
   readonly activityStore: ActivityStore;
   readonly runStore: RunStore;
+  /**
+   * The real Runtime Inspector persistence path (`store/runtime-event-store.ts`,
+   * this task): every `RuntimeEvent` the real Graph run yields is durably
+   * appended here in the same pass `drainGraphToActivity` already uses to
+   * project the public `ActivityStore` narration -- additively, so the
+   * proven `ActivityStore` projection is unchanged. See
+   * `drainGraphToActivity`'s own comment below.
+   */
+  readonly runtimeEventStore: RuntimeEventStore;
   readonly registry: PackRegistry;
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
@@ -287,14 +304,51 @@ function appendActivityForRuntimeEvent(
   }
 }
 
+/**
+ * Drains the real Graph's `RuntimeEvent` stream as it progresses, writing
+ * each event down two parallel, additive paths: the proven public
+ * `ActivityStore` projection (`appendActivityForRuntimeEvent`, unchanged by
+ * this task) and the real Runtime Inspector persistence path
+ * (`runtimeEventStore.append`, this task's own gap-closing addition --
+ * `db/schema.ts`'s `runtime_events` table had no writer before it). Every
+ * yielded `RuntimeEvent` is already a fully-formed, correlated
+ * `RuntimeDebugEvent` (traceId/sequence/category/etc. all stamped by
+ * `car-purchase-graph.ts`'s own `RunAccumulator`) -- this function does not
+ * re-derive or duplicate any of that, it only fans the same real event out
+ * to both durable destinations.
+ *
+ * One real correction is applied before the `runtimeEventStore` write,
+ * mirroring one `appendActivityForRuntimeEvent` already silently makes for
+ * the `ActivityStore` write two lines below: each parallel specialist's
+ * `ExecutionRequest.runId` (`car-purchase-scenario.ts`'s
+ * `buildExecutionRequestFor`: `` `run-${obligationId}` ``) is a synthetic,
+ * per-obligation id, not this trigger's actual durable `runs.id` --
+ * `RunAccumulator.runId` (what every yielded `RuntimeEvent` is actually
+ * stamped with) is `shortlistRequest.runId` specifically
+ * (`'run-car.shortlist'`), one value shared by every node in a single Graph
+ * run but still never the real `runs.id` a client queries via
+ * `GET /api/debug/runs/:runId`. `appendActivityForRuntimeEvent` already
+ * substitutes `ctx.runId`/`ctx.caseId` (the real ones this engine was
+ * `trigger()`ed with) instead of trusting `event.runId`/`event.caseId` for
+ * exactly this reason; persisting the *uncorrected* synthetic id to
+ * `runtime_events` would both violate its real foreign key against
+ * `runs.id` and silently collide round 1 with round 2 (both graph runs mint
+ * the identical synthetic `'run-car.shortlist'`). Every other field --
+ * `sequence`, `traceId` (genuinely fresh per real Graph invocation,
+ * `car-purchase-graph.ts`'s own `deps.idGenerator.next('trace')`),
+ * `category`/`name`/`phase`/`level`/`attributes`/`payload`/etc. -- is the
+ * real, untouched value the Graph produced; nothing here is fabricated.
+ */
 async function drainGraphToActivity(
   gen: AsyncGenerator<RuntimeEvent, CarPurchaseGraphResult, undefined>,
   ctx: { caseId: string; runId: string },
   activityStore: ActivityStore,
+  runtimeEventStore: RuntimeEventStore,
   clock: Clock,
 ): Promise<CarPurchaseGraphResult> {
   let next = await gen.next();
   while (!next.done) {
+    runtimeEventStore.append({ ...next.value, caseId: ctx.caseId, runId: ctx.runId });
     appendActivityForRuntimeEvent(next.value, ctx, activityStore, clock);
     next = await gen.next();
   }
@@ -760,6 +814,7 @@ async function runOneInvestigation(
       executeCarPurchaseGraph(graphDeps),
       { caseId: params.caseId, runId: params.runId },
       deps.activityStore,
+      deps.runtimeEventStore,
       deps.clock,
     );
 

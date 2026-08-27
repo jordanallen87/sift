@@ -21,6 +21,7 @@ import { CommandService } from '../services/command-service.js';
 import { RunService, SqliteRunStore, type RunRecord } from '../services/run-service.js';
 import { SqliteActivityStore } from '../store/activity-store.js';
 import { SqliteCaseStore } from '../store/sqlite-case-store.js';
+import { SqliteRuntimeEventStore } from '../store/runtime-event-store.js';
 import { carPurchaseCapabilityCatalog } from './car-purchase-scenario.js';
 import {
   createCarPurchaseEngine,
@@ -131,30 +132,35 @@ afterEach(() => {
 });
 
 function buildLiveStack(): {
+  database: TestDatabase;
   caseStore: SqliteCaseStore;
   activityStore: SqliteActivityStore;
   runStore: SqliteRunStore;
+  runtimeEventStore: SqliteRuntimeEventStore;
   commandService: CommandService;
   runService: RunService;
   engine: CarPurchaseEngine;
   idGenerator: IdGenerator;
 } {
-  test = createTestDatabase();
-  applyMigrations(test.sqlite);
+  const database = createTestDatabase();
+  test = database;
+  applyMigrations(database.sqlite);
 
   const registry = new PackRegistry();
   const pack = compileCarPurchasePack(carPurchaseCapabilityCatalog(), FIXED_CLOCK);
   registry.register(pack);
 
-  const caseStore = new SqliteCaseStore(test);
-  const activityStore = new SqliteActivityStore(test);
-  const runStore = new SqliteRunStore(test);
+  const caseStore = new SqliteCaseStore(database);
+  const activityStore = new SqliteActivityStore(database);
+  const runStore = new SqliteRunStore(database);
+  const runtimeEventStore = new SqliteRuntimeEventStore(database);
   const idGenerator = fixedIdGenerator();
 
   const engine = createCarPurchaseEngine({
     caseStore,
     activityStore,
     runStore,
+    runtimeEventStore,
     registry,
     clock: FIXED_CLOCK,
     idGenerator,
@@ -177,7 +183,17 @@ function buildLiveStack(): {
     engines: { [pack.identity.id]: engine },
   });
 
-  return { caseStore, activityStore, runStore, commandService, runService, engine, idGenerator };
+  return {
+    database,
+    caseStore,
+    activityStore,
+    runStore,
+    runtimeEventStore,
+    commandService,
+    runService,
+    engine,
+    idGenerator,
+  };
 }
 
 describe('determineCarPurchaseRound', () => {
@@ -232,8 +248,15 @@ describe('determineCarPurchaseRound', () => {
 
 describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
   it('runs round1 then round2 purely from real case state, with no external round flag', async () => {
-    const { caseStore, activityStore, runStore, commandService, runService, idGenerator } =
-      buildLiveStack();
+    const {
+      caseStore,
+      activityStore,
+      runStore,
+      runtimeEventStore,
+      commandService,
+      runService,
+      idGenerator,
+    } = buildLiveStack();
 
     // --- Seed the case exactly as POST /api/cases/demo would ---
     const startResult = commandService.startDemo('cmd-start', { demoId: 'car-purchase' });
@@ -284,6 +307,27 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
     expect(snapshot.recommendation).not.toBeNull();
     expect(snapshot.recommendation?.favoredOptionId).toBe('candidate-rav4');
     expect(snapshot.proposal).toBeNull();
+
+    // --- The real Runtime Inspector persistence path (this task): every
+    // normalized RuntimeEvent the real Graph run produced is durably
+    // queryable back out of runtime_events, correlated by the exact same
+    // runId/caseId/traceId as the run itself. ---
+    const runtimeEventsRound1 = runtimeEventStore.listByRun(run1Id);
+    expect(runtimeEventsRound1.length).toBeGreaterThan(0);
+    expect(runtimeEventsRound1.every((event) => event.runId === run1Id)).toBe(true);
+    expect(runtimeEventsRound1.every((event) => event.caseId === caseId)).toBe(true);
+    expect(new Set(runtimeEventsRound1.map((event) => event.traceId)).size).toBe(1);
+    expect(runtimeEventsRound1.map((event) => event.sequence)).toEqual(
+      [...runtimeEventsRound1.map((event) => event.sequence)].sort((a, b) => a - b),
+    );
+    expect(
+      runtimeEventsRound1.some(
+        (event) => event.category === 'graph' && event.name === 'graph.node_completed',
+      ),
+    ).toBe(true);
+    expect(runtimeEventsRound1.some((event) => event.category === 'tool')).toBe(true);
+    expect(runtimeEventsRound1.some((event) => event.category === 'skill')).toBe(true);
+    expect(run1Record.traceId).toBeTruthy();
 
     // --- The household's WebMCP-driven criteria reweight + two-dog-crate concern (real commands, no engine involvement) ---
     const comfortResult = commandService.updateCriteria('cmd-comfort', {
@@ -394,6 +438,23 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
     const hardConstraints = snapshot.obligations.find((o) => o.id === 'car.hard_constraints');
     expect(hardConstraints?.status).toBe('satisfied');
 
+    // --- Round 2 produces its own, separately-sequenced runtime_events,
+    // correlated to run2Id and never mixed with round 1's. ---
+    const runtimeEventsRound2 = runtimeEventStore.listByRun(run2Id);
+    expect(runtimeEventsRound2.length).toBeGreaterThan(0);
+    expect(runtimeEventsRound2.every((event) => event.runId === run2Id)).toBe(true);
+    expect(runtimeEventsRound2.every((event) => event.caseId === caseId)).toBe(true);
+    expect(
+      runtimeEventsRound1.every(
+        (event) => !runtimeEventsRound2.some((otherEvent) => otherEvent.id === event.id),
+      ),
+    ).toBe(true);
+    expect(
+      runtimeEventsRound2.some(
+        (event) => event.category === 'graph' && event.name === 'graph.node_completed',
+      ),
+    ).toBe(true);
+
     // A human, never the engine, approves the proposal -- proven by the engine
     // never having touched `proposal.reviewed`.
     expect(
@@ -421,7 +482,8 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
   });
 
   it('marks a run failed with a real error activity event when the pinned pack is not registered for this engine', async () => {
-    const { caseStore, activityStore, runStore, commandService, idGenerator } = buildLiveStack();
+    const { database, caseStore, activityStore, runStore, commandService, idGenerator } =
+      buildLiveStack();
 
     const startResult = commandService.startDemo('cmd-start', { demoId: 'car-purchase' });
     requireOkCommand(startResult);
@@ -436,6 +498,7 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
       caseStore,
       activityStore,
       runStore,
+      runtimeEventStore: new SqliteRuntimeEventStore(database),
       registry: new PackRegistry(),
       clock: FIXED_CLOCK,
       idGenerator,

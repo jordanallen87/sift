@@ -10,12 +10,18 @@
  * renders a raw internal `type` string.
  *
  * Each item exposes its `debugEventId`/`eventId` as both a stable
- * `data-testid` and explicit `data-*` attributes, so a later task (the
- * Runtime Inspector's "activity-to-trace navigation",
- * docs/specs/debugging-and-observability.md) can wire "click to open the
- * exact correlated Runtime Inspector event" without this component needing
- * to know anything about the Inspector -- it exposes the correlation
- * surface, not the navigation behavior.
+ * `data-testid` and explicit `data-*` attributes, so the Runtime Inspector's
+ * "activity-to-trace navigation" (docs/specs/debugging-and-observability.md)
+ * can wire "click to open the exact correlated Runtime Inspector event"
+ * without this component needing to know anything about the Inspector -- it
+ * exposes the correlation surface, not the navigation behavior. The optional
+ * `onInspectRun` prop is the coarse, run-level half of that navigation this
+ * task's minimum-viable (Overview + Timeline only) Inspector actually
+ * supports: any item carrying a `runId` renders a small "Inspect run"
+ * button that calls back with it, letting `App.tsx` open the real Inspector
+ * for that run -- event-level jump-to-exact-debug-event stays out of scope
+ * for this pass (a later task, once the Inspector's own Timeline gains
+ * per-event deep linking).
  *
  * Adapted from `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/hq/ActivityView.tsx`'s
  * chronological grouping/label/detail-disclosure information architecture
@@ -34,6 +40,8 @@ export interface ActivityTimelineProps {
   loading?: boolean;
   /** A recoverable error fetching/streaming activity. The last valid `events` still render underneath. */
   error?: string | null;
+  /** When provided, any item carrying a `runId` renders an "Inspect run" button that calls back with it -- the run-level half of "jump from a user-facing activity item to its debug event" this task's Overview + Timeline Inspector supports. Omitted entirely (no button) when absent. */
+  onInspectRun?: (runId: string) => void;
 }
 
 const PHASE_LABEL: Record<PublicActivityEvent['phase'], string> = {
@@ -59,7 +67,13 @@ function formatTimestamp(timestamp: string): string {
   return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString();
 }
 
-function ActivityItem({ event }: { event: PublicActivityEvent }) {
+function ActivityItem({
+  event,
+  onInspectRun,
+}: {
+  event: PublicActivityEvent;
+  onInspectRun?: (runId: string) => void;
+}) {
   const { label, tone } = getActivityLabel(event.type);
   const meta = STATUS_TONE_META[tone];
   const correlationId = event.debugEventId ?? event.eventId;
@@ -94,6 +108,16 @@ function ActivityItem({ event }: { event: PublicActivityEvent }) {
       <div className="flex flex-wrap items-center gap-[var(--space-2)] text-[length:var(--font-size-2xs)] text-[var(--color-ink-muted)]">
         <time dateTime={event.timestamp}>{formatTimestamp(event.timestamp)}</time>
         <span className="font-[family-name:var(--font-mono)]">#{event.sequence}</span>
+        {onInspectRun !== undefined && event.runId !== undefined ? (
+          <button
+            type="button"
+            data-testid={`activity-item-inspect-run-${event.eventId}`}
+            onClick={() => onInspectRun(event.runId!)}
+            className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-[var(--space-2)] text-[length:var(--font-size-2xs)] text-[var(--color-ink-secondary)]"
+          >
+            Inspect run
+          </button>
+        ) : null}
       </div>
 
       {detailEntries.length > 0 ? (
@@ -113,7 +137,12 @@ function ActivityItem({ event }: { event: PublicActivityEvent }) {
   );
 }
 
-export function ActivityTimeline({ events, loading = false, error = null }: ActivityTimelineProps) {
+export function ActivityTimeline({
+  events,
+  loading = false,
+  error = null,
+  onInspectRun,
+}: ActivityTimelineProps) {
   const ordered = events === null ? null : [...events].sort((a, b) => a.sequence - b.sequence);
 
   return (
@@ -164,7 +193,11 @@ export function ActivityTimeline({ events, loading = false, error = null }: Acti
       ) : (
         <ol data-testid="activity-timeline-list" className="flex flex-col gap-[var(--space-2)]">
           {ordered.map((event) => (
-            <ActivityItem key={event.eventId} event={event} />
+            <ActivityItem
+              key={event.eventId}
+              event={event}
+              {...(onInspectRun !== undefined ? { onInspectRun } : {})}
+            />
           ))}
         </ol>
       )}

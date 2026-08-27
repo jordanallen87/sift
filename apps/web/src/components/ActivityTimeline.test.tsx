@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import type { PublicActivityEvent } from '@pax/contracts';
 import { ActivityTimeline } from './ActivityTimeline.js';
@@ -136,6 +137,34 @@ describe('ActivityTimeline', () => {
   it('does not render a details block when safeDetails is absent', () => {
     render(<ActivityTimeline events={[buildEvent({ safeDetails: undefined })]} />);
     expect(screen.queryByTestId('activity-item-details')).not.toBeInTheDocument();
+  });
+
+  it('does not render an "Inspect run" button when onInspectRun is not provided', () => {
+    render(<ActivityTimeline events={[buildEvent({ runId: 'run-1' })]} />);
+    expect(screen.queryByTestId('activity-item-inspect-run-event-1')).not.toBeInTheDocument();
+  });
+
+  it('does not render an "Inspect run" button for an event with no runId, even when onInspectRun is provided', () => {
+    render(
+      <ActivityTimeline
+        events={[buildEvent({ runId: undefined })]}
+        onInspectRun={() => undefined}
+      />,
+    );
+    expect(screen.queryByTestId('activity-item-inspect-run-event-1')).not.toBeInTheDocument();
+  });
+
+  it('renders an "Inspect run" button for a correlated event and calls back with its runId', async () => {
+    const onInspectRun = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ActivityTimeline events={[buildEvent({ runId: 'run-42' })]} onInspectRun={onInspectRun} />,
+    );
+
+    const button = screen.getByTestId('activity-item-inspect-run-event-1');
+    await user.click(button);
+
+    expect(onInspectRun).toHaveBeenCalledWith('run-42');
   });
 
   it('renders a recoverable error while preserving the last valid events underneath', () => {
