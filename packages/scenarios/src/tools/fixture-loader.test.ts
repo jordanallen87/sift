@@ -11,15 +11,23 @@ import {
 } from './fixture-loader.js';
 
 describe('FIXTURE_NAMES', () => {
-  it('lists every car-purchase fixture file this loader knows how to validate', () => {
+  it('lists every car-purchase and energy fixture file this loader knows how to validate', () => {
     expect([...FIXTURE_NAMES].sort()).toEqual(
       [
+        // car-purchase
         'candidate-listings',
         'dealer-offers',
         'household-fit',
         'household-profile',
         'ownership-assumptions',
         'safety-reliability-sources',
+        // energy
+        'current-bill',
+        'usage-history',
+        'weather-history',
+        'household-events',
+        'rate-schedules',
+        'response-options',
       ].sort(),
     );
   });
@@ -254,6 +262,202 @@ describe('parseFixtureJson (pure validation, no disk I/O)', () => {
   });
 });
 
+describe('parseFixtureJson (pure validation, no disk I/O) -- energy fixtures', () => {
+  it('parses valid current-bill content', () => {
+    const raw = JSON.stringify({
+      _provenance: 'fictional',
+      caseId: 'case-demo-energy-guardian',
+      householdId: 'household-demo-energy-01',
+      displayName: 'The Okafor-Bryant household',
+      utilityAccountFictionalId: 'DEMO-ACCT-0000-0001',
+      billingPeriod: { start: '2026-07-16', end: '2026-08-14', days: 30 },
+      tariffId: 'tariff-standard-2026',
+      usage: { value: 1565, unit: 'kWh' },
+      charges: {
+        fixedMonthlyCustomerCharge: { amount: 13.75, currency: 'USD' },
+        volumetricCharge: { amount: 234.75, currency: 'USD', arithmeticNote: 'x' },
+        totalAmount: { amount: 248.5, currency: 'USD', arithmeticNote: 'x' },
+      },
+      currentAmount: { amount: 248.5, currency: 'USD' },
+      baseline: {
+        amount: { amount: 175.0, currency: 'USD' },
+        usage: { value: 1075, unit: 'kWh' },
+        methodology: 'x',
+        computedBy: 'x',
+      },
+      anomaly: {
+        percentAboveBaseline: 42,
+        arithmeticNote: 'x',
+        usageGapAboveBaselineKwh: 490,
+        usageGapArithmeticNote: 'x',
+        flaggedAt: '2026-08-15T09:05:00Z',
+        flaggedBy: 'deterministic anomaly watcher',
+      },
+    });
+    const result = parseFixtureJson('current-bill', raw);
+    expect(result.anomaly.percentAboveBaseline).toBe(42);
+  });
+
+  it('rejects current-bill content missing a required field', () => {
+    const raw = JSON.stringify({ _provenance: 'x', caseId: 'x' });
+    expect(() => parseFixtureJson('current-bill', raw)).toThrow(/schema validation/);
+  });
+
+  it('parses valid usage-history content', () => {
+    const raw = JSON.stringify({
+      _provenance: 'fictional',
+      caseId: 'case-demo-energy-guardian',
+      householdId: 'household-demo-energy-01',
+      cycles: [
+        {
+          cycleLabel: '2026-08',
+          billingPeriod: { start: '2026-07-16', end: '2026-08-14' },
+          usageKwh: 1565,
+          tariffId: 'tariff-standard-2026',
+          billedAmount: { amount: 248.5, currency: 'USD' },
+          arithmeticNote: 'x',
+          note: 'x',
+        },
+      ],
+    });
+    const result = parseFixtureJson('usage-history', raw);
+    expect(result.cycles).toHaveLength(1);
+    expect(result.cycles[0]?.usageKwh).toBe(1565);
+  });
+
+  it('parses valid weather-history content, including the optional weatherAttribution block', () => {
+    const raw = JSON.stringify({
+      _provenance: 'fictional',
+      caseId: 'case-demo-energy-guardian',
+      weatherStation: { stationId: 'station-x', name: 'x', degreeDayBaseF: 65 },
+      cycles: [
+        {
+          cycleLabel: '2026-08',
+          billingPeriod: { start: '2026-07-16', end: '2026-08-14' },
+          hdd: 0,
+          cdd: 460,
+          weatherAttribution: {
+            typicalCdd: 380,
+            actualCdd: 460,
+            excessCdd: 80,
+            weatherSensitivityKwhPerCdd: 2.625,
+            weatherSensitivityMethodology: 'x',
+            usageExplainedByWeatherKwh: 210,
+            arithmeticNote: 'x',
+            conclusion: 'x',
+          },
+        },
+      ],
+    });
+    const result = parseFixtureJson('weather-history', raw);
+    expect(result.cycles[0]?.weatherAttribution?.usageExplainedByWeatherKwh).toBe(210);
+  });
+
+  it('parses valid household-events content, including an event without a device', () => {
+    const raw = JSON.stringify({
+      _provenance: 'fictional',
+      caseId: 'case-demo-energy-guardian',
+      householdId: 'household-demo-energy-01',
+      events: [
+        {
+          eventId: 'event-hvac-maintenance-2026-05',
+          type: 'hvac_maintenance',
+          date: '2026-05-08',
+          label: 'x',
+          description: 'x',
+          performedBy: 'x',
+          workOrderId: 'x',
+          outcome: 'x',
+          relevanceNote: 'x',
+        },
+      ],
+    });
+    const result = parseFixtureJson('household-events', raw);
+    expect(result.events).toHaveLength(1);
+  });
+
+  it('parses valid rate-schedules content with two tariffs and a rate-change-impact block', () => {
+    const raw = JSON.stringify({
+      _provenance: 'fictional',
+      caseId: 'case-demo-energy-guardian',
+      utilityName: 'x',
+      tariffs: [
+        {
+          tariffId: 'tariff-standard-2024',
+          label: 'x',
+          effectiveFrom: '2024-06-01',
+          effectiveTo: '2026-05-31',
+          fixedMonthlyCustomerCharge: { amount: 11.25, currency: 'USD' },
+          volumetricRatePerKwh: { amount: 0.135, currency: 'USD' },
+          rateStructure: 'flat volumetric, no tiers',
+        },
+        {
+          tariffId: 'tariff-standard-2026',
+          label: 'x',
+          effectiveFrom: '2026-06-01',
+          effectiveTo: null,
+          fixedMonthlyCustomerCharge: { amount: 13.75, currency: 'USD' },
+          volumetricRatePerKwh: { amount: 0.15, currency: 'USD' },
+          rateStructure: 'flat volumetric, no tiers',
+          changeFromPriorTariff: {
+            fixedChargeIncrease: { amount: 2.5, currency: 'USD' },
+            fixedChargeIncreasePercent: 22.22,
+            volumetricRateIncrease: { amount: 0.015, currency: 'USD' },
+            volumetricRateIncreasePercent: 11.11,
+            arithmeticNote: 'x',
+          },
+        },
+      ],
+      rateChangeImpactOnBaselineUsage: {
+        note: 'x',
+        baselineUsageKwh: 1075,
+        billUnderPriorTariffAtBaselineUsage: {
+          amount: 156.38,
+          currency: 'USD',
+          arithmeticNote: 'x',
+        },
+        billUnderCurrentTariffAtBaselineUsage: {
+          amount: 175.0,
+          currency: 'USD',
+          arithmeticNote: 'x',
+        },
+        rateChangeAttributableAmount: { amount: 18.62, currency: 'USD', arithmeticNote: 'x' },
+        rateChangeAttributablePercentOfTotalGap: 20.21,
+        totalGapVsPriorTariffAtActualUsage: {
+          note: 'x',
+          amount: 92.12,
+          currency: 'USD',
+          arithmeticNote: 'x',
+        },
+      },
+    });
+    const result = parseFixtureJson('rate-schedules', raw);
+    expect(result.tariffs).toHaveLength(2);
+    expect(result.tariffs[1]?.effectiveTo).toBeNull();
+  });
+
+  it('parses valid response-options content', () => {
+    const raw = JSON.stringify({
+      _provenance: 'fictional',
+      caseId: 'case-demo-energy-guardian',
+      options: [
+        {
+          optionId: 'monitor-one-cycle',
+          label: 'x',
+          description: 'x',
+          roughCost: { amount: 0, currency: 'USD' },
+          roughEffortLevel: 'low',
+          estimatedTimeToInsight: 'x',
+          addressesRootCause: false,
+          requiresConsequentialAction: false,
+        },
+      ],
+    });
+    const result = parseFixtureJson('response-options', raw);
+    expect(result.options).toHaveLength(1);
+  });
+});
+
 describe('loadFixture (disk I/O + caching)', () => {
   let tempDir: string;
 
@@ -317,6 +521,46 @@ describe('loadFixture (disk I/O + caching)', () => {
 
     const profile = loadFixture('household-profile');
     expect(profile.householdId).toBe('household-demo-car-01');
+  });
+
+  it('loads and validates the real, checked-in energy fixtures from disk, from their own energy directory', () => {
+    const bill = loadFixture('current-bill');
+    expect(bill.householdId).toBe('household-demo-energy-01');
+    expect(bill.anomaly.percentAboveBaseline).toBe(42);
+
+    const usage = loadFixture('usage-history');
+    expect(usage.cycles).toHaveLength(18);
+    // Final cycle matches current-bill.json exactly (fixture note).
+    expect(usage.cycles.at(-1)?.usageKwh).toBe(bill.usage.value);
+    expect(usage.cycles.at(-1)?.billedAmount.amount).toBe(bill.currentAmount.amount);
+
+    const weather = loadFixture('weather-history');
+    expect(weather.cycles).toHaveLength(18);
+    expect(weather.cycles.at(-1)?.weatherAttribution?.usageExplainedByWeatherKwh).toBe(210);
+
+    const events = loadFixture('household-events');
+    expect(events.events.map((event) => event.eventId).sort()).toEqual(
+      ['event-hvac-maintenance-2026-05', 'event-thermostat-failure-2026-07'].sort(),
+    );
+
+    const rates = loadFixture('rate-schedules');
+    expect(rates.tariffs.map((tariff) => tariff.tariffId).sort()).toEqual(
+      ['tariff-standard-2024', 'tariff-standard-2026'].sort(),
+    );
+    // current-bill.json's tariffId must resolve to a tariff this fixture
+    // actually declares -- the join `tariff-lookup.ts` and `energy-
+    // calculator.ts` both rely on.
+    expect(rates.tariffs.map((tariff) => tariff.tariffId)).toContain(bill.tariffId);
+
+    const options = loadFixture('response-options');
+    expect(options.options.map((option) => option.optionId).sort()).toEqual(
+      [
+        'monitor-one-cycle',
+        'change-rate-plan',
+        'request-energy-audit',
+        'request-hvac-inspection',
+      ].sort(),
+    );
   });
 
   it('caches by fixture name: repeated calls return the identical object reference', () => {

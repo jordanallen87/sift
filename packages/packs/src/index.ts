@@ -4,9 +4,10 @@
 // docs/specs/packs-and-routing.md "Manifest contract" for the
 // specification this module implements.
 //
-// The `home-energy-guardian` built-in pack manifest (and its skills/
-// specialists/fixture tools) is separate, later work; the `car-purchase`
-// manifest (this package's Tier-1 WebMCP-hero pack) ships here.
+// Both hero pack manifests ship here: `car-purchase` (Tier-1 WebMCP-hero)
+// and `home-energy-guardian` (Tier-2 AWS/Strands-Swarm-hero). Their real
+// Strands Graph/Swarm orchestration wiring, skills, specialists, and
+// fixture tool implementations are separate, later work.
 
 // Deterministic canonical serialization and SHA-256 hashing
 // (canonicalize.ts): pack-authoring.md "Compiler and registry" step 11.
@@ -65,3 +66,12 @@ export type {
 // Car"), the Tier-1 WebMCP-hero pack (car-purchase.ts):
 // docs/specs/packs-and-routing.md "Choose Our Next Car Decision Pack".
 export { CAR_PURCHASE_MANIFEST, compileCarPurchasePack } from './car-purchase.js';
+
+// The real `home-energy-guardian@1.0.0` Decision Pack manifest ("Home
+// Energy Guardian"), the Tier-2 AWS/Strands-Swarm-hero pack
+// (home-energy-guardian.ts): docs/specs/packs-and-routing.md "Home Energy
+// Guardian Decision Pack".
+export {
+  HOME_ENERGY_GUARDIAN_MANIFEST,
+  compileHomeEnergyGuardianPack,
+} from './home-energy-guardian.js';

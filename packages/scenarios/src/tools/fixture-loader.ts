@@ -1,6 +1,7 @@
 /**
- * Internal loader for the car-purchase fixture JSON files under
- * `packages/scenarios/fixtures/car-purchase/`.
+ * Internal loader for the fixture JSON files under
+ * `packages/scenarios/fixtures/car-purchase/` (Choose Our Next Car) and
+ * `packages/scenarios/fixtures/energy/` (Home Energy Guardian).
  *
  * Filesystem access is scoped to `packages/scenarios` deliberately --
  * `packages/core` may never read the filesystem (architecture.md
@@ -22,7 +23,9 @@
  * in-memory-cache wrapper real tool code calls; it accepts an optional
  * `baseDir` override purely so tests can exercise its disk-read failure
  * paths (missing file, malformed content) against a temporary directory
- * without ever touching the checked-in fixtures.
+ * without ever touching the checked-in fixtures. Every registered fixture
+ * name maps to exactly one pack's fixtures directory (`FIXTURE_PACK_DIR`
+ * below), resolved automatically unless a test overrides `baseDir`.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -31,8 +34,9 @@ import { z } from 'zod';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// `src/tools/fixture-loader.ts` -> `../../fixtures/car-purchase`.
-const DEFAULT_FIXTURES_DIR = join(__dirname, '..', '..', 'fixtures', 'car-purchase');
+// `src/tools/fixture-loader.ts` -> `../../fixtures/<pack>`.
+const CAR_PURCHASE_FIXTURES_DIR = join(__dirname, '..', '..', 'fixtures', 'car-purchase');
+const ENERGY_FIXTURES_DIR = join(__dirname, '..', '..', 'fixtures', 'energy');
 
 /**
  * Defensive upper bound on a single fixture file's byte size
@@ -494,6 +498,243 @@ export const HouseholdProfileSchema = z
   .strict();
 export type HouseholdProfile = z.infer<typeof HouseholdProfileSchema>;
 
+// --- current-bill.json (Home Energy Guardian) ---
+
+export const CurrentBillSchema = z
+  .object({
+    _provenance: z.string(),
+    caseId: z.string().min(1),
+    householdId: z.string().min(1),
+    displayName: z.string().min(1),
+    utilityAccountFictionalId: z.string().min(1),
+    billingPeriod: z
+      .object({ start: z.iso.date(), end: z.iso.date(), days: z.number().int().positive() })
+      .strict(),
+    tariffId: z.string().min(1),
+    usage: z.object({ value: z.number().finite(), unit: z.string().min(1) }).strict(),
+    charges: z
+      .object({
+        fixedMonthlyCustomerCharge: MoneyAmountSchema,
+        volumetricCharge: CostWithArithmeticNoteSchema,
+        totalAmount: CostWithArithmeticNoteSchema,
+      })
+      .strict(),
+    currentAmount: MoneyAmountSchema,
+    baseline: z
+      .object({
+        amount: MoneyAmountSchema,
+        usage: z.object({ value: z.number().finite(), unit: z.string().min(1) }).strict(),
+        methodology: z.string().min(1),
+        computedBy: z.string().min(1),
+      })
+      .strict(),
+    anomaly: z
+      .object({
+        percentAboveBaseline: z.number().finite(),
+        arithmeticNote: z.string().min(1),
+        usageGapAboveBaselineKwh: z.number().finite(),
+        usageGapArithmeticNote: z.string().min(1),
+        flaggedAt: z.iso.datetime(),
+        flaggedBy: z.string().min(1),
+      })
+      .strict(),
+  })
+  .strict();
+export type CurrentBill = z.infer<typeof CurrentBillSchema>;
+
+// --- usage-history.json ---
+
+const UsageCycleSchema = z
+  .object({
+    cycleLabel: z.string().min(1),
+    billingPeriod: z.object({ start: z.iso.date(), end: z.iso.date() }).strict(),
+    usageKwh: z.number().finite().nonnegative(),
+    tariffId: z.string().min(1),
+    billedAmount: MoneyAmountSchema,
+    arithmeticNote: z.string().optional(),
+    note: z.string().optional(),
+  })
+  .strict();
+
+export const UsageHistorySchema = z
+  .object({
+    _provenance: z.string(),
+    caseId: z.string().min(1),
+    householdId: z.string().min(1),
+    note: z.string().optional(),
+    cycles: z.array(UsageCycleSchema).max(200),
+  })
+  .strict();
+export type UsageHistory = z.infer<typeof UsageHistorySchema>;
+export type UsageCycle = z.infer<typeof UsageCycleSchema>;
+
+// --- weather-history.json ---
+
+const WeatherAttributionSchema = z
+  .object({
+    typicalCdd: z.number().finite(),
+    actualCdd: z.number().finite(),
+    excessCdd: z.number().finite(),
+    weatherSensitivityKwhPerCdd: z.number().finite(),
+    weatherSensitivityMethodology: z.string().min(1),
+    usageExplainedByWeatherKwh: z.number().finite(),
+    arithmeticNote: z.string().min(1),
+    conclusion: z.string().min(1),
+  })
+  .strict();
+
+const WeatherCycleSchema = z
+  .object({
+    cycleLabel: z.string().min(1),
+    billingPeriod: z.object({ start: z.iso.date(), end: z.iso.date() }).strict(),
+    hdd: z.number().finite().nonnegative(),
+    cdd: z.number().finite().nonnegative(),
+    note: z.string().optional(),
+    weatherAttribution: WeatherAttributionSchema.optional(),
+  })
+  .strict();
+
+export const WeatherHistorySchema = z
+  .object({
+    _provenance: z.string(),
+    caseId: z.string().min(1),
+    weatherStation: z
+      .object({
+        stationId: z.string().min(1),
+        name: z.string().min(1),
+        degreeDayBaseF: z.number().finite(),
+      })
+      .strict(),
+    note: z.string().optional(),
+    cycles: z.array(WeatherCycleSchema).max(200),
+  })
+  .strict();
+export type WeatherHistory = z.infer<typeof WeatherHistorySchema>;
+export type WeatherCycle = z.infer<typeof WeatherCycleSchema>;
+export type WeatherAttribution = z.infer<typeof WeatherAttributionSchema>;
+
+// --- household-events.json ---
+
+const HouseholdEventDeviceSchema = z
+  .object({
+    make: z.string().min(1),
+    model: z.string().min(1),
+    deviceIdFictional: z.string().min(1),
+  })
+  .strict();
+
+const HouseholdEventSchema = z
+  .object({
+    eventId: z.string().min(1),
+    type: z.string().min(1),
+    date: z.iso.date(),
+    label: z.string().min(1),
+    description: z.string().min(1),
+    performedBy: z.string().optional(),
+    workOrderId: z.string().optional(),
+    outcome: z.string().optional(),
+    relevanceNote: z.string().min(1),
+    device: HouseholdEventDeviceSchema.optional(),
+    detectionMethod: z.string().optional(),
+    status: z.string().optional(),
+  })
+  .strict();
+
+export const HouseholdEventsSchema = z
+  .object({
+    _provenance: z.string(),
+    caseId: z.string().min(1),
+    householdId: z.string().min(1),
+    events: z.array(HouseholdEventSchema).max(200),
+  })
+  .strict();
+export type HouseholdEvents = z.infer<typeof HouseholdEventsSchema>;
+export type HouseholdEvent = z.infer<typeof HouseholdEventSchema>;
+
+// --- rate-schedules.json ---
+
+const TariffChangeSchema = z
+  .object({
+    fixedChargeIncrease: MoneyAmountSchema,
+    fixedChargeIncreasePercent: z.number().finite(),
+    volumetricRateIncrease: MoneyAmountSchema,
+    volumetricRateIncreasePercent: z.number().finite(),
+    arithmeticNote: z.string().min(1),
+  })
+  .strict();
+
+const TariffSchema = z
+  .object({
+    tariffId: z.string().min(1),
+    label: z.string().min(1),
+    effectiveFrom: z.iso.date(),
+    effectiveTo: z.iso.date().nullable(),
+    fixedMonthlyCustomerCharge: MoneyAmountSchema,
+    volumetricRatePerKwh: MoneyAmountSchema,
+    rateStructure: z.string().min(1),
+    changeFromPriorTariff: TariffChangeSchema.optional(),
+    regulatoryFilingReference: z.string().optional(),
+  })
+  .strict();
+
+const RateChangeImpactSchema = z
+  .object({
+    note: z.string().min(1),
+    baselineUsageKwh: z.number().finite(),
+    billUnderPriorTariffAtBaselineUsage: CostWithArithmeticNoteSchema,
+    billUnderCurrentTariffAtBaselineUsage: CostWithArithmeticNoteSchema,
+    rateChangeAttributableAmount: CostWithArithmeticNoteSchema,
+    rateChangeAttributablePercentOfTotalGap: z.number().finite(),
+    totalGapVsPriorTariffAtActualUsage: z
+      .object({
+        note: z.string().min(1),
+        amount: z.number().finite(),
+        currency: z.string().min(1).max(10),
+        arithmeticNote: z.string().min(1),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const RateSchedulesSchema = z
+  .object({
+    _provenance: z.string(),
+    caseId: z.string().min(1),
+    utilityName: z.string().min(1),
+    serviceAddressNote: z.string().optional(),
+    tariffs: z.array(TariffSchema).max(50),
+    rateChangeImpactOnBaselineUsage: RateChangeImpactSchema,
+  })
+  .strict();
+export type RateSchedules = z.infer<typeof RateSchedulesSchema>;
+export type Tariff = z.infer<typeof TariffSchema>;
+
+// --- response-options.json ---
+
+const ResponseOptionSchema = z
+  .object({
+    optionId: z.string().min(1),
+    label: z.string().min(1),
+    description: z.string().min(1),
+    roughCost: MoneyAmountSchema,
+    roughEffortLevel: z.string().min(1),
+    estimatedTimeToInsight: z.string().min(1),
+    addressesRootCause: z.boolean(),
+    requiresConsequentialAction: z.boolean(),
+    consequentialActionNote: z.string().optional(),
+  })
+  .strict();
+
+export const ResponseOptionsSchema = z
+  .object({
+    _provenance: z.string(),
+    caseId: z.string().min(1),
+    options: z.array(ResponseOptionSchema).max(50),
+  })
+  .strict();
+export type ResponseOptions = z.infer<typeof ResponseOptionsSchema>;
+export type ResponseOption = z.infer<typeof ResponseOptionSchema>;
+
 // --- registry, pure parsing, and disk-backed loader with in-memory cache ---
 
 const FIXTURE_SCHEMAS = {
@@ -503,9 +744,31 @@ const FIXTURE_SCHEMAS = {
   'household-profile': HouseholdProfileSchema,
   'ownership-assumptions': OwnershipAssumptionsSchema,
   'safety-reliability-sources': SafetyReliabilitySourcesSchema,
+  'current-bill': CurrentBillSchema,
+  'usage-history': UsageHistorySchema,
+  'weather-history': WeatherHistorySchema,
+  'household-events': HouseholdEventsSchema,
+  'rate-schedules': RateSchedulesSchema,
+  'response-options': ResponseOptionsSchema,
 } as const;
 
 export const FIXTURE_NAMES = Object.keys(FIXTURE_SCHEMAS) as FixtureName[];
+
+/** Which pack's fixtures directory each registered fixture name resolves against, absent a `baseDir` override. */
+const FIXTURE_PACK_DIR: Record<FixtureName, string> = {
+  'candidate-listings': CAR_PURCHASE_FIXTURES_DIR,
+  'dealer-offers': CAR_PURCHASE_FIXTURES_DIR,
+  'household-fit': CAR_PURCHASE_FIXTURES_DIR,
+  'household-profile': CAR_PURCHASE_FIXTURES_DIR,
+  'ownership-assumptions': CAR_PURCHASE_FIXTURES_DIR,
+  'safety-reliability-sources': CAR_PURCHASE_FIXTURES_DIR,
+  'current-bill': ENERGY_FIXTURES_DIR,
+  'usage-history': ENERGY_FIXTURES_DIR,
+  'weather-history': ENERGY_FIXTURES_DIR,
+  'household-events': ENERGY_FIXTURES_DIR,
+  'rate-schedules': ENERGY_FIXTURES_DIR,
+  'response-options': ENERGY_FIXTURES_DIR,
+};
 
 export type FixtureName = keyof typeof FIXTURE_SCHEMAS;
 export type FixtureData<N extends FixtureName> = z.infer<(typeof FIXTURE_SCHEMAS)[N]>;
@@ -556,8 +819,10 @@ export function parseFixtureJson<N extends FixtureName>(name: N, raw: string): F
 
 export interface LoadFixtureOptions {
   /**
-   * Overrides the directory `<name>.json` is read from. Defaults to the real
-   * `packages/scenarios/fixtures/car-purchase` directory. Tests use this to
+   * Overrides the directory `<name>.json` is read from. Defaults to that
+   * fixture name's own pack directory (`FIXTURE_PACK_DIR`) -- the real
+   * `packages/scenarios/fixtures/car-purchase` or
+   * `packages/scenarios/fixtures/energy` directory. Tests use this to
    * exercise disk-read failure paths against a temporary directory without
    * ever touching the checked-in fixtures.
    */
@@ -574,15 +839,16 @@ function cacheKey(name: FixtureName, baseDir: string): string {
 }
 
 /**
- * Loads and Zod-validates one car-purchase fixture JSON file by name,
- * caching the validated result in memory so repeated tool calls in one
- * process never re-read or re-parse the file.
+ * Loads and Zod-validates one fixture JSON file by name (from its own pack's
+ * fixtures directory, per `FIXTURE_PACK_DIR`, unless `options.baseDir`
+ * overrides it), caching the validated result in memory so repeated tool
+ * calls in one process never re-read or re-parse the file.
  */
 export function loadFixture<N extends FixtureName>(
   name: N,
   options: LoadFixtureOptions = {},
 ): FixtureData<N> {
-  const baseDir = options.baseDir ?? DEFAULT_FIXTURES_DIR;
+  const baseDir = options.baseDir ?? FIXTURE_PACK_DIR[name];
   const key = cacheKey(name, baseDir);
 
   const cached = cache.get(key);
