@@ -10,6 +10,7 @@ export {
   HOUSEHOLD_FIT_DEFINITION_ID_TRANSLATION,
   buildCarPurchaseCandidateEntities,
   buildCarPurchaseSeedEvents,
+  buildHomeEnergyResponseOptionEntities,
 } from './seeds.js';
 export type {
   BuildCarPurchaseSeedEventsParams,

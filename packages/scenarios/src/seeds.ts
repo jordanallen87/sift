@@ -71,7 +71,140 @@ import {
   type CandidateDealerOfferFacts,
   type CandidateListingFacts,
   type OwnershipCostResult,
+  type ResponseOption,
 } from './tools/index.js';
+
+// --- Home Energy Guardian response-option seeding ---
+//
+// `home-energy-guardian.ts`'s compiled pack declares a `response_option`
+// entity kind (`energy.response_option_description`/`energy.rough_cost`/
+// `energy.rough_effort_level`/`energy.estimated_time_to_insight`/
+// `energy.addresses_root_cause`/`energy.requires_consequential_action`/
+// `energy.consequential_action_note`), matching
+// `packages/scenarios/fixtures/energy/response-options.json`'s four options
+// field-for-field -- the same "compare/select among a fixed set of options"
+// shape `buildCarPurchaseCandidateEntities` above seeds for car-purchase's
+// four candidates. `instantiateCase` always seeds `entities: []`
+// (see this file's own header comment), and unlike car-purchase's
+// candidates, nothing in `home-energy-swarm.ts` ever needs a
+// `response_option` `EntityRecord` to run (the Swarm's specialists reach
+// `response-options.json` directly through `calculator`'s
+// `evaluateResponseOptions`/the synthesizer's baked-in system-prompt facts,
+// never through case entities) -- so this is not a *run-blocking* gap the
+// way the car-purchase candidates are. It is still a genuine
+// generic-rendering gap: without it, a real live case's
+// `recommendation.favoredOptionId` (set by `apps/agent/src/runtime/
+// home-energy-engine.ts`) names a `response_option` id with no matching
+// `EntityRecord` for the normal workspace's generic option renderer to
+// resolve. `buildHomeEnergyResponseOptionEntities` closes that gap the same
+// way `buildCarPurchaseCandidateEntities` closes its own: reading the real
+// fixture directly (not re-deriving the same facts a second time), so the
+// seeded entity's attributes are guaranteed identical to what
+// `energy-calculator.ts`'s `evaluateResponseOptions` and
+// `home-energy-swarm.ts`'s `decision-synthesizer` system prompt (see that
+// file's module header, judgment call 4) both independently read from the
+// same file.
+//
+// This module deliberately does *not* seed a `billing_cycle` entity: unlike
+// `response_option`'s static, pre-known facts, `billing_cycle`'s declared
+// attributes (baseline, anomaly percent, weather/rate attribution,
+// correlated event) are themselves the Swarm investigation's *output* --
+// pre-seeding them would falsely show "already known" figures before any
+// investigation runs, contradicting packs-and-routing.md's "the engine
+// investigates ... before creating a human action". No existing fold helper
+// (`car-purchase-scenario.ts`'s `foldExecutionResult`, reused by
+// `home-energy-engine.ts`) writes discovered facts onto an `EntityRecord`
+// either -- car-purchase's own specialists only ever validate/challenge
+// candidate facts that were already seeded upfront, never write new ones.
+// Building that "write investigation results onto a `billing_cycle` entity"
+// mechanism is a genuine, separately-scoped follow-up, not part of this
+// task's live-wiring scope.
+function homeEnergyResponseOptionAttributes(
+  clock: Clock,
+  option: ResponseOption,
+): Record<string, AttributeRecord> {
+  const sourceId = `source-response-option-${option.optionId}`;
+  const attributes: Record<string, AttributeRecord> = {
+    'energy.response_option_description': record(clock, {
+      definitionId: 'energy.response_option_description',
+      label: 'Description',
+      sourceIds: [sourceId],
+      status: 'asserted',
+      value: { type: 'text', value: option.description },
+    }),
+    'energy.rough_cost': record(clock, {
+      definitionId: 'energy.rough_cost',
+      label: 'Rough cost',
+      sourceIds: [sourceId],
+      status: 'asserted',
+      value: {
+        type: 'money',
+        amount: option.roughCost.amount,
+        currency: option.roughCost.currency,
+      },
+    }),
+    'energy.rough_effort_level': record(clock, {
+      definitionId: 'energy.rough_effort_level',
+      label: 'Rough effort level',
+      sourceIds: [sourceId],
+      status: 'asserted',
+      value: { type: 'enum', value: option.roughEffortLevel },
+    }),
+    'energy.estimated_time_to_insight': record(clock, {
+      definitionId: 'energy.estimated_time_to_insight',
+      label: 'Estimated time to insight',
+      sourceIds: [sourceId],
+      status: 'asserted',
+      value: { type: 'string', value: option.estimatedTimeToInsight },
+    }),
+    'energy.addresses_root_cause': record(clock, {
+      definitionId: 'energy.addresses_root_cause',
+      label: 'Addresses the root cause',
+      sourceIds: [sourceId],
+      status: 'asserted',
+      value: { type: 'boolean', value: option.addressesRootCause },
+    }),
+    'energy.requires_consequential_action': record(clock, {
+      definitionId: 'energy.requires_consequential_action',
+      label: 'Requires a consequential action to pursue',
+      sourceIds: [sourceId],
+      status: 'asserted',
+      value: { type: 'boolean', value: option.requiresConsequentialAction },
+    }),
+  };
+  if (option.consequentialActionNote !== undefined) {
+    attributes['energy.consequential_action_note'] = record(clock, {
+      definitionId: 'energy.consequential_action_note',
+      label: 'Consequential action note',
+      sourceIds: [sourceId],
+      status: 'asserted',
+      value: { type: 'text', value: option.consequentialActionNote },
+    });
+  }
+  return attributes;
+}
+
+/**
+ * Builds the four Home Energy Guardian response-option `EntityRecord`s
+ * (`monitor-one-cycle`/`change-rate-plan`/`request-energy-audit`/
+ * `request-hvac-inspection`) directly from the real `response-options.json`
+ * fixture. See this module's own header comment above for the full
+ * grounding and the documented, deliberately deferred `billing_cycle`
+ * seeding gap this does not attempt to close.
+ */
+export function buildHomeEnergyResponseOptionEntities(clock: Clock): EntityRecord[] {
+  const now = clock.now();
+  const fixture = loadFixture('response-options');
+
+  return fixture.options.map((option): EntityRecord => ({
+    id: option.optionId,
+    kind: 'response_option',
+    label: option.label,
+    attributes: homeEnergyResponseOptionAttributes(clock, option),
+    createdAt: now,
+    updatedAt: now,
+  }));
+}
 
 export const CAR_PURCHASE_CANDIDATE_IDS = [
   'candidate-rav4',

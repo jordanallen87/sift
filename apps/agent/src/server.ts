@@ -21,14 +21,21 @@ import type { Server } from 'node:http';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Application } from 'express';
-import { compileCarPurchasePack, PackRegistry } from '@pax/packs';
-import { buildCarPurchaseCandidateEntities } from '@pax/scenarios';
+import { compileCarPurchasePack, compileHomeEnergyGuardianPack, PackRegistry } from '@pax/packs';
+import {
+  buildCarPurchaseCandidateEntities,
+  buildHomeEnergyResponseOptionEntities,
+} from '@pax/scenarios';
 import { buildApp } from './app.js';
 import { loadConfig, type PaxConfig } from './config.js';
 import type { PaxDatabase } from './db/connection.js';
 import { migrate, type MigrateResult } from './db/migrate.js';
 import { carPurchaseCapabilityCatalog } from './runtime/car-purchase-scenario.js';
 import { createCarPurchaseEngine } from './runtime/car-purchase-engine.js';
+import {
+  createHomeEnergyEngine,
+  homeEnergyCapabilityCatalog,
+} from './runtime/home-energy-engine.js';
 import { createSystemClock, createSystemIdGenerator } from './runtime-ports.js';
 import { CommandService } from './services/command-service.js';
 import { RunService, SqliteRunStore, type InvestigationEngine } from './services/run-service.js';
@@ -65,16 +72,26 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
   const clock = createSystemClock();
   const idGenerator = createSystemIdGenerator();
   const registry = new PackRegistry();
-  // The real `car-purchase` Decision Pack, compiled and registered at boot
-  // so a real browser session's `POST /api/cases/demo` (`demoId:
-  // "car-purchase"`) and `POST /api/cases/:caseId/run` have something real
-  // to run against -- this was a genuine, confirmed gap this task closed
-  // alongside the live run engine itself (see the dated `docs/build-log.md`
-  // entry: without a registered pack, no live case could ever be created at
-  // all). `home-energy-guardian`'s equivalent boot registration remains
-  // separate, not-yet-built work for that pack's own live-engine task.
+  // The real `car-purchase` and `home-energy-guardian` Decision Packs,
+  // compiled and registered at boot so a real browser session's
+  // `POST /api/cases/demo` (`demoId: "car-purchase"` or
+  // `"home-energy-guardian"`) and `POST /api/cases/:caseId/run` have
+  // something real to run against -- registering `car-purchase` this way
+  // was a genuine, confirmed gap an earlier task closed alongside that
+  // pack's live run engine (see the dated `docs/build-log.md` entry:
+  // without a registered pack, no live case could ever be created at all).
+  // `home-energy-guardian`'s identical gap (it was never compiled or
+  // registered here at all, so `POST /api/cases/demo {demoId:
+  // "home-energy-guardian"}` 404'd even though `apps/web`'s `DemoLauncher`
+  // already offered the "Investigate my energy bill" card) is this task's
+  // own closure of the same class of bug for the second hero pack.
   const carPurchasePack = compileCarPurchasePack(carPurchaseCapabilityCatalog(), clock);
   registry.register(carPurchasePack);
+  const homeEnergyGuardianPack = compileHomeEnergyGuardianPack(
+    homeEnergyCapabilityCatalog(),
+    clock,
+  );
+  registry.register(homeEnergyGuardianPack);
   const skillsRootDir = fileURLToPath(new URL('../skills', import.meta.url));
 
   const runStore = new SqliteRunStore(database);
@@ -89,8 +106,19 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     idGenerator,
     skillsRootDir,
   });
+  const homeEnergyEngine = createHomeEnergyEngine({
+    caseStore,
+    activityStore,
+    runStore,
+    runtimeEventStore,
+    registry,
+    clock,
+    idGenerator,
+    skillsRootDir,
+  });
   const engines: Readonly<Record<string, InvestigationEngine>> = {
     [carPurchasePack.identity.id]: carPurchaseEngine,
+    [homeEnergyGuardianPack.identity.id]: homeEnergyEngine,
   };
 
   const commandService = new CommandService({
@@ -99,11 +127,15 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     registry,
     clock,
     idGenerator,
-    // Real gap closed alongside the live run engine (docs/build-log.md):
-    // instantiateCase always seeds entities: [], so without this a freshly
-    // started car-purchase demo case had no vehicle candidates for a live
-    // "Investigate" click to ever run against.
-    demoSeedEntities: { 'car-purchase': buildCarPurchaseCandidateEntities },
+    // Real gap closed alongside each pack's live run engine
+    // (docs/build-log.md): instantiateCase always seeds entities: [], so
+    // without this a freshly started demo case had no candidates/response
+    // options for a live "Investigate" click to ever run against or for the
+    // resulting recommendation to resolve to a renderable entity.
+    demoSeedEntities: {
+      'car-purchase': buildCarPurchaseCandidateEntities,
+      'home-energy-guardian': buildHomeEnergyResponseOptionEntities,
+    },
   });
   const runService = new RunService({
     caseStore,
