@@ -4680,3 +4680,71 @@ OptionComparison.tsx`, `package.json`, `scripts/verify.ts`,
 
 Final git SHA: not committed (per this task's scope -- no commit
 instruction was given).
+
+## 2026-08-27 -- Docker image + real Railway deployment + pnpm test:deployed
+
+Closed CLAUDE.md's "Deployment behavior" section, the last mandatory
+Tier-1 item not yet done: a Docker image serving the built web app and
+API as one Railway service, a real deployment, and a real
+`pnpm test:deployed`.
+
+- `Dockerfile`: single-stage `node:22-bookworm-slim` (not multi-stage --
+  `better-sqlite3` is a native addon compiled at `pnpm install` time and
+  `apps/agent`'s own `start` script runs TypeScript directly via `tsx`,
+  matching the repo's existing local-dev convention; a copy-only second
+  stage would still need the same native rebuild). Installs
+  python3/make/g++ for the native build, `pnpm install --frozen-lockfile`,
+  builds `apps/web` so `apps/agent/src/app.ts`'s `express.static` has a
+  real `dist/` to serve, `CMD pnpm --filter @pax/agent start` on port
+  8080. Migrations run automatically and idempotently at boot (no
+  separate migration step in the image).
+- Verified locally first: built the image, ran it standalone, drove a
+  real demo-start over curl (4 real seeded candidates), confirmed static
+  serving and the correct 404-not-a-fake-200 behavior, then `docker
+  restart` and confirmed the case data survived.
+- Real Railway deployment via the CLI, exactly per CLAUDE.md's mandated
+  sequence: `railway up --new --name pax-hackathon --json -y --detach`,
+  `railway volume add --mount-path /data --json` (the `--service` flag
+  itself panicked the installed CLI -- worked once omitted, relying on
+  the single already-linked service), `railway variable set
+  PAX_DATA_DIR=/data --json` (auto-triggered a redeploy picking up the
+  new volume mount), `railway domain --port 8080 --json`.
+- **Railway identifiers** (workspace "JAllen's Projects",
+  `858019bb-34f3-44f1-ae16-128901848aff`): project `pax-hackathon`
+  (`1c02545d-5ed3-4ac6-82dc-fad2e09e8999`), service `pax-hackathon`
+  (`e98affa7-2756-4f5a-bbae-d3e84a06ced7`), environment `production`
+  (`9e0c95c9-2f33-431a-93c3-1a592a069d00`), volume
+  `pax-hackathon-volume` (`477985d7-abfe-4216-8281-fa01b3e7b508`) mounted
+  at `/data`, public domain
+  `https://pax-hackathon-production.up.railway.app`. GitHub repo (created
+  this session, currently private -- flip to public before actual
+  submission per the WebMCP requirements checklist):
+  `https://github.com/jordanallen87/pax`.
+- `scripts/test-deployed.ts`: replaces the `stage-not-implemented` stub
+  with the real, opt-in (`PAX_DEPLOYED_URL`-gated, never part of
+  `pnpm verify`) check testing.md requires: health/static assets, the
+  SPA-no-catchall 404 contract, a real fixture case + investigation run
+  recording case/run IDs, Runtime Inspector availability, a same-origin
+  CORS check, and -- the spec's core requirement -- triggering a real
+  `railway redeploy` and proving the case, its 4 entities, and the run's
+  244 `runtime_events` all survive byte-identically afterward. AgentCore
+  `/ping` and WebMCP-client registration are correctly reported `skip`
+  with an honest reason (no AWS credentials this session; requires a
+  real WebMCP-enabled browser this script cannot drive) rather than
+  silently passed or failed.
+- Ran `pnpm test:deployed` for real against the live URL: **8 passed, 2
+  honest skips, 0 failed**, including the real redeploy-persistence
+  proof.
+
+**Known limitations:** AgentCore/Bedrock deployment remains an honest
+external blocker (no AWS credentials available this session) -- the
+Railway deployment runs `PAX_EXECUTION_TARGET=local`. The GitHub repo is
+private; making it public is a submission-time step, not a functional
+gap. `home-energy-guardian` has no live engine wired yet (a separate,
+already-tracked Tier 2 task), so this deployment currently only serves
+the car-purchase hero live.
+
+**Files changed:** `Dockerfile` (new), `.dockerignore` (new),
+`scripts/test-deployed.ts` (new), `package.json`, this entry.
+
+Final git SHA: recorded in the commit that includes this entry.

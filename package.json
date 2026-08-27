@@ -21,7 +21,7 @@
     "test:observability": "tsx scripts/stage-not-implemented.ts test:observability",
     "test:mutation": "tsx scripts/stage-not-implemented.ts test:mutation",
     "test:live": "tsx scripts/stage-not-implemented.ts test:live",
-    "test:deployed": "tsx scripts/stage-not-implemented.ts test:deployed",
+    "test:deployed": "tsx scripts/test-deployed.ts",
     "test:submission": "tsx scripts/stage-not-implemented.ts test:submission",
     "check:source": "tsx scripts/check-source.ts",
     "docs:diagram": "tsx scripts/generate-diagram.ts",
