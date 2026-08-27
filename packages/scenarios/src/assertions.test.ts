@@ -322,6 +322,35 @@ describe('checkAssertion: every remaining kind, pass and fail branch', () => {
     ).toBe(false);
   });
 
+  it('goal_recovered requires both a matching failure and a later pass', () => {
+    const failedOnly: ScenarioTrajectory = {
+      ...emptyScenarioTrajectory(),
+      goalValidationFailures: [{ reason: 'the response makes claims without citing a source id' }],
+    };
+    expect(
+      checkAssertion(failedOnly, {
+        kind: 'goal_recovered',
+        reasonIncludes: 'without citing a source',
+      }).passed,
+    ).toBe(false);
+
+    const recovered: ScenarioTrajectory = {
+      ...emptyScenarioTrajectory(),
+      goalValidationFailures: [{ reason: 'the response makes claims without citing a source id' }],
+      goalValidationPasses: [{ attempt: 2 }],
+    };
+    expect(
+      checkAssertion(recovered, {
+        kind: 'goal_recovered',
+        reasonIncludes: 'without citing a source',
+      }).passed,
+    ).toBe(true);
+    expect(
+      checkAssertion(recovered, { kind: 'goal_recovered', reasonIncludes: 'unrelated reason' })
+        .passed,
+    ).toBe(false);
+  });
+
   it('snapshot_restored', () => {
     const trajectory: ScenarioTrajectory = {
       ...emptyScenarioTrajectory(),

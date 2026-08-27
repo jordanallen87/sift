@@ -35,6 +35,7 @@ describe('ScenarioAssertionSchema', () => {
     { kind: 'swarm_handoff', from: 'weather-analyst', to: 'home-systems-analyst' },
     { kind: 'context_injected', fields: ['criteria', 'evidenceInventory'] },
     { kind: 'goal_validation_failed', reasonIncludes: 'missing source linkage' },
+    { kind: 'goal_recovered', reasonIncludes: 'missing source linkage' },
     { kind: 'snapshot_restored', caseId: 'case-1' },
     { kind: 'debug_event_correlated', eventName: 'tool.finish', activityType: 'tool.completed' },
     { kind: 'redaction_canary_absent', canary: 'SECRET_CANARY_1' },

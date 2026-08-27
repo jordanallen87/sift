@@ -126,6 +126,23 @@ const GoalValidationFailedAssertionSchema = z
   .object({ kind: z.literal('goal_validation_failed'), reasonIncludes: safeString(500) })
   .strict();
 
+/**
+ * A genuine GoalLoop reject-then-recover cycle: at least one failed
+ * validation attempt whose feedback includes `reasonIncludes`, followed by
+ * at least one later attempt that passed (`maxAttempts: 2` -- strands-
+ * runtime.md "GoalLoop output validation"). Distinct from
+ * `goal_validation_failed` (which only proves the rejection half): a pack
+ * whose demo trajectory must prove the run recovered and still produced a
+ * valid final result (not merely that a draft was once rejected) needs this
+ * stronger claim expressed declaratively rather than as an ad hoc inline
+ * check, since "reject once, then recover" is a reusable trajectory shape
+ * any pack's GoalLoop-gated agent could exercise, not a one-off dynamic
+ * value.
+ */
+const GoalRecoveredAssertionSchema = z
+  .object({ kind: z.literal('goal_recovered'), reasonIncludes: safeString(500) })
+  .strict();
+
 const SnapshotRestoredAssertionSchema = z
   .object({ kind: z.literal('snapshot_restored'), caseId: idString() })
   .strict();
@@ -208,6 +225,7 @@ export const ScenarioAssertionSchema = z.discriminatedUnion('kind', [
   SwarmHandoffAssertionSchema,
   ContextInjectedAssertionSchema,
   GoalValidationFailedAssertionSchema,
+  GoalRecoveredAssertionSchema,
   SnapshotRestoredAssertionSchema,
   DebugEventCorrelatedAssertionSchema,
   RedactionCanaryAbsentAssertionSchema,

@@ -59,6 +59,11 @@ export interface TrajectoryGoalValidationFailure {
   readonly reason: string;
 }
 
+/** One passed GoalLoop validation attempt, alongside `goalValidationFailures` -- together they let `goal_recovered` prove a genuine reject-then-recover cycle rather than only the rejection half. */
+export interface TrajectoryGoalValidationPass {
+  readonly attempt: number;
+}
+
 /** `snapshot_restored`. */
 export interface TrajectorySnapshotRestoration {
   readonly caseId: string;
@@ -108,6 +113,8 @@ export interface ScenarioTrajectory {
   swarmHandoffs: TrajectorySwarmHandoff[];
   contextInjections: TrajectoryContextInjection[];
   goalValidationFailures: TrajectoryGoalValidationFailure[];
+  /** `goal_recovered`: every passed GoalLoop validation attempt observed. */
+  goalValidationPasses: TrajectoryGoalValidationPass[];
   snapshotRestorations: TrajectorySnapshotRestoration[];
   debugCorrelations: TrajectoryDebugCorrelation[];
   /** Every redaction canary ever *tested for* (not necessarily found) -- `redaction_canary_absent` passes when a given canary never appears in `redactionCanariesSeen`. */
@@ -146,6 +153,7 @@ export function emptyScenarioTrajectory(): ScenarioTrajectory {
     swarmHandoffs: [],
     contextInjections: [],
     goalValidationFailures: [],
+    goalValidationPasses: [],
     snapshotRestorations: [],
     debugCorrelations: [],
     redactionCanariesSeen: [],

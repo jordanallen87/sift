@@ -159,6 +159,22 @@ export function checkAssertion(
       );
     }
 
+    case 'goal_recovered': {
+      const failed = trajectory.goalValidationFailures.some((failure) =>
+        failure.reason.includes(assertion.reasonIncludes),
+      );
+      const recovered = failed && trajectory.goalValidationPasses.length > 0;
+      return result(
+        assertion,
+        recovered,
+        recovered
+          ? `a goal validation failure included "${assertion.reasonIncludes}" and a later attempt passed`
+          : !failed
+            ? `no goal validation failure included "${assertion.reasonIncludes}"`
+            : `a goal validation failure included "${assertion.reasonIncludes}" but no later attempt passed`,
+      );
+    }
+
     case 'snapshot_restored': {
       const match = trajectory.snapshotRestorations.some(
         (restoration) => restoration.caseId === assertion.caseId,
