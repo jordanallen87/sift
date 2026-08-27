@@ -1,0 +1,13 @@
+{
+  "name": "@pax/scenarios",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pax fixture data, scripted tools/model, scenario runner, and assertions. Real logic ships in Task 3/7/8.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  }
+}

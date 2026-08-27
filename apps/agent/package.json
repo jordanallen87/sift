@@ -1,0 +1,13 @@
+{
+  "name": "@pax/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pax Express + Strands service and static web host. Real service ships in Task 5/6.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  }
+}

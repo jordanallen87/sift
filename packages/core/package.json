@@ -1,0 +1,13 @@
+{
+  "name": "@pax/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure Pax case reducer, routing, obligations, evidence, and readiness engine. No React, Express, Strands, model provider, or filesystem imports. Real logic ships in Task 2.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  }
+}

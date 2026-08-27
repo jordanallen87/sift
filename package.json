@@ -1,0 +1,47 @@
+{
+  "name": "pax",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pax: a real-time, source-linked decision workspace. Dual-hackathon monorepo root.",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings=0 && tsx scripts/check-source.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --if-present run typecheck",
+    "test:unit": "vitest run",
+    "test:pack": "tsx scripts/stage-not-implemented.ts test:pack",
+    "test:integration": "tsx scripts/stage-not-implemented.ts test:integration",
+    "test:contract": "tsx scripts/stage-not-implemented.ts test:contract",
+    "test:scenario": "tsx scripts/stage-not-implemented.ts test:scenario",
+    "test:e2e": "tsx scripts/stage-not-implemented.ts test:e2e",
+    "test:observability": "tsx scripts/stage-not-implemented.ts test:observability",
+    "test:mutation": "tsx scripts/stage-not-implemented.ts test:mutation",
+    "test:live": "tsx scripts/stage-not-implemented.ts test:live",
+    "test:deployed": "tsx scripts/stage-not-implemented.ts test:deployed",
+    "test:submission": "tsx scripts/stage-not-implemented.ts test:submission",
+    "check:source": "tsx scripts/check-source.ts",
+    "verify": "tsx scripts/verify.ts",
+    "verify:release": "tsx scripts/stage-not-implemented.ts verify:release"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0",
+    "@types/node": "^26.3.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.11.0",
+    "jsdom": "^30.0.1",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.11"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@pax/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pax right-pane React/Vite browser application and WebMCP registration. Real app ships in Task 9/10.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  }
+}

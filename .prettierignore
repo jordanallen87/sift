@@ -1,0 +1,20 @@
+node_modules
+dist
+build
+coverage
+artifacts
+.pax-data
+playwright-report
+test-results
+.stryker-tmp
+reports
+pnpm-lock.yaml
+*.sqlite
+
+# Hand-authored specification, planning, and submission prose. These predate
+# and are governed by docs/specs/README.md's precedence rules, not by this
+# repo's code-formatting gate; reformatting them is unrelated churn to any
+# implementation task. Code fences inside them are unaffected either way.
+docs/
+CLAUDE.md
+CLAUDE_CODE_PROMPT.md
