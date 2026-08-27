@@ -78,17 +78,24 @@ export interface RunVerificationOptions {
 }
 
 /**
- * The real `pnpm verify` composition per docs/specs/testing.md: static +
- * unit are wired for real in Task 1; pack/integration/contract/scenario/e2e
- * are declared so the report is honest about what still needs Task 2+.
+ * The real `pnpm verify` composition per docs/specs/testing.md. `test:pack`/
+ * `test:integration` are real, named subsets of the same test files
+ * `test:unit` already runs in full (`vitest run` with explicit path
+ * arguments, filtered against the one root `test.projects` set) -- the same
+ * relationship `test:scenario` already has to `test:unit` (the `tests`
+ * project's scenario test is also picked up by a full unscoped
+ * `test:unit` run). This is deliberate, not redundant: testing.md's
+ * "Commands and gates" table names these as distinct, semantically-labeled
+ * release-gate signals for CI/review, not a disjoint partition of the
+ * suite. `test:contract` remains declared until its own task lands.
  */
 export const DEFAULT_STAGES: StageDefinition[] = [
   { name: 'format:check', kind: 'real' },
   { name: 'lint', kind: 'real' },
   { name: 'typecheck', kind: 'real' },
   { name: 'test:unit', kind: 'real' },
-  { name: 'test:pack', kind: 'not-implemented' },
-  { name: 'test:integration', kind: 'not-implemented' },
+  { name: 'test:pack', kind: 'real' },
+  { name: 'test:integration', kind: 'real' },
   { name: 'test:contract', kind: 'not-implemented' },
   { name: 'test:scenario', kind: 'real' },
   { name: 'test:e2e', kind: 'real' },
