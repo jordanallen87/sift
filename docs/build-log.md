@@ -1370,3 +1370,225 @@ scope. The case store, activity store, command service, run service, and
 `routes/{packs,cases,commands,runs,events}.ts` remain explicitly out of
 scope pending `packages/core`'s command-service integration, per this
 task's boundary.
+
+## 2026-08-27 — packages/packs: generic Decision Pack compiler, capability catalog, registry, conformance
+
+Task 3's generic compiler/registry machinery (per
+`docs/superpowers/plans/2026-08-26-pax-hackathon-build.md`), TDD-first
+throughout: `packages/packs/src/{canonicalize,capability-catalog,compiler,
+registry,conformance}.ts` plus one `.test.ts` per module and a shared
+`src/fixtures/manifest.ts` test-support builder (excluded from coverage
+accounting by the root `vitest.config.ts` `**/fixtures/**` glob, same as
+per-pack fixture bundles). Scope boundary honored: no `car-purchase` /
+`home-energy-guardian` manifests, skills, specialists, or fixture tools —
+those are separate later work — and `packages/core/src/{reducer,
+create-case}.ts` were neither read nor imported (only already-committed
+`packages/core` exports, e.g. `Clock` and `PaxDomainError` from
+`policy.ts`/`errors.ts`, were imported).
+
+**What each module does:**
+
+- `canonicalize.ts` — `canonicalizeValue`/`canonicalizeManifest` (recursive
+  object-key sort, array order preserved) and `hashManifest(canonicalJson,
+  resolvedCapabilityVersions)` → lowercase-hex SHA-256 via Node's built-in
+  `crypto`.
+- `capability-catalog.ts` — `CapabilityCatalog`/`CapabilityCatalogEntry`
+  (`{id, kind, version}`) lookup registry and
+  `resolveCapabilityReferences(manifest, catalog)`.
+- `compiler.ts` — `compilePack(source, catalog, clock): CompiledDecisionPack`,
+  the exact 11-step pack-authoring.md pipeline, exhaustive (collects every
+  issue across steps 3–10 into one thrown `PackCompilationError`, not
+  fail-fast on the first violation).
+- `registry.ts` — `PackRegistry` (`register`/`get`/`getByHash`/`list`).
+- `conformance.ts` — `runPackConformance(pack, catalog): PackConformanceReport`,
+  never throws, one pass/fail entry per check.
+
+**Judgment calls requiring inference** (pack-authoring.md and
+packs-and-routing.md describe several of these only in prose; each is also
+documented at its exact call site in the source, per CLAUDE.md's inference
+requirement):
+
+1. **Steps 1+2 folded.** `PackIdentitySchema` (already-committed
+   `packages/contracts/src/packs.ts`) already enforces the pack-id charset
+   and semver format, and every manifest array already carries a `.max(...)`
+   bound — so a single `DecisionPackManifestSchema.safeParse(source)` call
+   satisfies both "schema and size validation" and "stable ID and
+   semantic-version validation"; there is nothing left for a distinct step 2
+   to check once step 1 passes.
+2. **Step 4 is a derivation, not a rejection check.** "Attribute, criterion,
+   and obligation rule compilation" produces `runtimeValidators`
+   (`attributeValidatorIds`/`obligationValidatorIds`, one per declared
+   attribute/obligation) — a stable reference the *actual* validator
+   implementations (a separate, later workstream) can claim. It cannot fail;
+   it only runs once steps 3–10 all pass.
+3. **Step 6 (Graph/Swarm bounds) — the one requiring the most inference.**
+   `OrchestrationDefinitionSchema` has no node/edge/member topology field at
+   all, only `strategy` plus numeric bounds, so "reachability/cycle bounds"
+   cannot be checked against a graph structure that doesn't exist in the
+   manifest. Implemented as three schema-grounded coherence rules instead
+   (`validateOrchestrationBounds` in `compiler.ts`):
+   - `nodeTimeoutMs <= totalTimeoutMs` for every strategy (a single node
+     cannot legitimately outlive the whole orchestration's time budget;
+     nothing in the Zod schema cross-validates these two independent
+     numeric ranges against each other);
+   - `strategy: 'graph'` requires `maxConcurrency` to be set, quoting
+     strands-runtime.md: "Graphs set `maxSteps`, timeouts, and concurrency
+     explicitly" — `maxConcurrency` is schema-optional (so a Swarm-only pack
+     needn't declare it), but a Graph that omits it hasn't, in fact, set
+     concurrency explicitly;
+   - `strategy: 'swarm'` requires both `repetitiveHandoffDetectionWindow`
+     and `repetitiveHandoffMinUniqueAgents`, quoting strands-runtime.md:
+     "The Swarm sets ... repetitive-handoff detection" — this is literally
+     packs-and-routing.md's "cycles without execution bounds" rejection
+     case: without a repetitive-handoff bound, a Swarm has no configured
+     defense against an unbounded handoff cycle.
+4. **Step 7 (approval policy / prohibited-effect).** A consequential-effect
+   tool must satisfy *both* `tool.requiresApproval === true` (its own
+   posture) *and* be covered by at least one `PolicyDefinition` with
+   `requiresHumanApproval === true` whose `appliesToToolIds` either omits
+   the field (read as "applies to every tool") or lists the tool's id.
+   Requiring both, not either: `requiresApproval` alone is a self-declared
+   flag nothing enforces, and an unmatched `requiresHumanApproval` policy is
+   dead configuration; only the pair proves architecture.md's
+   `ConsequenceGuard` has something concrete to enforce. This also folds in
+   "prohibited-effect checks" — an ungated consequential effect *is* the
+   prohibited-effect shape, so no separate check was added for it.
+5. **Step 8 (extension policy).** The task brief's illustrative case
+   ("`allowCaseObligations: true` but no `userConcernTemplateId`") cannot
+   actually occur — `idString()` already forces `userConcernTemplateId` to
+   be a non-empty, charset-restricted string at the schema layer. Re-grounded
+   as two checks that *are* reachable: (a) `allowCaseObligations: true`
+   requires `allowCaseCriteria: true`, since packs-and-routing.md states case
+   obligations are always *derived from* case criteria needing evidence —
+   allowing one without the other describes a rule with no coherent trigger;
+   (b) `userConcernTemplateId` must not collide with a declared
+   `obligations[].id`, since a case extension's generated obligation id could
+   otherwise alias (and risk being confused for, or overwriting) an
+   already-required pack obligation.
+6. **Step 9 (UI renderability) — the other check requiring real inference.**
+   `AttributeDefinition.valueType` is already a closed Zod enum of every
+   `AttributeValue` variant, so an "unrenderable value type" cannot occur
+   past schema validation. The reachable failure instead: every non-
+   `sensitive` attribute must be listed in at least one
+   `presentation.attributeGroups[].attributeIds`, since product.md's
+   schema-driven generic renderer lays out fields by walking
+   `presentation.attributeGroups` — an attribute absent from every group is
+   declared but permanently invisible. `sensitive` attributes are exempt
+   (expected to render via redaction/masking, not an ordinary group
+   listing). A group pointing at a *nonexistent* attribute id is the
+   opposite failure (a dangling reference) and is caught separately by step
+   3, not repeated here.
+7. **Step 10 (negative scenarios).** `PackEvaluationDefinition` carries only
+   `scenarioIds: string[]` — no per-scenario outcome-kind metadata, since
+   scenario *content* lives in separate `scenarios/<id>.json` bundle files
+   this manifest-only compiler cannot see. Treated the author-declared
+   `requiresNegativeCase` boolean plus a non-empty `scenarioIds` as the
+   manifest-level proxy: reject `requiresNegativeCase: false` or an empty
+   `scenarioIds`. Deeper verification that a real negative-scenario file
+   exists is `pnpm test:pack`'s job, not this compiler's.
+8. **`compilePack` is exhaustive, not fail-fast**, for steps 3–10 (only step
+   1's schema check short-circuits, since later steps assume a structurally
+   valid manifest) — collects every issue from every step into one thrown
+   `PackCompilationError`, so a single bad manifest reports all its problems
+   at once rather than one repair-cycle-per-violation. Verified directly by
+   a dedicated "reports issues from multiple independent steps in a single
+   call" test.
+9. **`hashManifest`'s `resolvedCapabilityVersions` parameter and
+   `CapabilityCatalogEntry.version`.** The task brief's suggested catalog
+   entry shape was `{id, kind}`; added a required `version: string` field
+   because pack-authoring.md step 11 says the hash "covers ... resolved
+   capability versions" — without a version string per catalog entry there
+   is nothing for the hash to fold in. `compilePack` builds
+   `resolvedCapabilityVersions` as a `"<kind>:<id>" → version` map from
+   every capability reference that resolved, so republishing a manifest
+   byte-for-byte against an *upgraded* capability implementation still
+   produces a new `compiledHash` — verified by a test that compiles the same
+   manifest against catalogs differing only in one tool's `version` and
+   asserts the hashes differ.
+10. **`PackRegistry.register` idempotency.** "Changing an installed pack
+    creates a new version; it never mutates an existing case" implies the
+    registry must reject a *content* change under a fixed `id`+`version`,
+    but a repeated-boot re-registration of the *same* pack must not be an
+    error. Since `compiledHash` already *is* "semantic source and resolved
+    capability versions" reduced to one comparable value, "same semantic
+    content" is implemented as "same `compiledHash`": identical `id`+
+    `version`+`compiledHash` → no-op; identical `id`+`version` with a
+    *different* `compiledHash` → throws `PackRegistryConflictError`. Tested
+    both with the literal same object and with a second, independently
+    recompiled instance from the same source manifest (not object-identical,
+    but hash-identical).
+11. **`PackConformanceReport` shape** (no field list anywhere in the specs).
+    Grounded in two anchors: the task brief's explicit scope ("re-verifies a
+    compiled pack's capability references still resolve against a
+    (possibly updated) catalog, its Graph/Swarm bounds, and that it has
+    negative scenarios") and testing.md's `pnpm test:pack` description
+    ("verifies reference resolution, extension policy, Graph/Swarm bounds,
+    required negative scenarios, authority rules, generic UI renderability,
+    ..."). Implemented as `{packId, packVersion, compiledHash, checks:
+    PackConformanceCheckResult[], passed}` with six checks — capability
+    resolution, orchestration bounds, approval policies, extension policy,
+    UI renderability, negative scenarios — reusing `compiler.ts`'s exported
+    per-step check functions so conformance and compile-time validation can
+    never drift apart. `runPackConformance` never throws; every check
+    result is reported regardless of any other check's outcome (verified by
+    a test that drifts a compiled pack on all six axes at once and asserts
+    all six report `passed: false` rather than the function throwing on the
+    first). Deliberately no timestamp field — the given signature is
+    `(pack, catalog)` with no injected `Clock`, so the report stays a pure,
+    directly-assertable function of its two inputs; a caller wanting a
+    "when was this run" record can timestamp the report externally.
+    `orchestration_bounds`/`approval_policies`/`extension_policy`/
+    `ui_renderability` are static properties of already-compiled, immutable
+    manifest content and so cannot regress for a real `compilePack` output —
+    conformance tests for their failure paths therefore construct a
+    deliberately drifted `CompiledDecisionPack` object directly (simulating
+    a stored pack re-verified against stricter current rules after a compiler
+    upgrade), which is a legitimate real-world scenario, not a test
+    artifact.
+12. **Duplicate-ID uniqueness is per-collection, not cross-collection** —
+    e.g. an attribute id and an unrelated obligation id may coincide, since
+    each collection is addressed through its own typed field, never a shared
+    global id space. Documented inline in `checkDuplicateIds`.
+
+**TDD discipline:** every module's tests were written before/alongside its
+implementation and run to green incrementally (`canonicalize` →
+`capability-catalog` → `compiler` → `registry` → `conformance`), each
+verified independently before moving to the next. `canonicalize.ts`'s
+key-sort behavior was additionally mutation-tested by hand (temporarily
+reverting `Object.keys(value).sort()` to `Object.keys(value)`, confirming 5
+of 14 tests failed for the expected reason, then restoring) to prove the
+property tests are not vacuously true. All 101 tests across the 5 modules
+passed on first full run after implementation; two branch-coverage gaps
+found by `--coverage` (the `specialist.allowedSkills ?? []` and
+`policy.appliesToToolIds ?? []` optional-field fallback branches in
+`checkDanglingReferences`) were closed with two additional targeted
+success-path tests rather than weakened.
+
+**Verification (from repo root, all commands actually run this session):**
+
+```
+$ pnpm --filter @pax/packs test --coverage
+  # 101 tests, 5 files, all passing
+  # Statements 100% (208/208) · Branches 100% (70/70)
+  # Functions 100% (78/78)    · Lines 100% (196/196)
+
+$ pnpm --filter @pax/packs typecheck   # 0 errors
+$ pnpm eslint packages/packs --max-warnings=0   # clean
+$ pnpm exec prettier --check "packages/packs/**/*.ts"   # clean
+
+$ pnpm typecheck     # workspace-wide, 8/8 projects, 0 errors (packages/packs included)
+$ pnpm format:check  # repo-wide, clean
+$ pnpm test:unit     # workspace-wide, 35 files, 608 tests, all passing
+$ pnpm lint          # eslint . --max-warnings=0 clean repo-wide; check:source's one
+                      #   finding (packages/core/src/attributes.test.ts:44) is the
+                      #   same pre-existing, already-committed (654ef6a), out-of-scope
+                      #   finding the prior 2026-08-27 packages/core entry above already
+                      #   recorded — confirmed unchanged and untouched by this task via
+                      #   `git diff --stat -- packages/core/src/attributes.test.ts`
+```
+
+Gate: **passed** for everything in this task's scope. `packages/packs` now
+exports a real, tested, TDD-built generic compiler/registry/conformance
+layer; `car-purchase`/`home-energy-guardian` manifest authoring, and their
+skills/specialists/fixture tools, remain explicitly out of scope for later
+tasks per the plan.

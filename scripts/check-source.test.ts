@@ -67,6 +67,31 @@ describe('checkSource', () => {
     expect(result.findings.some((finding) => finding.rule === 'possible-secret')).toBe(true);
   });
 
+  it('does not flag a charset/alphabet-definition string with no repeated characters', () => {
+    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    writeFileSync(
+      join(dir, 'fixtures.test.ts'),
+      "const safeText = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_'.split('');\n",
+    );
+
+    const result = checkSource({ rootDir: dir });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('still flags a high-entropy token that happens to contain repeated characters', () => {
+    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    writeFileSync(
+      join(dir, 'config.ts'),
+      "export const SECRET = 'aZ9kQ2mP7xR4tW1nL8vB3cJ6hF5dS0ga';\n",
+    );
+
+    const result = checkSource({ rootDir: dir });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings.some((finding) => finding.rule === 'possible-secret')).toBe(true);
+  });
+
   it('does not flag an obvious placeholder credential value', () => {
     dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
     writeFileSync(join(dir, 'config.ts'), "export const API_TOKEN = 'your-api-token-here';\n");

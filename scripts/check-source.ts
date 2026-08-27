@@ -175,6 +175,16 @@ function scanPossibleSecret(line: string): Pick<SourceFinding, 'message' | 'exce
 
   for (const token of [...bareTokens, ...quotedTokens]) {
     if (/^[0-9a-f]+$/i.test(token)) continue; // pure hex: treat as a hash/ID, not a secret.
+    // A token where every character occurs exactly once is characteristic of
+    // a charset/alphabet-definition string (e.g. property-test generators
+    // spelling out `abc...xyzABC...XYZ0...9`), not a secret: an alphabet
+    // literal is definitionally the highest-entropy string possible for its
+    // length, since it *is* the deduplicated set of allowed characters,
+    // whereas a real secret of any meaningful length drawn from a large
+    // alphabet will almost always repeat at least one character. Only
+    // applies above a length where "zero repeats by chance" stops being
+    // plausible for an actual random secret.
+    if (token.length >= 16 && new Set(token).size === token.length) continue;
     if (shannonEntropy(token) > HIGH_ENTROPY_THRESHOLD) {
       return { message: 'High-entropy token resembling a secret', excerpt: redactExcerpt(line) };
     }
