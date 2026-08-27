@@ -21,10 +21,16 @@ import type { Server } from 'node:http';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Application } from 'express';
+import { PackRegistry } from '@pax/packs';
 import { buildApp } from './app.js';
 import { loadConfig, type PaxConfig } from './config.js';
 import type { PaxDatabase } from './db/connection.js';
 import { migrate, type MigrateResult } from './db/migrate.js';
+import { createSystemClock, createSystemIdGenerator } from './runtime-ports.js';
+import { CommandService } from './services/command-service.js';
+import { RunService, SqliteRunStore } from './services/run-service.js';
+import { SqliteActivityStore } from './store/activity-store.js';
+import { SqliteCaseStore } from './store/sqlite-case-store.js';
 
 const DEFAULT_PORT = 8080;
 
@@ -49,7 +55,41 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
   const port = options.port ?? Number(process.env['PORT'] ?? DEFAULT_PORT);
 
   const { database, result: migration } = migrate(dataDir);
-  const app = buildApp({ database });
+
+  const caseStore = new SqliteCaseStore(database);
+  const activityStore = new SqliteActivityStore(database);
+  // No built-in Decision Packs are registered here: the real
+  // `car-purchase`/`home-energy-guardian` manifests are separate,
+  // concurrently-built workstreams (see `docs/build-log.md`'s entry for
+  // this task). A later integration task registers them at boot; until
+  // then `GET /api/packs` and `POST /api/cases/demo` honestly report no
+  // installed packs rather than this task inventing a placeholder one.
+  const registry = new PackRegistry();
+  const clock = createSystemClock();
+  const idGenerator = createSystemIdGenerator();
+  const commandService = new CommandService({
+    caseStore,
+    activityStore,
+    registry,
+    clock,
+    idGenerator,
+  });
+  const runService = new RunService({
+    caseStore,
+    activityStore,
+    runStore: new SqliteRunStore(database),
+    clock,
+    idGenerator,
+  });
+
+  const app = buildApp({
+    database,
+    caseStore,
+    activityStore,
+    registry,
+    commandService,
+    runService,
+  });
 
   return new Promise((resolvePromise) => {
     const server = app.listen(port, () => {

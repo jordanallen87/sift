@@ -1,0 +1,365 @@
+import request from 'supertest';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { CommandReceipt, HttpConflictResponse, HttpErrorBody } from '@pax/contracts';
+import { asJson } from '../fixtures/http-types.js';
+import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
+
+describe('POST /api/cases/:caseId/commands/:commandName', () => {
+  let harness: HttpTestHarness | undefined;
+
+  afterEach(() => {
+    harness?.cleanup();
+    harness = undefined;
+  });
+
+  async function startDemo(): Promise<{ caseId: string; expectedSequence: number }> {
+    if (harness === undefined) throw new Error('harness not initialized');
+    const response = await request(harness.app)
+      .post('/api/cases/demo')
+      .set('Idempotency-Key', 'cmd-start')
+      .send({ demoId: 'car-purchase' });
+    const receipt = asJson<CommandReceipt>(response.body);
+    return { caseId: receipt.caseId, expectedSequence: receipt.acceptedSequence };
+  }
+
+  it('dispatches selectPack and persists the result (success)', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/selectPack`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send({ caseId, packId: 'car-purchase', expectedSequence });
+
+    expect(response.status).toBe(200);
+    const receipt = asJson<CommandReceipt>(response.body);
+    expect(receipt.snapshot?.pack.selectedBy).toBe('user');
+    expect(harness.caseStore.load(caseId)?.eventSequence).toBe(receipt.acceptedSequence);
+  });
+
+  it('returns 404 for an unknown command name', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/notARealCommand`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send({ caseId, expectedSequence });
+
+    expect(response.status).toBe(404);
+    expect(asJson<HttpErrorBody>(response.body).error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 400 without an Idempotency-Key header (validation)', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/selectPack`)
+      .send({ caseId, packId: 'car-purchase', expectedSequence });
+
+    expect(response.status).toBe(400);
+    expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
+  });
+
+  it('returns 400 when the body caseId does not match the URL caseId (validation)', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/selectPack`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send({ caseId: 'a-different-case-id', packId: 'car-purchase', expectedSequence });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 400 for schema-invalid input (validation)', async () => {
+    harness = createHttpTestHarness();
+    const { caseId } = await startDemo();
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/selectPack`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send({ caseId, packId: 'car-purchase', expectedSequence: -1 });
+
+    expect(response.status).toBe(400);
+    expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
+  });
+
+  it('returns 404 for a command against an unknown case', async () => {
+    harness = createHttpTestHarness();
+
+    const response = await request(harness.app)
+      .post('/api/cases/does-not-exist/commands/selectPack')
+      .set('Idempotency-Key', 'cmd-2')
+      .send({ caseId: 'does-not-exist', packId: 'car-purchase', expectedSequence: 0 });
+
+    expect(response.status).toBe(404);
+    expect(asJson<HttpErrorBody>(response.body).error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 409 with the latest snapshot for a stale expectedSequence (conflict)', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/selectPack`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send({ caseId, packId: 'car-purchase', expectedSequence: expectedSequence + 5 });
+
+    expect(response.status).toBe(409);
+    const body = asJson<HttpConflictResponse>(response.body);
+    expect(body.error.code).toBe('CONFLICT');
+    expect(body.snapshot.eventSequence).toBe(expectedSequence);
+  });
+
+  it('returns 403 for a policy violation (removing a protected criterion)', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/updateCriteria`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send({ caseId, expectedSequence, operations: [{ op: 'remove', criterionId: 'price' }] });
+
+    expect(response.status).toBe(403);
+    expect(asJson<HttpErrorBody>(response.body).error.code).toBe('POLICY');
+  });
+
+  it('is idempotent over HTTP: retrying the same Idempotency-Key does not double-apply', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+    const body = {
+      caseId,
+      expectedSequence,
+      option: { label: 'Honda Civic', kind: 'car', attributes: [] },
+    };
+
+    const first = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/upsertOption`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send(body);
+    const second = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/upsertOption`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send(body);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(harness.caseStore.load(caseId)?.entities).toHaveLength(1);
+  });
+
+  it('returns 500 INTERNAL when the command service throws unexpectedly, without leaking the error', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+    // updateCriteria throws a plain Error (not a ServiceFailure) when the
+    // case's pinned pack is missing from the registry -- a real invariant
+    // violation this route must surface as 500, not silently as 4xx.
+    harness.caseStore.load = () => {
+      throw new Error('simulated store failure');
+    };
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/selectPack`)
+      .set('Idempotency-Key', 'cmd-2')
+      .send({ caseId, packId: 'car-purchase', expectedSequence });
+
+    expect(response.status).toBe(500);
+    expect(asJson<HttpErrorBody>(response.body).error.code).toBe('INTERNAL');
+    expect(JSON.stringify(response.body)).not.toContain('simulated store failure');
+  });
+
+  it('dispatches every remaining commandName to its CommandService method over real HTTP', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence: afterDemo } = await startDemo();
+
+    const upserted = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/upsertOption`)
+      .set('Idempotency-Key', 'cmd-option')
+      .send({
+        caseId,
+        expectedSequence: afterDemo,
+        option: { label: 'Honda Civic', kind: 'car', attributes: [] },
+      });
+    expect(upserted.status).toBe(200);
+    const optionReceipt = asJson<CommandReceipt>(upserted.body);
+    const optionId = optionReceipt.snapshot?.entities[0]?.id;
+    if (optionId === undefined) throw new Error('expected an option id');
+    const afterOption = optionReceipt.acceptedSequence;
+
+    const focused = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/focusOption`)
+      .set('Idempotency-Key', 'cmd-focus-option')
+      .send({ caseId, optionId, expectedSequence: afterOption });
+    expect(focused.status).toBe(200);
+
+    const defined = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/defineCaseAttribute`)
+      .set('Idempotency-Key', 'cmd-define')
+      .send({
+        caseId,
+        expectedSequence: afterOption,
+        definition: {
+          id: 'custom.pet_sensory_fit',
+          label: 'Pet sensory fit',
+          valueType: 'text',
+          appliesTo: ['car'],
+          evidenceExpectation: 'assertion',
+          comparison: 'none',
+          reason: 'The household has a dog.',
+        },
+      });
+    expect(defined.status).toBe(200);
+    const definedReceipt = asJson<CommandReceipt>(defined.body);
+    const extensionId = definedReceipt.snapshot?.caseExtensions[0]?.id;
+    if (extensionId === undefined) throw new Error('expected an extension id');
+    const afterDefine = definedReceipt.acceptedSequence;
+
+    // The default command-service.ts `origin` is `'user'` (auto-confirmed)
+    // for the plain HTTP command path, so this extension is already
+    // confirmed -- reviewCaseExtension correctly rejects re-reviewing it,
+    // still exercising the real dispatch branch and its validation path.
+    const reviewed = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/reviewCaseExtension`)
+      .set('Idempotency-Key', 'cmd-review-ext')
+      .send({ caseId, extensionId, decision: 'confirm', expectedSequence: afterDefine });
+    expect(reviewed.status).toBe(400);
+    expect(asJson<HttpErrorBody>(reviewed.body).error.code).toBe('VALIDATION');
+
+    // Seed an evidence link and a pending proposal directly via the store
+    // (no command in this task's scope both creates AND exposes one over
+    // HTTP in a single call -- see command-service.ts's documented scope
+    // limitations) so focusEvidence/setEvidenceDisposition/
+    // reviewProposal/requestRevision's real dispatch branches can be
+    // exercised too.
+    harness.caseStore.append(
+      caseId,
+      [
+        {
+          eventId: 'seed-evidence',
+          caseId,
+          sequence: afterDefine + 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          type: 'evidence.accepted',
+          payload: {
+            evidenceLink: {
+              id: 'evidence-1',
+              obligationId: 'hard-constraints',
+              level: 'E1',
+              verdict: 'pass',
+              disposition: 'included',
+              summary: 'summary',
+              stale: false,
+              createdAt: '2026-08-27T00:00:00.000Z',
+              updatedAt: '2026-08-27T00:00:00.000Z',
+            },
+          },
+        },
+        {
+          eventId: 'seed-recommendation',
+          caseId,
+          sequence: afterDefine + 2,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          type: 'recommendation.ready',
+          payload: {
+            recommendation: {
+              id: 'rec-1',
+              status: 'ready',
+              favoredOptionId: null,
+              rationale: 'because',
+              facts: [],
+              hypotheses: [],
+              confidence: 0.5,
+              limitations: [],
+              sourceIds: [],
+              resolvedObligationIds: [],
+              acceptedUncertaintyObligationIds: [],
+              generatedAt: '2026-08-27T00:00:00.000Z',
+            },
+          },
+        },
+        {
+          eventId: 'seed-proposal',
+          caseId,
+          sequence: afterDefine + 3,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          type: 'proposal.reviewed',
+          payload: {
+            proposal: {
+              id: 'proposal-1',
+              recommendationId: 'rec-1',
+              status: 'pending',
+              createdAt: '2026-08-27T00:00:00.000Z',
+            },
+          },
+        },
+      ],
+      afterDefine,
+    );
+    const seeded = harness.caseStore.load(caseId);
+    const afterSeed = seeded?.eventSequence;
+    if (afterSeed === undefined) throw new Error('expected a seeded case');
+
+    const focusedEvidence = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/focusEvidence`)
+      .set('Idempotency-Key', 'cmd-focus-evidence')
+      .send({ caseId, evidenceId: 'evidence-1', expectedSequence: afterSeed });
+    expect(focusedEvidence.status).toBe(200);
+
+    const disposed = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/setEvidenceDisposition`)
+      .set('Idempotency-Key', 'cmd-dispose')
+      .send({
+        caseId,
+        evidenceId: 'evidence-1',
+        disposition: 'excluded',
+        reason: 'Not independent.',
+        expectedSequence: afterSeed,
+      });
+    expect(disposed.status).toBe(200);
+    const afterDisposition = asJson<CommandReceipt>(disposed.body).acceptedSequence;
+
+    const submitted = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/submitSource`)
+      .set('Idempotency-Key', 'cmd-source')
+      .send({
+        caseId,
+        expectedSequence: afterDisposition,
+        source: {
+          url: 'https://example.com/review',
+          title: 'Review',
+          retrievedAt: '2026-08-27T00:00:00.000Z',
+          claims: [],
+        },
+      });
+    expect(submitted.status).toBe(200);
+
+    const revised = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/requestRevision`)
+      .set('Idempotency-Key', 'cmd-revise')
+      .send({
+        caseId,
+        proposalId: 'proposal-1',
+        instructions: 'Please reconsider mileage.',
+        expectedSequence: afterDisposition,
+      });
+    expect(revised.status).toBe(200);
+    const afterRevision = asJson<CommandReceipt>(revised.body).acceptedSequence;
+
+    // The proposal is now `revision_requested`, not `pending` -- reviewing
+    // it again correctly rejects, still exercising the real dispatch branch.
+    const approved = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/reviewProposal`)
+      .set('Idempotency-Key', 'cmd-approve')
+      .send({
+        caseId,
+        proposalId: 'proposal-1',
+        actor: 'human',
+        decision: 'approve',
+        expectedSequence: afterRevision,
+      });
+    expect(approved.status).toBe(400);
+    expect(asJson<HttpErrorBody>(approved.body).error.code).toBe('VALIDATION');
+  });
+});

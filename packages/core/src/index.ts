@@ -155,3 +155,18 @@ export {
 // alone.
 export type { ReadinessResult } from './readiness.js';
 export { evaluateReadiness } from './readiness.js';
+
+// Reducer integration layer (reducer.ts, create-case.ts), added while
+// building `apps/agent`'s case store/command service. Commit 1a2d980
+// ("feat: wire pax core into applyCaseEvent/instantiateCase") introduced
+// both modules but never added their barrel re-exports here — every other
+// `packages/core` module is re-exported from this file, and `apps/agent`
+// (per docs/specs/architecture.md "Deterministic core") can only reach
+// `applyCaseEvent`/`instantiateCase` through `@pax/core`'s public surface
+// (`main`/`types` both point at this file), not by deep-importing
+// `@pax/core/src/reducer.js` directly. Additive fix, following this file's
+// own stated pattern ("each adds only its own module's re-exports here
+// rather than overwriting others'").
+export { applyCaseEvent } from './reducer.js';
+export { instantiateCase } from './create-case.js';
+export type { PackSelection } from './create-case.js';

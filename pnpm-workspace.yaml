@@ -4,4 +4,10 @@ packages:
 allowBuilds:
   better-sqlite3: true
   esbuild: true
+  # @pax/web only uses msw/node's setupServer for Node-side test mocking
+  # (packages/contracts-shaped fetch fixtures in *.test.ts), never
+  # setupWorker in the browser, so msw's postinstall (`msw init`, which
+  # writes a mockServiceWorker.js into a public/ dir for browser use) is
+  # unnecessary. Denying it avoids running an unneeded install script.
+  msw: false
   puppeteer: false

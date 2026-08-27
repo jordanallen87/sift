@@ -1592,3 +1592,1119 @@ exports a real, tested, TDD-built generic compiler/registry/conformance
 layer; `car-purchase`/`home-energy-guardian` manifest authoring, and their
 skills/specialists/fixture tools, remain explicitly out of scope for later
 tasks per the plan.
+
+## 2026-08-27 — `car-purchase@1.0.0` Decision Pack manifest (Tier-1 WebMCP hero)
+
+**Task:** author the real `car-purchase@1.0.0` manifest (`packages/packs/src/car-purchase.ts`)
+against the already-complete, already-committed `@pax/contracts`, `@pax/core`,
+and `packages/packs/src/compiler.ts`, matching
+`docs/specs/packs-and-routing.md` "Choose Our Next Car Decision Pack" and
+`docs/specs/strands-runtime.md` "Orchestration" exactly, and shaped so its
+`attributes`/`entities` round-trip the real fixture data already authored at
+`packages/scenarios/fixtures/car-purchase/*.json`.
+
+**Files created:**
+- `packages/packs/src/car-purchase.ts` — `CAR_PURCHASE_MANIFEST: DecisionPackManifest`
+  (raw source manifest) and `compileCarPurchasePack(catalog, clock): CompiledDecisionPack`
+  (a thin wrapper calling `compilePack(CAR_PURCHASE_MANIFEST, catalog, clock)`).
+- `packages/packs/src/car-purchase.test.ts` — TDD tests, written and run red
+  (module-not-found) before `car-purchase.ts` existed, then green.
+
+**Files edited:**
+- `packages/packs/src/index.ts` — added the `CAR_PURCHASE_MANIFEST` /
+  `compileCarPurchasePack` barrel export and updated the module header
+  comment (no longer "car-purchase ships in a later task").
+- `packages/packs/package.json` — updated the stale `description` field
+  that previously said built-in manifests ship later.
+
+**Obligations declared** (verbatim id/question/requiredEvidenceLevel/maxAttempts
+from packs-and-routing.md's table; `dependsOn`/`priority`/
+`acceptedUncertaintyAllowed`/`preferredSkills`/`preferredSpecialists` are
+judgment calls, reasoned below):
+
+| id | evidence | attempts | preferredSkills | preferredSpecialists | dependsOn |
+| --- | --- | --- | --- | --- | --- |
+| `car.hard_constraints` | E1 | 2 | `listing-normalizer` | `deal-analyst` | — |
+| `car.deal_normalization` | E2 | 2 | `deal-analysis` | `deal-analyst` | — |
+| `car.ownership_cost` | E2 | 2 | `ownership-cost` | `ownership-cost-analyst` | — |
+| `car.safety_reliability` | E2 | 3 | `safety-reliability` | `safety-reliability-analyst`, `source-challenger` | — |
+| `car.household_fit` | E1 | 2 | `household-fit` | `household-fit-analyst` | — |
+| `car.shortlist` | E2 | 2 | `decision-synthesis` | `decision-synthesizer`, `source-challenger` | the other five |
+
+Judgment calls on the obligation table:
+- **`dependsOn`.** Only `car.shortlist` depends on anything (the task brief
+  states this explicitly); the other five run independently, matching the
+  Graph's two parallel branches in strands-runtime.md "Orchestration".
+- **`priority`** (not given verbatim anywhere): `car.hard_constraints` is
+  highest (100, the practical gating filter), the four parallel
+  evidence-gathering obligations are equal-and-high (80), household fit is
+  slightly lower (70, since it tolerates accepted uncertainty most readily),
+  and `car.shortlist` is lowest (10) since it must run last.
+- **`acceptedUncertaintyAllowed`** (both the top-level obligation field and
+  the mirrored `completionRule` field): `true` only for `car.safety_reliability`
+  (safety-reliability-sources.json's Outback CVT reliability disagreement is
+  flagged `requiresSourceChallengeReview: true` and may remain genuinely
+  unresolved even after `source-challenger` review) and `car.household_fit`
+  (household-fit.json's `explicitUnknowns` — crate fit, driving comfort — are
+  designed to resolve only via test drive or physical measurement, matching
+  the required adaptive moment "Pax creates a test-drive question instead of
+  fabricating a comfort score"). `false` for the other four, which are
+  deterministic pass/fail or arithmetic obligations with no legitimate
+  partial-credit disposition.
+- **`preferredSpecialists` including `source-challenger`** on both
+  `car.safety_reliability` and `car.shortlist`: the Graph topology in
+  strands-runtime.md feeds all four first-layer specialists through
+  `source-challenger` before `decision-synthesizer`, and the required
+  adaptive moment "A teaser-price claim conflicts with mandatory add-ons and
+  financing terms ... activating source-challenger" confirms it participates
+  in more than one obligation's investigation.
+- **`minimumIndependentSources`** in each `completionRule`: 1 for E1, 2 for
+  E2 — reading the evidence-level table's "E2: corroborated by two
+  independent sources or one authoritative source" as its stronger
+  two-source case for a simple integer bound (no "authoritative" flag exists
+  in the schema to encode the alternative).
+
+**Skills** (verbatim from the spec list): `listing-normalizer`,
+`deal-analysis`, `ownership-cost`, `safety-reliability`, `household-fit`,
+`decision-synthesis`.
+
+**Specialists** (verbatim from the spec list): `deal-analyst`,
+`ownership-cost-analyst`, `safety-reliability-analyst`,
+`household-fit-analyst`, `source-challenger`, `decision-synthesizer`. Each
+specialist's `allowedTools`/`allowedSkills` grant is a judgment call
+(strands-runtime.md only says "a narrow prompt and tool subset," no exact
+list) — sized to exactly the fixture tool(s)/skill(s) its obligation domain
+needs. `source-challenger` gets `listing-reader` (deal/teaser-price
+conflicts) and `safety-reliability-lookup` (source disagreements) with no
+`allowedSkills`, since it runs as its own bounded Graph agent-tool rather
+than through ordinary skill activation. `decision-synthesizer` gets only
+`propose_recommendation` — it synthesizes evidence already produced by the
+other specialists rather than re-reading raw fixture data itself.
+
+**Tools declared** (5): `listing-reader`, `ownership-calculator`,
+`safety-reliability-lookup`, `household-fit-matrix` (all `read_only`,
+`requiresApproval: false`) and `propose_recommendation` (`consequential`,
+`requiresApproval: true`), named exactly as strands-runtime.md's own worked
+example ("the orchestrator invokes to create a consequential artifact — for
+example `propose_recommendation` in the car pack"). Judgment call: the
+task brief's five-item fixture-tool list included "specification lookup" as
+a distinct concept from `household-fit-matrix`, but only four kebab-case
+names were actually given to use; folded "specification lookup" into
+`household-fit-matrix` since household-fit.json's fixture data already
+merges per-candidate `knownSpecifications` together with the fit-comparison
+`explicitUnknowns` in one bundle, and no other obligation in this pack needs
+a standalone specification-lookup tool (the AWD/safety-feature hard
+constraints read `car.standard_features` off the listing itself, not a
+separate spec lookup). Did not implement any tool — that is
+`packages/scenarios/src/tools/`'s sibling in-flight task; only tool
+*declarations* (id/description/effect/requiresApproval) live here.
+
+**Policy:** one `car.shortlist-approval` policy, `requiresHumanApproval:
+true`, `appliesToToolIds: ['propose_recommendation']` — the pack's one
+consequential effect per packs-and-routing.md. No separate forbidden-effect
+policy entries were added for the pack's other exclusions (financing,
+negotiation, scheduling, purchase) because no tool for any of them is
+declared at all in this manifest — there is nothing ungated to gate.
+
+**Attributes (30) and entities.** One `candidate` entity type referencing
+all 30 attributes. Attribute ids/shapes are chosen to match the real
+fixture field names directly: `car.make`/`model`/`model_year`/`trim`/
+`body_style`/`drivetrain`/`powertrain`/`mileage`/`standard_features` from
+`candidate-listings.json`; `car.advertised_price`/`out_the_door_price`/
+`teaser_price_gap_amount`/`has_teaser_price_conflict`/
+`estimated_monthly_payment` from `dealer-offers.json`; `car.five_year_fuel_cost`/
+`five_year_maintenance_cost`/`five_year_ownership_cost`/
+`combined_fuel_economy_mpg`/`annual_insurance_premium` from
+`ownership-assumptions.json`; `car.crash_safety_rating`/
+`driver_assistance_rating`/`reliability_rating` from
+`safety-reliability-sources.json`'s three `findings[].category` values;
+`car.cargo_volume_cu_ft`/`cargo_width_in`/`cargo_length_in`/
+`rear_door_opening_width_in`/`second_row_legroom_in`/`ground_clearance_in`/
+`rear_cargo_crate_fit`/`driving_comfort_rating` from `household-fit.json`'s
+`knownSpecifications` and `explicitUnknowns`. Judgment call: purely
+administrative/display fixture fields (VIN, listing URL, dealer name,
+exterior color, listing id) were deliberately **not** modeled as
+`AttributeDefinition`s — they drive no comparison, evidence, or criteria
+scoring, so they would only inflate `presentation.attributeGroups` without
+adding renderable decision value. `car.rear_cargo_crate_fit` and
+`car.driving_comfort_rating` are the two attributes whose fixture data is
+explicitly `"status": "unknown"` pending test drive/measurement — modeled
+with `evidenceExpectation: 'verification'` and `required: false` since the
+pack cannot assert them without human action, matching "A user concern that
+cannot be established from available sources becomes a test-drive or
+household-measurement question instead of an invented score." All 30 are
+`sensitive: false` and every one is assigned to exactly one of five
+`presentation.attributeGroups` entries (`basics`, `deal`, `ownership`,
+`safety`, `household_fit`), satisfying the compiler's UI-renderability
+check.
+
+**`criteria.defaults`.** Modeled as exactly the five `weightedPreferences`
+from `household-profile.json` (`pref.safety_reliability` 30/higher_better,
+`pref.ownership_cost` 30/lower_better, `pref.deal_value` 20/higher_better,
+`pref.household_fit` 15/higher_better, `pref.driving_comfort`
+5/higher_better — weights *100 from the fixture's 0.0–1.0 scale to match
+`Criterion.weight`'s required 0–100 integer, per webmcp.md's
+`pax_update_criteria` weight convention), summing to 100.
+`protectedCriterionIds: []` — all five are meant to be freely reweighted
+(the required adaptive moment "Reweighting driving comfort above fuel
+economy reopens household fit" only makes sense if these are not
+protected). **Judgment call, most consequential in this task:** the
+household profile's separate `mustHaves` list (AWD, adaptive cruise, blind
+spot monitoring, forward collision warning, LATCH anchors, max budget) was
+**not** mirrored into `criteria.defaults`. Reasoning: `criteria.defaults`
+are a reusable pack *template* copied into every new car-purchase case
+regardless of household (per `compiler.ts`'s own doc comment: "A pack
+default criterion is a `Criterion` template that `instantiateCase` copies
+into a fresh case"), whereas `mustHaves` are this one demo household's
+non-negotiable declarations — a different household using this same pack
+might not require AWD. Baking them in as protected pack defaults would make
+every future car-purchase case inherit this household's specific
+non-negotiables. They instead inform how `car.hard_constraints` is
+*investigated* at the case/scenario-seeding level (a separate, later task),
+not this manifest's default criteria. This reading is reinforced by the
+task brief's own wording — "household priorities from household-profile.json"
+maps precisely to the fixture's `weightedPreferences` key, not `mustHaves`.
+`car.standard_features` (string_list) was still added as an attribute,
+though, so the hard-constraint feature checks (adaptive cruise, blind spot,
+forward collision, LATCH) have real fixture-shaped data to read even
+without a matching `Criterion` record.
+
+**`orchestration`.** `strategy: 'graph'`, `maxSteps: 6`, `nodeTimeoutMs:
+120_000`, `totalTimeoutMs: 300_000`, `maxConcurrency: 4`. The Graph topology
+in strands-runtime.md ("deal + ownership-cost specialists ─┐ / safety +
+household-fit specialists ┘" both feeding "source challenger ─>
+decision synthesizer") is exactly six node executions (the four first-layer
+specialists, `source-challenger`, `decision-synthesizer`), matching the
+default execution bound "six graph node executions per run" exactly — hence
+`maxSteps: 6`. `maxConcurrency: 4` lets all four first-layer specialists run
+concurrently (the two branches are each two nodes *wide*, not two nodes
+*deep*). `nodeTimeoutMs`/`totalTimeoutMs` are the default bounds' "120-second
+model request timeout" and "five-minute total run timeout" verbatim.
+
+**`activation`.** `intents`/`exclusions`/`artifactKinds` are the spec's own
+list items verbatim (split at each bullet's commas). `keywords` and
+`entitySignals` have no spec-given text (a judgment call) — chosen to
+signal car-shopping intent without echoing any *excluded* capability (e.g.
+"auto loan"/"lease" were deliberately left out of `keywords`, since they
+would route a financing-application request into a pack that explicitly
+cannot process one).
+
+**`evaluation`.** `requiresNegativeCase: true`, `scenarioIds:
+['car-purchase-happy-path', 'car-purchase-teaser-price-conflict',
+'car-purchase-household-fit-unknown']`. Only the ids are declared here —
+scenario *content* files are separate, later authoring work per
+pack-authoring.md's pack bundle layout (`scenarios/<scenario-id>.json`,
+`fixtures/<scenario-id>/*.json`). The two non-happy-path ids trace directly
+to two of packs-and-routing.md's "Required adaptive moments" (the
+teaser-price conflict that activates `source-challenger`, and the
+household-fit unknown that must remain an explicit unknown pending a test
+drive) so a later scenario-authoring task has an unambiguous target for
+each.
+
+**TDD discipline.** `car-purchase.test.ts` was written first and run
+(`pnpm --filter @pax/packs test -- car-purchase`) against a `car-purchase.js`
+that did not yet exist, confirming the expected red failure ("Cannot find
+module './car-purchase.js'"), before `car-purchase.ts` was written. The test
+suite covers: identity/activation verbatim fields; `compileCarPurchasePack`
+compiling cleanly against a capability catalog built directly from the
+manifest's own skill/specialist/tool declarations (so the test cannot
+silently drift out of sync with the manifest); `compiledHash` matching the
+SHA-256 shape and being identical across two compiles under different
+clocks; every resolved capability id round-tripping into
+`resolvedCapabilities`; the six-obligation table checked
+id-by-id via `it.each` against the exact spec question/evidence
+level/attempts/`required: true`/`origin: 'pack'`; `car.shortlist`'s
+`dependsOn` covering exactly the other five; every obligation's
+`preferredSkills`/`preferredSpecialists` resolving against declared
+capabilities; the exact skill/specialist id sets; the consequential
+`propose_recommendation` tool being `requiresApproval: true` and covered by
+a `requiresHumanApproval` policy; the four read-only tools being
+`requiresApproval: false`; `extensionPolicy` matching the spec's three
+`true` flags plus `car.user_concern`; orchestration bounds
+(`strategy: 'graph'`, `maxConcurrency` set, `nodeTimeoutMs <=
+totalTimeoutMs`, `maxSteps: 6`); the five seeded criteria matching
+household-profile.json's `weightedPreferences` by id/weight/direction,
+weights summing to 100, `allowUserDefined: true`,
+`protectedCriterionIds: []`, and the compiled pack carrying
+`criteria.defaults` through unchanged; every non-sensitive attribute
+appearing in a `presentation.attributeGroups` entry; and the evaluation
+suite requiring a negative case with at least two scenario ids. All 24
+new tests ran green on the first real (non-red) run — no red/green
+iteration was needed at the individual-test-repair level beyond the
+initial module-not-found red confirmation, since the manifest was authored
+directly against the compiler's exact documented rules from `compiler.ts`
+and `packs.ts` rather than by trial and error.
+
+**Verification (from repo root, all commands actually run this session):**
+
+```
+$ pnpm --filter @pax/packs test --coverage
+  # 130 tests, 6 files, all passing (was 101/5 before this task; +29/+1)
+  # Statements 100% (210/210) · Branches 100% (70/70)
+  # Functions 100% (79/79)    · Lines 100% (198/198)
+
+$ pnpm --filter @pax/packs typecheck   # 0 errors
+$ pnpm lint                            # eslint . --max-warnings=0 (repo-wide) + check:source: clean (94 files scanned)
+$ pnpm format:check                    # prettier --check . : all matched files use Prettier code style
+$ pnpm typecheck                       # workspace-wide, 8/8 projects, 0 errors
+$ pnpm test:unit                       # workspace-wide, 36 files, 639 tests, all passing
+```
+
+One transient flake noted and resolved during verification: an earlier
+`pnpm test:unit` run under concurrent sibling-agent system load timed out
+`canonicalize.test.ts`'s property-based "changed obligation priority"
+test and `scripts/verify.test.ts`'s child-process test (both hit their
+5000ms `testTimeout`, unrelated to `car-purchase.ts`); re-running the
+`scripts` Vitest project alone, and then the full `pnpm test:unit` again,
+passed all 639 tests cleanly with no changes — confirmed as
+system-load-induced flake, not a defect introduced by this task, via a
+targeted rerun rather than by weakening or skipping either test.
+
+Gate: **passed** for everything in this task's scope. `packages/packs` now
+also exports the real, tested `car-purchase@1.0.0` manifest and
+`compileCarPurchasePack` wrapper; `home-energy-guardian` manifest
+authoring, both hero packs' skill/specialist/fixture-tool
+*implementations*, and `apps/agent`'s command service remain explicitly out
+of scope for other in-flight tasks per the plan.
+
+## 2026-08-27 — `car-purchase@1.0.0` Strands `AgentSkills` content (six skills + index)
+
+Authored the real Strands `AgentSkills` content for the car pack under
+`apps/agent/skills/<skill-id>/SKILL.md`, per docs/specs/strands-runtime.md
+"Skills" (progressive disclosure: agent sees only `name`+`description`
+metadata until it activates a skill, then loads the full instructions
+body) and packs-and-routing.md's "Choose Our Next Car Decision Pack" ->
+"Skills, specialists, and tools" list. This is content authoring only —
+Markdown with YAML frontmatter, no TypeScript, no `package.json` changes.
+
+Files created:
+
+- `apps/agent/skills/listing-normalizer/SKILL.md`
+- `apps/agent/skills/deal-analysis/SKILL.md`
+- `apps/agent/skills/ownership-cost/SKILL.md`
+- `apps/agent/skills/safety-reliability/SKILL.md`
+- `apps/agent/skills/household-fit/SKILL.md`
+- `apps/agent/skills/decision-synthesis/SKILL.md`
+- `apps/agent/skills/README.md` (human-facing index)
+
+**Cross-check against the compiled manifest:** `packages/packs/src/car-purchase.ts`
+already existed (a sibling task finished it earlier the same day, per its
+build-log entry immediately above this one), so every skill id, specialist
+id, tool id, obligation id, and obligation question text below is copied
+verbatim from that file rather than reconstructed from
+packs-and-routing.md alone. In particular: the six skill ids and their
+pack-manifest `description` strings (`skills: [...]`), the specialist ids
+and their `allowedTools`/`allowedSkills` grants (`specialists: [...]`),
+the five fixture tool ids (`listing-reader`, `ownership-calculator`,
+`safety-reliability-lookup`, `household-fit-matrix`, `propose_recommendation`),
+and the six obligation ids/questions/evidence levels/`acceptedUncertaintyAllowed`
+flags all match the manifest exactly. No tool- or obligation-id
+assumptions had to be made blind; where the manifest's own inline comments
+noted a judgment call (e.g. "specification lookup" folded into
+`household-fit-matrix` rather than a separate tool), the corresponding
+skill instructions were written to match that resolved shape rather than
+inventing an alternative.
+
+Each `SKILL.md` was additionally grounded in the real fixture data at
+`packages/scenarios/fixtures/car-purchase/*.json` rather than generic
+placeholders: `dealer-offers.json`'s RAV4 teaser-price gap ($27,995
+advertised vs. $33,291.30 true out-the-door, an 18.92% / $5,296.30 gap that
+pushes it $1,291.30 over the household's $32,000 budget, driven by a
+non-waivable $2,395 "Value Protection Package" plus a financing term that
+changes from the advertised 4.9%/60mo to an actual 7.49%/75mo offer);
+`household-fit.json`'s `explicitUnknowns` (`unknown.rear_cargo_crate_compatibility`
+and `unknown.driving_comfort`, both present for all four candidates with
+`resolutionPath: physical_measurement_or_test_drive` / `test_drive`, even
+for the CR-V, which has the largest published cargo volume of the
+shortlist); `safety-reliability-sources.json`'s Outback CVT reliability
+disagreement (Consumer Drive Index rates it "Above Average" on realized
+owner-reported problems, AutoTrust rates it "Below Average" on predicted
+powertrain risk from CVT technical-service-bulletin history — both
+current and traceable, `requiresSourceChallengeReview: true`); and
+`ownership-assumptions.json`'s shared-assumption itemization (fuel price,
+per-mile maintenance cost by powertrain class, constant insurance
+coverage/driver profile with per-candidate risk pricing, straight-line
+depreciation against true out-the-door price, financing baseline vs.
+actual accepted offer).
+
+**Judgment calls:**
+
+- `decision-synthesis`'s SKILL.md quotes value-proposition.md's
+  "Premature-conclusion sequence" `Draft withheld` copy verbatim,
+  including the literal "3 required questions" sentence, but adds a
+  parenthetical clarifying that the count is scenario-dependent (however
+  many required obligations are actually still open), since the spec's "3"
+  is the specific number for its own worked example, not a hardcoded
+  constant the skill instructions should imply is always three.
+- `household-fit`'s SKILL.md was deliberately written with more weight and
+  repetition than the others (explicitly calling out that even the
+  *most* cargo-favorable candidate gets the identical unknown-fit
+  disposition as the least-favorable one) per the task brief's instruction
+  that this skill is the actual mechanism making Pax's "honest unknown"
+  behavior real, not just a UI label.
+- Tool references throughout (e.g. "the listing reader tool", "the
+  ownership calculator tool") are descriptive names matching the
+  manifest's `tools[].id` values, not invented function signatures —
+  exact call contracts are owned by the fixture-tool implementation task,
+  not this content-authoring task.
+- No test/build gate applies to this task (pure Markdown content, no code
+  under `packages/*` or `apps/agent/src`); verification was a manual
+  cross-read of each `SKILL.md` against the compiled manifest fields and
+  fixture data listed above.
+
+Out of scope for this task, per the brief: any TypeScript under
+`apps/agent/src` (the actual `AgentSkills` wiring / specialist agent
+construction that loads these `SKILL.md` files remains a separate task),
+`packages/packs/`, and `packages/scenarios/`.
+
+## 2026-08-27 — Task 3 (parallel slice): car-purchase deterministic fixture tools (`packages/scenarios/src/tools/`)
+
+Built the five read-only fixture tools packs-and-routing.md's "Choose Our
+Next Car Decision Pack" -> "Skills, specialists, and tools" names ("Fixture
+tools: listing/offer reader, specification lookup, safety/reliability source
+lookup, ownership calculator, household-fit matrix"), plus the internal
+fixture-loading helper they all share. `packages/packs/src/car-purchase.ts`
+(built by a sibling task the same day) independently landed on the exact
+same four tool ids this task used -- `listing-reader`, `ownership-calculator`,
+`safety-reliability-lookup`, `household-fit-matrix` (with "specification
+lookup" folded into `household-fit-matrix`, matching that manifest's own
+inline comment) -- confirmed by cross-reading its build-log entry above; no
+tool-id rework was needed.
+
+Files created (all in `packages/scenarios/src/tools/`, TDD throughout --
+failing test written and confirmed failing for the right reason before each
+implementation, per CLAUDE.md's test-and-repair loop):
+
+- `fixture-loader.ts` + `.test.ts` -- internal helper that reads and
+  Zod-validates one of the six car-purchase fixture JSON files by name
+  (`candidate-listings`, `dealer-offers`, `ownership-assumptions`,
+  `safety-reliability-sources`, `household-fit`, `household-profile`),
+  caching the validated result in memory keyed by `(baseDir, name)` so
+  repeated tool calls in one process never re-read or re-parse a file.
+  `parseFixtureJson(name, raw)` is a pure function (no disk I/O) doing the
+  2,000,000-byte defensive size bound, `JSON.parse`, then Zod validation --
+  every failure branch (oversized, malformed JSON, schema-invalid,
+  unregistered fixture name) is unit-tested directly against crafted
+  strings, not just through real files. `loadFixture(name, { baseDir? })`
+  is the thin disk-reading wrapper; `baseDir` defaults to the real
+  `fixtures/car-purchase` directory but is overridable so tests can exercise
+  missing-file/malformed-file disk-read paths against a temp directory
+  without ever touching the checked-in fixtures.
+- `tool-result.ts` + `.test.ts` -- the shared `ToolResult<T>` envelope
+  (`status: 'ok' | 'not_found' | 'cancelled'`) and `ToolEvidenceItem`
+  (`sourceId`, `level`, `verdict`, `summary`) every tool below returns.
+  `ToolEvidenceItem` deliberately carries exactly the same four fields as
+  `ExecutionResult.evidenceResults[number]` (strands-runtime.md "Evidence
+  output") so a future Strands adapter can build an evidence-results entry
+  directly from one of these items without reshaping anything.
+- `listing-reader.ts` + `.test.ts` -- given a candidate id (or none, for
+  "list all"), joins `candidate-listings.json` + `dealer-offers.json` into
+  listing facts (year/trim/advertised price/mileage/source URL) plus dealer
+  offer terms (add-ons total/APR/term/true out-the-door total). The RAV4's
+  teaser-price conflict is surfaced explicitly: the dealer-offer evidence
+  item's `verdict` is `degraded` (not `pass`) whenever
+  `hasTeaserPriceConflict` is true, and its `summary` states both the
+  advertised ($27,995.00) and true out-the-door ($33,291.30) price and the
+  18.92% / $5,296.30 gap in plain text, plus whether it exceeds the
+  household's budget.
+- `ownership-calculator.ts` + `.test.ts` -- given a candidate id, computes
+  an itemized (not just total) 5-year ownership estimate: fuel (recomputed
+  from combined mpg/annual mileage/horizon/price-per-gallon, not copied from
+  the fixture's own precomputed figure), maintenance (cost-per-mile by
+  powertrain class), insurance (annual premium x horizon), depreciation
+  (straight-line against the true out-the-door price, per
+  `ownership-assumptions.json`'s own methodology note), and financing
+  (`computeAmortizedFinancing`, a standalone standard fixed-rate-amortization
+  helper). `totalFiveYearCost` is the exact sum of the five rounded
+  component amounts (rounded once, at the component level, so the
+  "total equals the sum of its parts" invariant holds exactly rather than
+  drifting a cent from double-rounding) -- asserted directly in the test
+  suite.
+- `safety-reliability-lookup.ts` + `.test.ts` -- given a candidate id,
+  returns one claim per source finding with real provenance (publisher,
+  report title, URL, retrieval date), plus the fixture's own `disagreements`
+  for that candidate. The one real disagreement (Outback reliability:
+  Consumer Drive Index "Above Average" vs. AutoTrust "Below Average") is
+  never resolved by picking a winner -- both claims are returned verbatim,
+  the disagreement is surfaced in a distinct `disagreements` array, and both
+  conflicting evidence items are tagged `degraded` rather than `pass`.
+- `household-fit-matrix.ts` + `.test.ts` -- given a candidate id, returns
+  known spec-derived facts (cargo width/length/height, door opening width,
+  legroom, cargo volume, ground clearance) as `@pax/contracts`
+  `AttributeRecord`s with `status: 'supported'` and a real typed `value`,
+  AND the fixture's `explicitUnknowns` (dog-crate compatibility, driving
+  comfort) as `AttributeRecord`s with `status: 'unknown'` and structurally
+  *no* `value` key at all -- reusing the shared, Zod-enforced
+  `AttributeRecordSchema` (whose `superRefine` already rejects a `value` on
+  an `unknown`-status record) rather than a bespoke shape, so "never
+  fabricates a value for an unknown" is enforced by the same schema the rest
+  of the product trusts, not just a hand-written assertion. A dedicated test
+  (`'value' in unknown` must be `false`) proves this at the object-literal
+  level too. Also returns the household's dog-crate profile alongside the
+  known cargo dimensions so a caller can compare them itself -- the tool
+  never computes or asserts a fit verdict, matching the fixture's own
+  statement that this cannot be derived from specification data alone.
+- `index.ts` -- re-exports all four tools plus the fixture loader and the
+  shared result/evidence types. `packages/scenarios/src/index.ts` (a Task-1
+  placeholder) now re-exports this module.
+
+**Evidence-level assignment rule** (the key judgment call underpinning all
+four tools, documented in each file's header comment): packs-and-routing.md
+defines E0-E3 with E2 = "corroborated by two independent sources or one
+authoritative source" and E3 = "verified by a domain-specific deterministic
+check or explicit human attestation."
+
+- `listing-reader` and `safety-reliability-lookup` tag every individual fact
+  `E1` ("one traceable source or deterministic extraction") -- each fact
+  comes from exactly one document. They deliberately do *not* try to assert
+  `E2` themselves. Instead, each tags a *distinct, real* `sourceId` per
+  underlying document (the listing vs. the dealer's written quote; each
+  publisher's own report), so `packages/core`'s already-built
+  `achievedEvidenceLevel` (`packages/core/src/evidence.ts`) can synthesize
+  `E2` for the `car.deal_normalization`/`car.safety_reliability` obligations
+  (both of which require `E2`) from two independent `E1` results, exactly
+  the literal "two independent sources" rule -- without this layer ever
+  needing to know about obligation-level requirements.
+- `ownership-calculator` tags its single result `E3` directly: it is not
+  extracting a fact from one document but *computing* a value via its own
+  reproducible arithmetic over fixture inputs, which is exactly "a
+  domain-specific deterministic check."
+- `household-fit-matrix` tags known facts `E1` (one manufacturer spec
+  sheet) and emits **no evidence item at all** for an unknown --
+  packs-and-routing.md is explicit that an unresolvable concern "becomes a
+  test-drive or household-measurement question instead of an invented
+  score," so an unknown is not evidence of anything and doesn't belong in
+  an `evidenceResults`-shaped array.
+- The one deliberate exception to "individual facts never carry more than
+  `E1`": `safety-reliability-lookup` tags both sides of the Outback
+  reliability disagreement `degraded` (not `pass`) even though each
+  individually is still a valid `E1` source -- packs-and-routing.md's fail-
+  closed rule ("a non-stale `error` or `degraded` evidence result blocks
+  completion") is the correct outcome for a genuine, fixture-flagged
+  (`requiresSourceChallengeReview: true`) unresolved conflict pending
+  `source-challenger` review, not a silent pass for either side.
+
+**Cancellation / not-found / idempotency conventions** (uniform across all
+four tools):
+
+- Cancellation: every tool accepts an optional `signal?: AbortSignal` and
+  checks `isAborted(signal)` twice -- once before any fixture load, and once
+  more after loading fixtures but before finishing the computation --
+  returning `{ status: 'cancelled', toolId, message }` rather than throwing.
+  Both checkpoints are unit-tested, including the second ("mid-flight")
+  checkpoint, via a small fake `AbortSignal` whose `aborted` getter flips to
+  `true` only on its second read (a real `AbortController` can't be aborted
+  "mid-flight" from outside a synchronous function call, so this is the only
+  way to prove the second checkpoint is real and not dead code).
+- Not-found: an unknown candidate/source id returns
+  `{ status: 'not_found', toolId, query, message }` rather than throwing an
+  unhandled exception. Every tool has a dedicated not-found test.
+- Idempotency: every tool is a pure function of its input plus the cached,
+  immutable fixture data (no `Date.now()`/`crypto.randomUUID()`/counters
+  anywhere in this directory), so calling the same input twice always
+  produces deep-equal output -- asserted directly for every tool.
+- Referential integrity as a load-time invariant, not a per-call defensive
+  branch: `SafetyReliabilitySourcesSchema` (`fixture-loader.ts`) gained a
+  `superRefine` rejecting any `finding.sourceId` or
+  `disagreement.sourceIdA`/`sourceIdB` that doesn't resolve to a declared
+  `source`, and `candidate-listings.json`/`dealer-offers.json` are asserted
+  to describe exactly the same candidate-id set in `fixture-loader.test.ts`.
+  This let `safety-reliability-lookup.ts` and `listing-reader.ts`'s list-all
+  path drop what would otherwise have been dead, untestable "what if the
+  join fails" branches (non-null assertions instead, with a comment
+  explaining why they're safe) rather than leaving unreachable defensive
+  code around for the sake of a try/catch that could never fire against the
+  real fixtures -- this is what took branch coverage from the initial 83%
+  to 100% (see verification below) without weakening any assertion.
+- `household-fit-matrix.ts`'s known-spec-field table is defined once with
+  each field's extractor colocated (`{ definitionId, label, unit, read }`)
+  rather than as two parallel lookup tables keyed by id, for the same
+  reason -- a structural fix (they can't drift apart) instead of a
+  defensive `if (!readValue) continue` branch nothing could ever trigger.
+
+**Verification commands and results** (run both via `pnpm --filter
+@pax/scenarios <script>` and, when a concurrent sibling agent's mid-install
+workspace state transiently blocked pnpm's own dependency-status check, via
+the equivalent direct binary invocation from `packages/scenarios/` --
+`../../node_modules/.bin/vitest run --coverage` /
+`../../node_modules/.bin/tsc --noEmit -p tsconfig.json`; results were
+identical either way and the `pnpm --filter` form was reconfirmed working
+once the sibling install finished):
+
+```
+pnpm --filter @pax/scenarios test --coverage
+  Test Files  6 passed (6)
+  Tests  87 passed (87)
+  Statements 100% (196/196)  Branches 100% (59/59)  Functions 100% (46/46)  Lines 100% (191/191)
+
+pnpm --filter @pax/scenarios typecheck   -> clean, no output
+
+node_modules/.bin/eslint packages/scenarios --max-warnings=0   -> clean, no output
+node_modules/.bin/prettier --check packages/scenarios          -> "All matched files use Prettier code style!"
+node_modules/.bin/tsx scripts/check-source.ts                  -> "[pax] check:source: clean (131 files scanned)."
+```
+
+`pnpm lint` (repo-wide) and `pnpm format:check` (repo-wide) were also
+attempted directly. `pnpm format:check` ran successfully and reported
+formatting issues only in files under `apps/agent/` and `apps/web/` (owned
+by concurrently-running sibling agents, out of scope here) -- nothing under
+`packages/scenarios/`. `pnpm lint` (repo-wide, type-aware ESLint via
+`projectService: true` across every workspace) crashed twice with a V8
+`FATAL ERROR: ... JavaScript heap out of memory` on this shared development
+machine, which had several unrelated large projects and MCP server
+processes running concurrently at the time (confirmed via `ps aux`/`vm_stat`
+-- this is a host memory-pressure condition, not a defect surfaced by any
+file in this task). The scoped, equivalent-coverage
+`eslint packages/scenarios --max-warnings=0` above is clean.
+
+No test was skipped, focused, or weakened to reach these results; the
+initial 83%-branch coverage reading was closed entirely by simplifying code
+to remove genuinely-dead defensive branches (see above) plus adding real
+tests for reachable-but-previously-untested branches (the second
+cancellation checkpoint; a crafted-fixture referential-integrity failure in
+`fixture-loader.test.ts`; the `budgetComparisonSentence` helper's
+"within budget" wording, which the real fixture data has no candidate
+combination to exercise through `readListing` alone since
+`hasTeaserPriceConflict` and `exceedsHouseholdMaxBudget` happen to always
+agree in the real fixture).
+
+Out of scope, per the task brief: `packages/packs/` (car-purchase manifest,
+built concurrently by a sibling task) and `apps/agent/` (command service).
+Fixture JSON files under `packages/scenarios/fixtures/car-purchase/` were
+read-only throughout -- not modified.
+
+## 2026-08-27 -- Task 9 (foundation slice): Vite/React shell, `pax-client`, `AppProviders`, `DemoLauncher`, `CaseHeader`
+
+Scope for this pass, per the task brief: the Vite/React foundation, the
+route-free `App` shell, and the demo launcher only -- explicitly **not** the
+full case workspace (readiness/evidence/activity/recommendation regions),
+which is separate, later work. `packages/core`, `packages/packs`,
+`packages/scenarios`, and `apps/agent` were not touched.
+
+**Files created:**
+
+- `apps/web/index.html`, `apps/web/vite.config.ts`, `apps/web/src/main.tsx`,
+  `apps/web/src/vite-env.d.ts` (Vite/React entry point and ambient CSS
+  side-effect-import types).
+- `apps/web/src/styles/tailwind.css` (Tailwind v4 entry; see "Tailwind
+  integration" below).
+- `apps/web/src/api/pax-client.ts` + `pax-client.test.ts` (the `PaxCommands`
+  interface and its real HTTP implementation).
+- `apps/web/src/app/AppProviders.tsx` + `.test.tsx` (provider composition
+  root: shared `PaxCommands` client + test-injectable override).
+- `apps/web/src/app/App.tsx` + `.test.tsx` (route-free launcher/workspace
+  shell).
+- `apps/web/src/components/DemoLauncher.tsx` + `.test.tsx`.
+- `apps/web/src/components/CaseHeader.tsx` + `.test.tsx`.
+- `apps/web/src/test/setup.ts` (global jest-dom/jest-axe/RTL-cleanup
+  registration), `fake-pax-commands.ts` (test-injectable fake client),
+  `narrow-viewport.tsx` + `.test.tsx` (the 390px structural-overflow
+  heuristic; see "390px verification" below).
+
+**Files edited:** `apps/web/package.json` (dependencies/scripts -- see
+below), `apps/web/tsconfig.json` (added `vite.config.ts` to `include`),
+`apps/web/vitest.config.ts` (added `setupFiles`), `apps/web/src/index.ts`
+(replaced the Task-1 placeholder with a real barrel export),
+`pnpm-workspace.yaml` (resolved a concurrently-added `msw: <unset>`
+`allowBuilds` placeholder to `false` -- see below).
+
+### Judgment call: data-fetching library
+
+architecture.md's tech-choices list names React, Vite, Tailwind, and (for
+testing) "Vitest, React Testing Library, MSW, fast-check, and Playwright" --
+no client-side data-fetching/cache library (React Query, SWR, etc.) is named
+anywhere in the spec set. Per the task brief's own instruction ("if none is
+explicitly named ... use plain React context + hooks rather than adding an
+unlisted dependency"), `AppProviders.tsx` uses a plain `createContext`/
+`useContext` pair (`PaxCommandsContext`/`usePaxCommands()`) to share one
+`PaxCommands` instance, with a `commandsClient` override prop as the
+test-injection seam. No new runtime dependency was added for this. The
+locked file map's own one-line description of this file ("Query, event,
+command, and test providers") is broader than what this pass builds: the
+event-stream and query-cache providers are deferred to Task 10
+(`use-case-events.ts` and friends per the implementation plan), once there
+is real streamed case data for them to project -- adding that plumbing now
+with nothing to consume it would be speculative.
+
+### Judgment call: Tailwind/token integration
+
+architecture.md says "Tailwind CSS for styling, with a small Pax token
+layer" and leaves the integration mechanics to the implementer. Two
+approaches were considered:
+
+1. A `@theme`/`@theme inline` bridge mapping Tailwind's own theme-variable
+   namespaces (`--color-*`, `--text-*`, `--radius-*`, ...) onto tokens.css's
+   existing `--color-*`/`--font-size-*`/`--radius-*` variables, so ordinary
+   utility classes (`bg-paper`, `text-ink`) resolve to Pax's real tokens.
+2. Token-first with minimal Tailwind: Tailwind supplies generic layout
+   utilities only (`flex`, `gap-3`, `p-4`, responsive prefixes); anything
+   touching Pax's actual palette/type/radius tokens uses Tailwind's
+   arbitrary-value syntax (`bg-[var(--color-surface)]`,
+   `rounded-[var(--radius-xl)]`, `font-[family-name:var(--font-display)]`),
+   which is a literal `var(...)` reference resolved by the ordinary CSS
+   cascade against tokens.css's `:root` block -- no Tailwind theme
+   registration involved.
+
+**Option 2 was chosen.** A WebFetch against Tailwind's own "Theme variables"
+documentation confirmed that `@theme inline`'s worked example
+(`--font-sans: var(--font-inter);` -> generated
+`.font-sans { font-family: var(--font-inter); }`) still re-emits the theme
+variable as a real `:root` custom property in Tailwind's output CSS. For a
+same-named bridge (`--color-paper: var(--color-paper);`, needed here since
+tokens.css already uses these exact names), that risks a
+`:root { --color-paper: var(--color-paper) }` rule in Tailwind's generated
+output shadowing -- and, if it happens to load later in the cascade,
+self-referentially invalidating -- tokens.css's real
+`:root { --color-paper: #EEF1F0 }` definition, depending on generated
+stylesheet order. Arbitrary-value syntax carries no such risk (it reads the
+cascade directly, nothing is re-declared), at the cost of more verbose class
+names. This is documented in full, with the specific collision mechanism,
+in a comment at the top of `apps/web/src/styles/tailwind.css`.
+
+Two supporting decisions:
+
+- **Preflight (Tailwind's own CSS reset) is not imported.** `global.css`
+  already supplies Pax's own small, deliberate reset; importing Preflight
+  too would silently re-normalize the same elements a second, more
+  opinionated way. `tailwind.css` imports `tailwindcss/theme.css` +
+  `tailwindcss/utilities.css` directly (Tailwind v4's documented way to skip
+  `preflight.css` while keeping the default theme scale and utility engine).
+- **No bridge was needed for spacing.** Tailwind's default numeric spacing
+  scale (`p-4` = 1rem = 16px, `p-6` = 24px, `p-8` = 32px, `p-10` = 40px,
+  `p-12` = 48px, `p-16` = 64px, `p-20` = 80px, ...) is pixel-identical to
+  tokens.css's `--space-*` scale at every named step both systems use, since
+  both are 4px-grid scales with the same step names. Components use
+  ordinary Tailwind spacing utilities directly for that reason; the
+  `[var(--space-N)]` arbitrary form is used anyway in `DemoLauncher`/
+  `CaseHeader` for self-documentation (a reviewer can see it's a token, not
+  a coincidence), not because the bare utility would be wrong.
+
+Both `DemoLauncher.tsx` and `CaseHeader.tsx` were built entirely against
+this approach and pass axe with no violations, so the approach is validated
+in practice, not just in theory.
+
+### Judgment call: `commandId`/idempotency header, and the generic command route
+
+architecture.md requires every command to carry "an idempotency key and
+client-generated `commandId`," but no `commands.ts` input schema has a body
+field for either (deliberately -- every input schema is `.strict()`, and
+these are envelope concerns, not business payload fields). `pax-client.ts`
+generates a `crypto.randomUUID()` per call and sends it as both the
+`X-Pax-Command-Id` and `Idempotency-Key` request headers, documented inline.
+
+`commands.ts`'s own module comment already flags that `setEvidenceDisposition`
+and `requestRevision` have "no corresponding `PaxCommands` method name ... in
+architecture.md" and that resolving their real HTTP route is "an
+implementation decision for `apps/agent`/`apps/web`." This client routes
+all nine same-shaped commands (`selectPack`, `upsertOption`, `focusOption`,
+`defineCaseAttribute`, `reviewCaseExtension`, `focusEvidence`,
+`updateCriteria`, `submitSource`, `reviewProposal`,
+`setEvidenceDisposition`, `requestRevision` -- eleven, not nine) through one
+uniform `POST /api/cases/:caseId/commands/:commandName` shape (`:commandName`
+= the `PaxCommands` method name), while `startDemo` (`POST /api/cases/demo`)
+and `requestInvestigation` (`POST /api/cases/:caseId/run`) keep the two
+routes architecture.md names explicitly. The sibling HTTP-route task is free
+to name its Express routes differently; this client only needs to be
+structurally correct and independently testable (via MSW) ahead of that
+route wiring landing, which is exactly what its own test suite proves.
+
+### Real bugs found and fixed while building this (not hypothetical)
+
+- **`pnpm --filter @pax/web typecheck` reliably ran the compiler out of
+  memory** (confirmed still failing at an 8 GB `--max-old-space-size`
+  ceiling) on an early version of `pax-client.ts` that made `validate`/
+  `postJson`/`genericCommand` generic directly over `z.ZodType<T>`, called
+  with nine different concrete `@pax/contracts` schema types (some, like
+  `UpsertOptionInputSchema`, nesting the ten-branch discriminated
+  `AttributeValue` union). Root cause, found by bisecting: `apps/web/
+  package.json` never declared `zod` as its own direct dependency (only
+  used transitively via `@pax/contracts`), so `apps/web/node_modules/zod`
+  did not exist; TypeScript's module resolution walked past the workspace
+  root (which also has no root-level `zod`) all the way up to a **stray
+  `zod@4.0.2` in `/Users/jordanallen/node_modules`** (an unrelated global
+  install on this machine, confirmed via `realpath`/`ls`). Two structurally
+  similar but nominally distinct `zod` packages were being reconciled by
+  the type checker for the same generic call sites -- a known way to cause
+  catastrophic memory blowups, independent of how "hard" the generics
+  themselves were. Fix: added `"zod": "^4.4.3"` as a direct dependency of
+  `@pax/web` (matching the version already used by `@pax/contracts`/
+  `@pax/agent`), which creates a real `apps/web/node_modules/zod` symlink
+  into the correct pnpm store entry and eliminates the upward walk
+  entirely. `pnpm --filter @pax/web typecheck` has been clean (0 errors)
+  ever since, confirmed via both `npx tsc` directly and the real `pnpm run
+  typecheck` script. The `pax-client.ts` helpers were left in their
+  simplified, non-generic-over-Zod-schema form (`z.ZodTypeAny` parameters,
+  `unknown` return, narrow `as` casts immediately after the adjacent
+  `safeParse` that already validated the shape at runtime) since avoiding
+  heavy bidirectional Zod-generic inference is worth keeping regardless of
+  the dependency fix -- documented in a comment above `validate` in
+  `pax-client.ts` with both failure modes and the empirical evidence for
+  each, so a future reader does not "simplify" it back into the OOM.
+- **`@typescript-eslint/unbound-method` fired on every `expect(commands.
+  startDemo).toHaveBeenCalledWith(...)`-style assertion.** Root cause:
+  `PaxCommands` was first written with architecture.md's literal
+  method-shorthand syntax (`startDemo(input): Promise<CommandReceipt>`),
+  which TypeScript treats as implicitly `this`-sensitive. Fixed by writing
+  every member as a function-typed property instead
+  (`startDemo: (input) => Promise<CommandReceipt>`) -- identical name/
+  parameter/return type, no behavior change, documented inline in
+  `pax-client.ts` with the reasoning (every real implementation is a plain
+  object of closures with no `this` dependency).
+- **RTL component tests leaked DOM nodes across tests within the same
+  file**, causing `getByRole(...)` to intermittently fail with "found
+  multiple elements" a few tests into `DemoLauncher.test.tsx`. Root cause:
+  none of this repo's `vitest.config.ts` files set `test.globals: true`
+  (every existing test file explicitly imports `describe`/`it`/`expect`
+  from `'vitest'`), so `@testing-library/react`'s automatic-cleanup
+  registration -- which only fires when it detects a *global* `afterEach`
+  -- silently never registered. Fixed by explicitly importing `cleanup`
+  from `@testing-library/react` and calling it in an explicit
+  `afterEach(...)` inside `apps/web/src/test/setup.ts`, so every component
+  test file gets isolation without needing `test.globals: true`.
+- A Tailwind arbitrary-value regex in the first version of the 390px
+  overflow helper (`narrow-viewport.tsx`) matched `max-w-[480px]`/
+  `max-width: 480px` as false-positive overflow risks (`\bw-\[...\]`
+  matches the `w-[...]` substring inside `max-w-[...]` at the `-`/`w` word
+  boundary). Fixed with negative lookbehinds excluding `max-`; a dedicated
+  `min-w-[...]` pattern was split out so a genuine `min-width` floor is
+  still caught. `narrow-viewport.test.tsx` asserts both the false-positive
+  fix and true-positive detection directly (`w-[500px]`, `min-w-[420px]`,
+  and an inline `minWidth: '600px'` style are each correctly flagged;
+  `max-w-[480px]`/`max-width: 480px` are each correctly ignored).
+- Button accessible names in `DemoLauncher` were initially the concatenation
+  of the option label *and* its description text (both were plain child
+  `<span>`s, and accessible-name computation walks all descendant text),
+  so `getByRole('button', { name: 'Choose our next car' })` (an exact match,
+  required to test product.md's literal label text) never matched. Fixed
+  with `aria-label={option.label}` (the exact required string) plus
+  `aria-describedby` pointing at the description span, so screen-reader
+  users still get both the exact name and the supplementary description.
+
+### 390px verification -- explicit partial-coverage disclosure
+
+Per the task brief's own instruction to state this plainly: jsdom (the
+environment these Vitest component tests run in) does not run a real
+layout/rendering engine, so `element.scrollWidth`/`clientWidth` are not
+meaningfully measurable there -- asserting `scrollWidth <= clientWidth`
+in jsdom would trivially pass (both are always `0`) without proving
+anything. `renderAtNarrowWidth` (`apps/web/src/test/narrow-viewport.tsx`)
+is therefore a **structural** heuristic, not a real layout check: it renders
+the component inside an explicit 390px-wide container and scans the
+rendered markup for hard-coded inline `width`/`min-width` or Tailwind
+arbitrary-value width/min-width classes wider than 390px. It cannot catch
+overflow caused by real content flow (long unbroken tokens, cumulative
+flex-basis, actual text wrapping). Both `DemoLauncher.test.tsx` and
+`CaseHeader.test.tsx` pass this check with zero risks found, and
+`narrow-viewport.test.tsx` proves the helper itself has real true/
+false-positive discrimination (not just a stub that always returns `[]`).
+Real cross-viewport verification (`390x844`/`430x900`/`480x900`/`1440x1000`,
+actual rendered layout, real overflow measurement) is Playwright's job per
+testing.md's "Browser E2E tests" section -- explicitly separate, later work
+(Task 12), not claimed as done here.
+
+### Verification commands and results (all run from repo root this session)
+
+```
+$ pnpm --filter @pax/web test --coverage
+  Test Files  6 passed (6)
+  Tests  53 passed (53)
+  Statements 100% (97/97)  Branches 97.82% (45/46)
+  Functions 100% (28/28)   Lines 100% (95/95)
+  (the one uncovered branch is in the narrow-viewport.tsx test helper
+  itself -- a min-width-under-threshold non-risk branch -- not app code;
+  well above testing.md's 90%/95%/95%/95% global thresholds)
+
+$ pnpm --filter @pax/web typecheck
+  tsc --noEmit -p tsconfig.json   -> clean, 0 errors
+
+$ pnpm lint   (repo-wide)
+  apps/web: 0 errors (confirmed both via the repo-wide run and a scoped
+  `eslint apps/web --max-warnings=0` -> clean, no output). All 55 remaining
+  errors are pre-existing, under `apps/agent/` (a concurrently-running
+  sibling agent's in-progress files, e.g. `no-unsafe-member-access` on
+  route-test fixtures) -- out of this task's scope per CLAUDE.md, not
+  introduced or touched by this task.
+
+$ pnpm format:check   (repo-wide)
+  apps/web: clean (confirmed via scoped `prettier --check apps/web` ->
+  "All matched files use Prettier code style!"). Pre-existing warnings in
+  apps/agent/ files are a sibling agent's in-progress work.
+
+$ pnpm --filter @pax/web build
+  vite build -> "110 modules transformed", "built in 474ms",
+  dist/index.html, dist/assets/index-*.css (14.04 kB), dist/assets/index-*.js
+  (291.59 kB). Font @font-face 404-at-build-time warnings are expected and
+  already documented in global.css/design-system.md (the woff2 binaries are
+  a separate, later task; every --font-* stack falls back to a system font
+  and the product is fully functional with none present). Spot-checked the
+  generated CSS directly: it contains real rules referencing
+  `--color-surface`, `--font-size-md`, `--radius-xl`, confirming the
+  arbitrary-value token bridge actually produced working utility classes,
+  not just a build that happened not to error.
+```
+
+`pnpm-workspace.yaml`'s `allowBuilds.msw` entry (added mid-session by a
+concurrent sibling agent's own `msw` dependency, left as the placeholder
+string `"set this to true or false"`) was resolved to `false`: `@pax/web`
+only uses `msw/node`'s `setupServer` for Node-side test mocking, never
+`setupWorker` in the browser, so `msw`'s postinstall (`msw init`, which
+writes a `mockServiceWorker.js` into a `public/` directory for browser use)
+is unneeded; denying it avoids running an unnecessary install script. This
+was required to unblock `pnpm install`/`pnpm --filter @pax/web test` at all
+(`pnpm`'s dependency-status check fails hard on an unresolved
+`allowBuilds` entry).
+
+No test was skipped, focused, or weakened to reach these results. No
+placeholder screens, stub data, or fabricated states are rendered --
+`DemoLauncher` and `CaseHeader` are both fully real, tested components; only
+`App`'s post-launch body is a deliberately labeled placeholder region (not a
+fake completed workspace), per the task brief's explicit instruction that
+the full case workspace is separate, later work, and that `CaseHeader`
+(fully built and tested this pass) is intentionally not yet wired into
+`App` -- it has no live data source until Task 10.
+
+Out of scope, per the task brief: the full case workspace (readiness panel,
+evidence list, activity timeline, recommendation card, Runtime Inspector),
+WebMCP registration, and `packages/core`/`packages/packs`/
+`packages/scenarios`/`apps/agent` (four concurrently-running sibling tasks'
+areas) -- none were touched.
+
+## 2026-08-27 — `apps/agent`: case store, command service, run service, and HTTP API routes
+
+Built the persistence and optimistic-concurrency layer everything else in
+the product writes through, plus the full command/run/event HTTP surface
+architecture.md's "HTTP service" names, per this task's brief. `packages/
+contracts`, `packages/core`, and `packages/packs` were pre-committed and
+treated as fixed contracts; `car-purchase.ts` (a sibling agent's concurrent
+work) was neither touched nor depended on -- all tests run against a
+synthetic, fully-valid car-purchase-shaped pack compiled and registered
+directly with a real `PackRegistry`.
+
+### Files created
+
+- `apps/agent/src/store/case-store.ts` -- `CaseStore` interface, shared
+  `AppendResult`/`SelectionPatch`/`IdempotentRecord` types, and the shared
+  `foldEvents` fold helper both implementations delegate to.
+- `apps/agent/src/store/memory-case-store.ts`, `sqlite-case-store.ts` --
+  the two `CaseStore` implementations (fast in-memory for unit tests; real
+  transactional SQLite for the service and HTTP integration tests).
+- `apps/agent/src/store/activity-store.ts` -- `ActivityStore` interface plus
+  `InMemoryActivityStore`/`SqliteActivityStore`.
+- `apps/agent/src/services/service-result.ts` -- the shared `ServiceResult`
+  outcome envelope (`ok`/`validation`/`not_found`/`conflict`/`policy`) every
+  command/run method returns, plus `formatZodIssues`.
+- `apps/agent/src/services/command-service.ts` -- `CommandService`, one
+  method per `PaxCommands` verb except `requestInvestigation`.
+- `apps/agent/src/services/run-service.ts` -- `RunService.
+  requestInvestigation` plus `RunStore`/`MemoryRunStore`/`SqliteRunStore`
+  (durable run bookkeeping only; no Strands invocation -- see the file's own
+  header comment for the explicit, factual note on why and what a later
+  task still owes).
+- `apps/agent/src/routes/{packs,cases,commands,runs,events}.ts` -- the five
+  route modules, plus `routes/http-support.ts` (shared `Idempotency-Key`
+  header parsing and `ServiceResult` → HTTP envelope translation) and
+  `routes/sse.ts` (an independently-unit-testable bounded SSE writer).
+- `apps/agent/src/runtime-ports.ts` -- the real, non-deterministic `Clock`/
+  `IdGenerator` `server.ts` wires at boot (every test uses a fixed fake).
+- `apps/agent/src/fixtures/{synthetic-pack,http-harness,http-types,
+  case-store-contract,activity-store-contract}.ts` -- test-only support
+  (coverage-excluded, matching `packages/packs/src/fixtures/`'s own
+  convention), including the synthetic `car-purchase`-id test pack.
+- Full test coverage alongside every module above (`*.test.ts`), plus
+  dedicated HTTP integration suites: `routes/{packs,cases,commands,runs,
+  events}.test.ts` and `routes/events.sse.test.ts` (real streaming SSE
+  against a genuine listening `http.Server`, not supertest, which buffers
+  until a response ends).
+
+### Files extended (per the task's explicit instruction to extend, not replace)
+
+- `apps/agent/src/app.ts` -- wired all five routers plus a final
+  error-handling middleware (thrown, unmodeled errors → `500 INTERNAL`,
+  logged server-side, never leaked in the response body) onto the existing
+  Express app, alongside the pre-existing health wiring (untouched).
+- `apps/agent/src/server.ts` -- constructs the real `SqliteCaseStore`/
+  `SqliteActivityStore`/`PackRegistry`/`CommandService`/`RunService`/
+  `SqliteRunStore` and passes them to `buildApp`. Boots with an **empty**
+  `PackRegistry` -- the real built-in packs are a separate, later
+  integration task; documented in a comment rather than silently
+  hardcoding a placeholder pack.
+- `apps/agent/src/app.test.ts` -- extended (all four original assertions
+  kept verbatim) with a `testDeps` helper and new smoke tests for each
+  newly-wired route.
+- `apps/agent/vitest.config.ts` -- added a local `coverage.exclude` mirroring
+  root's, so `pnpm --filter @pax/agent test --coverage` (package-scoped, no
+  access to the root config's excludes) reports honest percentages instead
+  of counting `src/fixtures/**` test-support code's own TypeScript-narrowing
+  `if (...) throw` guards against real coverage.
+- `apps/agent/package.json` -- added `@pax/core`/`@pax/packs` as real
+  dependencies (previously only `@pax/contracts`).
+- `packages/core/src/index.ts` -- added the missing `applyCaseEvent`/
+  `instantiateCase`/`PackSelection` barrel re-exports. Real, confirmed gap:
+  commit `1a2d980` ("wire pax core into applyCaseEvent/instantiateCase")
+  added both modules but never re-exported them from the package's own
+  `main`/`types` entry point, making them unreachable from any consumer
+  outside `packages/core` itself (a deep import like `@pax/core/src/
+  reducer.js` is the only alternative, and this package declares no
+  `exports` map permitting it as a stable API). Purely additive, follows
+  the file's own documented pattern ("each adds only its own module's
+  re-exports here").
+
+### Idempotency and optimistic-concurrency design
+
+- **Idempotency key = `commandId`.** No `@pax/contracts` `*Input` schema
+  carries a separate field for it (confirmed by reading all twelve);
+  `routes/commands.ts`/`routes/cases.ts`/`routes/runs.ts` read it from an
+  `Idempotency-Key` request header (a standard REST convention), matching
+  `apps/agent/src/db/schema.ts`'s own header comment reaching the identical
+  conclusion for the DB layer.
+- **Idempotency is checked *inside* `CaseStore.append()`/`updateSelection()`**
+  (and `RunStore`'s equivalent), in the same transaction as the actual
+  write, closing the race a separate check-then-write sequence would leave
+  open. A duplicate returns the *current* snapshot (not a cached one) --
+  always at least as fresh as, and consistent with, what the original apply
+  produced.
+- **Real bug found and fixed during this task**: `CommandService`'s own
+  `loadForMutation()` pre-check (an optimization to avoid wasted event
+  computation) originally ran *before* the idempotency check. For any
+  command whose events advance `eventSequence` (every command except the
+  `updateSelection`-based ones), a retry necessarily carries the
+  now-stale `expectedSequence` the first successful attempt itself
+  advanced past -- checking sequence first misclassified every such retry
+  as a `409 CONFLICT`, defeating idempotency entirely. Caught by
+  `commands.test.ts`'s "does not double-apply" HTTP test genuinely failing
+  (409 instead of 200) before any fix was in place. Fixed by adding
+  `CaseStore.peekIdempotent()` (a read-only lookup) and calling it as the
+  *first* step of every `CommandService` method, before `loadForMutation`.
+- **Two real gaps in the current `@pax/contracts` `CaseEvent` taxonomy**,
+  discovered while wiring `startDemo`/`focusOption`/`focusEvidence`/
+  `submitSource`: no event variant ever touches `attributeDefinitions`,
+  `selectedOptionId`, `selectedEvidenceId`, `activeFocus`, or `sources`.
+  `reducer.ts`'s own header comment anticipates the first
+  (`applyCaseEvent`'s minimal `case.created` skeleton is documented as
+  needing a later command-service layer to reconcile it with
+  `instantiateCase`'s full seed). Resolved with two narrow, heavily-documented
+  escape hatches on `CaseStore`, not a change to `@pax/contracts` (out of
+  this task's scope, and other tasks depend on it unmodified):
+  `AppendOptions.seedSnapshot` (creation-time `attributeDefinitions` patch,
+  bundled atomically with the creation event batch) and `SelectionPatch`/
+  `updateSelection()` (a separate, non-event-sourced, but still
+  idempotency-key-deduplicated path for the four UI-cursor/accumulator
+  fields no event can represent).
+
+### Deliberate scope limitations (documented in code, not silently dropped)
+
+- `updateCriteria`/`defineCaseAttribute` correctly update `criteria`/
+  `caseExtensions` and invalidate a stale `recommendation`, but do not
+  derive a case obligation for a newly-added user concern needing an
+  evidence question -- `criterionNeedsEvidenceQuestion` (`@pax/core`) is a
+  pure predicate only; resolving a pack's `extensionPolicy.
+  userConcernTemplateId` into a concrete `ObligationTemplate` is real,
+  separately-scoped business logic testing.md assigns to the pack
+  conformance suite (the `apartment-hunt` authoring fixture), not this
+  task's HTTP command service.
+- `submitSource` durably records the submitted `Source` itself but does not
+  create `Claim`/`EvidenceLink` records for its `claims`:
+  `SubmitSourceInputSchema` carries no `obligationId` to link them to.
+- `defineCaseAttribute`'s `origin` (`'user'` vs `'agent_proposed'`, which
+  gates whether the extension needs human confirmation) has no signal
+  anywhere on `DefineCaseAttributeInputSchema` -- exposed as an optional
+  parameter defaulting to `'user'` (the plain HTTP/UI path); a later WebMCP
+  adapter task can pass `'agent_proposed'` explicitly.
+- `selectPack` on an *existing* case only updates the pack pin
+  (`case.pack_selected`'s payload is `{ pack }` only) -- it does not
+  re-derive criteria/obligations/attributeDefinitions for the newly
+  selected pack, matching exactly what the event type itself can express.
+- `POST /api/cases/demo`'s body field is `demoId` (matching the real,
+  committed `StartDemoInputSchema`, whose `demoId` enum is closed to
+  `['car-purchase', 'home-energy-guardian']`), not a free-form `packId` as
+  the task text's shorthand phrasing suggested -- `CommandService.startDemo`
+  still resolves it generically against the injected `PackRegistry` (no
+  hardcoded car-purchase specifics), so a synthetic pack registered under
+  either literal id works identically to the real one.
+- `server.ts` boots with an empty `PackRegistry` (see above) -- honest
+  rather than fabricated, per CLAUDE.md.
+- No `cancellation` HTTP integration coverage: no route in this task's scope
+  (`packs`/`cases`/`commands`/`runs`/`events`) supports cancelling anything;
+  that capability does not exist yet (a later Strands-adapter task's run
+  lifecycle).
+
+### Test/repair notes
+
+- The real streaming SSE tests (`events.sse.test.ts`) needed a genuine
+  listening `http.Server` + raw `node:http` client (supertest buffers a
+  response until it ends, which an SSE stream deliberately never does on
+  its own). The slow-consumer resync path is proven with a small standalone
+  Express app wrapping the same `createEventsRouter`, with a middleware
+  that makes `res.write()` always report backpressure -- genuine OS-level
+  socket backpressure over a fast loopback connection is impractical to
+  force deterministically; the *effect* of a persistent `false` return is
+  exactly what `routes/sse.ts`'s bounded writer (also unit-tested directly,
+  7 tests, with a fake `res`) reacts to.
+- One single non-reproducing failure was observed once in the "SSE and the
+  polling fallback produce the same final visible state" test (`GET /api/
+  cases/:caseId` returned an unexpectedly empty body on that one run). Not
+  reproduced across 28+ subsequent full-suite/isolated-file runs afterward.
+  Hardened rather than ignored: added an explicit `expect(finalCase.status)
+  .toBe(200)` (so any recurrence fails with a precise diagnosis instead of a
+  confusing empty-object diff) and a third, HTTP-independent assertion
+  (`harness.caseStore.load(caseId)` compared directly against the poll
+  response) so the core equivalence claim no longer depends on that one
+  extra network round trip at all.
+- `CaseStore`/`RunStore`'s "idempotency record references a case that no
+  longer exists" defensive throws (four call sites total, two per store per
+  method pair) are **not reachable** through any real store API today: every
+  `resetDemo()` implementation removes a case's idempotency records
+  together with the case itself (SQLite's `idempotency_keys.case_id`
+  foreign key cascades on delete; the in-memory stores filter their own
+  idempotency maps to match). Documented in code as intentional
+  defense-in-depth rather than force-tested with contrived reflection.
+  `RunService`'s equivalent guard *is* genuinely reachable and *is* tested
+  (`run-service.test.ts`): `RunStore` is a separate store from `CaseStore`
+  with no enforced consistency between the two.
+
+### Verification commands and results (all run from repo root this session)
+
+```
+$ pnpm --filter @pax/agent test --coverage
+  Test Files  23 passed (23)
+  Tests  238 passed (238)
+  Statements 95.70% (870/909)  Branches 86.14% (485/563)
+  Functions 94.64% (159/168)   Lines 96.11% (816/849)
+  Confirmed stable across 6 repeated full-suite runs (see the flake note
+  above). Remaining gaps: (a) provably-unreachable defensive throws,
+  documented above and in code; (b) `config.ts`/`server.ts`'s
+  `isMain()`-guarded bootstrap block/`schema.ts` -- pre-existing,
+  already-committed files this task did not touch, whose gaps predate this
+  session; (c) `events.ts` line 138, a single narrow race-window branch
+  (writer closed between a resync and the live-listener unsubscribe)
+  judged not worth a contrived reflection-based test.
+
+$ pnpm --filter @pax/agent typecheck
+  tsc --noEmit -p tsconfig.json  -> clean, 0 errors
+
+$ pnpm lint   (repo-wide)
+  eslint . --max-warnings=0 && tsx scripts/check-source.ts -> clean, 0
+  errors, "check:source: clean (160 files scanned)". (The apps/web sibling
+  task's build-log entry above recorded 55 pre-existing apps/agent errors
+  at that point in time -- all fixed as part of this task's own real work,
+  not silently suppressed: every one was a genuine `no-unsafe-member-access`
+  on an untyped supertest `response.body`, fixed by casting through real
+  `@pax/contracts` response types via a small `asJson<T>` helper, plus one
+  `non-nullable-type-assertion-style` fix in `sqlite-case-store.ts`.)
+
+$ pnpm format:check   (repo-wide)
+  prettier --check . -> only `apps/agent/skills/household-fit/SKILL.md`
+  remains unformatted -- pre-existing, not created or touched by this task,
+  outside apps/agent's persistence/HTTP scope (a skill-content file);
+  left untouched rather than reformatting a file this task does not own.
+```
+
+No test was skipped, focused, or weakened to reach these results. No
+placeholder screens, stub data, or fabricated states. `git add`/`git
+commit` were intentionally not run, per this task's explicit instruction.
+
+Out of scope, per the task brief: `apps/web`, `packages/core`'s remaining
+surface, `packages/packs/src/car-purchase.ts`, `packages/scenarios/src/
+tools/`, the Strands adapter (`run-service.ts`'s durable bookkeeping is
+real; nothing invokes Strands yet), AgentCore `/ping`/`/invocations`, and
+the Runtime Inspector's `/api/debug/runs/*` routes -- none were touched.

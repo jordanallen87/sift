@@ -176,6 +176,8 @@ All timestamps in deterministic tests come from an injected `Clock`. IDs come fr
 
 Commands use optimistic concurrency. A stale `eventSequence` produces HTTP `409` with the latest snapshot; clients refresh rather than replaying an unexamined mutation.
 
+`selectedOptionId`, `selectedEvidenceId`, `activeFocus`, and `sources` are accepted, documented exceptions to "every canonical mutation is a `CaseEvent`": `focusOption`/`focusEvidence` are pure attention-cursor changes with no decision-relevant effect ("visible selection state only... does not change ranking or evidence" per `webmcp.md`), and a submitted source's own record is distinct from any `evidence.accepted` event its content may separately produce. The service persists these directly onto the snapshot without an accompanying `case_events` row or `eventSequence` advance. This means a case reconstructed purely by replaying `case_events` from empty will not recover selection/focus state or raw submitted-source records — acceptable because normal reads (`GET /api/cases/:caseId`, `pax_get_case_context`) always serve the persisted snapshot, never a from-scratch replay, and no required demo assertion depends on these fields surviving a pure event-log reconstruction. Do not extend this exception to any field that affects evidence, readiness, or the recommendation.
+
 ## Real-time event contract
 
 The normal workspace and Runtime Inspector are live projections of persisted or normalized events, not simulated loading copy.
