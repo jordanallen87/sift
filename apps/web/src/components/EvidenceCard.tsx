@@ -1,9 +1,6 @@
 /**
  * One item within region 4, "Evidence and comparison" (docs/specs/product.md
- * "Workspace layout") -- the evidence/claims/staleness slice of that region
- * only; option-comparison, scores, and the user's active selection are out
- * of scope for this task's pass (a later task's option editor/comparison
- * work).
+ * "Workspace layout") -- the evidence/claims/staleness slice of that region.
  *
  * Renders one `EvidenceItemData`: an `EvidenceLink` joined with its
  * optional `Claim` and `Source` (all three real `@pax/contracts` shapes --
@@ -11,8 +8,19 @@
  * decides verdict, staleness, or conflict -- those are canonical, core-owned
  * facts (CLAUDE.md "The deterministic core ... owns ... evidence
  * validity"); this component only renders what it is given.
+ *
+ * `onSetDisposition` (added in the live-wiring pass, docs/build-log.md's
+ * dated entry): the visible-control equivalent of the
+ * `pax_set_evidence_disposition` WebMCP tool (webmcp.md), added as a purely
+ * optional prop so every existing caller/test keeps working unchanged --
+ * the controls render only when a caller supplies the callback, following
+ * the exact same optional-callback pattern `ApprovalCard.tsx`'s `onReview`
+ * already establishes. The caller (`App.tsx`) owns actually invoking
+ * `commands.setEvidenceDisposition` on the shared `PaxCommands` instance;
+ * this component only reports the human's choice and typed reason.
  */
-import type { Claim, EvidenceLink, Source } from '@pax/contracts';
+import { useState } from 'react';
+import type { Claim, EvidenceDisposition, EvidenceLink, Source } from '@pax/contracts';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 
 export interface EvidenceItemData {
@@ -35,6 +43,10 @@ export interface EvidenceItemData {
 
 export interface EvidenceCardProps {
   item: EvidenceItemData;
+  /** Reports the human's chosen disposition and typed reason. Omit to render this card read-only (no controls at all). */
+  onSetDisposition?: (disposition: EvidenceDisposition, reason: string) => void;
+  /** True while a disposition change for this item is in flight; disables the controls. */
+  dispositionPending?: boolean;
 }
 
 const VERDICT_LABEL: Record<EvidenceLink['verdict'], { label: string; tone: StatusTone }> = {
@@ -70,10 +82,15 @@ function Chip({ tone, children }: { tone: StatusTone; children: string }) {
   );
 }
 
-export function EvidenceCard({ item }: EvidenceCardProps) {
+export function EvidenceCard({
+  item,
+  onSetDisposition,
+  dispositionPending = false,
+}: EvidenceCardProps) {
   const { evidenceLink, claim, source, conflictingEvidenceIds = [] } = item;
   const verdictMeta = VERDICT_LABEL[evidenceLink.verdict];
   const hasConflict = conflictingEvidenceIds.length > 0;
+  const [reason, setReason] = useState('Reviewed by user');
 
   return (
     <article
@@ -155,6 +172,62 @@ export function EvidenceCard({ item }: EvidenceCardProps) {
           No source is linked to this item yet.
         </p>
       )}
+
+      {onSetDisposition ? (
+        <div className="flex flex-col gap-[var(--space-1-5)] border-t border-[var(--color-border-subtle)] pt-[var(--space-2)]">
+          <label
+            htmlFor={`evidence-card-reason-${evidenceLink.id}`}
+            className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]"
+          >
+            Reason
+          </label>
+          <input
+            id={`evidence-card-reason-${evidenceLink.id}`}
+            type="text"
+            value={reason}
+            disabled={dispositionPending}
+            onChange={(event) => {
+              setReason(event.target.value);
+            }}
+            className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[var(--space-2)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
+          />
+          <div className="flex flex-wrap gap-[var(--space-1-5)]">
+            <button
+              type="button"
+              data-testid="evidence-card-set-included"
+              disabled={dispositionPending}
+              onClick={() => {
+                onSetDisposition('included', reason.trim() || 'Reviewed by user');
+              }}
+              className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-2)] text-[length:var(--font-size-xs)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Include
+            </button>
+            <button
+              type="button"
+              data-testid="evidence-card-set-excluded"
+              disabled={dispositionPending}
+              onClick={() => {
+                onSetDisposition('excluded', reason.trim() || 'Reviewed by user');
+              }}
+              className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-2)] text-[length:var(--font-size-xs)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Exclude
+            </button>
+            <button
+              type="button"
+              data-testid="evidence-card-set-questioned"
+              disabled={dispositionPending}
+              onClick={() => {
+                onSetDisposition('questioned', reason.trim() || 'Reviewed by user');
+              }}
+              className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-2)] text-[length:var(--font-size-xs)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Question
+            </button>
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }

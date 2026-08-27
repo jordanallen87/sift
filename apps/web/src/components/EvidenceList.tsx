@@ -1,11 +1,17 @@
 /**
  * Region 4, "Evidence and comparison" (docs/specs/product.md "Workspace
  * layout") -- the evidence/claims/staleness list itself. Renders a list of
- * `EvidenceCard`s. Option scores, the user's active selection, and
- * pack/case-defined attribute comparison are explicitly out of scope for
- * this task (a later task's option editor/comparison component).
+ * `EvidenceCard`s. Option comparison lives in the sibling `OptionComparison`/
+ * `OptionEditor` components.
+ *
+ * `onSetDisposition`/`dispositionPendingId` (live-wiring pass, see
+ * `docs/build-log.md`'s dated entry): thread `EvidenceCard`'s own optional
+ * disposition-control prop through to every item, correlated by
+ * `evidenceLink.id` -- `dispositionPendingId` marks only the one item
+ * currently being changed as busy, not the whole list.
  */
 import { EvidenceCard, type EvidenceItemData } from './EvidenceCard.js';
+import type { EvidenceDisposition } from '@pax/contracts';
 
 export interface EvidenceListProps {
   /** `null` means no case is open yet (initial/empty). An empty array means a case exists but no evidence has been gathered yet -- a distinct, also-honest empty state. */
@@ -13,9 +19,19 @@ export interface EvidenceListProps {
   loading?: boolean;
   /** A recoverable error fetching/streaming evidence. The last valid `items` still render underneath (product.md "Errors must preserve the last valid case state"). */
   error?: string | null;
+  /** Reports the human's chosen disposition and reason for one item, identified by `evidenceId`. Omit to render every item read-only. */
+  onSetDisposition?: (evidenceId: string, disposition: EvidenceDisposition, reason: string) => void;
+  /** The `evidenceLink.id` of the item currently being changed, if any -- only that item's controls render as busy. */
+  dispositionPendingId?: string | null;
 }
 
-export function EvidenceList({ items, loading = false, error = null }: EvidenceListProps) {
+export function EvidenceList({
+  items,
+  loading = false,
+  error = null,
+  onSetDisposition,
+  dispositionPendingId = null,
+}: EvidenceListProps) {
   return (
     <section
       data-testid="evidence-list"
@@ -65,7 +81,17 @@ export function EvidenceList({ items, loading = false, error = null }: EvidenceL
         <ul data-testid="evidence-list-items" className="flex flex-col gap-[var(--space-2)]">
           {items.map((item) => (
             <li key={item.evidenceLink.id}>
-              <EvidenceCard item={item} />
+              <EvidenceCard
+                item={item}
+                dispositionPending={dispositionPendingId === item.evidenceLink.id}
+                {...(onSetDisposition
+                  ? {
+                      onSetDisposition: (disposition: EvidenceDisposition, reason: string) => {
+                        onSetDisposition(item.evidenceLink.id, disposition, reason);
+                      },
+                    }
+                  : {})}
+              />
             </li>
           ))}
         </ul>

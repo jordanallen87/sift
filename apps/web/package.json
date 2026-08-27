@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pax right-pane React/Vite browser application and WebMCP registration. Foundation, app shell, and demo launcher ship in this Task 9 pass; the full case workspace and WebMCP registration ship in later tasks.",
+  "description": "Pax right-pane React/Vite browser application and WebMCP registration -- the live case workspace, real-time event stream, and WebMCP tool registration.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@pax/contracts": "workspace:*",
+    "@pax/core": "workspace:*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zod": "^4.4.3"

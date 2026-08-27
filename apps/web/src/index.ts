@@ -2,12 +2,15 @@
 // a leaf application (its Vite entry is `src/main.tsx`, not this file); this
 // barrel exists for anything that needs to import a piece of the app by
 // package name/path rather than mounting it (e.g. a later Playwright helper
-// or another task's test harness), and to replace the Task-1 placeholder's
-// stale "real module ships in a later Pax build task" comment now that a
-// real module exists.
+// or another task's test harness).
 export { App } from './app/App.js';
-export { AppProviders, usePaxCommands } from './app/AppProviders.js';
-export type { AppProvidersProps } from './app/AppProviders.js';
+export {
+  AppProviders,
+  usePaxCommands,
+  useApiConfig,
+  useWebMcpAdapter,
+} from './app/AppProviders.js';
+export type { AppProvidersProps, ApiConfig } from './app/AppProviders.js';
 export { createPaxClient, PaxClientError } from './api/pax-client.js';
 export type {
   PaxCommands,
@@ -39,3 +42,29 @@ export type {
 } from './components/RecommendationCard.js';
 export { ApprovalCard } from './components/ApprovalCard.js';
 export type { ApprovalCardProps, ApprovalCardReview } from './components/ApprovalCard.js';
+export { formatAttributeValue } from './components/attribute-value-format.js';
+export { DynamicAttributeField } from './components/DynamicAttributeField.js';
+export type { DynamicAttributeFieldProps } from './components/DynamicAttributeField.js';
+export { OptionEditor } from './components/OptionEditor.js';
+export type { OptionEditorProps } from './components/OptionEditor.js';
+export { OptionComparison } from './components/OptionComparison.js';
+export type { OptionComparisonProps } from './components/OptionComparison.js';
+export { CustomConcernForm } from './components/CustomConcernForm.js';
+export type { CustomConcernFormProps } from './components/CustomConcernForm.js';
+export { CaseExtensionReviewCard } from './components/CaseExtensionReviewCard.js';
+export type { CaseExtensionReviewCardProps } from './components/CaseExtensionReviewCard.js';
+export { LiveRunStatus } from './components/LiveRunStatus.js';
+export type { LiveRunStatusProps, LiveRunStatusReceipt } from './components/LiveRunStatus.js';
+export { WebMcpStatus } from './components/WebMcpStatus.js';
+export type { WebMcpStatusProps } from './components/WebMcpStatus.js';
+export { ErrorState } from './components/ErrorState.js';
+export type { ErrorStateProps } from './components/ErrorState.js';
+export { useCaseEvents } from './hooks/use-case-events.js';
+export type {
+  CaseEventsConnectionState,
+  CreateEventSource,
+  EventSourceLike,
+  EventSourceLikeMessageEvent,
+  UseCaseEventsOptions,
+  UseCaseEventsResult,
+} from './hooks/use-case-events.js';

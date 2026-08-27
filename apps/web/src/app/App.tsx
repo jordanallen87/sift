@@ -6,50 +6,472 @@
  * site: "The page contains a seeded demo launcher and the active case
  * workspace." There is no router -- `App` is a plain state machine with
  * exactly two branches: `DemoLauncher` when no case exists yet, and the
- * case workspace once `startDemo` has returned a receipt.
+ * live case workspace once `startDemo` has returned a receipt.
  *
- * Scope note for this Task 9 pass (see this task's brief and
- * docs/build-log.md's entry for the full reasoning): the post-launch branch
- * below is intentionally a single, clearly-labeled placeholder region, NOT
- * `CaseHeader` wired to live data. `CaseHeader` exists and is fully built
- * and tested this same pass (`../components/CaseHeader.tsx`), but it is a
- * pure props-driven component with no data source of its own yet -- wiring
- * it (plus the other six workspace regions) to real streamed `CaseState`
- * is explicitly later work (Task 10's `use-case-events.ts` and beyond).
- * Rendering `CaseHeader` here now with synthesized/partial data would
- * blur that boundary and risk conflicting with that task's real data
- * wiring.
+ * This pass wires the entire workspace to real data: `useCaseEvents` (the
+ * real SSE/poll-fallback subscription) supplies the canonical `CaseState`
+ * snapshot and ordered `PublicActivityEvent[]` every region below renders
+ * from; `registerPaxTools` mounts the full WebMCP catalog only while a case
+ * is active, re-registering its case-scoped tools whenever the active case
+ * changes; every visible control calls through the one shared `PaxCommands`
+ * instance from `usePaxCommands()` -- there is no parallel mutation path
+ * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
+ * implementation").
+ *
+ * Region order matches product.md's "Workspace layout" exactly: case header,
+ * current focus, readiness, evidence and comparison, activity, recommendation
+ * and approval. Region 7 (Runtime Inspector) is out of scope for this pass --
+ * a separate build task owns docs/specs/debugging-and-observability.md's
+ * full drill-in surface; rendering a non-functional stub for it here would
+ * violate CLAUDE.md's "no placeholders" rule, so it is simply not rendered
+ * yet rather than faked.
+ *
+ * `readiness` is computed by calling the REAL `evaluateReadiness` from
+ * `@pax/core` directly (this task added `@pax/core` as a runtime dependency
+ * of `apps/web` -- see `apps/web/package.json` and `ReadinessPanel.tsx`'s own
+ * forward-looking doc comment, which named this exact moment: "the moment a
+ * later task wires it in"). This app never re-implements readiness,
+ * satisfying CLAUDE.md's "The deterministic core, not an LLM, owns ...
+ * readiness."
  */
-import { useCallback, useState } from 'react';
-import type { CommandReceipt } from '@pax/contracts';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { z } from 'zod';
+import {
+  CompiledDecisionPackSchema,
+  DEMO_IDS,
+  type CommandReceipt,
+  type CompiledDecisionPack,
+  type EvidenceDisposition,
+} from '@pax/contracts';
+import { evaluateReadiness } from '@pax/core';
 import { DemoLauncher } from '../components/DemoLauncher.js';
+import { CaseHeader, type CaseHeaderConnectionState } from '../components/CaseHeader.js';
+import { ReadinessPanel } from '../components/ReadinessPanel.js';
+import { EvidenceList } from '../components/EvidenceList.js';
+import { ActivityTimeline } from '../components/ActivityTimeline.js';
+import { RecommendationCard } from '../components/RecommendationCard.js';
+import { ApprovalCard, type ApprovalCardReview } from '../components/ApprovalCard.js';
+import { OptionEditor } from '../components/OptionEditor.js';
+import { OptionComparison } from '../components/OptionComparison.js';
+import { CustomConcernForm } from '../components/CustomConcernForm.js';
+import { CaseExtensionReviewCard } from '../components/CaseExtensionReviewCard.js';
+import { LiveRunStatus, type LiveRunStatusReceipt } from '../components/LiveRunStatus.js';
+import { WebMcpStatus } from '../components/WebMcpStatus.js';
+import { ErrorState } from '../components/ErrorState.js';
+import { useApiConfig, usePaxCommands, useWebMcpAdapter } from './AppProviders.js';
+import { useCaseEvents, type CaseEventsConnectionState } from '../hooks/use-case-events.js';
+import {
+  registerPaxTools,
+  type PaxToolRegistrationHandle,
+} from '../model-context/register-pax-tools.js';
+
+const InstalledPacksResponseSchema = z.array(CompiledDecisionPackSchema);
+
+function mapConnectionState(state: CaseEventsConnectionState): CaseHeaderConnectionState {
+  // `CaseHeader` (built in an earlier pass) has no separate "connecting"
+  // token of its own -- its visual/copy treatment for "attempting to
+  // establish a connection" and "attempting to re-establish one" is
+  // identical (`reconnecting`), so the one genuinely new hook state maps
+  // onto it rather than requiring a `CaseHeader` contract change.
+  return state === 'connecting' ? 'reconnecting' : state;
+}
 
 export function App() {
+  const commands = usePaxCommands();
+  const apiConfig = useApiConfig();
+  const webMcpAdapter = useWebMcpAdapter();
+
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  const [installedPacks, setInstalledPacks] = useState<CompiledDecisionPack[]>([]);
+  const [lastRunReceipt, setLastRunReceipt] = useState<LiveRunStatusReceipt | null>(null);
+  const [resetPending, setResetPending] = useState(false);
+  const [runRequestPending, setRunRequestPending] = useState(false);
+  const [proposalReviewPending, setProposalReviewPending] = useState(false);
+  const [proposalReviewError, setProposalReviewError] = useState<string | null>(null);
+  const [dispositionPendingId, setDispositionPendingId] = useState<string | null>(null);
+  const [dispositionError, setDispositionError] = useState<string | null>(null);
+
+  const {
+    snapshot,
+    events,
+    connectionState,
+    error: streamError,
+  } = useCaseEvents({ caseId: activeCaseId, ...apiConfig });
 
   const handleDemoStarted = useCallback((receipt: CommandReceipt) => {
     setActiveCaseId(receipt.caseId);
+    setLastRunReceipt(null);
   }, []);
+
+  // Installed Decision Pack catalog -- fetched once (independent of the
+  // active case) and reused both for the `pax_list_packs` WebMCP tool and
+  // `OptionComparison`'s pack presentation metadata. `GET /api/packs` has no
+  // dedicated `PaxCommands` method (it is a read-only route, per
+  // architecture.md's "HTTP service" list); a transient failure here
+  // degrades gracefully -- `OptionComparison` falls back to one flat
+  // attribute group and `pax_list_packs` simply reports zero installed
+  // packs rather than blocking the rest of the workspace.
+  useEffect(() => {
+    let cancelled = false;
+    const baseUrl = apiConfig.baseUrl ?? '';
+    const fetchImpl = apiConfig.fetchImpl ?? fetch;
+    fetchImpl(`${baseUrl}/api/packs`)
+      .then((response) =>
+        response.ok ? response.json() : Promise.reject(new Error(`status ${response.status}`)),
+      )
+      .then((payload: unknown) => {
+        if (cancelled) return;
+        const parsed = InstalledPacksResponseSchema.safeParse(payload);
+        if (parsed.success) setInstalledPacks(parsed.data);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiConfig]);
+
+  // WebMCP registration (webmcp.md "Registration lifecycle"): global read
+  // tools register once per (adapter, commands) identity; `getActiveCase`/
+  // `listPacks` read fresh values via refs on every call rather than
+  // re-registering the two global tools on every snapshot/pack-list change.
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+  const installedPacksRef = useRef(installedPacks);
+  installedPacksRef.current = installedPacks;
+
+  const [toolHandle, setToolHandle] = useState<PaxToolRegistrationHandle | null>(null);
+  // A parallel ref, disposed directly from the cleanup function below rather
+  // than through `setToolHandle`'s functional-updater form: React does not
+  // guarantee a state updater callback passed to a setter invoked *during
+  // unmount cleanup* actually runs (the fiber is being torn down, so there
+  // is no next render to compute state for) -- relying on it here would
+  // make `disposeAll()` unreliable on unmount specifically, exactly the
+  // lifecycle moment webmcp.md's "Abort the previous registration
+  // controller whenever ... the component unmounts" most needs to hold.
+  const toolHandleRef = useRef<PaxToolRegistrationHandle | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    registerPaxTools({
+      adapter: webMcpAdapter,
+      commands,
+      getActiveCase: () => snapshotRef.current,
+      listPacks: () => installedPacksRef.current,
+    })
+      .then((handle) => {
+        if (disposed) {
+          handle.disposeAll();
+          return;
+        }
+        toolHandleRef.current = handle;
+        setToolHandle(handle);
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      toolHandleRef.current?.disposeAll();
+      toolHandleRef.current = null;
+      setToolHandle(null);
+    };
+    // Deliberately depends only on [webMcpAdapter, commands], not
+    // snapshot/installedPacks -- `getActiveCase`/`listPacks` read those
+    // fresh via the refs above on every call instead of retriggering
+    // registration on every snapshot/pack-list change.
+  }, [webMcpAdapter, commands]);
+
+  // Case-scoped tools re-register (aborting the previous generation) every
+  // time the active case changes -- including a reset (a fresh caseId) or a
+  // return to the launcher (`null`).
+  useEffect(() => {
+    toolHandle?.setActiveCase(activeCaseId).catch(() => undefined);
+  }, [toolHandle, activeCaseId]);
+
+  const readiness = useMemo(() => (snapshot ? evaluateReadiness(snapshot) : null), [snapshot]);
+
+  const handleResetDemo = useCallback(() => {
+    if (snapshot === null) return;
+    const demoId = DEMO_IDS.find((id) => id === snapshot.pack.id);
+    if (demoId === undefined) return;
+    setResetPending(true);
+    commands
+      .startDemo({ demoId })
+      .then((receipt) => {
+        setResetPending(false);
+        setActiveCaseId(receipt.caseId);
+        setLastRunReceipt(null);
+      })
+      .catch(() => {
+        setResetPending(false);
+      });
+  }, [commands, snapshot]);
+
+  const handleRequestInvestigation = useCallback(
+    (obligationId?: string) => {
+      if (snapshot === null || activeCaseId === null) return;
+      setRunRequestPending(true);
+      commands
+        .requestInvestigation({
+          caseId: activeCaseId,
+          expectedSequence: snapshot.eventSequence,
+          ...(obligationId !== undefined ? { obligationId } : {}),
+        })
+        .then((receipt) => {
+          setRunRequestPending(false);
+          setLastRunReceipt({ commandId: receipt.commandId, runId: receipt.runId });
+        })
+        .catch(() => {
+          setRunRequestPending(false);
+        });
+    },
+    [commands, snapshot, activeCaseId],
+  );
+
+  const handleReviewProposal = useCallback(
+    (review: ApprovalCardReview) => {
+      if (!snapshot?.proposal || activeCaseId === null) return;
+      setProposalReviewPending(true);
+      setProposalReviewError(null);
+      commands
+        .reviewProposal({
+          caseId: activeCaseId,
+          proposalId: snapshot.proposal.id,
+          actor: review.actor,
+          decision: review.decision,
+          expectedSequence: snapshot.eventSequence,
+          ...(review.instructions !== undefined ? { instructions: review.instructions } : {}),
+          ...(review.reason !== undefined ? { reason: review.reason } : {}),
+        })
+        .then(() => {
+          setProposalReviewPending(false);
+        })
+        .catch((caught: unknown) => {
+          setProposalReviewPending(false);
+          setProposalReviewError(
+            caught instanceof Error ? caught.message : 'Could not submit this review.',
+          );
+        });
+    },
+    [commands, snapshot, activeCaseId],
+  );
+
+  const handleSetDisposition = useCallback(
+    (evidenceId: string, disposition: EvidenceDisposition, reason: string) => {
+      if (snapshot === null || activeCaseId === null) return;
+      setDispositionPendingId(evidenceId);
+      setDispositionError(null);
+      commands
+        .setEvidenceDisposition({
+          caseId: activeCaseId,
+          evidenceId,
+          disposition,
+          reason,
+          expectedSequence: snapshot.eventSequence,
+        })
+        .then(() => {
+          setDispositionPendingId(null);
+        })
+        .catch((caught: unknown) => {
+          setDispositionPendingId(null);
+          setDispositionError(
+            caught instanceof Error ? caught.message : 'Could not update this evidence item.',
+          );
+        });
+    },
+    [commands, snapshot, activeCaseId],
+  );
 
   if (activeCaseId === null) {
     return <DemoLauncher onDemoStarted={handleDemoStarted} />;
   }
 
+  const activePack = installedPacks.find((pack) => pack.identity.id === snapshot?.pack.id) ?? null;
+  const optionKind = activePack?.entities[0]?.id ?? 'option';
+  const optionLabel = activePack?.presentation.optionLabel ?? 'option';
+  const applicableKinds =
+    activePack !== null ? activePack.entities.map((entity) => entity.id) : [optionKind];
+
+  const evidenceItems = snapshot
+    ? snapshot.evidenceLinks.map((link) => ({
+        evidenceLink: link,
+        claim:
+          link.claimId !== undefined
+            ? snapshot.claims.find((c) => c.id === link.claimId)
+            : undefined,
+        source:
+          link.sourceId !== undefined
+            ? snapshot.sources.find((s) => s.id === link.sourceId)
+            : undefined,
+      }))
+    : null;
+
+  const sources = snapshot ? Object.fromEntries(snapshot.sources.map((s) => [s.id, s])) : {};
+
+  const pendingExtension =
+    snapshot?.caseExtensions.find(
+      (ext) =>
+        ext.definition.origin === 'agent_proposed' && ext.definition.confirmation === 'pending',
+    ) ?? null;
+
+  const lastEvent = events.at(-1) ?? null;
+  const withheld =
+    snapshot !== null && snapshot.recommendation === null && lastEvent?.type === 'draft.withheld'
+      ? { unresolvedRequiredCount: readiness?.blockers.length ?? 0 }
+      : null;
+
+  const activeFocus = snapshot?.activeFocus ?? null;
+  const focusedObligation =
+    activeFocus !== null
+      ? (snapshot?.obligations.find((o) => o.id === activeFocus.obligationId) ?? null)
+      : null;
+
   return (
-    <div data-testid="case-workspace" className="flex min-h-screen flex-col">
-      {/*
-        Slot for the seven workspace regions in product.md's "Workspace
-        layout" order (case header, current focus, readiness, evidence and
-        comparison, activity, recommendation and approval, Runtime
-        Inspector). Each later task replaces this single placeholder body
-        with its real region component(s), in that order.
-      */}
-      <div
-        data-testid="case-workspace-body"
-        className="flex flex-1 items-center justify-center p-[var(--space-4)] text-[var(--color-ink-secondary)]"
+    <div
+      data-testid="case-workspace"
+      className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col gap-[var(--space-4)] p-[var(--space-4)]"
+    >
+      {snapshot ? (
+        <CaseHeader
+          title={snapshot.title}
+          pack={snapshot.pack}
+          status={snapshot.status}
+          connectionState={mapConnectionState(connectionState)}
+          onResetDemo={handleResetDemo}
+          resetPending={resetPending}
+        />
+      ) : (
+        <div
+          data-testid="case-workspace-loading"
+          aria-busy="true"
+          aria-live="polite"
+          className="flex items-center justify-center rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)] text-[var(--color-ink-secondary)]"
+        >
+          Loading case…
+        </div>
+      )}
+
+      <WebMcpStatus adapter={webMcpAdapter} />
+
+      {streamError ? <ErrorState message={streamError} /> : null}
+
+      <section
+        data-testid="current-focus"
+        aria-labelledby="current-focus-heading"
+        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
       >
-        Case {activeCaseId} is starting. The full case workspace ships in a later build task.
-      </div>
+        <h2 id="current-focus-heading">Current focus</h2>
+        {activeFocus !== null ? (
+          <div data-testid="current-focus-detail" className="flex flex-col gap-[var(--space-1)]">
+            <p
+              data-testid="current-focus-obligation"
+              className="font-[var(--font-weight-semibold)] text-[var(--color-ink)]"
+            >
+              {focusedObligation?.label ?? activeFocus.obligationId}
+            </p>
+            <p
+              data-testid="current-focus-reason"
+              className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+            >
+              {activeFocus.reason}
+            </p>
+            <div className="flex flex-wrap gap-[var(--space-2)] text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]">
+              {activeFocus.skillId !== undefined ? (
+                <span data-testid="current-focus-skill">Skill: {activeFocus.skillId}</span>
+              ) : null}
+              {activeFocus.specialistId !== undefined ? (
+                <span data-testid="current-focus-specialist">
+                  Specialist: {activeFocus.specialistId}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <p
+            data-testid="current-focus-empty"
+            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+          >
+            Nothing is being actively investigated right now.
+          </p>
+        )}
+
+        <button
+          type="button"
+          data-testid="request-investigation"
+          aria-busy={runRequestPending}
+          disabled={runRequestPending || snapshot === null}
+          onClick={() => {
+            handleRequestInvestigation();
+          }}
+          className="min-h-[var(--size-touch-target-min)] self-start rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {runRequestPending ? 'Requesting…' : 'Request investigation'}
+        </button>
+
+        <LiveRunStatus receipt={lastRunReceipt} events={events} />
+      </section>
+
+      <ReadinessPanel readiness={readiness} loading={snapshot === null} />
+
+      <section
+        data-testid="evidence-and-comparison-region"
+        aria-labelledby="evidence-and-comparison-heading"
+        className="flex flex-col gap-[var(--space-3)]"
+      >
+        <h2 id="evidence-and-comparison-heading" className="visually-hidden">
+          Evidence and comparison
+        </h2>
+
+        <EvidenceList
+          items={evidenceItems}
+          loading={snapshot === null}
+          error={dispositionError}
+          onSetDisposition={handleSetDisposition}
+          dispositionPendingId={dispositionPendingId}
+        />
+
+        <OptionEditor
+          caseId={activeCaseId}
+          expectedSequence={snapshot?.eventSequence ?? 0}
+          optionKind={optionKind}
+          optionLabel={optionLabel}
+          attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+          options={snapshot?.entities ?? []}
+        />
+
+        <OptionComparison
+          options={snapshot?.entities ?? []}
+          attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+          presentation={activePack?.presentation ?? null}
+          selectedOptionId={snapshot?.selectedOptionId ?? null}
+        />
+
+        <CustomConcernForm
+          caseId={activeCaseId}
+          expectedSequence={snapshot?.eventSequence ?? 0}
+          applicableKinds={applicableKinds}
+        />
+
+        <CaseExtensionReviewCard
+          caseId={activeCaseId}
+          expectedSequence={snapshot?.eventSequence ?? 0}
+          extension={pendingExtension}
+        />
+      </section>
+
+      <ActivityTimeline events={snapshot === null ? null : events} loading={snapshot === null} />
+
+      <RecommendationCard
+        recommendation={snapshot?.recommendation ?? null}
+        withheld={withheld}
+        loading={snapshot === null}
+        sources={sources}
+      />
+
+      <ApprovalCard
+        proposal={snapshot?.proposal ?? null}
+        onReview={handleReviewProposal}
+        reviewPending={proposalReviewPending}
+        error={proposalReviewError}
+      />
     </div>
   );
 }

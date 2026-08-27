@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import type { EvidenceLink } from '@pax/contracts';
 import { EvidenceList } from './EvidenceList.js';
@@ -96,5 +97,43 @@ describe('EvidenceList', () => {
   it('renders at 390px width with no fixed-width overflow risk', () => {
     const { overflowRisks } = renderAtNarrowWidth(<EvidenceList items={[buildItem()]} />);
     expect(overflowRisks).toEqual([]);
+  });
+
+  it('forwards onSetDisposition to each EvidenceCard, correlated by evidenceId', async () => {
+    const onSetDisposition = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <EvidenceList
+        items={[buildItem({ evidenceLink: buildEvidenceLink({ id: 'evidence-9' }) })]}
+        onSetDisposition={onSetDisposition}
+      />,
+    );
+
+    await user.click(screen.getByTestId('evidence-card-set-excluded'));
+    expect(onSetDisposition).toHaveBeenCalledWith('evidence-9', 'excluded', expect.any(String));
+  });
+
+  it("marks only the pending item's controls as busy via dispositionPendingId", () => {
+    render(
+      <EvidenceList
+        items={[
+          buildItem({ evidenceLink: buildEvidenceLink({ id: 'evidence-1' }) }),
+          buildItem({ evidenceLink: buildEvidenceLink({ id: 'evidence-2' }) }),
+        ]}
+        onSetDisposition={vi.fn()}
+        dispositionPendingId="evidence-1"
+      />,
+    );
+
+    expect(
+      screen
+        .getByTestId('evidence-card-evidence-1')
+        .querySelector('[data-testid="evidence-card-set-included"]'),
+    ).toBeDisabled();
+    expect(
+      screen
+        .getByTestId('evidence-card-evidence-2')
+        .querySelector('[data-testid="evidence-card-set-included"]'),
+    ).not.toBeDisabled();
   });
 });

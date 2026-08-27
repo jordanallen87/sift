@@ -3,8 +3,7 @@
  * `apps/web/src/app/AppProviders.tsx  Query, event, command, and test
  * providers`).
  *
- * This Task 9 pass wires the piece the rest of the app needs immediately:
- * a single shared `PaxCommands` client, reachable from any descendant via
+ * A single shared `PaxCommands` client, reachable from any descendant via
  * `usePaxCommands()`, with a `commandsClient` override prop so component
  * tests (and later Playwright tests through the same seam) can substitute
  * a fake client without hitting the network (CLAUDE.md "Non-negotiable
@@ -12,29 +11,61 @@
  * command implementation" -- every control below this provider resolves the
  * exact same instance).
  *
- * The event stream (SSE) and query-cache providers the file map's
- * description also names are wired in Task 10
- * (`docs/superpowers/plans/2026-08-26-pax-hackathon-build.md`: "Browser
- * commands, streaming state, and imperative WebMCP" -- `use-case-events.ts`
- * and friends), once there is live case data for them to project. Adding an
- * event/query provider now with nothing yet consuming it would be
- * speculative plumbing this pass explicitly excludes.
+ * This pass (Task 10, `use-case-events.ts` and the full live `App.tsx`
+ * wiring) adds the two remaining test-injection seams the rest of the live
+ * workspace needs: `caseEventsConfig` (the same `baseUrl`/`fetchImpl`/
+ * `createEventSource` overrides `useCaseEvents` itself accepts, plus reused
+ * by the plain `GET /api/packs` fetch backing the WebMCP `pax_list_packs`
+ * tool and `OptionComparison`'s presentation metadata) and `webMcpAdapter`
+ * (defaults to the real `BrowserModelContextAdapter`; tests substitute
+ * `InMemoryModelContextAdapter`). Both follow the exact same pattern as
+ * `commandsClient` above: a plain optional override prop, not a new kind of
+ * plumbing.
  */
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { createPaxClient, type PaxCommands } from '../api/pax-client.js';
+import { BrowserModelContextAdapter, type ModelContextAdapter } from '../model-context/adapter.js';
+import type { CreateEventSource } from '../hooks/use-case-events.js';
 
 const PaxCommandsContext = createContext<PaxCommands | null>(null);
+
+/** Same-origin API config shared by `useCaseEvents` and the plain `GET /api/packs` fetch -- every field optional so a caller (or test) only overrides what it needs to. */
+export interface ApiConfig {
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+  createEventSource?: CreateEventSource;
+}
+
+const ApiConfigContext = createContext<ApiConfig>({});
+const WebMcpAdapterContext = createContext<ModelContextAdapter | null>(null);
 
 export interface AppProvidersProps {
   children: ReactNode;
   /** Test-injectable override -- substitutes a fake `PaxCommands` implementation without hitting the network. Defaults to the real same-origin HTTP client. */
   commandsClient?: PaxCommands;
+  /** Test-injectable overrides for the live case-event stream and packs fetch. Defaults to same-origin `fetch`/`EventSource`. */
+  caseEventsConfig?: ApiConfig;
+  /** Test-injectable `ModelContextAdapter` override. Defaults to the real `BrowserModelContextAdapter`. */
+  webMcpAdapter?: ModelContextAdapter;
 }
 
-export function AppProviders({ children, commandsClient }: AppProvidersProps) {
+export function AppProviders({
+  children,
+  commandsClient,
+  caseEventsConfig,
+  webMcpAdapter,
+}: AppProvidersProps) {
   const client = useMemo(() => commandsClient ?? createPaxClient(), [commandsClient]);
+  const apiConfig = useMemo(() => caseEventsConfig ?? {}, [caseEventsConfig]);
+  const adapter = useMemo(() => webMcpAdapter ?? new BrowserModelContextAdapter(), [webMcpAdapter]);
 
-  return <PaxCommandsContext.Provider value={client}>{children}</PaxCommandsContext.Provider>;
+  return (
+    <PaxCommandsContext.Provider value={client}>
+      <ApiConfigContext.Provider value={apiConfig}>
+        <WebMcpAdapterContext.Provider value={adapter}>{children}</WebMcpAdapterContext.Provider>
+      </ApiConfigContext.Provider>
+    </PaxCommandsContext.Provider>
+  );
 }
 
 /** The shared `PaxCommands` client every visible control and, later, every WebMCP tool callback sends commands through. Throws if called outside `<AppProviders>`. */
@@ -44,4 +75,18 @@ export function usePaxCommands(): PaxCommands {
     throw new Error('usePaxCommands must be called within <AppProviders>.');
   }
   return client;
+}
+
+/** The shared same-origin API config (`baseUrl`/`fetchImpl`/`createEventSource`) `App.tsx` passes to `useCaseEvents` and its own `GET /api/packs` fetch. Safe to call outside `<AppProviders>` -- resolves to `{}` (every field defaults inside its consumer), matching how a top-level `main.tsx` mount with no explicit overrides behaves. */
+export function useApiConfig(): ApiConfig {
+  return useContext(ApiConfigContext);
+}
+
+/** The shared `ModelContextAdapter` WebMCP tool registration uses. Throws if called outside `<AppProviders>`, matching `usePaxCommands()`. */
+export function useWebMcpAdapter(): ModelContextAdapter {
+  const adapter = useContext(WebMcpAdapterContext);
+  if (adapter === null) {
+    throw new Error('useWebMcpAdapter must be called within <AppProviders>.');
+  }
+  return adapter;
 }

@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import type { Claim, EvidenceLink, Source } from '@pax/contracts';
 import { EvidenceCard, type EvidenceItemData } from './EvidenceCard.js';
@@ -172,5 +173,57 @@ describe('EvidenceCard', () => {
   it('renders at 390px width with no fixed-width overflow risk', () => {
     const { overflowRisks } = renderAtNarrowWidth(<EvidenceCard item={buildItem()} />);
     expect(overflowRisks).toEqual([]);
+  });
+
+  describe('disposition controls (webmcp.md pax_set_evidence_disposition, visible-control equivalent)', () => {
+    it('renders no disposition controls when onSetDisposition is not provided (backward compatible)', () => {
+      render(<EvidenceCard item={buildItem()} />);
+      expect(screen.queryByTestId('evidence-card-set-included')).not.toBeInTheDocument();
+    });
+
+    it('calls onSetDisposition with the chosen disposition and the entered reason', async () => {
+      const onSetDisposition = vi.fn();
+      const user = userEvent.setup();
+      render(<EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />);
+
+      await user.clear(screen.getByLabelText(/reason/i));
+      await user.type(screen.getByLabelText(/reason/i), 'Duplicate of another source');
+      await user.click(screen.getByTestId('evidence-card-set-excluded'));
+
+      expect(onSetDisposition).toHaveBeenCalledWith('excluded', 'Duplicate of another source');
+    });
+
+    it('calls onSetDisposition with "included" and falls back to a default reason when left blank', async () => {
+      const onSetDisposition = vi.fn();
+      const user = userEvent.setup();
+      render(<EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />);
+
+      await user.clear(screen.getByLabelText(/reason/i));
+      await user.click(screen.getByTestId('evidence-card-set-included'));
+
+      expect(onSetDisposition).toHaveBeenCalledWith('included', 'Reviewed by user');
+    });
+
+    it('calls onSetDisposition with "questioned"', async () => {
+      const onSetDisposition = vi.fn();
+      const user = userEvent.setup();
+      render(<EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />);
+
+      await user.click(screen.getByTestId('evidence-card-set-questioned'));
+
+      expect(onSetDisposition).toHaveBeenCalledWith('questioned', 'Reviewed by user');
+    });
+
+    it('disables the controls while a disposition change is pending', () => {
+      render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} dispositionPending />);
+      expect(screen.getByTestId('evidence-card-set-included')).toBeDisabled();
+      expect(screen.getByTestId('evidence-card-set-excluded')).toBeDisabled();
+      expect(screen.getByTestId('evidence-card-set-questioned')).toBeDisabled();
+    });
+
+    it('has no axe violations with disposition controls rendered', async () => {
+      const { container } = render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} />);
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 });

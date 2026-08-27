@@ -3554,3 +3554,241 @@ larger `test:unit` run all firing close together) -- plausibly a SQLite
 busy-timeout or Express response genuinely delayed under real CPU/memory
 pressure, not a code defect. Did not weaken, skip, or modify the test.
 Re-ran `pnpm verify` clean afterward for the final report.
+
+### 2026-08-27 — real-time case events hook, remaining region components, and live App.tsx wiring
+
+Completed the workspace-completion task: built the real SSE/poll-fallback
+data hook, every remaining region component named in the task brief, wired
+`App.tsx` so the whole workspace is genuinely driven by live command
+receipts and streamed `PublicActivityEvent`s (no more placeholder body),
+and extended `AppProviders.tsx` with the test-injection seams that wiring
+needed. All work is confined to `apps/web/**`; `apps/agent/` and
+`packages/**` were not touched (a sibling agent is building the car-purchase
+Strands Graph in `apps/agent/` concurrently — its own lint/format state
+visibly shifted between check runs this session, confirming it is being
+actively edited, not something this task's changes affected).
+
+**New files:**
+
+- `apps/web/src/hooks/use-case-events.ts` + `.test.ts` (9→11 tests as
+  gaps were closed) — subscribes to the real `GET /api/cases/:caseId/events`
+  route read directly from `apps/agent/src/routes/events.ts` per the task
+  brief. SSE is the default transport; every `PublicActivityEvent` arrives as
+  a *named* SSE event (`event: <event.type>`, one of the twenty
+  `PUBLIC_ACTIVITY_EVENT_TYPES`), never the unnamed default `"message"`, so
+  the hook registers a listener per type via `addEventListener`, not
+  `onmessage`. `?mode=poll&afterSequence=N` (returning `{snapshot, events}`)
+  is reused for three purposes with one code path: the very first load,
+  the ongoing polling-fallback loop, and — the one genuine judgment call
+  here — a lightweight canonical-snapshot refresh fired after *every*
+  newly-applied, non-duplicate SSE event. Grounding: an ordinary
+  `PublicActivityEvent` never carries the full updated `CaseState` a
+  case-affecting event produced (only a bounded `summary`/`safeDetails`), so
+  there is no way to keep the snapshot fresh from the event payload alone
+  without either (a) hand-maintaining a second, web-side classification of
+  "which of the twenty event types actually changed canonical state" — a
+  classification that would silently drift from the real reducer in
+  `packages/core` this app must never re-implement — or (b) this hook's
+  choice: always re-fetch. Chosen for safety-first simplicity; demo-scale
+  event volume makes the extra reads negligible. This same mechanism makes
+  the server's slow-consumer resync marker (`type: 'case.snapshot'`,
+  `safeDetails.resyncRequired: true`) work for free — it is just another
+  event that triggers the same refresh, no special-casing needed.
+  Reconnection is hook-managed (not the browser's opaque automatic
+  `EventSource` retry): on `onerror` the hook closes the failed connection
+  and opens a fresh one with `?afterSequence=<lastSequence>` in the URL
+  (the server's own route treats this identically to `Last-Event-ID`,
+  confirmed by reading `events.ts` directly), bounding reconnect attempts
+  before falling back to polling — chosen over relying on native
+  browser auto-reconnect specifically so attempt-counting and polling
+  fallback are deterministic and testable. Dedup is by `PublicActivityEvent
+  .eventId` (per architecture.md, not by SSE sequence) in one shared `Set`
+  spanning both SSE and poll delivery. Tests use a hand-rolled
+  `EventSourceLike` fake (`apps/web/src/test/fake-event-source.ts`, factored
+  out as shared test infrastructure alongside `fake-pax-commands.ts` and
+  reused by `App.test.tsx`) proving reconnect, `afterSequence`-based replay,
+  duplicate-id suppression, polling fallback after exceeding
+  `maxReconnectAttempts`, last-valid-snapshot preservation on a poll
+  failure, per-caseId subscription teardown, and a malformed/non-JSON SSE
+  message being silently ignored rather than crashing.
+- `apps/web/src/test/fake-event-source.ts` — shared `EventSourceLike` test
+  double (see above).
+- `apps/web/src/components/attribute-value-format.ts` + `.test.ts` — pure
+  `AttributeValue` → display-string formatter shared by `DynamicAttributeField`
+  and `OptionComparison`, covering all ten variants. Deliberately avoids
+  `toLocaleString`/`Intl.*` so output is identical across locales.
+- `apps/web/src/components/DynamicAttributeField.tsx` + `.test.ts` — one
+  form control per `AttributeValue` variant, keyed off an
+  `AttributeDefinition.valueType`. Emits `undefined` (not an empty string)
+  when a field is cleared, matching the pack-authoring `unknown`-status
+  model. Found and fixed a genuine UX bug while testing: the money
+  `currency` field silently substituted a cleared value back to `'USD'` on
+  every keystroke, which combined with `maxLength={3}` made the field
+  impossible to actually clear and retype — fixed to reflect exactly what
+  was typed, letting the real Zod schema enforce the three-letter code at
+  submit time like any other in-progress field. Also documented a real
+  jsdom limitation hit while writing tests: jsdom does not implement the
+  browser-native "Enter inserts a newline" default action for `<textarea>`
+  keyboard events, so the `string_list` multi-line test uses `fireEvent
+  .change` with an embedded `\n` instead of `userEvent.type('{enter}')`.
+- `apps/web/src/components/OptionEditor.tsx` + `.test.ts` — manual entry of
+  up to 5 candidates (product.md's "Explicit scope cuts" limit) using
+  `DynamicAttributeField` per pack-declared + `custom.*` attribute; calls
+  `commands.upsertOption` on the shared `PaxCommands` instance.
+- `apps/web/src/components/OptionComparison.tsx` + `.test.ts` — generic,
+  pack-agnostic side-by-side table driven by
+  `CompiledDecisionPack.presentation` metadata (`attributeGroups`), falling
+  back to one flat group when presentation metadata is unavailable rather
+  than blocking. Purely presentational — never computes ranking itself.
+- `apps/web/src/components/CustomConcernForm.tsx` + `.test.ts` — the
+  visible-control equivalent of `pax_define_case_attribute`, fields mirroring
+  `DefineCaseAttributeInputSchema`'s `definition` shape exactly; calls the
+  same `commands.defineCaseAttribute` the WebMCP tool calls.
+- `apps/web/src/components/CaseExtensionReviewCard.tsx` + `.test.ts` —
+  human confirm/reject of one agent-proposed `CaseExtension`, calling
+  `commands.reviewCaseExtension`. `ApprovalCardProps`-style: no `actor` prop
+  exists anywhere in this component; the literal `'human'` is the only value
+  ever sent.
+- `apps/web/src/components/LiveRunStatus.tsx` + `.test.ts` — correlated
+  queued/active/completed/failed status for the most recent command/run,
+  driven strictly by a real `CommandReceipt`/`RunReceipt` plus real
+  `PublicActivityEvent`s correlated by `runId` (falling back to `commandId`
+  before a run has an established `runId`) — never a fabricated timer.
+  Rendering "Queued" the instant a receipt returns is documented as the
+  honest, spec-required meaning of an accepted command, not a fabrication.
+- `apps/web/src/components/WebMcpStatus.tsx` + `.test.ts` — the "unsupported
+  WebMCP host" required visible state. Takes a `ModelContextAdapter` prop
+  and calls its real `.supported()` — one test constructs the real
+  `BrowserModelContextAdapter` directly (no `document.modelContext` exists
+  in jsdom) to prove the actual check is used, not a re-implemented guess.
+- `apps/web/src/components/ErrorState.tsx` + `.test.ts` — small reusable
+  recoverable-error banner (`role="alert"`) for workspace-level errors;
+  deliberately inline/non-replacing so callers render it *alongside*, never
+  *instead of*, the last valid data, matching the pattern the existing
+  per-region components (`EvidenceList`, `ActivityTimeline`, `ApprovalCard`,
+  ...) already established locally.
+
+**Extended existing files (all additive/backward-compatible):**
+
+- `apps/web/src/components/EvidenceCard.tsx` + `EvidenceList.tsx` — added
+  an optional `onSetDisposition`/`dispositionPending(Id)` prop pair (same
+  optional-callback pattern `ApprovalCard`'s `onReview` already
+  establishes). Judgment call: neither component had any disposition
+  control before this task, but the task brief requires "evidence
+  disposition" to be a wired visible control, and product.md/webmcp.md
+  require `pax_set_evidence_disposition`'s visible-control equivalent to
+  exist. Extended rather than duplicated so there is exactly one evidence
+  card implementation; every pre-existing test for both components still
+  passes unmodified since the new prop is optional and controls only render
+  when it is supplied.
+- `apps/web/src/app/AppProviders.tsx` — added `caseEventsConfig`
+  (`ApiConfig`: `baseUrl`/`fetchImpl`/`createEventSource`, reused by both
+  `useCaseEvents` and the plain `GET /api/packs` fetch) and `webMcpAdapter`
+  (defaults to the real `BrowserModelContextAdapter`) override props plus
+  `useApiConfig()`/`useWebMcpAdapter()` hooks, following the exact
+  `commandsClient` pattern already established. This was explicitly named
+  as this file's own forward-looking comment's "Task 10" work.
+- `apps/web/package.json` — added `@pax/core: workspace:*` as a runtime
+  dependency so `App.tsx` calls the real `evaluateReadiness` directly
+  instead of re-implementing readiness bucketing. `ReadinessPanel.tsx`'s own
+  header comment named this exact moment ("the moment a later task wires it
+  in") as the intended point to do this. Ran `pnpm install` (not frozen) to
+  record the new workspace link in `pnpm-lock.yaml`.
+
+**`App.tsx` — now genuinely live:** the placeholder `case-workspace-body`
+div is gone. `App` calls `useCaseEvents({ caseId: activeCaseId, ...apiConfig
+})` for the canonical snapshot/event stream, renders all seven Workspace
+regions from product.md in order except Region 7 (Runtime Inspector — a
+separate build task's scope per the file map; CLAUDE.md's "no placeholders"
+rule ruled out rendering a non-functional stub for it), and mounts
+`registerPaxTools` only while a case is active (global tools register once
+per mount; case-scoped tools re-register — aborting the previous generation
+— on every `activeCaseId` change, via a `PaxToolRegistrationHandle` held in
+both React state and a parallel ref). Every visible control (option
+upsert/edit, custom concern, case-extension review, evidence disposition,
+run request, reset demo, proposal review) calls through the one
+`usePaxCommands()` client — no parallel mutation path anywhere.
+
+Found and fixed a genuine lifecycle bug via testing, not just a test
+artifact: the WebMCP registration effect's cleanup originally disposed the
+handle via `setToolHandle((prev) => { prev?.disposeAll(); return null; })`.
+React does not guarantee a functional-updater callback passed to a state
+setter *invoked during unmount cleanup* actually runs (the fiber is being
+torn down, so there is nothing to compute a next render's state for) —
+meaning `disposeAll()` could silently never fire on a real unmount, leaking
+the WebMCP tool registration exactly at the lifecycle moment webmcp.md's
+"abort ... whenever ... the component unmounts" most needs to hold. Fixed
+by disposing directly through a parallel `toolHandleRef` in the cleanup
+function, independent of whether the subsequent `setToolHandle(null)` state
+update is ever actually processed. Caught by a real
+`disposes the WebMCP tool registration handle cleanly on unmount` test
+(`App.test.tsx`) that failed against the original code and passes against
+the fix — verified both directions before moving on, per the repair
+protocol.
+
+`App.test.tsx` grew from its original 3 tests to 30, covering: live
+CaseHeader/ReadinessPanel/EvidenceList/ActivityTimeline data from a real
+poll response; a live SSE event streaming into ActivityTimeline;
+connectionState flowing into CaseHeader's connection indicator; reset-demo
+re-deriving the same pack's `demoId` (and its two defensive branches: no
+snapshot yet, and an unrecognized pack id); request-investigation and its
+`LiveRunStatus` correlation (success and failure); proposal approval
+(`actor: 'human'`, success, and a non-Error-rejection fallback message);
+evidence-disposition (success and failure, preserving entered state);
+resolving the active installed pack by `identity.id` (a real bug — see
+below); current-focus rendering from a real `activeFocus` (obligation
+label lookup, skill, specialist); the "Draft withheld" recommendation state
+from a real `draft.withheld` event; registering/disposing WebMCP
+case-scoped tools; `GET /api/packs` failing gracefully (falls back to the
+generic `'option'` label rather than blocking); axe on the live workspace;
+and a 390px whole-workspace overflow check.
+
+Found and fixed a second genuine bug via a coverage-driven test, not a
+theoretical one: `installedPacks.find((pack) => pack.id === ...)` — but
+`CompiledDecisionPack` has no top-level `.id`; the pack id lives at
+`pack.identity.id` (`PackIdentitySchema`). This meant `activePack` was
+*silently always `null`* in every test that had been written up to that
+point (all 18 originally passed anyway, since none of them asserted on
+pack-derived data), so `OptionComparison`'s presentation metadata and
+`OptionEditor`'s real `optionLabel` were never actually taking effect.
+Verified the fix both directions: reintroduced the bug via `sed`, confirmed
+the new "resolves the active installed pack" test fails against it, then
+restored the fix and confirmed it passes.
+
+**Verification commands and results (final, in order):**
+
+- `pnpm --filter @pax/web test --coverage` — **26 test files / 400 tests
+  passing.** Coverage: **96.43% statements, 90.92% branches, 97.63%
+  functions, 98.25% lines** — all four exceed the root `vitest.config.ts`
+  aggregate thresholds (90% branches, 95% functions/lines/statements),
+  though that specific per-package invocation does not itself enforce them
+  (no `coverage.thresholds` block in `apps/web/vitest.config.ts`).
+- `pnpm --filter @pax/web typecheck` — clean.
+- `pnpm lint` (full monorepo) — clean except pre-existing, actively-shifting
+  errors in `apps/agent/src/runtime/{car-purchase-graph.ts,
+  car-purchase-scenario.ts, scripted-beats/car-purchase{.ts,.test.ts}}`
+  (confirmed out of scope: the exact error set changed between two
+  consecutive runs this session, proving another agent is actively editing
+  those files concurrently, not this task's changes).
+- `pnpm format:check` — `apps/web/**` reformatted via `prettier --write`
+  scoped to that directory only (19 files, whitespace-only); re-verified
+  clean afterward. `apps/agent/`/`packages/scenarios/` files prettier also
+  flagged were left untouched (out of scope; not edited this task).
+- `pnpm --filter @pax/web build` — succeeds; `dist/` produced
+  (`index.html` 0.84 kB, CSS 15.50 kB, JS 376.64 kB, gzip 103.92 kB). The
+  font-file "didn't resolve at build time" notices are pre-existing/expected
+  (resolved at runtime from `/public`), not errors.
+
+**Known limitation, recorded honestly:** `EvidenceCard`'s
+`conflictingEvidenceIds` prop (already part of its pre-existing contract)
+is not populated from live data in `App.tsx`'s wiring. `EvidenceLink`
+(`packages/contracts/src/case.ts`) does not persist which other evidence
+items it conflicts with — that information exists only in the
+`evidence.conflicted` domain event's payload, not on the canonical
+`EvidenceLink` record itself. Computing it live would require either
+extending `EvidenceLink`'s schema (owned by `packages/contracts`, out of
+this task's scope — "Do NOT touch ... packages/") or replaying the raw
+`case_events` log client-side (which architecture.md's own "Command and
+event flow" section notes is not how normal reads are served). Left
+honestly absent rather than fabricated; `EvidenceCard` still renders
+correctly without it (the conflict chip simply does not appear).

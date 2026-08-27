@@ -108,6 +108,9 @@ importers:
       '@pax/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@pax/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -189,9 +192,16 @@ importers:
       '@pax/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@pax/core':
+        specifier: workspace:*
+        version: link:../core
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+    devDependencies:
+      '@pax/packs':
+        specifier: workspace:*
+        version: link:../packs
 
   packages/ui: {}
 
