@@ -1,0 +1,348 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { Clock, IdGenerator } from '@pax/core';
+import type { ExecutionRequest, ExecutionResult } from '@pax/contracts';
+import { ScriptedModelProvider } from './model-provider.js';
+import { buildLocalSessionManager } from './session-adapter.js';
+import {
+  PROPOSE_RECOMMENDATION_TOOL_ID,
+  SDK_INTERNAL_TOOL_NAMES,
+  buildCarPurchaseFixtureTools,
+  execute,
+} from './strands-adapter.js';
+import type { RuntimeEvent } from './event-normalizer.js';
+
+const SKILLS_ROOT_DIR = fileURLToPath(new URL('../../skills', import.meta.url));
+const FIXED_CLOCK: Clock = { now: () => '2026-01-01T00:00:00.000Z' };
+
+function fixedIdGenerator(): IdGenerator {
+  let counter = 0;
+  return { next: (prefix) => `${prefix ?? 'id'}-${++counter}` };
+}
+
+let dir: string | undefined;
+afterEach(() => {
+  if (dir !== undefined) {
+    rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+  }
+});
+function tempDataDir(): string {
+  dir = mkdtempSync(join(tmpdir(), 'pax-strands-adapter-test-'));
+  return dir;
+}
+
+function buildExecutionRequest(overrides: Partial<ExecutionRequest> = {}): ExecutionRequest {
+  return {
+    runId: 'run-1',
+    caseId: 'case-1',
+    pack: { id: 'car-purchase', version: '1.0.0', compiledHash: 'a'.repeat(64) },
+    obligation: {
+      id: 'car.deal_normalization',
+      label: 'Deal normalization',
+      question: "What is each candidate's comparable out-the-door price?",
+      category: 'deal',
+      required: true,
+      priority: 80,
+      requiredEvidenceLevel: 'E2',
+      maxAttempts: 2,
+      acceptedUncertaintyAllowed: false,
+      dependsOn: [],
+      preferredSkills: ['deal-analysis'],
+      preferredSpecialists: ['deal-analyst'],
+      completionRule: {
+        minimumEvidenceLevel: 'E2',
+        minimumIndependentSources: 2,
+        acceptedUncertaintyAllowed: false,
+      },
+      origin: 'pack',
+      status: 'active',
+      attemptsUsed: 0,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    caseSummary: {
+      caseId: 'case-1',
+      title: 'Choose our next car',
+      status: 'investigating',
+      criteria: [
+        {
+          id: 'pref.ownership_cost',
+          label: '5-year ownership cost',
+          kind: 'preference',
+          weight: 30,
+          direction: 'lower_better',
+          origin: 'pack',
+          status: 'active',
+        },
+      ],
+      optionSummaries: [],
+      evidenceCounts: { satisfied: 0, active: 1, blocked: 0, acceptedUncertainty: 0, open: 4 },
+    },
+    caseExtensions: [],
+    availableSkills: ['deal-analysis', 'listing-normalizer'],
+    availableSpecialists: ['deal-analyst'],
+    allowedTools: ['listing-reader', PROPOSE_RECOMMENDATION_TOOL_ID],
+    priorAttempts: [],
+    limits: {
+      maxAttemptsPerObligation: 2,
+      maxToolCallsPerRun: 12,
+      maxGraphNodeExecutionsPerRun: 6,
+      modelRequestTimeoutMs: 120_000,
+      totalRunTimeoutMs: 300_000,
+    },
+    ...overrides,
+  };
+}
+
+const VALID_EXECUTION_RESULT: ExecutionResult = {
+  obligationId: 'car.deal_normalization',
+  disposition: 'evidence_found',
+  claims: [
+    {
+      statement: 'The RAV4 out-the-door price is within the household budget.',
+      stance: 'supports',
+      confidence: 0.8,
+      sourceIds: ['source-listing-candidate-rav4'],
+    },
+  ],
+  evidenceResults: [
+    {
+      sourceId: 'source-listing-candidate-rav4',
+      level: 'E1',
+      verdict: 'pass',
+      summary: 'Listing confirms advertised price and mileage.',
+    },
+  ],
+  limitations: [],
+  suggestedStatus: 'open',
+};
+
+function isRuntimeEvent(item: RuntimeEvent | ExecutionResult): item is RuntimeEvent {
+  return 'sequence' in item;
+}
+
+async function drain(
+  iterable: AsyncIterable<RuntimeEvent | ExecutionResult>,
+): Promise<{ events: RuntimeEvent[]; result: ExecutionResult | undefined }> {
+  const events: RuntimeEvent[] = [];
+  let result: ExecutionResult | undefined;
+  for await (const item of iterable) {
+    if (isRuntimeEvent(item)) {
+      events.push(item);
+    } else {
+      result = item;
+    }
+  }
+  return { events, result };
+}
+
+describe('buildCarPurchaseFixtureTools', () => {
+  it('wraps every real car-purchase fixture tool plus the gated propose_recommendation tool', () => {
+    const tools = buildCarPurchaseFixtureTools();
+    const names = tools.map((entry) => ('name' in entry ? entry.name : undefined));
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'listing-reader',
+        'ownership-calculator',
+        'safety-reliability-lookup',
+        'household-fit-matrix',
+        PROPOSE_RECOMMENDATION_TOOL_ID,
+      ]),
+    );
+  });
+});
+
+describe('execute()', () => {
+  it('runs a real Agent through every plugin and intervention, ending in a validated ExecutionResult', async () => {
+    const request = buildExecutionRequest();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          { toolCalls: [{ name: 'listing-reader', input: { candidateId: 'candidate-rav4' } }] },
+          { toolCalls: [{ name: 'skills', input: { skill_name: 'deal-analysis' } }] },
+          {
+            toolCalls: [
+              {
+                name: PROPOSE_RECOMMENDATION_TOOL_ID,
+                input: { candidateIds: ['candidate-rav4'], rationale: 'fits stated budget' },
+              },
+            ],
+          },
+          { toolCalls: [{ name: 'strands_structured_output', input: VALID_EXECUTION_RESULT }] },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+
+    const { events, result } = await drain(
+      execute(
+        {
+          model: provider,
+          skillsRootDir: SKILLS_ROOT_DIR,
+          clock: FIXED_CLOCK,
+          idGenerator: fixedIdGenerator(),
+          consequentialToolIds: [PROPOSE_RECOMMENDATION_TOOL_ID],
+          resolveConfirmation: () => true,
+        },
+        request,
+      ),
+    );
+
+    expect(result).toEqual(VALID_EXECUTION_RESULT);
+    expect(events.every((event) => event.runId === 'run-1' && event.caseId === 'case-1')).toBe(
+      true,
+    );
+
+    // Every category the required behavior list names genuinely appears.
+    const categories = new Set(events.map((event) => event.category));
+    expect(categories).toContain('tool');
+    expect(categories).toContain('model');
+    expect(categories).toContain('skill');
+    expect(categories).toContain('context');
+    expect(categories).toContain('intervention');
+
+    const interventionKeys = events
+      .filter((event) => event.category === 'intervention')
+      .map((event) => `${String(event.attributes['handler'])}:${event.name}`);
+    expect(interventionKeys).toContain('ScopeAuthorization:intervention.proceed');
+    expect(interventionKeys).toContain('ConsequenceGuard:intervention.confirm');
+    expect(interventionKeys).toContain('BudgetGuard:intervention.proceed');
+    expect(interventionKeys).toContain('RetrySteering:intervention.proceed');
+
+    expect(events.some((event) => event.name === 'skill.activated')).toBe(true);
+    expect(events.some((event) => event.name === 'context.injected')).toBe(true);
+    expect(
+      events.some((event) => event.name === 'tool.listing-reader' && event.phase === 'finish'),
+    ).toBe(true);
+  });
+
+  it('denies a tool call outside the declared allowlist before it ever executes', async () => {
+    const request = buildExecutionRequest({ allowedTools: [] });
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          { toolCalls: [{ name: 'listing-reader', input: { candidateId: 'candidate-rav4' } }] },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+
+    const { events } = await drain(
+      execute(
+        {
+          model: provider,
+          skillsRootDir: SKILLS_ROOT_DIR,
+          clock: FIXED_CLOCK,
+          idGenerator: fixedIdGenerator(),
+        },
+        request,
+      ),
+    );
+
+    const denyEvent = events.find(
+      (event) => event.category === 'intervention' && event.name === 'intervention.deny',
+    );
+    expect(denyEvent).toBeDefined();
+    expect(denyEvent?.attributes['handler']).toBe('ScopeAuthorization');
+    // The denied tool never actually completed.
+    expect(
+      events.some((event) => event.name === 'tool.listing-reader' && event.phase === 'finish'),
+    ).toBe(false);
+  });
+
+  it('yields a run.failed error event and no ExecutionResult when structured output is never produced', async () => {
+    const request = buildExecutionRequest();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [{ text: 'I cannot decide yet.' }, { text: 'Still undecided.' }],
+      },
+    });
+    provider.setBeat('turn');
+
+    const { events, result } = await drain(
+      execute(
+        {
+          model: provider,
+          skillsRootDir: SKILLS_ROOT_DIR,
+          clock: FIXED_CLOCK,
+          idGenerator: fixedIdGenerator(),
+        },
+        request,
+      ),
+    );
+
+    expect(result).toBeUndefined();
+    const errorEvent = events.find((event) => event.category === 'error');
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent?.name).toBe('run.failed');
+  });
+
+  it('saves and restores a real session snapshot when a sessionManager is supplied', async () => {
+    const dataDir = tempDataDir();
+    const sessionManager = buildLocalSessionManager(dataDir, 'case-1');
+    const request = buildExecutionRequest();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          { toolCalls: [{ name: 'strands_structured_output', input: VALID_EXECUTION_RESULT }] },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+
+    const { events, result } = await drain(
+      execute(
+        {
+          model: provider,
+          skillsRootDir: SKILLS_ROOT_DIR,
+          clock: FIXED_CLOCK,
+          idGenerator: fixedIdGenerator(),
+          sessionManager,
+          sessionId: 'case-1',
+        },
+        request,
+      ),
+    );
+
+    expect(result).toEqual(VALID_EXECUTION_RESULT);
+    expect(events.some((event) => event.name === 'session.snapshot_restored')).toBe(true);
+    expect(events.some((event) => event.name === 'session.snapshot_saved')).toBe(true);
+  });
+
+  it('accepts and forwards an external AbortSignal to the underlying invocation', async () => {
+    const request = buildExecutionRequest();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          { toolCalls: [{ name: 'strands_structured_output', input: VALID_EXECUTION_RESULT }] },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+    const controller = new AbortController();
+
+    const { result } = await drain(
+      execute(
+        {
+          model: provider,
+          skillsRootDir: SKILLS_ROOT_DIR,
+          clock: FIXED_CLOCK,
+          idGenerator: fixedIdGenerator(),
+        },
+        request,
+        controller.signal,
+      ),
+    );
+
+    expect(result).toEqual(VALID_EXECUTION_RESULT);
+  });
+});
+
+describe('SDK_INTERNAL_TOOL_NAMES', () => {
+  it('names exactly the SDK/plugin-registered tools ScopeAuthorization and BudgetGuard must exempt', () => {
+    expect(SDK_INTERNAL_TOOL_NAMES).toEqual(['strands_structured_output', 'skills']);
+  });
+});

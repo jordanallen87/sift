@@ -16,6 +16,8 @@
     "@pax/contracts": "workspace:*",
     "@pax/core": "workspace:*",
     "@pax/packs": "workspace:*",
+    "@pax/scenarios": "workspace:*",
+    "@strands-agents/sdk": "^1.14.0",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
