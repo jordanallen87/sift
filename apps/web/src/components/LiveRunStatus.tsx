@@ -47,6 +47,15 @@ const PHASE_TONE: Record<PublicActivityPhase, keyof typeof STATUS_TONE_META> = {
   failed: 'error',
 };
 
+// Bound the phase breadcrumb to a small, fixed number of entries -- a real
+// Swarm run can reach dozens of distinct phase transitions (each tool
+// call/skill activation/handoff alternates active<->completed, so
+// consecutive-only deduping below does nothing to bound it), and rendering
+// all of them conveys no real information beyond "it alternated a lot"
+// while pushing the rest of the workspace down by a large, growing amount.
+// A fixed module-scope constant, not recomputed per render.
+const MAX_VISIBLE_PHASE_STEPS = 4;
+
 function correlatedEvents(
   events: PublicActivityEvent[],
   receipt: LiveRunStatusReceipt,
@@ -104,17 +113,11 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
     phaseSequence.push('queued');
   }
 
-  // Bound the breadcrumb to a small, fixed number of entries -- a real
-  // Swarm run can reach dozens of distinct phase transitions (each
-  // tool call/skill activation/handoff alternates active<->completed, so
-  // consecutive-only deduping above does nothing to bound it), and
-  // rendering all of them conveys no real information beyond "it
-  // alternated a lot" while pushing the rest of the workspace down by a
-  // large, growing amount. The most recent phase is always kept (a `slice`
-  // from the end never drops the last element), and a leading truncation
-  // indicator appears whenever entries were actually dropped, so the
-  // breadcrumb never silently pretends a long run was short.
-  const MAX_VISIBLE_PHASE_STEPS = 4;
+  // The most recent phase is always kept (a `slice` from the end never
+  // drops the last element), and a leading truncation indicator appears
+  // whenever entries were actually dropped, so the breadcrumb never
+  // silently pretends a long run was short. See `MAX_VISIBLE_PHASE_STEPS`
+  // above for why the count is bounded at all.
   const historyTruncated = phaseSequence.length > MAX_VISIBLE_PHASE_STEPS;
   const visiblePhaseSequence = historyTruncated
     ? phaseSequence.slice(phaseSequence.length - MAX_VISIBLE_PHASE_STEPS)
@@ -157,7 +160,8 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
             data-testid="live-run-status-history-truncated"
             className="flex items-center gap-[var(--space-1)]"
           >
-            …
+            <span aria-hidden="true">…</span>
+            <span className="visually-hidden">Earlier steps omitted</span>
           </li>
         ) : null}
         {visiblePhaseSequence.map((step, index) => (

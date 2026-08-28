@@ -78,8 +78,13 @@ describe('CaseHeader', () => {
     expect(truncatedContent).not.toBeNull();
     expect(truncatedContent).toHaveClass('min-w-0');
     // The full text is still present in the DOM (this is CSS-driven visual
-    // truncation, not a shortened string) -- a reader can still find it via
-    // the `title` attribute or by copying the text.
+    // truncation, not a shortened string) -- a reader/assistive technology
+    // still gets it via the element's normal text content (selectable,
+    // copyable, and read by a screen reader) even though it renders
+    // ellipsized. Note this is distinct from the badge's own `title`
+    // attribute (`CaseHeader.tsx`), which is set to `pack.compiledHash`
+    // alone -- a native tooltip for the hash, not a mechanism for
+    // recovering this full "Decision Pack: id@version" string.
     expect(truncatedContent).toHaveTextContent('Decision Pack: home-energy-guardian@1.0.0');
     expect(truncatedContent).toHaveTextContent('8d414e7a');
   });
