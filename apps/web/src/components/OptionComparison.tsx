@@ -100,7 +100,7 @@ export function OptionComparison({
       aria-labelledby="option-comparison-heading"
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
-      <h2 id="option-comparison-heading">Comparison</h2>
+      <h2 id="option-comparison-heading">Compare the options</h2>
 
       {options.length === 0 ? (
         <p

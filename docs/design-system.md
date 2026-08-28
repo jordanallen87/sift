@@ -245,17 +245,18 @@ desktop layout. Concrete decisions this token system makes for that width:
   reject, demo launcher cards, nav/back controls, the Runtime Inspector's
   view selector) must resolve to a real ≥44px box via padding or
   min-height/min-width, independent of how small its label or icon looks.
-- **Stacking order.** `--desktop-breakpoint: 900px` is the single switch
-  the whole system uses: below it, everything is one column in the exact
-  region order `docs/specs/product.md` specifies (header → current focus →
-  readiness → evidence → activity → recommendation), and the Runtime
-  Inspector is a full-width route replacing the case body — never a second
-  column — consistent with `docs/specs/debugging-and-observability.md`'s
+- **Stacking order.** `--desktop-breakpoint: 900px` remains defined for
+  desktop-only compositional gutters, but the workspace is single-column
+  at every width (ADR 0002; CLAUDE.md's "canonical UI is a ChatGPT right
+  pane, not a desktop dashboard shrunk after the fact") in the exact
+  region order `docs/specs/product.md` specifies: header → what Pax is
+  doing → our pick (recommendation + approval, always expanded) → compare
+  the options → what Pax found → still checking → Pax's work so far → add
+  a concern (the last five as closed-by-default disclosure rows). The
+  Runtime Inspector is a full-width route replacing the case body — never
+  a second column — consistent with `docs/specs/debugging-and-observability.md`'s
   390px requirement for "a single view selector and stacked event
-  details," not a side-by-side trace tree and payload panel. Above the
-  breakpoint, readiness and activity may sit beside the evidence area, but
-  the token layer does not assume that layout exists; it only names the
-  breakpoint at which it becomes available.
+  details," not a side-by-side trace tree and payload panel.
 - **Runtime Inspector density vs. the calm workspace.** The Inspector
   needs to be visibly denser than the normal case board (timelines, state
   diffs, trace payloads) without switching to a different visual language.

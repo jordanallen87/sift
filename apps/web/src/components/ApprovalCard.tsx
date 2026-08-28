@@ -103,7 +103,7 @@ export function ApprovalCard({
       aria-labelledby="approval-card-heading"
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
-      <h2 id="approval-card-heading">Approval</h2>
+      <h2 id="approval-card-heading">Your decision</h2>
 
       {error ? (
         <Alert variant="destructive" data-testid="approval-card-error">

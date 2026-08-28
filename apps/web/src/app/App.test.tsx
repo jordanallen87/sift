@@ -1321,6 +1321,248 @@ describe('App', () => {
     });
   });
 
+  // ADR 0002 "Answer-first workspace layout": the recommendation/approval
+  // hero is always visible and precedes every disclosure row, and each
+  // disclosure row's closed `<summary>` carries an accurate live summary
+  // even while collapsed.
+  describe('workspace layout (ADR 0002, answer-first + disclosure rows)', () => {
+    it('renders the recommendation hero before every disclosure row', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      const hero = screen.getByTestId('recommendation-hero');
+      for (const testId of [
+        'disclosure-compare',
+        'disclosure-findings',
+        'disclosure-still-checking',
+        'disclosure-work-so-far',
+        'disclosure-add-concern',
+      ]) {
+        const position = hero.compareDocumentPosition(screen.getByTestId(testId));
+        expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+    });
+
+    it('starts every investigative disclosure row closed by default', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      for (const testId of [
+        'disclosure-compare',
+        'disclosure-findings',
+        'disclosure-still-checking',
+        'disclosure-work-so-far',
+      ]) {
+        expect(screen.getByTestId<HTMLDetailsElement>(testId).open).toBe(false);
+      }
+    });
+
+    it('shows a live option count on the closed "Compare the options" row', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        entities: [
+          {
+            id: 'candidate-rav4',
+            kind: 'car',
+            label: 'Toyota RAV4',
+            attributes: {},
+            createdAt: '2026-08-27T00:00:00.000Z',
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+          {
+            id: 'candidate-crv',
+            kind: 'car',
+            label: 'Honda CR-V',
+            attributes: {},
+            createdAt: '2026-08-27T00:00:00.000Z',
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        ],
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('disclosure-compare-meta')).toHaveTextContent('2 options');
+      });
+    });
+
+    it('shows a live finding count on the closed "What Pax found" row', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        sources: [
+          {
+            id: 'source-1',
+            url: 'https://dealer.example.com',
+            title: 'Dealer quote',
+            retrievedAt: '2026-08-27T00:00:00.000Z',
+            origin: 'user_submitted',
+            verification: 'unverified',
+            createdAt: '2026-08-27T00:00:00.000Z',
+          },
+        ],
+        evidenceLinks: [
+          {
+            id: 'evidence-1',
+            obligationId: 'obl-1',
+            sourceId: 'source-1',
+            level: 'E1',
+            verdict: 'pass',
+            disposition: 'included',
+            summary: 'Confirmed via dealer quote.',
+            stale: false,
+            createdAt: '2026-08-27T00:00:00.000Z',
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        ],
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('disclosure-findings-meta')).toHaveTextContent('1 finding');
+      });
+    });
+
+    it('shows "All checked" on "Still checking" when the case has no required questions', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, obligations: [] });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('disclosure-still-checking-meta')).toHaveTextContent(
+          'All checked',
+        );
+      });
+    });
+
+    it('shows a remaining count on "Still checking" when the case is not ready', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        obligations: [
+          {
+            id: 'obl-1',
+            label: 'Confirm total price',
+            question: 'What is the out-the-door price?',
+            category: 'price',
+            required: true,
+            priority: 1,
+            requiredEvidenceLevel: 'E1',
+            maxAttempts: 3,
+            acceptedUncertaintyAllowed: false,
+            dependsOn: [],
+            preferredSkills: [],
+            preferredSpecialists: [],
+            completionRule: {
+              minimumEvidenceLevel: 'E1',
+              minimumIndependentSources: 1,
+              acceptedUncertaintyAllowed: false,
+            },
+            origin: 'pack',
+            status: 'active',
+            attemptsUsed: 1,
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        ],
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('disclosure-still-checking-meta')).toHaveTextContent(
+          '1 still open',
+        );
+      });
+    });
+
+    it('shows a live pulsing indicator on "Pax\'s work so far" only while a run is genuinely active', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      expect(screen.queryByTestId('disclosure-work-so-far-live')).not.toBeInTheDocument();
+
+      await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+      const source = FakeEventSource.instances.at(-1)!;
+      source.triggerOpen();
+      source.emit({
+        schemaVersion: '1.0',
+        eventId: 'evt-live',
+        sequence: 1,
+        timestamp: '2026-08-27T00:01:00.000Z',
+        caseId: CASE_ID,
+        type: 'specialist.started',
+        phase: 'active',
+        summary: 'Deal analyst started working.',
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('disclosure-work-so-far-live')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('disclosure-work-so-far-meta')).toHaveTextContent('1 step');
+    });
+
+    it('auto-opens "Add something Pax should check" when an agent-proposed extension is pending', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        caseExtensions: [
+          {
+            id: 'ext-1',
+            caseId: CASE_ID,
+            definition: {
+              id: 'custom.pet_sensory_fit',
+              label: 'Pet sensory fit',
+              valueType: 'string',
+              required: false,
+              appliesTo: ['car'],
+              evidenceExpectation: 'assertion',
+              comparison: 'none',
+              sensitive: false,
+              origin: 'agent_proposed',
+              reason: 'The household mentioned a sound-sensitive dog.',
+              confirmation: 'pending',
+              proposedBy: 'lead-investigator',
+              createdAt: '2026-08-27T00:00:00.000Z',
+            },
+            createdAt: '2026-08-27T00:00:00.000Z',
+          },
+        ],
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId<HTMLDetailsElement>('disclosure-add-concern').open).toBe(true);
+      });
+      expect(screen.getByTestId('disclosure-add-concern-meta')).toHaveTextContent(
+        '1 needs your review',
+      );
+    });
+
+    it('leaves "Add something Pax should check" closed with no meta when nothing is pending', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId<HTMLDetailsElement>('disclosure-add-concern').open).toBe(false);
+      });
+      expect(screen.queryByTestId('disclosure-add-concern-meta')).not.toBeInTheDocument();
+    });
+
+    it('opens "Still checking" on click and reveals the readiness panel it wraps', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      const user = await startDemoAndWait();
+
+      await user.click(screen.getByTestId('disclosure-still-checking-summary'));
+      expect(screen.getByTestId<HTMLDetailsElement>('disclosure-still-checking').open).toBe(true);
+      expect(screen.getByTestId('readiness-panel-status')).toBeInTheDocument();
+    });
+  });
+
   // Defensive branches this file's other tests do not naturally exercise --
   // mostly "a promise resolves/rejects after this component (or its case
   // generation) has already been torn down" guards, plus a handful of

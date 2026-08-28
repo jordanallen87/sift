@@ -18,11 +18,16 @@
  * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation").
  *
- * Region order matches product.md's "Workspace layout" exactly: case header,
- * current focus, readiness, evidence and comparison, activity, recommendation
- * and approval. Region 7 (Runtime Inspector) is the minimum-viable Overview +
- * Timeline slice this task adds -- not the full six-view spec (Execution/
- * State/Context/Errors remain later Tier-2 work). Reachable two ways, both
+ * Region order matches product.md's "Workspace layout" exactly (ADR 0002,
+ * "answer-first, everything else one tap away"): case header, what Pax is
+ * doing, our pick (recommendation + approval, always expanded), then four
+ * closed-by-default `DisclosureSection` rows -- compare the options, what
+ * Pax found, still checking, Pax's work so far -- and a fifth disclosure
+ * for adding a concern that opens itself only when an agent-proposed case
+ * extension is awaiting confirmation. Region 9 (Runtime Inspector) is the
+ * minimum-viable Overview + Timeline slice this task adds -- not the full
+ * six-view spec (Execution/State/Context/Errors remain later Tier-2 work).
+ * Reachable two ways, both
  * feeding the same `inspectingRunId` state: an "Inspect run" control next to
  * `LiveRunStatus` (enabled once a real `runId` exists this session) and a
  * per-item "Inspect run" button `ActivityTimeline` renders for any streamed
@@ -56,6 +61,7 @@ import { PaxClientError } from '../api/pax-client.js';
 import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active-case-storage.js';
 import { DemoLauncher } from '../components/DemoLauncher.js';
 import { CaseHeader, type CaseHeaderConnectionState } from '../components/CaseHeader.js';
+import { DisclosureSection } from '../components/DisclosureSection.js';
 import { ReadinessPanel } from '../components/ReadinessPanel.js';
 import { EvidenceList } from '../components/EvidenceList.js';
 import { ActivityTimeline } from '../components/ActivityTimeline.js';
@@ -517,6 +523,28 @@ export function App() {
       ? (snapshot?.obligations.find((o) => o.id === activeFocus.obligationId) ?? null)
       : null;
 
+  // Disclosure-row live summaries (ADR 0002: "nothing is hidden -- every
+  // row's live state is visible without opening it"). Computed here, not
+  // inside DisclosureSection or the wrapped child components, which stay
+  // generic/unaware of their position in the workspace.
+  const optionsCount = snapshot?.entities.length ?? 0;
+  const evidenceCount = evidenceItems?.length ?? 0;
+  const remainingObligationCount =
+    readiness !== null
+      ? readiness.active.length + readiness.blocked.length + readiness.open.length
+      : 0;
+  const stillCheckingMeta =
+    readiness === null
+      ? undefined
+      : readiness.ready
+        ? 'All checked'
+        : `${remainingObligationCount} still open`;
+  const isRunActive =
+    lastEvent !== null &&
+    (lastEvent.phase === 'active' || lastEvent.phase === 'queued' || lastEvent.phase === 'waiting');
+  const workSoFarLive = runRequestPending || isRunActive;
+  const addConcernMeta = pendingExtension !== null ? '1 needs your review' : undefined;
+
   return (
     <div
       data-testid="case-workspace"
@@ -559,7 +587,7 @@ export function App() {
             aria-labelledby="current-focus-heading"
             className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
           >
-            <h2 id="current-focus-heading">Current focus</h2>
+            <h2 id="current-focus-heading">What Pax is doing</h2>
             {activeFocus !== null ? (
               <div
                 data-testid="current-focus-detail"
@@ -638,25 +666,31 @@ export function App() {
             ) : null}
           </section>
 
-          <ReadinessPanel readiness={readiness} loading={snapshot === null} />
-
-          <section
-            data-testid="evidence-and-comparison-region"
-            aria-labelledby="evidence-and-comparison-heading"
-            className="flex flex-col gap-[var(--space-3)]"
-          >
-            <h2 id="evidence-and-comparison-heading" className="visually-hidden">
-              Evidence and comparison
-            </h2>
-
-            <EvidenceList
-              items={evidenceItems}
+          {/* Region 3, "Our pick" (ADR 0002): the recommendation and the
+              human decision controls, grouped as one always-visible hero
+              directly below "What Pax is doing" -- the first substantial
+              content a user reaches, deliberately never a disclosure row. */}
+          <div data-testid="recommendation-hero" className="flex flex-col gap-[var(--space-3)]">
+            <RecommendationCard
+              recommendation={snapshot?.recommendation ?? null}
+              withheld={withheld}
               loading={snapshot === null}
-              error={dispositionError}
-              onSetDisposition={handleSetDisposition}
-              dispositionPendingId={dispositionPendingId}
+              sources={sources}
             />
 
+            <ApprovalCard
+              proposal={snapshot?.proposal ?? null}
+              onReview={handleReviewProposal}
+              reviewPending={proposalReviewPending}
+              error={proposalReviewError}
+            />
+          </div>
+
+          <DisclosureSection
+            testId="compare"
+            title="Compare the options"
+            meta={`${optionsCount} option${optionsCount === 1 ? '' : 's'}`}
+          >
             <OptionEditor
               caseId={activeCaseId}
               expectedSequence={snapshot?.eventSequence ?? 0}
@@ -672,7 +706,49 @@ export function App() {
               presentation={activePack?.presentation ?? null}
               selectedOptionId={snapshot?.selectedOptionId ?? null}
             />
+          </DisclosureSection>
 
+          <DisclosureSection
+            testId="findings"
+            title="What Pax found"
+            meta={`${evidenceCount} finding${evidenceCount === 1 ? '' : 's'}`}
+          >
+            <EvidenceList
+              items={evidenceItems}
+              loading={snapshot === null}
+              error={dispositionError}
+              onSetDisposition={handleSetDisposition}
+              dispositionPendingId={dispositionPendingId}
+            />
+          </DisclosureSection>
+
+          <DisclosureSection
+            testId="still-checking"
+            title="Still checking"
+            meta={stillCheckingMeta}
+          >
+            <ReadinessPanel readiness={readiness} loading={snapshot === null} />
+          </DisclosureSection>
+
+          <DisclosureSection
+            testId="work-so-far"
+            title="Pax's work so far"
+            meta={`${events.length} step${events.length === 1 ? '' : 's'}`}
+            live={workSoFarLive}
+          >
+            <ActivityTimeline
+              events={snapshot === null ? null : events}
+              loading={snapshot === null}
+              onInspectRun={setInspectingRunId}
+            />
+          </DisclosureSection>
+
+          <DisclosureSection
+            testId="add-concern"
+            title="Add something Pax should check"
+            meta={addConcernMeta}
+            defaultOpen={pendingExtension !== null}
+          >
             <CustomConcernForm
               caseId={activeCaseId}
               expectedSequence={snapshot?.eventSequence ?? 0}
@@ -684,27 +760,7 @@ export function App() {
               expectedSequence={snapshot?.eventSequence ?? 0}
               extension={pendingExtension}
             />
-          </section>
-
-          <ActivityTimeline
-            events={snapshot === null ? null : events}
-            loading={snapshot === null}
-            onInspectRun={setInspectingRunId}
-          />
-
-          <RecommendationCard
-            recommendation={snapshot?.recommendation ?? null}
-            withheld={withheld}
-            loading={snapshot === null}
-            sources={sources}
-          />
-
-          <ApprovalCard
-            proposal={snapshot?.proposal ?? null}
-            onReview={handleReviewProposal}
-            reviewPending={proposalReviewPending}
-            error={proposalReviewError}
-          />
+          </DisclosureSection>
         </>
       )}
     </div>

@@ -52,17 +52,21 @@ At minimum, the demos visibly pass through queued, investigating, tool-active, e
 
 ## Workspace layout
 
-The responsive page contains seven regions in this order:
+**Answer-first, everything else one tap away** (ADR 0002; before this decision the page was a single undifferentiated stack of eight regions requiring a full scroll to reach the recommendation on every case — a real usability defect the project owner identified directly against the live product). The responsive page contains these regions in this order:
 
 1. **Case header** — title, Decision Pack badge, pack-selection explanation, live connection/run status, reset-demo action.
-2. **Current focus** — the obligation being investigated, why it is next, active skill, and active specialist.
-3. **Readiness** — required obligations grouped by satisfied, active, blocked, accepted uncertainty, and open.
-4. **Evidence and comparison** — source-linked claims, conflicts, stale state, option scores, the user's active selection, and pack-defined or case-defined attributes.
-5. **Activity** — a chronological event ledger including tool calls, skill changes, steering, evidence writes, budget decisions, and pauses.
-6. **Recommendation and approval** — proposed outcome, rationale, confidence inputs, limitations, and explicit approve/revise/reject controls.
-7. **Runtime Inspector** — a developer-facing drill-in for the active run, opened from the case header and rendered as a contained right-pane route rather than competing with the normal decision UI.
+2. **What Pax is doing** — the obligation being investigated, why it is next, active skill, active specialist, the manual "Request investigation" control, and live run status. Always visible, never collapsible — it is both the primary manual trigger and the live-progress readout.
+3. **Our pick** — the recommendation (proposed outcome, rationale, facts, hypotheses, limitations, sources) and the human decision controls (approve/revise/reject), grouped as one visually cohesive hero directly below "What Pax is doing." Always visible, never collapsible. This is deliberately the first substantial content the user reaches: what Pax currently thinks, and what the user needs to do about it.
+4. **Compare the options** — the side-by-side option comparison table and the option editor, collapsed by default into a disclosure row whose closed summary shows a live option count.
+5. **What Pax found** — source-linked claims, conflicts, and stale state, collapsed by default into a disclosure row whose closed summary shows a live evidence count.
+6. **Still checking** — required obligations grouped by satisfied, active, blocked, accepted uncertainty, and open, collapsed by default into a disclosure row whose closed summary shows a live count of what remains unresolved.
+7. **Pax's work so far** — a chronological event ledger including tool calls, skill changes, steering, evidence writes, budget decisions, and pauses, collapsed by default into a disclosure row whose closed summary shows a live event count and a pulsing indicator while work is genuinely in progress.
+8. **Add something Pax should check** — the case-extension proposal form, collapsed by default into a disclosure row, with one exception: it renders open by default exactly when an agent-proposed case extension is awaiting human confirmation, since that is itself a state requiring the user's attention rather than passive information.
+9. **Runtime Inspector** — a developer-facing drill-in for the active run, opened from the case header and rendered as a contained right-pane route rather than competing with the normal decision UI.
 
-The canonical viewport is ChatGPT's right pane. At widths from 390 through 480 pixels, sections stack vertically, the current focus remains immediately below the header, primary actions remain visible, and no region introduces horizontal page scrolling. At desktop width, readiness and activity may appear beside the evidence area. The implementation must not depend on a three-column viewport or full-page navigation chrome.
+Regions 4 through 8 are disclosure rows: closed by default, opened by a tap on their summary, and never hide their live state — a closed row's summary always carries an accurate, currently-true count or status, so nothing genuinely new or actionable is invisible without opening it. This preserves the real-time contract above (every region still renders only from actual committed events/snapshots) while keeping the page short: a first-time, non-technical user reaches Pax's current answer and the approve/reject controls without scrolling past readiness, evidence, or activity detail they did not ask to see yet.
+
+The canonical viewport is ChatGPT's right pane. At widths from 390 through 480 pixels, regions stack vertically, "What Pax is doing" and "Our pick" remain immediately below the header, primary actions remain visible without scrolling, and no region introduces horizontal page scrolling. At desktop width, the same single-column order and disclosure behavior apply — the implementation must not depend on a three-column viewport or full-page navigation chrome.
 
 ## Required visible states
 
@@ -104,8 +108,14 @@ Starting a demo resets its case to the checked-in fixture and generates a fresh 
 | `Guide` | Agent redirected |
 | `Confirm` | Your approval needed |
 | `Deny` | Action blocked |
-| Evidence ledger | Evidence |
+| Evidence ledger | Evidence, shown under the heading **What Pax found** |
 | Agent graph | Investigation team |
+| Readiness | **Still checking** |
+| Activity ledger | **Pax's work so far** |
+| Recommendation | **Our pick** |
+| Approval | **Your decision** |
+| Option comparison | **Compare the options** |
+| Current focus | **What Pax is doing** |
 
 ## Success criteria
 

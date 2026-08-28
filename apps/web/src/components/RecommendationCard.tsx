@@ -72,7 +72,7 @@ export function RecommendationCard({
       aria-labelledby="recommendation-card-heading"
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
-      <h2 id="recommendation-card-heading">Recommendation</h2>
+      <h2 id="recommendation-card-heading">Our pick</h2>
 
       {recommendation === null ? (
         loading ? (

@@ -155,7 +155,7 @@ export function ActivityTimeline({
       aria-labelledby="activity-timeline-heading"
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
-      <h2 id="activity-timeline-heading">Activity</h2>
+      <h2 id="activity-timeline-heading">Pax&apos;s work so far</h2>
 
       {error ? (
         <Alert role="alert" data-testid="activity-timeline-error" variant="destructive">

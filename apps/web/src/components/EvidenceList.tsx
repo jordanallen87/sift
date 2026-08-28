@@ -44,7 +44,7 @@ export function EvidenceList({
       // every other top-level region in App.tsx's workspace column.
       className="flex flex-col gap-[var(--space-3)]"
     >
-      <h2 id="evidence-list-heading">Evidence</h2>
+      <h2 id="evidence-list-heading">What Pax found</h2>
 
       {error ? (
         <Alert role="alert" data-testid="evidence-list-error" variant="destructive">
