@@ -593,4 +593,4 @@ scripts/check-submission.ts           Submission artifact verifier
 - [x] Confirm every visible hero activity opens the exact Runtime Inspector event and every exported bundle passes redaction tests.
 - [x] Confirm no consequential approval can originate from agent, model, WebMCP, fixture, or restore paths.
 - [x] Confirm README commands exactly match package scripts.
-- [x] Confirm release report SHA equals the final git SHA.
+- [ ] Confirm release report SHA equals the final git SHA. (Unchecked 2026-08-28: `7ae7a1e` incorrectly checked this while its own build-log entry documented the report SHA as five commits stale. Will be re-verified true and re-checked as part of Task 15's closeout, once `docs/completion-report.md` is actually updated to match `HEAD`.)
