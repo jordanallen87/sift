@@ -16,6 +16,8 @@
  * ad hoc -- see the inline comments on `CASE_STATUS_LABEL` below.
  */
 import type { CaseState } from '@pax/contracts';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 export type CaseHeaderConnectionState = 'live' | 'reconnecting' | 'polling' | 'offline';
 
@@ -107,52 +109,59 @@ export function CaseHeader({
   return (
     <header
       data-testid="case-header"
-      className="flex flex-col gap-[var(--space-3)] border-b border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      // Flat by design: no border-b -- the case-workspace flex gap between
+      // this header and the next card (App.tsx) already lets bg-background
+      // (the page) show through as the visual separator, the same
+      // white-island-on-tinted-page mechanism as every other card.
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
       <div className="flex items-start justify-between gap-[var(--space-3)]">
         <h1 data-testid="case-header-title" className="min-w-0 flex-1">
           {title}
         </h1>
-        <button
+        <Button
           type="button"
           data-testid="case-header-reset-demo"
           aria-label="Reset demo"
           aria-busy={resetPending}
           disabled={resetPending}
           onClick={onResetDemo}
-          className="min-h-[var(--size-touch-target-min)] shrink-0 rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
+          variant="secondary"
+          size="sm"
+          className="shrink-0"
         >
           {resetPending ? 'Resetting…' : 'Reset demo'}
-        </button>
+        </Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-[var(--space-2)]">
-        <span
+        <Badge
           data-testid="case-header-pack-badge"
           title={pack.compiledHash}
-          className="label-caps inline-flex items-center gap-[var(--space-1)] rounded-[var(--radius-pill)] border border-[var(--color-border-subtle)] bg-[var(--color-brand-tint)] px-[var(--space-2)] py-[var(--space-0-5)] text-[var(--color-brand-strong)]"
+          variant="outline"
+          className="label-caps gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)] text-[var(--color-brand-strong)]"
         >
           Decision Pack: {pack.id}@{pack.version}{' '}
           <span className="font-[family-name:var(--font-mono)] normal-case tracking-normal">
             #{shortHash}
           </span>
-        </span>
+        </Badge>
 
-        <span
+        <Badge
           data-testid="case-header-run-status"
-          className="label-caps inline-flex items-center rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+          className="label-caps rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
           style={{
             color: 'var(--color-status-active-ink)',
             backgroundColor: 'var(--color-status-active-bg)',
           }}
         >
           {CASE_STATUS_LABEL[status]}
-        </span>
+        </Badge>
 
-        <span
+        <Badge
           data-testid="case-header-connection-status"
           role="status"
-          className="label-caps inline-flex items-center gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+          className="label-caps gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
           style={{ color: connection.inkVar, backgroundColor: connection.bgVar }}
         >
           <span
@@ -161,7 +170,7 @@ export function CaseHeader({
             style={{ backgroundColor: connection.inkVar }}
           />
           {connection.label}
-        </span>
+        </Badge>
       </div>
 
       <p

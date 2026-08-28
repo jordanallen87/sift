@@ -12,6 +12,11 @@ import { dirname } from 'node:path';
 const packageRoot = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': new URL('./src', import.meta.url).pathname,
+    },
+  },
   test: {
     name: 'web',
     root: packageRoot,

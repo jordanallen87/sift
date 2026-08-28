@@ -24,6 +24,10 @@
  * this task for the full rationale. Keeping this file free of Node globals
  * means it type-checks and lints cleanly under that same browser-only
  * configuration without a second Node-flavored tsconfig/eslint carve-out.
+ * The `@/*` import alias below (shadcn/ui's standard convention, matching
+ * `tsconfig.json`'s own `paths`) is resolved the same Node-global-free way,
+ * via the standard `URL`/`import.meta.url` web platform APIs rather than
+ * `node:path`'s `__dirname`.
  */
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -33,6 +37,11 @@ const AGENT_DEV_PROXY_TARGET = 'http://localhost:8080';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@': new URL('./src', import.meta.url).pathname,
+    },
+  },
   server: {
     proxy: {
       '/api': {

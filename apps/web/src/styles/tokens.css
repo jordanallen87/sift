@@ -22,12 +22,26 @@
   /* ---------------------------------------------------------------------
    * Color — neutrals ("paper and ink")
    * A cool, quiet paper tone (not the warm-cream/terracotta default) with
-   * a soft ink-charcoal for text. Kept deliberately low-contrast between
-   * background layers so status color is what draws the eye, not chrome.
+   * a soft ink-charcoal for text.
+   *
+   * Revised (see docs/build-log.md's dated entry): the original
+   * --color-surface (#fbfbf9) sat within ~5% lightness of --color-paper
+   * (#eef1f0) -- a gap invisible in real screenshots and monitors, which is
+   * why every card/button in the shipped UI read as chromeless flat text
+   * with no legible boundary at all. Flat design still needs ONE real
+   * signal to separate a surface from the page it sits on; with shadows and
+   * borders both off the table by explicit design direction, that signal is
+   * background-lightness contrast alone -- pure white cards on the tinted
+   * paper background, the same mechanism Notion/Linear/Vercel's own flat
+   * dashboards use. --color-border-subtle/-strong are kept defined (a few
+   * genuinely functional boundaries -- input underlines, the runtime
+   * inspector's data table rules -- still reach for them) but no card,
+   * panel, or button uses them as its primary boundary; see
+   * ui/card.tsx / ui/button.tsx.
    * ------------------------------------------------------------------- */
   --color-paper: #eef1f0; /* page background */
-  --color-surface: #fbfbf9; /* card / panel fill */
-  --color-surface-sunken: #e4e7e1; /* recessed areas: code blocks, inspector rows */
+  --color-surface: #ffffff; /* card / panel fill -- real contrast against paper, no border/shadow needed */
+  --color-surface-sunken: #e4e7e1; /* recessed areas: code blocks, inspector rows, secondary buttons */
   --color-surface-raised: #ffffff; /* popovers, menus, the approval stamp card */
 
   --color-ink: #1b1d1b; /* primary text */
@@ -58,6 +72,37 @@
   --color-brand-strong: #1f3555; /* hover/pressed */
   --color-brand-tint: #e3e8f0; /* subtle brand-colored surface */
   --color-focus-ring: var(--color-brand);
+
+  /* ---------------------------------------------------------------------
+   * shadcn/ui bridge
+   * shadcn's component registry (ui.shadcn.com) and every component pulled
+   * from it via `npx shadcn add` expect this exact variable set, referenced
+   * through Tailwind's `@theme inline` in tailwind.css (`bg-background`,
+   * `text-foreground`, `bg-card`, ...). Defined here as aliases of Pax's
+   * own named tokens above rather than duplicate literal values, so the two
+   * systems can never drift out of sync -- Pax's tokens remain the single
+   * source of truth; this block only translates their names.
+   * ------------------------------------------------------------------- */
+  --background: var(--color-paper);
+  --foreground: var(--color-ink);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-surface-raised);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-brand);
+  --primary-foreground: var(--color-ink-on-brand);
+  --secondary: var(--color-surface-sunken);
+  --secondary-foreground: var(--color-ink);
+  --muted: var(--color-surface-sunken);
+  --muted-foreground: var(--color-ink-secondary);
+  --accent: var(--color-brand-tint);
+  --accent-foreground: var(--color-brand-strong);
+  --destructive: var(--color-status-error-ink);
+  --destructive-foreground: var(--color-ink-on-brand);
+  --border: var(--color-border-subtle);
+  --input: var(--color-border-subtle);
+  --ring: var(--color-focus-ring);
+  --radius: var(--radius-md);
 
   /* ---------------------------------------------------------------------
    * Color — status

@@ -35,3 +35,49 @@
  */
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities);
+
+/*
+ * shadcn/ui theme bridge (added when the shadcn/ui component registry was
+ * wired in -- see docs/build-log.md's dated entry). This does NOT reopen
+ * the self-reference risk the header comment above warns about: that risk
+ * was specific to reusing the exact same name at both layers
+ * (`--color-paper: var(--color-paper)`). Every name below is genuinely
+ * distinct at each layer -- `--background` etc. are defined once, in
+ * tokens.css's `:root` block, as aliases of Pax's own named tokens;
+ * `--color-background` etc. here only re-exposes that already-resolved
+ * value to Tailwind's utility generator under shadcn's expected class
+ * names (`bg-background`, `text-foreground`, `border-border`, ...), which
+ * every component pulled from ui.shadcn.com is written to use.
+ *
+ * Deliberately does NOT bridge `--radius-*`: Tailwind's fixed theme key
+ * names for those (`--radius-sm`, `--radius-md`, ...) are the exact same
+ * names tokens.css already uses for Pax's own radius scale, so a
+ * `--radius-md: var(--radius-md)` line here would be the identical
+ * self-reference collision this file's own header comment above warns
+ * about. Every shadcn component pulled into this codebase has its
+ * `rounded-md`/`rounded-lg`/etc. utility classes hand-edited to Pax's
+ * existing `rounded-[var(--radius-md)]` arbitrary-value convention instead
+ * (see each file under `src/components/ui/`) -- one consistent radius
+ * mechanism, not two.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
