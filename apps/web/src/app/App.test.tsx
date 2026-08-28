@@ -927,6 +927,74 @@ describe('App', () => {
       });
     });
 
+    it('scopes the derived "Latest command" fallback to the active case, ignoring any other case\'s events still present in the events array', async () => {
+      // Regression test (Task 15 review, Finding 3): `deriveReceiptFromEvents`
+      // used to run over whatever `events` currently held, with no filter by
+      // `caseId`. On "Reset demo," `setActiveCaseId(newId)` and
+      // `setLastRunReceipt(null)` can commit and render before
+      // `useCaseEvents`'s own internal `events` state (keyed by `caseId`) has
+      // cleared, so for one frame the derived fallback could reflect the
+      // *previous* case's history. This test proxies that race at the
+      // `deriveReceiptFromEvents` call site directly: it hands the component
+      // an `events` array containing a later-sequence event stamped with a
+      // different, stale `caseId` (`case-other`) mixed in among the active
+      // case's own real history, and asserts the derived receipt reflects
+      // only the active case's own run -- never the foreign one, even though
+      // it sorts later.
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null });
+      const events: PublicActivityEvent[] = [
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-1',
+          sequence: 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          caseId: CASE_ID,
+          commandId: 'cmd-prior-1',
+          runId: 'run-prior-1',
+          type: 'run.queued',
+          phase: 'queued',
+          summary: 'Investigation queued.',
+        },
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-2',
+          sequence: 2,
+          timestamp: '2026-08-27T00:00:05.000Z',
+          caseId: CASE_ID,
+          runId: 'run-prior-1',
+          type: 'run.completed',
+          phase: 'completed',
+          summary: 'Investigation completed.',
+        },
+        // A stale, foreign-case event: a higher sequence number than any
+        // real event belonging to `CASE_ID`, which is exactly what would let
+        // it win a naive "most recent event" scan if the derivation were not
+        // scoped by `caseId`.
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-foreign',
+          sequence: 99,
+          timestamp: '2026-08-27T00:01:00.000Z',
+          caseId: 'case-other',
+          commandId: 'cmd-foreign',
+          runId: 'run-foreign',
+          type: 'run.queued',
+          phase: 'queued',
+          summary: 'A different case\'s investigation queued.',
+        },
+      ];
+      renderLiveWorkspace(snapshot, events);
+      server.use(debugRunHandler('run-prior-1'));
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('live-run-status-empty')).not.toBeInTheDocument();
+      });
+      expect(screen.getByTestId('live-run-status-run-id')).toHaveTextContent('run-prior-1');
+      expect(screen.getByTestId('live-run-status-run-id')).not.toHaveTextContent('run-foreign');
+      expect(screen.getByTestId('live-run-status-command-id')).toHaveTextContent('cmd-prior-1');
+    });
+
     it('still shows the "No command has been sent yet." empty state for a genuinely fresh case with no prior activity', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null });
       renderLiveWorkspace(snapshot, []);

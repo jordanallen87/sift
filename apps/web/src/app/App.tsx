@@ -326,7 +326,19 @@ export function App() {
   // reload -- fall back to a receipt derived from the case's own replayed
   // history, so "Latest command" never contradicts the Readiness panel and
   // Activity log rendered right below it. See `deriveReceiptFromEvents`.
-  const derivedRunReceipt = useMemo(() => deriveReceiptFromEvents(events), [events]);
+  //
+  // Scoped to `activeCaseId` here, not just handed the raw `events` array:
+  // on "Reset demo" (`handleResetDemo` below), `setActiveCaseId(newId)` and
+  // `setLastRunReceipt(null)` can commit and render before `useCaseEvents`'s
+  // own internal `events` state (keyed by `caseId`) has cleared for the
+  // outgoing case, so for one frame `events` can still hold the *previous*
+  // case's history. Filtering by each event's own `caseId` here (rather than
+  // trusting the hook's timing) keeps the derived fallback from ever
+  // reflecting a case other than the one currently active.
+  const derivedRunReceipt = useMemo(
+    () => deriveReceiptFromEvents(events.filter((event) => event.caseId === activeCaseId)),
+    [events, activeCaseId],
+  );
   const liveRunStatusReceipt = lastRunReceipt ?? derivedRunReceipt;
 
   const handleResetDemo = useCallback(() => {
