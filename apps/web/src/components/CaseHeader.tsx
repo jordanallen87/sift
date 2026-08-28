@@ -139,11 +139,23 @@ export function CaseHeader({
           data-testid="case-header-pack-badge"
           title={pack.compiledHash}
           variant="outline"
-          className="label-caps gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)] text-[var(--color-brand-strong)]"
+          // min-w-0 + max-w-full: a flex item's default `min-width: auto`
+          // refuses to shrink below its content's natural width (the
+          // classic flex/truncate gotcha), which is what let this badge
+          // silently overflow past the viewport edge at 390px instead of
+          // truncating. `text-overflow: ellipsis` also does not apply
+          // directly to a flex container's own box (this badge is
+          // `inline-flex`) -- it only affects a normal block/inline-block
+          // box's own inline content -- so the actual `truncate` utility
+          // lives on the nested span below, which wraps all of the badge's
+          // text as that single truncatable inline run.
+          className="label-caps min-w-0 max-w-full gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)] text-[var(--color-brand-strong)]"
         >
-          Decision Pack: {pack.id}@{pack.version}{' '}
-          <span className="font-[family-name:var(--font-mono)] normal-case tracking-normal">
-            #{shortHash}
+          <span className="min-w-0 truncate">
+            Decision Pack: {pack.id}@{pack.version}{' '}
+            <span className="font-[family-name:var(--font-mono)] normal-case tracking-normal">
+              #{shortHash}
+            </span>
           </span>
         </Badge>
 

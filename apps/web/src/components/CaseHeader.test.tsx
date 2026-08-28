@@ -35,6 +35,55 @@ describe('CaseHeader', () => {
     expect(badge).toHaveTextContent('aaaaaaaa');
   });
 
+  it('truncates the pack badge with a visible ellipsis instead of silently overflowing at 390px width', () => {
+    // Regression test: at a 390px viewport, a long pack id/version/hash
+    // combination (e.g. "Decision Pack: home-energy-guardian@1.0.0
+    // #8d414e7a") is wider than its flex container. Confirmed live via
+    // getBoundingClientRect() -- badge width 414.9px vs. container 326px --
+    // the badge silently overflowed past the viewport edge with no visual
+    // indication anything was cut off, because Tailwind's `truncate` does
+    // nothing on a flex item whose default `min-width: auto` prevents it
+    // from shrinking below its content's natural width.
+    //
+    // jsdom does not run a real layout engine (see
+    // ../test/narrow-viewport.tsx's documented caveat, and the identical
+    // precedent in EvidenceCard.test.tsx / OptionEditor.test.tsx), so this
+    // is a structural/class-presence assertion rather than a pixel
+    // measurement: it proves the badge no longer relies on invisible
+    // overflow by asserting (a) the badge itself can shrink below its
+    // content's natural width instead of forcing it (`min-w-0`, plus a
+    // `max-w-full` ceiling so it is bounded by its flex container), and (b)
+    // the actual truncating element carries Tailwind's `truncate` utility
+    // (`overflow-hidden text-ellipsis whitespace-nowrap`) so an overflow
+    // shows a visible "…" rather than being invisibly clipped.
+    render(
+      <CaseHeader
+        {...buildProps({
+          pack: {
+            id: 'home-energy-guardian',
+            version: '1.0.0',
+            compiledHash: '8d414e7a'.repeat(8),
+            selectedBy: 'router',
+            reasons: [],
+          },
+        })}
+      />,
+    );
+
+    const badge = screen.getByTestId('case-header-pack-badge');
+    expect(badge).toHaveClass('min-w-0');
+    expect(badge).toHaveClass('max-w-full');
+
+    const truncatedContent = badge.querySelector('.truncate');
+    expect(truncatedContent).not.toBeNull();
+    expect(truncatedContent).toHaveClass('min-w-0');
+    // The full text is still present in the DOM (this is CSS-driven visual
+    // truncation, not a shortened string) -- a reader can still find it via
+    // the `title` attribute or by copying the text.
+    expect(truncatedContent).toHaveTextContent('Decision Pack: home-energy-guardian@1.0.0');
+    expect(truncatedContent).toHaveTextContent('8d414e7a');
+  });
+
   it('explains a router-selected pack differently from a user-selected pack', () => {
     const { rerender } = render(
       <CaseHeader {...buildProps({ pack: buildProps().pack, status: 'draft' })} />,
