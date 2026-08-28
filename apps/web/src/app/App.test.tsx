@@ -901,6 +901,7 @@ describe('App', () => {
         },
       ];
       renderLiveWorkspace(snapshot, priorRunEvents);
+      server.use(debugRunHandler('run-prior-1'));
       await startDemoAndWait();
 
       await waitFor(() => {
@@ -909,6 +910,21 @@ describe('App', () => {
       expect(screen.getByTestId('live-run-status-run-id')).toHaveTextContent('run-prior-1');
       expect(screen.getByTestId('live-run-status-command-id')).toHaveTextContent('cmd-prior-1');
       expect(screen.getByTestId('live-run-status-phase')).toHaveTextContent(/completed/i);
+
+      // The "Open Runtime Inspector" control is directly adjacent to
+      // LiveRunStatus and must not disagree with it: it was still gated on
+      // the raw session-local `lastRunReceipt?.runId`, unchanged by the
+      // fallback above, so it stayed hidden here even though LiveRunStatus
+      // now correctly shows a completed run with a real run id.
+      await waitFor(() => {
+        expect(screen.getByTestId('open-runtime-inspector')).toBeInTheDocument();
+      });
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId('open-runtime-inspector'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-run-id')).toHaveTextContent('run-prior-1');
+      });
     });
 
     it('still shows the "No command has been sent yet." empty state for a genuinely fresh case with no prior activity', async () => {

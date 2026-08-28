@@ -612,11 +612,11 @@ export function App() {
 
             <LiveRunStatus receipt={liveRunStatusReceipt} events={events} />
 
-            {lastRunReceipt?.runId !== undefined ? (
+            {liveRunStatusReceipt?.runId !== undefined ? (
               <Button
                 type="button"
                 data-testid="open-runtime-inspector"
-                onClick={() => setInspectingRunId(lastRunReceipt.runId!)}
+                onClick={() => setInspectingRunId(liveRunStatusReceipt.runId!)}
                 variant="secondary"
                 size="sm"
                 className="min-h-[var(--size-touch-target-min)] self-start"
