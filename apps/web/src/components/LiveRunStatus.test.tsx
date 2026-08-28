@@ -113,6 +113,71 @@ describe('LiveRunStatus', () => {
     expect(within(history).getAllByText('Completed')).toHaveLength(1);
   });
 
+  it('bounds a long-running breadcrumb history to a small fixed number of entries, always ending in the current phase, with a truncation indicator', () => {
+    // Regression test: a real home-energy-guardian Swarm run alternates
+    // active/completed across ~35 sub-steps (each tool call, skill
+    // activation, or handoff is its own active->completed pair). Since the
+    // breadcrumb only deduped *immediate consecutive* repeats, alternating
+    // phases defeated that entirely -- a live investigation counted 42
+    // rendered <li> entries for a single run, pushing the rest of the
+    // workspace down by a large, growing amount while conveying no real
+    // information beyond "it alternated a lot."
+    const events: PublicActivityEvent[] = [];
+    for (let i = 0; i < 40; i += 1) {
+      events.push(
+        buildEvent({
+          eventId: `e${i}`,
+          sequence: i + 1,
+          type: i % 2 === 0 ? 'specialist.started' : 'specialist.completed',
+          phase: i % 2 === 0 ? 'active' : 'completed',
+          summary: `Step ${i}`,
+        }),
+      );
+    }
+    // The real, final phase this run reached -- the breadcrumb must never
+    // drop this, no matter how it bounds everything before it.
+    events.push(
+      buildEvent({
+        eventId: 'e-final',
+        sequence: 41,
+        type: 'run.completed',
+        phase: 'completed',
+        summary: 'Investigation completed.',
+      }),
+    );
+
+    render(<LiveRunStatus receipt={{ commandId: 'cmd-1', runId: 'run-1' }} events={events} />);
+
+    const history = screen.getByTestId('live-run-status-history');
+    const items = within(history).getAllByRole('listitem');
+
+    // Bounded to a small, fixed number of entries regardless of how many
+    // distinct phase transitions the real run actually reached (41 here).
+    expect(items.length).toBeLessThan(10);
+    // The most recent/current phase is always the last visible entry --
+    // the breadcrumb never drops the current state to make room for older
+    // history.
+    expect(items.at(-1)).toHaveTextContent('Completed');
+    // A truncation was actually performed, so the breadcrumb says so rather
+    // than silently pretending this run only had a handful of steps.
+    expect(screen.getByTestId('live-run-status-history-truncated')).toBeInTheDocument();
+  });
+
+  it('does not show a truncation indicator when the breadcrumb history is already short', () => {
+    const events = [
+      buildEvent({ eventId: 'e1', sequence: 1, type: 'run.queued', phase: 'queued' }),
+      buildEvent({ eventId: 'e2', sequence: 2, type: 'run.started', phase: 'active' }),
+      buildEvent({ eventId: 'e3', sequence: 3, type: 'run.completed', phase: 'completed' }),
+    ];
+    render(<LiveRunStatus receipt={{ commandId: 'cmd-1', runId: 'run-1' }} events={events} />);
+
+    const history = screen.getByTestId('live-run-status-history');
+    const items = within(history).getAllByRole('listitem');
+    expect(items).toHaveLength(3);
+    expect(items.at(-1)).toHaveTextContent('Completed');
+    expect(screen.queryByTestId('live-run-status-history-truncated')).not.toBeInTheDocument();
+  });
+
   it('renders a failed run with an error tone', () => {
     const events = [
       buildEvent({

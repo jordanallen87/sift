@@ -104,6 +104,22 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
     phaseSequence.push('queued');
   }
 
+  // Bound the breadcrumb to a small, fixed number of entries -- a real
+  // Swarm run can reach dozens of distinct phase transitions (each
+  // tool call/skill activation/handoff alternates active<->completed, so
+  // consecutive-only deduping above does nothing to bound it), and
+  // rendering all of them conveys no real information beyond "it
+  // alternated a lot" while pushing the rest of the workspace down by a
+  // large, growing amount. The most recent phase is always kept (a `slice`
+  // from the end never drops the last element), and a leading truncation
+  // indicator appears whenever entries were actually dropped, so the
+  // breadcrumb never silently pretends a long run was short.
+  const MAX_VISIBLE_PHASE_STEPS = 4;
+  const historyTruncated = phaseSequence.length > MAX_VISIBLE_PHASE_STEPS;
+  const visiblePhaseSequence = historyTruncated
+    ? phaseSequence.slice(phaseSequence.length - MAX_VISIBLE_PHASE_STEPS)
+    : phaseSequence;
+
   return (
     <section
       data-testid="live-run-status"
@@ -136,9 +152,17 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
         data-testid="live-run-status-history"
         className="flex flex-wrap items-center gap-[var(--space-1)] text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]"
       >
-        {phaseSequence.map((step, index) => (
+        {historyTruncated ? (
+          <li
+            data-testid="live-run-status-history-truncated"
+            className="flex items-center gap-[var(--space-1)]"
+          >
+            …
+          </li>
+        ) : null}
+        {visiblePhaseSequence.map((step, index) => (
           <li key={`${step}-${index}`} className="flex items-center gap-[var(--space-1)]">
-            {index > 0 ? <span aria-hidden="true">→</span> : null}
+            {historyTruncated || index > 0 ? <span aria-hidden="true">→</span> : null}
             {PHASE_LABEL[step]}
           </li>
         ))}
