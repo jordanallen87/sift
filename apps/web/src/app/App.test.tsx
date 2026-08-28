@@ -980,7 +980,7 @@ describe('App', () => {
           runId: 'run-foreign',
           type: 'run.queued',
           phase: 'queued',
-          summary: 'A different case\'s investigation queued.',
+          summary: "A different case's investigation queued.",
         },
       ];
       renderLiveWorkspace(snapshot, events);
