@@ -172,6 +172,7 @@ export function DemoLauncher({ onDemoStarted }: DemoLauncherProps) {
               data-testid="demo-launcher-retry"
               variant="secondary"
               size="sm"
+              className="min-h-[var(--size-touch-target-min)]"
               onClick={() => {
                 startDemo(status.demoId);
               }}

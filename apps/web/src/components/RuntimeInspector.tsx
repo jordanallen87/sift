@@ -162,7 +162,7 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
           onClick={onClose}
           variant="secondary"
           size="sm"
-          className="shrink-0"
+          className="min-h-[var(--size-touch-target-min)] shrink-0"
         >
           Return to case
         </Button>
@@ -182,6 +182,7 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
             onClick={() => setView('overview')}
             variant="ghost"
             size="sm"
+            className="min-h-[var(--size-touch-target-min)]"
             style={view === 'overview' ? { backgroundColor: 'var(--color-brand-tint)' } : undefined}
           >
             Overview
@@ -194,6 +195,7 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
             onClick={() => setView('timeline')}
             variant="ghost"
             size="sm"
+            className="min-h-[var(--size-touch-target-min)]"
             style={view === 'timeline' ? { backgroundColor: 'var(--color-brand-tint)' } : undefined}
           >
             Timeline
@@ -206,7 +208,7 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
           aria-busy={loading}
           variant="ghost"
           size="sm"
-          className="ml-auto"
+          className="min-h-[var(--size-touch-target-min)] ml-auto"
         >
           {loading ? 'Refreshing…' : 'Refresh'}
         </Button>

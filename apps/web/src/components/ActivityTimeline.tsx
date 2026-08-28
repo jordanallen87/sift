@@ -117,6 +117,7 @@ function ActivityItem({
             onClick={() => onInspectRun(event.runId!)}
             variant="secondary"
             size="xs"
+            className="min-h-[var(--size-touch-target-min)]"
           >
             Inspect run
           </Button>

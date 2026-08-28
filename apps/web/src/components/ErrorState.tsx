@@ -40,6 +40,7 @@ export function ErrorState({ message, onRetry, retryLabel = 'Try again' }: Error
           onClick={onRetry}
           variant="secondary"
           size="sm"
+          className="min-h-[var(--size-touch-target-min)]"
         >
           {retryLabel}
         </Button>

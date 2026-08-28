@@ -164,7 +164,13 @@ export function OptionEditor({
                 // against a non-default surface.
                 variant="secondary"
                 size="xs"
-                className="min-h-[var(--size-touch-target-min)] bg-card text-card-foreground hover:bg-card/90"
+                // min-w, not just min-h: this button's short "Edit" label
+                // plus `size="xs"`'s own `px-2` padding otherwise resolves to
+                // a real content width well under 44px (confirmed directly
+                // by Playwright's own `boundingBox()` in the e2e journey
+                // specs -- a jsdom class-presence test cannot catch a
+                // dimension driven by content width like this one).
+                className="min-h-[var(--size-touch-target-min)] min-w-[var(--size-touch-target-min)] bg-card text-card-foreground hover:bg-card/90"
                 onClick={() => {
                   startEdit(entity);
                 }}
@@ -250,6 +256,7 @@ export function OptionEditor({
               type="button"
               data-testid="option-editor-cancel"
               variant="secondary"
+              className="min-h-[var(--size-touch-target-min)]"
               disabled={saving}
               onClick={startNew}
             >
