@@ -275,4 +275,38 @@ describe('OptionEditor', () => {
     );
     expect(overflowRisks).toEqual([]);
   });
+
+  describe('touch targets (docs/specs/testing.md 44px minimum)', () => {
+    // `option-editor-new` uses the compact `size="sm"` variant (`h-8`, 32px
+    // tall) with no override; below tokens.css's
+    // `--size-touch-target-min: 44px`. Asserted via class presence -- jsdom
+    // does not run a real layout engine (see ../test/narrow-viewport.tsx's
+    // identical caveat) -- following the same `min-h-[var(--size-touch-
+    // target-min)]` override pattern already used elsewhere, e.g.
+    // CaseHeader.tsx's "Reset demo" button.
+    it('gives the "Add" option button the 44px touch-target override despite its compact "sm" size', () => {
+      renderEditor();
+      expect(screen.getByTestId('option-editor-new')).toHaveClass(
+        'min-h-[var(--size-touch-target-min)]',
+      );
+    });
+
+    // `option-editor-edit-*` uses the even more compact `size="xs"` variant
+    // (`h-6`, 24px tall) with no override, and `variant="ghost"`, whose only
+    // fill is `hover:bg-accent` -- fully transparent at rest. A touch-device
+    // user has no hover state, so this affordance was invisible until
+    // tapped, not just undersized.
+    it('gives each row\'s Edit button the 44px touch-target override despite its compact "xs" size, and a fill visible at rest (not only on hover)', () => {
+      renderEditor({ options: [buildEntity()] });
+      const editButton = screen.getByTestId('option-editor-edit-candidate-rav4');
+
+      expect(editButton).toHaveClass('min-h-[var(--size-touch-target-min)]');
+      // `bg-card` (not hover-prefixed) proves a fill renders at rest, per
+      // the same bg-card-on-a-non-default-surface mechanism
+      // ApprovalCard.tsx's own "secondary" buttons already use to stay
+      // visible against a surface where the variant's flat default fill
+      // would blend in.
+      expect(editButton).toHaveClass('bg-card');
+    });
+  });
 });

@@ -121,6 +121,7 @@ export function OptionEditor({
           data-testid="option-editor-new"
           variant="secondary"
           size="sm"
+          className="min-h-[var(--size-touch-target-min)]"
           disabled={atCapacity}
           onClick={startNew}
         >
@@ -151,12 +152,19 @@ export function OptionEditor({
               <Button
                 type="button"
                 data-testid={`option-editor-edit-${entity.id}`}
-                // ghost, not secondary: this row is already bg-muted, so the
-                // flat "secondary" fill (the same bg-muted value) would be
-                // invisible at rest -- ghost stays transparent until
-                // hover/focus, which still reads clearly against the row.
-                variant="ghost"
+                // secondary, overridden to bg-card, not the untouched
+                // "secondary" or "ghost" defaults: this row is already
+                // bg-muted, and both `secondary`'s flat fill (the same
+                // bg-muted value) and `ghost`'s fill-only-on-hover/focus
+                // would be invisible against it at rest. A touch device has
+                // no hover state, so an at-rest-invisible affordance is a
+                // real usability gap here, not just a sizing one. bg-card is
+                // the same surface-contrast escape hatch ApprovalCard.tsx's
+                // own "secondary" buttons already use to stay visible
+                // against a non-default surface.
+                variant="secondary"
                 size="xs"
+                className="min-h-[var(--size-touch-target-min)] bg-card text-card-foreground hover:bg-card/90"
                 onClick={() => {
                   startEdit(entity);
                 }}

@@ -218,6 +218,7 @@ export function EvidenceCard({
               data-testid="evidence-card-set-included"
               variant="secondary"
               size="sm"
+              className="min-h-[var(--size-touch-target-min)]"
               disabled={dispositionPending}
               onClick={() => {
                 onSetDisposition('included', reason.trim() || 'Reviewed by user');
@@ -230,6 +231,7 @@ export function EvidenceCard({
               data-testid="evidence-card-set-excluded"
               variant="secondary"
               size="sm"
+              className="min-h-[var(--size-touch-target-min)]"
               disabled={dispositionPending}
               onClick={() => {
                 onSetDisposition('excluded', reason.trim() || 'Reviewed by user');
@@ -242,6 +244,7 @@ export function EvidenceCard({
               data-testid="evidence-card-set-questioned"
               variant="secondary"
               size="sm"
+              className="min-h-[var(--size-touch-target-min)]"
               disabled={dispositionPending}
               onClick={() => {
                 onSetDisposition('questioned', reason.trim() || 'Reviewed by user');

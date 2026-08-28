@@ -248,4 +248,30 @@ describe('EvidenceCard', () => {
       expect(await axe(container)).toHaveNoViolations();
     });
   });
+
+  describe('touch targets (docs/specs/testing.md 44px minimum)', () => {
+    // These three buttons use the compact `size="sm"` variant (`h-8`, 32px
+    // tall -- apps/web/src/components/ui/button.tsx), which is below
+    // tokens.css's `--size-touch-target-min: 44px`. The established fix
+    // elsewhere in this codebase (e.g. CaseHeader.tsx's "Reset demo" button,
+    // ApprovalCard.tsx) is a `min-h-[var(--size-touch-target-min)]`
+    // className override that raises the rendered height to 44px while
+    // keeping the compact visual density -- asserted here via class
+    // presence, since jsdom (this test's environment) does not run a real
+    // layout engine and cannot measure an actual rendered pixel height (see
+    // ../test/narrow-viewport.tsx's identical caveat).
+    it('gives the Include, Exclude, and Question buttons the 44px touch-target override despite their compact "sm" size', () => {
+      render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} />);
+
+      expect(screen.getByTestId('evidence-card-set-included')).toHaveClass(
+        'min-h-[var(--size-touch-target-min)]',
+      );
+      expect(screen.getByTestId('evidence-card-set-excluded')).toHaveClass(
+        'min-h-[var(--size-touch-target-min)]',
+      );
+      expect(screen.getByTestId('evidence-card-set-questioned')).toHaveClass(
+        'min-h-[var(--size-touch-target-min)]',
+      );
+    });
+  });
 });
