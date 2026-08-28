@@ -48,6 +48,7 @@ import {
   type CommandReceipt,
   type CompiledDecisionPack,
   type EvidenceDisposition,
+  type PublicActivityEvent,
 } from '@pax/contracts';
 import { evaluateReadiness } from '@pax/core';
 import { Button } from '@/components/ui/button';
@@ -76,6 +77,56 @@ import {
 } from '../model-context/register-pax-tools.js';
 
 const InstalledPacksResponseSchema = z.array(CompiledDecisionPackSchema);
+
+/**
+ * Reconstructs a fallback `LiveRunStatusReceipt` from replayed
+ * `PublicActivityEvent`s, for the moment before any command has been sent
+ * *this browser lifetime* -- a fresh page load or hard reload. Without
+ * this, `lastRunReceipt` (session-local `useState`, only ever set inside a
+ * live command's own promise-resolution handlers) naturally starts `null`
+ * and stays `null` regardless of how much real history the case actually
+ * has, even though `events` already carries that full replayed history and
+ * is what Readiness/Evidence/Activity correctly derive their own
+ * post-reload state from -- producing "No command has been sent yet."
+ * directly above a Readiness panel and Activity log that both correctly
+ * show a fully decided case.
+ *
+ * Walks `events` from the most recent backward for the latest event that
+ * carries a `runId` (preferred, matching `LiveRunStatus`'s own correlation
+ * preference). Only the run-starting event itself carries both `commandId`
+ * and `runId` together (see `run-service.ts`'s `run.queued` append) --
+ * every later event in that run (specialist/tool/completion events) carries
+ * only `runId` -- so this also searches the full history for the real
+ * originating `commandId` of that same run rather than fabricating one.
+ * Falls back to the most recent event carrying only a `commandId` (a
+ * command that has not yet started a run), matching
+ * `LiveRunStatus.tsx`'s own documented "brief window before a run-starting
+ * command has an established `runId`" case. Returns `null` when `events`
+ * has nothing to derive from -- a genuinely fresh case must still show the
+ * real empty state, not a fabricated receipt.
+ */
+function deriveReceiptFromEvents(events: PublicActivityEvent[]): LiveRunStatusReceipt | null {
+  const bySequence = [...events].sort((a, b) => a.sequence - b.sequence);
+
+  for (let i = bySequence.length - 1; i >= 0; i -= 1) {
+    const runId = bySequence[i]?.runId;
+    if (runId !== undefined) {
+      const originating = bySequence.find(
+        (event) => event.runId === runId && event.commandId !== undefined,
+      );
+      return { commandId: originating?.commandId ?? runId, runId };
+    }
+  }
+
+  for (let i = bySequence.length - 1; i >= 0; i -= 1) {
+    const commandId = bySequence[i]?.commandId;
+    if (commandId !== undefined) {
+      return { commandId };
+    }
+  }
+
+  return null;
+}
 
 function mapConnectionState(state: CaseEventsConnectionState): CaseHeaderConnectionState {
   // `CaseHeader` (built in an earlier pass) has no separate "connecting"
@@ -269,6 +320,14 @@ export function App() {
   }, [activeCaseId]);
 
   const readiness = useMemo(() => (snapshot ? evaluateReadiness(snapshot) : null), [snapshot]);
+
+  // `lastRunReceipt` (session-local) takes priority once a real command has
+  // been sent this browser lifetime; before that -- a fresh load or a
+  // reload -- fall back to a receipt derived from the case's own replayed
+  // history, so "Latest command" never contradicts the Readiness panel and
+  // Activity log rendered right below it. See `deriveReceiptFromEvents`.
+  const derivedRunReceipt = useMemo(() => deriveReceiptFromEvents(events), [events]);
+  const liveRunStatusReceipt = lastRunReceipt ?? derivedRunReceipt;
 
   const handleResetDemo = useCallback(() => {
     if (snapshot === null) return;
@@ -551,7 +610,7 @@ export function App() {
               </p>
             ) : null}
 
-            <LiveRunStatus receipt={lastRunReceipt} events={events} />
+            <LiveRunStatus receipt={liveRunStatusReceipt} events={events} />
 
             {lastRunReceipt?.runId !== undefined ? (
               <Button

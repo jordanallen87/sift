@@ -851,6 +851,77 @@ describe('App', () => {
       });
     });
 
+    it('derives "Latest command" from replayed history when a case loads with prior run activity, instead of the empty state', async () => {
+      // Regression test: `lastRunReceipt` was pure session-local state, set
+      // only inside a live command's own promise-resolution handlers, and
+      // reset to `null` by `handleDemoStarted`/reload -- so a case loaded
+      // with real, already-completed run history (exactly what a page
+      // reload replays) rendered "No command has been sent yet." directly
+      // above a Readiness panel and Activity log that both correctly showed
+      // that same history. Only the `run.queued` event carries both
+      // `commandId` and `runId` together (see run-service.ts); every later
+      // event in the run (specialist/tool/run.completed) carries only
+      // `runId`, so this fixture also proves the fallback finds the real
+      // originating `commandId` rather than fabricating one.
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null });
+      const priorRunEvents: PublicActivityEvent[] = [
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-1',
+          sequence: 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          caseId: CASE_ID,
+          commandId: 'cmd-prior-1',
+          runId: 'run-prior-1',
+          type: 'run.queued',
+          phase: 'queued',
+          summary: 'Investigation queued.',
+        },
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-2',
+          sequence: 2,
+          timestamp: '2026-08-27T00:00:05.000Z',
+          caseId: CASE_ID,
+          runId: 'run-prior-1',
+          type: 'specialist.started',
+          phase: 'active',
+          summary: 'Deal analyst started working.',
+        },
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-3',
+          sequence: 3,
+          timestamp: '2026-08-27T00:00:10.000Z',
+          caseId: CASE_ID,
+          runId: 'run-prior-1',
+          type: 'run.completed',
+          phase: 'completed',
+          summary: 'Investigation completed.',
+        },
+      ];
+      renderLiveWorkspace(snapshot, priorRunEvents);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('live-run-status-empty')).not.toBeInTheDocument();
+      });
+      expect(screen.getByTestId('live-run-status-run-id')).toHaveTextContent('run-prior-1');
+      expect(screen.getByTestId('live-run-status-command-id')).toHaveTextContent('cmd-prior-1');
+      expect(screen.getByTestId('live-run-status-phase')).toHaveTextContent(/completed/i);
+    });
+
+    it('still shows the "No command has been sent yet." empty state for a genuinely fresh case with no prior activity', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null });
+      renderLiveWorkspace(snapshot, []);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('case-header')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('live-run-status-empty')).toBeInTheDocument();
+    });
+
     it('does not send a reset command when the active pack id is not a recognized demo id', async () => {
       const snapshot = buildFixtureCaseState({
         id: CASE_ID,
