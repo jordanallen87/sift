@@ -55,6 +55,46 @@ export async function assertPrimaryTouchTargets(
 }
 
 /**
+ * Confirms each of `testIds` -- when present and visible -- keeps its right
+ * edge (via Playwright's real `boundingBox()`, not a computed-style guess)
+ * inside the current viewport width. Unlike `assertPrimaryTouchTargets`,
+ * this carries no minimum-size requirement -- it exists for non-interactive,
+ * label/badge-style elements (e.g. `case-header-pack-badge`) that must still
+ * stay visually inside the pane even though they are not actionable
+ * controls.
+ *
+ * `assertNoHorizontalOverflow` alone cannot catch this class of bug: this
+ * app's deliberate `html, body { overflow-x: hidden }` backstop
+ * (`apps/web/src/styles/global.css`) keeps `document.documentElement.scrollWidth`
+ * pinned to `clientWidth` even when a child element is silently clipped past
+ * the viewport edge -- exactly how the case-header pack badge's own overflow
+ * went undetected by the automated suite before its `min-w-0`/`truncate`
+ * fix. This assertion checks a specific element's own geometry directly, so
+ * the next instance of this bug class (a different element, not just this
+ * one badge) is still caught even though the document-level scrollWidth
+ * proxy stays green.
+ */
+export async function assertElementsWithinViewport(
+  page: Page,
+  testIds: readonly string[],
+): Promise<void> {
+  const viewport = page.viewportSize();
+  if (!viewport) return;
+  for (const testId of testIds) {
+    const locator = page.getByTestId(testId).first();
+    if ((await locator.count()) === 0) continue;
+    if (!(await locator.isVisible())) continue;
+    const box = await locator.boundingBox();
+    if (box === null) continue;
+    expect(box.x, `${testId} must not start left of the viewport`).toBeGreaterThanOrEqual(0);
+    expect(
+      box.x + box.width,
+      `${testId} (right edge ${box.x + box.width}) must stay inside the viewport width (${viewport.width})`,
+    ).toBeLessThanOrEqual(viewport.width + 1); // +1px tolerance for sub-pixel rounding
+  }
+}
+
+/**
  * No `position: fixed`/`position: sticky` element's bounding box overlaps
  * any of `protectedTestIds`' bounding boxes. The current right-pane layout
  * (`apps/web/src/app/App.tsx`, `CaseHeader.tsx`, ...) has no sticky/fixed

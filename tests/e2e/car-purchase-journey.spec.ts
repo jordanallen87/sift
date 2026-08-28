@@ -28,7 +28,12 @@
 import { expect, test } from '@playwright/test';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
 import { installConsoleGuard } from './helpers/console-guard.js';
-import { assertRightPaneIntegrity, disableAnimations } from './helpers/layout-assertions.js';
+import {
+  assertElementsWithinViewport,
+  assertPrimaryTouchTargets,
+  assertRightPaneIntegrity,
+  disableAnimations,
+} from './helpers/layout-assertions.js';
 import { dynamicScreenshotMasks, withVolatileRegionsHidden } from './helpers/visual-masks.js';
 import {
   CAR_PURCHASE_CANDIDATE_IDS,
@@ -101,13 +106,59 @@ test.describe('Choose our next car -- full demo journey', () => {
       maxDiffPixelRatio: 0.01,
     });
 
+    // Case-header pack badge: real rendered right edge, not just the
+    // document-level scrollWidth proxy (layout-assertions.ts's
+    // `assertElementsWithinViewport` header comment explains why the latter
+    // cannot catch this bug class on its own).
+    await assertElementsWithinViewport(page, ['case-header-pack-badge']);
+
+    // Option-editor edit/cancel row: real rendered geometry, not just
+    // className presence -- entering and leaving edit mode here is a pure
+    // local-UI-state toggle (`OptionEditor.tsx`'s `startEdit`/`startNew`),
+    // no `upsertOption` command fires, so it leaves no trace on the case and
+    // does not affect any later screenshot. This is also the only way to
+    // observe `option-editor-save` and `option-editor-cancel` rendered
+    // together in the same flex row, which is exactly the state that had
+    // the two buttons at mismatched heights before tonight's fix.
+    await page.getByTestId(`option-editor-edit-${CAR_PURCHASE_CANDIDATE_IDS[0]}`).click();
+    await expect(page.getByTestId('option-editor-cancel')).toBeVisible();
+    await assertPrimaryTouchTargets(page, ['option-editor-save', 'option-editor-cancel']);
+    await page.getByTestId('option-editor-cancel').click();
+    await expect(page.getByTestId('option-editor-cancel')).toBeHidden();
+
     // --- Round 1: real live streaming investigation ---
     const round1 = await pax.requestInvestigation();
     // Mid-investigation state: the activity timeline is already populating
     // live from real streamed events (not a static end state).
     await expect(page.getByTestId('activity-timeline')).toBeVisible();
     await assertNoSeriousAxeViolations(page, 'mid-investigation');
-    await assertRightPaneIntegrity(page, ['request-investigation', 'case-header-reset-demo']);
+    await assertRightPaneIntegrity(page, [
+      'request-investigation',
+      'case-header-reset-demo',
+      'option-editor-new',
+      'option-editor-save',
+      `option-editor-edit-${CAR_PURCHASE_CANDIDATE_IDS[0]}`,
+    ]);
+
+    // Runtime Inspector: `open-runtime-inspector` only becomes visible once
+    // a run has been requested (`liveRunStatusReceipt?.runId`, `App.tsx`),
+    // which just happened above -- this is the first point in the journey
+    // it is genuinely reachable. Real rendered geometry for the view
+    // selector tabs, "Return to case", and "Refresh" (all fixed for 44px
+    // touch targets tonight -- design-system.md names the view selector
+    // verbatim). Opening/closing is a pure client-side route swap (no case
+    // command fires), so it does not disturb the investigation running
+    // underneath or any later screenshot.
+    await page.getByTestId('open-runtime-inspector').click();
+    await expect(page.getByTestId('runtime-inspector')).toBeVisible();
+    await assertPrimaryTouchTargets(page, [
+      'runtime-inspector-close',
+      'runtime-inspector-tab-overview',
+      'runtime-inspector-tab-timeline',
+      'runtime-inspector-refresh',
+    ]);
+    await page.getByTestId('runtime-inspector-close').click();
+    await expect(page.getByTestId('case-workspace')).toBeVisible();
 
     await pax.waitForInvestigationCompleted(round1.runId);
     await pax.waitForRecommendationReady();
@@ -182,7 +233,20 @@ test.describe('Choose our next car -- full demo journey', () => {
     // --- Revised recommendation + human-only approval ---
     await expect(page.getByTestId('approval-card-pending')).toBeVisible();
     await assertNoSeriousAxeViolations(page, 'awaiting human approval');
-    await assertRightPaneIntegrity(page, ['approval-card-approve', 'approval-card-reject']);
+    await assertRightPaneIntegrity(page, [
+      'approval-card-approve',
+      'approval-card-reject',
+      // Evidence exists for real by this point (both rounds' evidence has
+      // landed) -- the same `evidence-card-set-*` testid repeats per card,
+      // and `assertPrimaryTouchTargets` checks the first match, which is
+      // representative of every card since they share one Button config.
+      'evidence-card-set-included',
+      'evidence-card-set-excluded',
+      'evidence-card-set-questioned',
+      'option-editor-new',
+      'option-editor-save',
+      `option-editor-edit-${CAR_PURCHASE_CANDIDATE_IDS[0]}`,
+    ]);
     await withVolatileRegionsHidden(page, () =>
       expect(page.getByTestId('case-workspace')).toHaveScreenshot('awaiting-approval.png', {
         maxDiffPixelRatio: 0.01,
