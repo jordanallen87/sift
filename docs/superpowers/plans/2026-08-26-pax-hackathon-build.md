@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **2026-08-28 correction:** Tasks 1-14 were fully implemented, tested, committed, and deployed by prior sessions (see `docs/build-log.md` and `docs/completion-report.md`), but their checkboxes here were never ticked — a tracking gap, not an implementation gap. Checkboxes below were corrected to match the verified state of the repository at commit `d1335cf`, except the one genuinely open, human-only item (demo video recording) called out explicitly in Task 14. Task 15 was added the same day to close a real gap found during a fresh evaluation: the shadcn/ui redesign (commit `b45d39e`) landed after the last recorded `pnpm verify` pass, so it was never verified end-to-end, and the automated e2e suite had not been supplemented with a live, human-style Playwright pass.
+
 **Goal:** Build a polished, deterministic, source-linked decision workspace with two complete demos: a WebMCP-first Choose Our Next Car and an AWS/Strands-first Home Energy Guardian.
 
 **Architecture:** A pnpm TypeScript monorepo separates pure case logic from browser, SQLite, HTTP, observability, Strands adapters, and compiled Decision Packs. Stable Zod envelopes contain typed pack-defined and case-defined attributes/criteria/questions without closing the domain model. One Express process serves the Vite application and real-time SSE API locally and on Railway; fixture tools and a scripted model run the same orchestration and UI paths deterministically in CI.
@@ -183,14 +185,14 @@ scripts/check-submission.ts           Submission artifact verifier
 - Produces root scripts named exactly `format:check`, `lint`, `typecheck`, `test:unit`, `test:pack`, `test:integration`, `test:contract`, `test:scenario`, `test:e2e`, `test:observability`, `test:mutation`, `test:live`, `test:deployed`, `test:submission`, `verify`, and `verify:release`.
 - Produces `artifacts/verification/latest/report.json` for every top-level verification attempt, including early stage failure.
 
-- [ ] Create the pnpm workspaces and strict shared TypeScript configuration.
-- [ ] Install and pin runtime and test dependencies; commit the lockfile.
-- [ ] Configure ESLint with zero warnings, Prettier check, Vitest projects, Playwright projects, and targeted Stryker mutation paths.
-- [ ] Write a failing verifier test proving a failed child stage still produces a valid `VerificationReport`.
-- [ ] Implement the verifier and source-integrity scanner, then make their tests pass.
-- [ ] Verify with `pnpm format:check && pnpm lint && pnpm typecheck`.
-- [ ] Record exact versions and commands in `docs/build-log.md`.
-- [ ] Commit as `chore: establish pax workspace and verification gates`.
+- [x] Create the pnpm workspaces and strict shared TypeScript configuration.
+- [x] Install and pin runtime and test dependencies; commit the lockfile.
+- [x] Configure ESLint with zero warnings, Prettier check, Vitest projects, Playwright projects, and targeted Stryker mutation paths.
+- [x] Write a failing verifier test proving a failed child stage still produces a valid `VerificationReport`.
+- [x] Implement the verifier and source-integrity scanner, then make their tests pass.
+- [x] Verify with `pnpm format:check && pnpm lint && pnpm typecheck`.
+- [x] Record exact versions and commands in `docs/build-log.md`.
+- [x] Commit as `chore: establish pax workspace and verification gates`.
 
 ### Task 2: Canonical contracts, typed extensions, and pure event-sourced case engine
 
@@ -207,18 +209,18 @@ scripts/check-submission.ts           Submission artifact verifier
 - Produces `AttributeValueSchema`, `AttributeDefinitionSchema`, `CaseExtensionSchema`, `CaseStateSchema`, `CaseEventSchema`, `PaxCommandSchema`, `DecisionPackManifestSchema`, `ExecutionRequestSchema`, and `ExecutionResultSchema`.
 - Consumes only injected `Clock` and `IdGenerator` ports.
 
-- [ ] Write failing schema and reducer tests for creation, monotonic sequences, optimistic concurrency, and idempotency.
-- [ ] Implement canonical schemas and the event reducer.
-- [ ] Write failing tests for obligation dependencies, priority, budgets, accepted uncertainty, and fail-closed evidence.
-- [ ] Implement obligation selection, evidence level calculation, staleness propagation, and readiness evaluation.
-- [ ] Write failing tests for criteria normalization, recommendation invalidation, and human-only approval.
-- [ ] Implement criteria and policy behavior.
-- [ ] Write failing tests for every `AttributeValue` variant, `custom.*` definition creation, explicit-user versus agent-proposed origin, extension review, protected fields, user-concern obligation derivation, unknown preservation, and targeted invalidation.
-- [ ] Implement typed pack/case definitions and extension reduction without arbitrary recursive JSON or executable values.
-- [ ] Add fast-check properties from `docs/specs/testing.md` and satisfy them with a fixed logged seed.
-- [ ] Reach 100% branch/function coverage for `packages/core`.
-- [ ] Verify with `pnpm --filter @pax/core test --coverage`.
-- [ ] Commit as `feat: add deterministic case and readiness engine`.
+- [x] Write failing schema and reducer tests for creation, monotonic sequences, optimistic concurrency, and idempotency.
+- [x] Implement canonical schemas and the event reducer.
+- [x] Write failing tests for obligation dependencies, priority, budgets, accepted uncertainty, and fail-closed evidence.
+- [x] Implement obligation selection, evidence level calculation, staleness propagation, and readiness evaluation.
+- [x] Write failing tests for criteria normalization, recommendation invalidation, and human-only approval.
+- [x] Implement criteria and policy behavior.
+- [x] Write failing tests for every `AttributeValue` variant, `custom.*` definition creation, explicit-user versus agent-proposed origin, extension review, protected fields, user-concern obligation derivation, unknown preservation, and targeted invalidation.
+- [x] Implement typed pack/case definitions and extension reduction without arbitrary recursive JSON or executable values.
+- [x] Add fast-check properties from `docs/specs/testing.md` and satisfy them with a fixed logged seed.
+- [x] Reach 100% branch/function coverage for `packages/core`.
+- [x] Verify with `pnpm --filter @pax/core test --coverage`.
+- [x] Commit as `feat: add deterministic case and readiness engine`.
 
 ### Task 3: Compiled Decision Packs, conformance, fixtures, and scripted capabilities
 
@@ -238,17 +240,17 @@ scripts/check-submission.ts           Submission artifact verifier
 - Produces read-only fixture tools returning source IDs, evidence levels, normalized values, and deterministic error/degraded outcomes.
 - Produces a `ScriptedModelProvider` whose response queue is named by scenario beat rather than call index alone.
 
-- [ ] Write failing compiler tests for unknown references, cycles without bounds, undeclared tools, invalid extension policies, unrenderable attributes, executable content, missing approval policy, and missing negative evaluation cases.
-- [ ] Implement compiler and registry, then satisfy 100% branch/function coverage.
-- [ ] Prove canonical compilation produces identical SHA-256 hashes for semantically identical manifests and a changed version/hash for material source changes.
-- [ ] Write the two manifests and assert every obligation, attribute, criterion, skill, specialist, tool, policy, extension, and presentation reference compiles.
-- [ ] Build the compact Apartment Hunt authoring fixture without a pet-sensory field; prove `custom.pet_sensory_fit` becomes a typed case extension, obligation, persisted explicit unknown, and generic UI field without changing its compiled hash.
-- [ ] Build realistic fictional fixtures with explicit provenance and deterministic calculations.
-- [ ] Write fixture-tool tests for parsing, correlation, source linkage, duplicate result behavior, cancellation, and error states.
-- [ ] Implement domain skills as real Strands-compatible `SKILL.md` packages with narrow instructions.
-- [ ] Execute the complete `docs/reuse-source-map.md` audit: verify canonical paths, classify every selected reuse as concept-only/structural/small-fragment/none, map it to a Pax destination and test, and record copied concepts/code plus license conclusions in `docs/reuse-attribution.md` or state that no code was copied.
-- [ ] Verify with `pnpm test:pack && pnpm --filter @pax/scenarios test`.
-- [ ] Commit as `feat: add compiled decision packs and extensible case data`.
+- [x] Write failing compiler tests for unknown references, cycles without bounds, undeclared tools, invalid extension policies, unrenderable attributes, executable content, missing approval policy, and missing negative evaluation cases.
+- [x] Implement compiler and registry, then satisfy 100% branch/function coverage.
+- [x] Prove canonical compilation produces identical SHA-256 hashes for semantically identical manifests and a changed version/hash for material source changes.
+- [x] Write the two manifests and assert every obligation, attribute, criterion, skill, specialist, tool, policy, extension, and presentation reference compiles.
+- [x] Build the compact Apartment Hunt authoring fixture without a pet-sensory field; prove `custom.pet_sensory_fit` becomes a typed case extension, obligation, persisted explicit unknown, and generic UI field without changing its compiled hash.
+- [x] Build realistic fictional fixtures with explicit provenance and deterministic calculations.
+- [x] Write fixture-tool tests for parsing, correlation, source linkage, duplicate result behavior, cancellation, and error states.
+- [x] Implement domain skills as real Strands-compatible `SKILL.md` packages with narrow instructions.
+- [x] Execute the complete `docs/reuse-source-map.md` audit: verify canonical paths, classify every selected reuse as concept-only/structural/small-fragment/none, map it to a Pax destination and test, and record copied concepts/code plus license conclusions in `docs/reuse-attribution.md` or state that no code was copied.
+- [x] Verify with `pnpm test:pack && pnpm --filter @pax/scenarios test`.
+- [x] Commit as `feat: add compiled decision packs and extensible case data`.
 
 ### Task 4: Conversational Decision Pack authoring skill and bounded tools
 
@@ -268,16 +270,16 @@ scripts/check-submission.ts           Submission artifact verifier
 - Produces `pnpm pax pack:author`, `pnpm pax pack:check <id>`, and `pnpm pax pack:test <id>` commands.
 - Allows writes only below an explicit temporary/local pack draft root; publication consumes a passing compiled artifact and `actor: 'human'` confirmation.
 
-- [ ] Write a failing real-AgentSkills integration test in which a scripted authoring interview creates a declarative Apartment Hunt draft and activates `pack-authoring`.
-- [ ] Write failing path-policy tests for traversal, symlink escape, absolute paths, executable extensions/content, oversized files, duplicate IDs, and writes outside the draft root.
-- [ ] Implement the skill, authoring agent, catalog, scaffold, and temporary/local draft store with `PAX_AUTHORING_ENABLED=false` as the production default.
-- [ ] Write failing validate/test/diff tests proving compiler diagnostics are returned as structured events and the compact fixture conformance suite runs unchanged.
-- [ ] Implement validate, test, and semantic diff against the compiled registry.
-- [ ] Write failing publication tests for missing confirmation, agent actor, failing tests, changed-after-validation hash, existing-version mutation, and public-disabled configuration.
-- [ ] Implement human-only publication as an intervention-confirmed install of an immutable compiled version.
-- [ ] Add CLI help and a deterministic authoring transcript suitable for README documentation; do not build a Pack Studio UI or public writable endpoint.
-- [ ] Verify with `pnpm test:pack && pnpm test:integration -- pack-authoring`.
-- [ ] Commit as `feat: add bounded decision pack authoring skill`.
+- [x] Write a failing real-AgentSkills integration test in which a scripted authoring interview creates a declarative Apartment Hunt draft and activates `pack-authoring`.
+- [x] Write failing path-policy tests for traversal, symlink escape, absolute paths, executable extensions/content, oversized files, duplicate IDs, and writes outside the draft root.
+- [x] Implement the skill, authoring agent, catalog, scaffold, and temporary/local draft store with `PAX_AUTHORING_ENABLED=false` as the production default.
+- [x] Write failing validate/test/diff tests proving compiler diagnostics are returned as structured events and the compact fixture conformance suite runs unchanged.
+- [x] Implement validate, test, and semantic diff against the compiled registry.
+- [x] Write failing publication tests for missing confirmation, agent actor, failing tests, changed-after-validation hash, existing-version mutation, and public-disabled configuration.
+- [x] Implement human-only publication as an intervention-confirmed install of an immutable compiled version.
+- [x] Add CLI help and a deterministic authoring transcript suitable for README documentation; do not build a Pack Studio UI or public writable endpoint.
+- [x] Verify with `pnpm test:pack && pnpm test:integration -- pack-authoring`.
+- [x] Commit as `feat: add bounded decision pack authoring skill`.
 
 ### Task 5: Migrated SQLite store, command service, and HTTP contracts
 
@@ -298,15 +300,15 @@ scripts/check-submission.ts           Submission artifact verifier
 - Persists pack ID/version/hash plus typed case definitions and attributes without adding domain-specific columns.
 - Produces ordered `PublicActivityEvent` SSE replay from `Last-Event-ID`, bounded slow-client resync, and snapshot/polling equivalence.
 
-- [ ] Write failing store contract tests covering migrations, atomic event+snapshot commit, public activity projection/replay, reload, corruption, concurrent sequence conflict, idempotency, WAL/busy behavior, and subscription order.
-- [ ] Implement memory and SQLite stores with Drizzle migrations, foreign keys, WAL, bounded busy timeout, unique sequences, and safe database paths.
-- [ ] Write failing HTTP tests for every success and applicable validation, not-found, conflict, policy, cancellation, and internal error.
-- [ ] Implement Express construction and services with no listen side effect in tests.
-- [ ] Implement SSE replay from `Last-Event-ID`, command/run correlation, duplicate-safe event IDs, bounded slow-client resync, and polling-compatible snapshot/event retrieval.
-- [ ] Prove every attribute variant and the Apartment Hunt custom concern survive transaction, service reconstruction, and SQLite reload with the pinned compiled hash unchanged.
-- [ ] Verify persisted state as well as response payloads in every mutation integration test.
-- [ ] Verify with `pnpm test:integration -- command-api case-store sse`.
-- [ ] Commit as `feat: add durable commands and case api`.
+- [x] Write failing store contract tests covering migrations, atomic event+snapshot commit, public activity projection/replay, reload, corruption, concurrent sequence conflict, idempotency, WAL/busy behavior, and subscription order.
+- [x] Implement memory and SQLite stores with Drizzle migrations, foreign keys, WAL, bounded busy timeout, unique sequences, and safe database paths.
+- [x] Write failing HTTP tests for every success and applicable validation, not-found, conflict, policy, cancellation, and internal error.
+- [x] Implement Express construction and services with no listen side effect in tests.
+- [x] Implement SSE replay from `Last-Event-ID`, command/run correlation, duplicate-safe event IDs, bounded slow-client resync, and polling-compatible snapshot/event retrieval.
+- [x] Prove every attribute variant and the Apartment Hunt custom concern survive transaction, service reconstruction, and SQLite reload with the pinned compiled hash unchanged.
+- [x] Verify persisted state as well as response payloads in every mutation integration test.
+- [x] Verify with `pnpm test:integration -- command-api case-store sse`.
+- [x] Commit as `feat: add durable commands and case api`.
 
 ### Task 6: Real Strands adapter, plugins, and normalized trace
 
@@ -322,19 +324,19 @@ scripts/check-submission.ts           Submission artifact verifier
 - Produces normalized events `skill.activated`, `context.injected`, `intervention.*`, `goal.validation_failed`, `session.snapshot_saved`, and `session.snapshot_restored`.
 - Consumes a real Strands agent configured with either Bedrock or the scripted model provider.
 
-- [ ] Inspect installed `@strands-agents/sdk` exports and current official TypeScript examples before writing imports.
-- [ ] Write a failing integration test that requires actual `AgentSkills` activation and the expected normalized event.
-- [ ] Configure AgentSkills and Context Injector; prove changed case criteria enter the next model call without mutating durable conversation history.
-- [ ] Prove pack-defined and case-defined criteria/attributes enter context with origin labels and an unconfirmed agent-proposed extension cannot affect readiness.
-- [ ] Write failing ordered-intervention tests for undeclared tool deny, duplicate-search guide, consequence confirm, and sanitizer transform.
-- [ ] Implement real TypeScript handlers and Tool Ledger-backed no-progress detection.
-- [ ] Write a failing GoalLoop test in which an unsupported draft is rejected, receives exact feedback, and passes on the second bounded attempt.
-- [ ] Implement GoalLoop around artifact generation only; fail blocked after exhaustion.
-- [ ] Write and implement local session/snapshot save and restore integration tests.
-- [ ] Verify no normalized event contains private reasoning or credentials.
-- [ ] Write failing run-plan validation tests for invented tools, agents, deleted obligations, widened budgets, and unsupported custom concerns; implement human-evidence/explicit-unknown fallback.
-- [ ] Verify with `pnpm test:integration -- strands`.
-- [ ] Commit as `feat: integrate strands skills steering and validation`.
+- [x] Inspect installed `@strands-agents/sdk` exports and current official TypeScript examples before writing imports.
+- [x] Write a failing integration test that requires actual `AgentSkills` activation and the expected normalized event.
+- [x] Configure AgentSkills and Context Injector; prove changed case criteria enter the next model call without mutating durable conversation history.
+- [x] Prove pack-defined and case-defined criteria/attributes enter context with origin labels and an unconfirmed agent-proposed extension cannot affect readiness.
+- [x] Write failing ordered-intervention tests for undeclared tool deny, duplicate-search guide, consequence confirm, and sanitizer transform.
+- [x] Implement real TypeScript handlers and Tool Ledger-backed no-progress detection.
+- [x] Write a failing GoalLoop test in which an unsupported draft is rejected, receives exact feedback, and passes on the second bounded attempt.
+- [x] Implement GoalLoop around artifact generation only; fail blocked after exhaustion.
+- [x] Write and implement local session/snapshot save and restore integration tests.
+- [x] Verify no normalized event contains private reasoning or credentials.
+- [x] Write failing run-plan validation tests for invented tools, agents, deleted obligations, widened budgets, and unsupported custom concerns; implement human-evidence/explicit-unknown fallback.
+- [x] Verify with `pnpm test:integration -- strands`.
+- [x] Commit as `feat: integrate strands skills steering and validation`.
 
 ### Task 7: Car-purchase Graph and WebMCP hero trajectory
 
@@ -348,16 +350,16 @@ scripts/check-submission.ts           Submission artifact verifier
 - Produces graph nodes `listing-normalizer`, `deal-analyst`, `ownership-cost-analyst`, `safety-reliability-analyst`, `household-fit-analyst`, `source-challenger`, and `decision-synthesizer` with explicit bounds.
 - Produces a scenario report containing all car-purchase assertions from `demos-and-submission.md` plus `graph_node` events.
 
-- [ ] Write the declarative car-purchase scenario and make it fail before orchestration exists.
-- [ ] Build the real Strands Graph from validated pack declarations.
-- [ ] Normalize seeded listings, offer terms, and ownership assumptions without hiding advertised-versus-out-the-door differences.
-- [ ] Implement the teaser-price/mandatory-add-on conflict, staleness, and source-challenger activation.
-- [ ] Prove selected candidate context and criteria reweighting cause targeted invalidation, create honest test-drive unknowns, and change the favored shortlist candidate.
-- [ ] Add `custom.dog_crate_fit` through the same generic command used by WebMCP, derive its case obligation, target household-fit work, preserve an honest measurement/test-drive unknown, and prove pack ID/version/hash do not change.
-- [ ] Assert no agent can advance the shortlist and the human decision survives SQLite reload.
-- [ ] Write normalized trace, snapshot, assertion JSON, and readable summary artifacts.
-- [ ] Verify with `pnpm test:scenario -- car-purchase`.
-- [ ] Commit as `feat: complete car purchase graph scenario`.
+- [x] Write the declarative car-purchase scenario and make it fail before orchestration exists.
+- [x] Build the real Strands Graph from validated pack declarations.
+- [x] Normalize seeded listings, offer terms, and ownership assumptions without hiding advertised-versus-out-the-door differences.
+- [x] Implement the teaser-price/mandatory-add-on conflict, staleness, and source-challenger activation.
+- [x] Prove selected candidate context and criteria reweighting cause targeted invalidation, create honest test-drive unknowns, and change the favored shortlist candidate.
+- [x] Add `custom.dog_crate_fit` through the same generic command used by WebMCP, derive its case obligation, target household-fit work, preserve an honest measurement/test-drive unknown, and prove pack ID/version/hash do not change.
+- [x] Assert no agent can advance the shortlist and the human decision survives SQLite reload.
+- [x] Write normalized trace, snapshot, assertion JSON, and readable summary artifacts.
+- [x] Verify with `pnpm test:scenario -- car-purchase`.
+- [x] Commit as `feat: complete car purchase graph scenario`.
 
 ### Task 8: Energy Swarm, premature-answer recovery, and snapshot resume
 
@@ -371,17 +373,17 @@ scripts/check-submission.ts           Submission artifact verifier
 - Produces typed `swarm.handoff` events with from, to, obligation, reason, and evidence delta.
 - Restores the session after the pre-confirmation snapshot without rolling back canonical Pax events.
 
-- [ ] Write the complete Energy scenario and make it fail before Swarm construction exists.
-- [ ] Build the real Strands Swarm with max steps, timeouts, repetitive-handoff detection, and structured handoff context.
-- [ ] Drive anomaly, rate, and partial weather analysis with fixture tools.
-- [ ] Produce a plausible early monitoring draft and prove GoalLoop/readiness emits `Draft withheld` because household evidence is unresolved.
-- [ ] Trigger duplicate/no-progress weather detection, a `Guide`, and a handoff to `home-systems-analyst`.
-- [ ] Activate home-event correlation and support the thermostat hypothesis through linked evidence and source challenge.
-- [ ] Reweight criteria and prove the recommendation changes to inspection.
-- [ ] Emit `Confirm`, snapshot, reconstruct the runtime, restore, and continue without any scheduling or agent approval.
-- [ ] Verify every PAX-P17 trajectory event against the actual normalized Strands trace.
-- [ ] Verify with `pnpm test:scenario -- home-energy-guardian`.
-- [ ] Commit as `feat: complete adaptive energy swarm scenario`.
+- [x] Write the complete Energy scenario and make it fail before Swarm construction exists.
+- [x] Build the real Strands Swarm with max steps, timeouts, repetitive-handoff detection, and structured handoff context.
+- [x] Drive anomaly, rate, and partial weather analysis with fixture tools.
+- [x] Produce a plausible early monitoring draft and prove GoalLoop/readiness emits `Draft withheld` because household evidence is unresolved.
+- [x] Trigger duplicate/no-progress weather detection, a `Guide`, and a handoff to `home-systems-analyst`.
+- [x] Activate home-event correlation and support the thermostat hypothesis through linked evidence and source challenge.
+- [x] Reweight criteria and prove the recommendation changes to inspection.
+- [x] Emit `Confirm`, snapshot, reconstruct the runtime, restore, and continue without any scheduling or agent approval.
+- [x] Verify every PAX-P17 trajectory event against the actual normalized Strands trace.
+- [x] Verify with `pnpm test:scenario -- home-energy-guardian`.
+- [x] Commit as `feat: complete adaptive energy swarm scenario`.
 
 ### Task 9: Right-pane real-time application and accessible visual system
 
@@ -401,16 +403,16 @@ scripts/check-submission.ts           Submission artifact verifier
 - Generic option/criterion/attribute components render compiled pack presentation metadata and typed case extensions without pack-specific React branches.
 - Live state renders only from actual `CommandReceipt` and `PublicActivityEvent` data.
 
-- [ ] Create failing component tests for every required visible state and terminology mapping.
-- [ ] Establish a distinctive calm visual system using tokens, intentional typography, restrained motion, and evidence/status hierarchy.
-- [ ] Implement the launcher and case workspace without full-page navigation chrome.
-- [ ] Implement each region with keyboard operation, source disclosure, empty/error behavior, and no chain-of-thought display.
-- [ ] Implement receipt-correlated queued/active state and ordered specialist, skill, tool, evidence, steering, waiting, recommendation, and completion cards without timers or fabricated progress.
-- [ ] Render all pack-defined and `custom.*` value variants through the schema-driven UI, including explicit unknown, provenance, origin, and confirmation state.
-- [ ] Add Testing Library axe checks for launcher, investigating, guided, waiting, error, ready, and decided states.
-- [ ] Test at 390 px DOM width for no clipped labels or inaccessible actions.
-- [ ] Verify with `pnpm --filter @pax/web test --coverage`.
-- [ ] Commit as `feat: build accessible right-pane case workspace`.
+- [x] Create failing component tests for every required visible state and terminology mapping.
+- [x] Establish a distinctive calm visual system using tokens, intentional typography, restrained motion, and evidence/status hierarchy.
+- [x] Implement the launcher and case workspace without full-page navigation chrome.
+- [x] Implement each region with keyboard operation, source disclosure, empty/error behavior, and no chain-of-thought display.
+- [x] Implement receipt-correlated queued/active state and ordered specialist, skill, tool, evidence, steering, waiting, recommendation, and completion cards without timers or fabricated progress.
+- [x] Render all pack-defined and `custom.*` value variants through the schema-driven UI, including explicit unknown, provenance, origin, and confirmation state.
+- [x] Add Testing Library axe checks for launcher, investigating, guided, waiting, error, ready, and decided states.
+- [x] Test at 390 px DOM width for no clipped labels or inaccessible actions.
+- [x] Verify with `pnpm --filter @pax/web test --coverage`.
+- [x] Commit as `feat: build accessible right-pane case workspace`.
 
 ### Task 10: Browser commands, streaming state, and imperative WebMCP
 
@@ -427,17 +429,17 @@ scripts/check-submission.ts           Submission artifact verifier
 - Registers exactly the tools in `webmcp.md`, including generic option focus/upsert, case-attribute definition, source submission, and criteria changes; final approval is never registered.
 - Uses one `AbortController` per active case registration lifecycle.
 
-- [ ] Write failing contract tests for exact names, descriptions, JSON schemas, annotations, global/case lifecycle, abort, and unsupported host behavior.
-- [ ] Implement the browser and in-memory adapters using `document.modelContext` as the canonical API.
-- [ ] Implement all callbacks through `BrowserPaxCommands`, never direct local state mutation.
-- [ ] Write equivalence tests that invoke a visible control and its WebMCP counterpart and compare resulting event sequences/snapshots.
-- [ ] Implement SSE updates with `Last-Event-ID` replay, command/run correlation, duplicate suppression, slow-client resync, polling equivalence, last-valid-state preservation, and conflict refresh.
-- [ ] Prove focused evidence and option are returned by the next case-context call and visibly highlighted.
-- [ ] Prove criteria/evidence mutations reopen stale dependencies and update the page.
-- [ ] Prove UI and WebMCP creation of the same custom concern produce equivalent definitions, obligations, events, snapshot, and unchanged compiled pack hash.
-- [ ] Prove `pax_submit_source` creates only an unverified source and cannot satisfy evidence until source challenge.
-- [ ] Verify with `pnpm test:contract -- webmcp && pnpm test:integration -- browser-state`.
-- [ ] Commit as `feat: connect shared commands and webmcp tools`.
+- [x] Write failing contract tests for exact names, descriptions, JSON schemas, annotations, global/case lifecycle, abort, and unsupported host behavior.
+- [x] Implement the browser and in-memory adapters using `document.modelContext` as the canonical API.
+- [x] Implement all callbacks through `BrowserPaxCommands`, never direct local state mutation.
+- [x] Write equivalence tests that invoke a visible control and its WebMCP counterpart and compare resulting event sequences/snapshots.
+- [x] Implement SSE updates with `Last-Event-ID` replay, command/run correlation, duplicate suppression, slow-client resync, polling equivalence, last-valid-state preservation, and conflict refresh.
+- [x] Prove focused evidence and option are returned by the next case-context call and visibly highlighted.
+- [x] Prove criteria/evidence mutations reopen stale dependencies and update the page.
+- [x] Prove UI and WebMCP creation of the same custom concern produce equivalent definitions, obligations, events, snapshot, and unchanged compiled pack hash.
+- [x] Prove `pax_submit_source` creates only an unverified source and cannot satisfy evidence until source challenge.
+- [x] Verify with `pnpm test:contract -- webmcp && pnpm test:integration -- browser-state`.
+- [x] Commit as `feat: connect shared commands and webmcp tools`.
 
 ### Task 11: Strands/OpenTelemetry Runtime Inspector
 
@@ -456,18 +458,18 @@ scripts/check-submission.ts           Submission artifact verifier
 - Produces debug overview/events/export routes that return `404` when disabled.
 - Produces a right-pane inspector with overview, timeline, execution, state, context, and errors views.
 
-- [ ] Write failing tests for correlation across invocation, model, tool, skill, Graph/Swarm, intervention, GoalLoop, session, domain, HTTP, and SQLite events.
-- [ ] Include case-extension and pack-authoring skill/tool/compiler/publication events in correlation, state diff, redaction, filtering, and export coverage.
-- [ ] Configure Strands OpenTelemetry with a Pax SQLite span processor and optional standard OTLP exporter; add case/run/pack ID-version-hash/obligation/extension-origin attributes.
-- [ ] Implement a TypeScript logging plugin using Strands lifecycle hooks and normalize events without requesting or exposing private reasoning.
-- [ ] Implement redaction canaries, payload limits/hashes, fixture-versus-user-data policy, retention, and double-redaction on export.
-- [ ] Write failing API tests for filters, SSE following/replay, event detail, disabled mode, and sanitized downloadable run bundle.
-- [ ] Implement the Runtime Inspector route and six views with activity-to-event navigation and copy/download actions.
-- [ ] Render Graph and Swarm paths truthfully from normalized events, including Guide redirects and handoff loops.
-- [ ] Add component axe tests and 390 px layout tests for long IDs, payloads, errors, and empty states.
-- [ ] Verify no secret/private-note canary appears in SQLite, API, SSE, export, console, or artifacts.
-- [ ] Verify with `pnpm test:observability`.
-- [ ] Commit as `feat: add correlated strands runtime inspector`.
+- [x] Write failing tests for correlation across invocation, model, tool, skill, Graph/Swarm, intervention, GoalLoop, session, domain, HTTP, and SQLite events.
+- [x] Include case-extension and pack-authoring skill/tool/compiler/publication events in correlation, state diff, redaction, filtering, and export coverage.
+- [x] Configure Strands OpenTelemetry with a Pax SQLite span processor and optional standard OTLP exporter; add case/run/pack ID-version-hash/obligation/extension-origin attributes.
+- [x] Implement a TypeScript logging plugin using Strands lifecycle hooks and normalize events without requesting or exposing private reasoning.
+- [x] Implement redaction canaries, payload limits/hashes, fixture-versus-user-data policy, retention, and double-redaction on export.
+- [x] Write failing API tests for filters, SSE following/replay, event detail, disabled mode, and sanitized downloadable run bundle.
+- [x] Implement the Runtime Inspector route and six views with activity-to-event navigation and copy/download actions.
+- [x] Render Graph and Swarm paths truthfully from normalized events, including Guide redirects and handoff loops.
+- [x] Add component axe tests and 390 px layout tests for long IDs, payloads, errors, and empty states.
+- [x] Verify no secret/private-note canary appears in SQLite, API, SSE, export, console, or artifacts.
+- [x] Verify with `pnpm test:observability`.
+- [x] Commit as `feat: add correlated strands runtime inspector`.
 
 ### Task 12: Playwright functional, visual, and accessibility proof
 
@@ -483,19 +485,19 @@ scripts/check-submission.ts           Submission artifact verifier
 - `assertRightPaneIntegrity(page)` checks overflow, viewport containment, sticky overlap, and 44 px targets.
 - The WebMCP bridge invokes captured real callbacks rather than duplicating their implementations.
 
-- [ ] Configure Playwright web servers, deterministic environment, animations, font readiness, traces, video, screenshots, and zero retries for deterministic projects.
-- [ ] Write the launcher visual test at all four viewports.
-- [ ] Write the complete car-purchase journey, including actual selected-option WebMCP context, deal challenge, criteria update, honest test-drive unknown, and recommendation change.
-- [ ] In the car journey define `custom.dog_crate_fit`, assert its field and case obligation appear live, verify the run plan targets household fit, and prove the pack hash is unchanged.
-- [ ] Assert queued, specialist, skill, tool, evidence, steering/waiting, recommendation, and completion states in order using event IDs rather than fixed sleeps.
-- [ ] Write the complete Energy journey, including visible draft withholding, Guide, Swarm handoff, GoalLoop recovery, confirmation, service restart, and restored completion.
-- [ ] Open the Runtime Inspector from both journeys; verify correlated activity, tool payload, steering/handoff, state diff, filters, sanitized export, and no horizontal overflow.
-- [ ] Add `Last-Event-ID` network interruption/replay, duplicate event suppression, slow-client resync, forced polling-equivalence, conflict, unsupported WebMCP, keyboard-only, and persistence journeys.
-- [ ] Add right-pane geometry assertions and axe checks at every required state.
-- [ ] Fail tests on uncaught errors, unexpected console messages, hydration warnings, and failed same-origin requests.
-- [ ] Generate baselines, open every actual image, repair visual defects, and record the inspected inventory in `docs/build-log.md`.
-- [ ] Run `pnpm test:e2e` twice consecutively to demonstrate deterministic screenshots and no flakes.
-- [ ] Commit as `test: prove complete demos with playwright`.
+- [x] Configure Playwright web servers, deterministic environment, animations, font readiness, traces, video, screenshots, and zero retries for deterministic projects.
+- [x] Write the launcher visual test at all four viewports.
+- [x] Write the complete car-purchase journey, including actual selected-option WebMCP context, deal challenge, criteria update, honest test-drive unknown, and recommendation change.
+- [x] In the car journey define `custom.dog_crate_fit`, assert its field and case obligation appear live, verify the run plan targets household fit, and prove the pack hash is unchanged.
+- [x] Assert queued, specialist, skill, tool, evidence, steering/waiting, recommendation, and completion states in order using event IDs rather than fixed sleeps.
+- [x] Write the complete Energy journey, including visible draft withholding, Guide, Swarm handoff, GoalLoop recovery, confirmation, service restart, and restored completion.
+- [x] Open the Runtime Inspector from both journeys; verify correlated activity, tool payload, steering/handoff, state diff, filters, sanitized export, and no horizontal overflow.
+- [x] Add `Last-Event-ID` network interruption/replay, duplicate event suppression, slow-client resync, forced polling-equivalence, conflict, unsupported WebMCP, keyboard-only, and persistence journeys.
+- [x] Add right-pane geometry assertions and axe checks at every required state.
+- [x] Fail tests on uncaught errors, unexpected console messages, hydration warnings, and failed same-origin requests.
+- [x] Generate baselines, open every actual image, repair visual defects, and record the inspected inventory in `docs/build-log.md`.
+- [x] Run `pnpm test:e2e` twice consecutively to demonstrate deterministic screenshots and no flakes.
+- [x] Commit as `test: prove complete demos with playwright`.
 
 ### Task 13: Release verification, mutation defense, and CI self-healing artifacts
 
@@ -511,14 +513,14 @@ scripts/check-submission.ts           Submission artifact verifier
 - Mutation gate covers routing thresholds, evidence failure, staleness, readiness, and human-only approval.
 - Verification includes pack compiler/conformance, extensions, authoring path confinement/publication, and real-time event-order/replay tests.
 
-- [ ] Integrate all deterministic stages, including `test:pack`, authoring, real-time event contracts, observability, and redaction, into `pnpm verify` with fail-fast execution and always-written reports.
-- [ ] Integrate build, Docker, mutation, submission, and screenshot inventory into `pnpm verify:release`.
-- [ ] Add source guards for placeholders, focused/skipped tests, snapshot update flags, likely secrets, and forbidden external imports.
-- [ ] Prove report behavior by intentionally causing a fixture-stage failure in an isolated test and asserting its fingerprint/artifacts/rerun command.
-- [ ] Configure CI cache and Playwright browser installation without live credentials.
-- [ ] Run mutation testing and kill all mutations in critical modules.
-- [ ] Run `pnpm verify` twice from clean temporary data directories.
-- [ ] Commit as `ci: add self-healing release verification`.
+- [x] Integrate all deterministic stages, including `test:pack`, authoring, real-time event contracts, observability, and redaction, into `pnpm verify` with fail-fast execution and always-written reports.
+- [x] Integrate build, Docker, mutation, submission, and screenshot inventory into `pnpm verify:release`.
+- [x] Add source guards for placeholders, focused/skipped tests, snapshot update flags, likely secrets, and forbidden external imports.
+- [x] Prove report behavior by intentionally causing a fixture-stage failure in an isolated test and asserting its fingerprint/artifacts/rerun command.
+- [x] Configure CI cache and Playwright browser installation without live credentials.
+- [x] Run mutation testing and kill all mutations in critical modules.
+- [x] Run `pnpm verify` twice from clean temporary data directories.
+- [x] Commit as `ci: add self-healing release verification`.
 
 ### Task 14: Production container, Railway/AgentCore targets, and submission package
 
@@ -538,36 +540,57 @@ scripts/check-submission.ts           Submission artifact verifier
 - `GET /ping` and `POST /invocations` meet the current AgentCore TypeScript contract.
 - `PAX_EXECUTION_TARGET=local|agentcore` leaves browser and command contracts unchanged.
 
-- [ ] Write failing AgentCore route contract tests from the official TypeScript deployment documentation.
-- [ ] Implement local and AgentCore execution targets with validated configuration and honest error behavior.
-- [ ] Build and run the Docker image as non-root; exercise health, assets, one demo start, and one run.
-- [ ] Write complete setup, environment, architecture, test, Railway, AgentCore, demo, troubleshooting, and Decision Pack authoring documentation, including the deterministic authoring transcript and no-code versus developer-pack boundary.
-- [ ] Generate architecture diagram source and exported image through a reproducible script.
-- [ ] Finalize distinct submission narratives plus a WebMCP recording under three minutes and an AWS recording no longer than five minutes.
-- [ ] Map every machine-verifiable item in the shared and competition-specific requirements checklists to release metadata, a file/artifact check, a public access check, or a named automated test. Keep eligibility, personal answers, legal attestations, and AWS Builder ID ownership as explicit human gates.
-- [ ] Run `pnpm test:submission` and repair every missing or inconsistent artifact; print the remaining human-only gates without fabricating completion.
-- [ ] Confirm the authenticated Railway identity, then create a fresh Pax project/service using current CLI syntax such as `railway up --new --name pax-hackathon --json`; never attach to an unrelated existing project.
-- [ ] Attach a new volume with `railway volume add --mount-path /data`, configure `PAX_DATA_DIR=/data` plus required production variables through `railway variable set KEY=value`, redeploy, generate a Railway domain with `railway domain --port 8080`, and record all returned IDs.
-- [ ] Run SQLite migrations, create both fixture cases, and execute deployed API, WebMCP, Runtime Inspector, redaction, and Playwright smoke tests against the public domain.
-- [ ] Restart or redeploy the service and prove the database migration ledger, cases, events, runs, and Runtime Inspector history persist.
-- [ ] If AWS credentials exist, deploy AgentCore, enable/verify observability where authorized, fill release metadata, and correlate at least one Pax trace with AgentCore/CloudWatch.
-- [ ] If AWS credentials do not exist, record only the remaining AgentCore credential/account commands without claiming AWS deployment; Railway deployment remains mandatory.
-- [ ] Run `pnpm install --frozen-lockfile`, `pnpm verify`, and `pnpm verify:release` from clean runtime data.
-- [ ] Open and inspect the final right-pane screenshot set and verify both demo scripts against the running build.
-- [ ] Write `docs/completion-report.md` with counts, commands, SHA, URLs/blockers, limitations, and recording steps.
-- [ ] Commit as `release: prepare pax hackathon submissions`.
+- [x] Write failing AgentCore route contract tests from the official TypeScript deployment documentation.
+- [x] Implement local and AgentCore execution targets with validated configuration and honest error behavior.
+- [x] Build and run the Docker image as non-root; exercise health, assets, one demo start, and one run.
+- [x] Write complete setup, environment, architecture, test, Railway, AgentCore, demo, troubleshooting, and Decision Pack authoring documentation, including the deterministic authoring transcript and no-code versus developer-pack boundary.
+- [x] Generate architecture diagram source and exported image through a reproducible script.
+- [x] Finalize distinct submission narratives (`docs/submissions/webmcp/submission-details.md`, `docs/submissions/agents-for-humans/submission-details.md`) and shot-by-shot recording scripts (`docs/submissions/webmcp/demo-script.md`, under 3:00; `docs/submissions/agents-for-humans/demo-script.md`, under 5:00).
+- [ ] Record the WebMCP demo (under 3:00) and the Agents for Humans demo (under 5:00) by following the scripts above against the live deployment; upload and set `webmcpVideoUrl`/`agentsForHumansVideoUrl` in `docs/submissions/release-metadata.json`. **Human-only** — requires a WebMCP-capable browser and a human narrator; no engineering substitute exists.
+- [x] Map every machine-verifiable item in the shared and competition-specific requirements checklists to release metadata, a file/artifact check, a public access check, or a named automated test. Keep eligibility, personal answers, legal attestations, and AWS Builder ID ownership as explicit human gates.
+- [x] Run `pnpm test:submission` and repair every missing or inconsistent artifact; print the remaining human-only gates without fabricating completion.
+- [x] Confirm the authenticated Railway identity, then create a fresh Pax project/service using current CLI syntax such as `railway up --new --name pax-hackathon --json`; never attach to an unrelated existing project.
+- [x] Attach a new volume with `railway volume add --mount-path /data`, configure `PAX_DATA_DIR=/data` plus required production variables through `railway variable set KEY=value`, redeploy, generate a Railway domain with `railway domain --port 8080`, and record all returned IDs.
+- [x] Run SQLite migrations, create both fixture cases, and execute deployed API, WebMCP, Runtime Inspector, redaction, and Playwright smoke tests against the public domain.
+- [x] Restart or redeploy the service and prove the database migration ledger, cases, events, runs, and Runtime Inspector history persist.
+- [x] If AWS credentials exist, deploy AgentCore, enable/verify observability where authorized, fill release metadata, and correlate at least one Pax trace with AgentCore/CloudWatch.
+- [x] If AWS credentials do not exist, record only the remaining AgentCore credential/account commands without claiming AWS deployment; Railway deployment remains mandatory.
+- [x] Run `pnpm install --frozen-lockfile`, `pnpm verify`, and `pnpm verify:release` from clean runtime data.
+- [x] Open and inspect the final right-pane screenshot set and verify both demo scripts against the running build.
+- [x] Write `docs/completion-report.md` with counts, commands, SHA, URLs/blockers, limitations, and recording steps.
+- [x] Commit as `release: prepare pax hackathon submissions`.
+
+### Task 15: Post-redesign verification closeout and live UI hardening
+
+**Context:** Tasks 1-14 are complete and were verified green as of commit `d1335cf`. Three commits landed after that verification: `b45d39e` (real functional change — converted every workspace component to shadcn/ui), `d31b82f` and `11c17e4` (docs only). No `pnpm verify` run exists at or after `b45d39e`, so the redesign's correctness is currently only supported by prose claims in `docs/completion-report.md`, not by a report artifact. Separately, the automated Playwright suite is deterministic and scripted; it will not catch the class of defect the redesign itself already produced once (the cascade-layer bug that made every button invisible was found by a human looking at the app, not by the scripted suite). This task closes both gaps without adding new product scope.
+
+**Files:**
+- No new files required unless a defect is found; expect touches under `apps/web/src/**` (bug fixes only) and `docs/build-log.md`, `docs/completion-report.md`, `docs/submissions/release-metadata.json` (evidence/state updates).
+
+**Interfaces:** None new. This task verifies existing contracts; it does not add or change any.
+
+- [ ] Run `pnpm verify` fresh at current `HEAD`; if any stage fails, treat it as a real defect (classify per CLAUDE.md's implementation/contract/fixture/environment/flake/spec-conflict taxonomy) and repair the causal defect, not the symptom, then rerun to green. Record the resulting `artifacts/verification/<runId>/report.json` run id.
+- [ ] Run `pnpm verify:release` fresh at current `HEAD`; confirm mutation testing, build, and Docker stages still pass against the redesigned components, and that `test:submission` fails only on the pre-existing human-only gates (video URLs, repo visibility) — not on anything new.
+- [ ] Start the real local Express + Vite production build (not `pnpm dev`) and drive both hero flows live with the Playwright MCP/browser tool as an actual user would, at minimum at `390x844` and `1440x1000`: launch → seed a case → drive evidence/tool/specialist activity to a ready recommendation → exercise the approval/decision step → open the Runtime Inspector → reload and confirm persistence. Do this for both car-purchase and home-energy-guardian.
+- [ ] While driving the live app, specifically hunt for the defect class the redesign already produced once: any control with no visible background/border where one is expected, any focus ring or hover state lost in the shadcn conversion, any touch target under 44px, any horizontal overflow, any layout shift between the four required viewports. Check both light and dark rendering if the app supports a theme toggle; if it does not, confirm that is intentional (not an accidental regression) against `docs/design-system.md`.
+- [ ] For every real defect found: write or extend a failing automated test that would have caught it (component test, axe check, or a new/extended Playwright assertion — whichever layer is causally correct per `docs/specs/testing.md`), fix the defect, and get the test green. Do not fix silently without a regression test; a UI bug found once by hand and not covered afterward will recur.
+- [ ] Regenerate and visually inspect any Playwright visual baseline whose rendering intentionally changed because of a real fix (not merely because a run happened); do not update a baseline for any other reason.
+- [ ] Re-run `pnpm verify` to a clean pass at the final commit produced by this task.
+- [ ] Update `docs/build-log.md` with this task's findings (verification-gap closure, every defect found and fixed, every defect class checked and found clean) and its exact commands/counts.
+- [ ] Update `docs/completion-report.md`'s "Final git SHA" field and verification table to the actual final commit of this task; remove or correct any other stale claim discovered while doing so.
+- [ ] Commit as `test: close post-redesign verification gap and live UI hardening pass`, then push to the existing `origin/main` (`https://github.com/jordanallen87/pax`, currently private — do not change its visibility).
 
 ## Final self-review
 
-- [ ] Map every PAX requirement to at least one test and one implementation owner.
-- [ ] Confirm every car-purchase WebMCP video beat appears in the car-purchase E2E trace.
-- [ ] Confirm every Energy Strands claim appears in an actual normalized SDK trajectory.
-- [ ] Confirm the Car trace proves a user concern absent from the pack became a typed case extension and targeted run-plan change without changing the compiled pack hash.
-- [ ] Confirm the pack-authoring AgentSkill and bounded tool trajectory is real, conformance is green, publication is human-only, and public authoring is disabled.
-- [ ] Confirm live UI states map to real event IDs and replay/polling reach the same final snapshot.
-- [ ] Confirm the premature conclusion is visibly withheld and later repaired.
-- [ ] Confirm all right-pane screenshots are intentional and inspected.
-- [ ] Confirm every visible hero activity opens the exact Runtime Inspector event and every exported bundle passes redaction tests.
-- [ ] Confirm no consequential approval can originate from agent, model, WebMCP, fixture, or restore paths.
-- [ ] Confirm README commands exactly match package scripts.
-- [ ] Confirm release report SHA equals the final git SHA.
+- [x] Map every PAX requirement to at least one test and one implementation owner.
+- [x] Confirm every car-purchase WebMCP video beat appears in the car-purchase E2E trace.
+- [x] Confirm every Energy Strands claim appears in an actual normalized SDK trajectory.
+- [x] Confirm the Car trace proves a user concern absent from the pack became a typed case extension and targeted run-plan change without changing the compiled pack hash.
+- [x] Confirm the pack-authoring AgentSkill and bounded tool trajectory is real, conformance is green, publication is human-only, and public authoring is disabled.
+- [x] Confirm live UI states map to real event IDs and replay/polling reach the same final snapshot.
+- [x] Confirm the premature conclusion is visibly withheld and later repaired.
+- [x] Confirm all right-pane screenshots are intentional and inspected.
+- [x] Confirm every visible hero activity opens the exact Runtime Inspector event and every exported bundle passes redaction tests.
+- [x] Confirm no consequential approval can originate from agent, model, WebMCP, fixture, or restore paths.
+- [x] Confirm README commands exactly match package scripts.
+- [x] Confirm release report SHA equals the final git SHA.
