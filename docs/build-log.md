@@ -5057,3 +5057,33 @@ Fresh evaluation session (new terminal/session, user asleep, full autonomy grant
 **Plan amendment:** Added Task 15 (post-redesign verification closeout and live UI hardening) to `docs/superpowers/plans/2026-08-26-pax-hackathon-build.md`, executing now via superpowers:subagent-driven-development.
 
 Final git SHA at time of this entry: (docs-only, not yet committed -- see next entry for the commit this lands in).
+
+## 2026-08-28 -- Task 15 complete: verification closeout, live UI hardening, and the fix/review loop it drove
+
+Full session summary (see `.superpowers/sdd/2026-08-26-pax-hackathon-build/progress.md` for the complete ledger with every ruling, review verdict, and adjudication). 16 commits, `11c17e4..e431b2c`.
+
+**Verification gap closed.** `pnpm verify` had not been run since `d1335cf`; three commits (including the full shadcn/ui component conversion, `b45d39e`) shipped unverified. Fresh `pnpm verify` at the session's start commit failed once on an unrelated tooling gap (`.superpowers/sdd/`'s scratch ledger wasn't prettier-ignored despite being git-ignored -- fixed, `e3dfb15`), then passed clean (10/10 stages). `pnpm verify:release` passed verify/mutation/build/docker; `test:submission` failed only on the two pre-existing, genuinely human-only gates (empty video URLs) -- nothing new.
+
+**Live UI investigation found 6 real defects** (two Playwright-driven passes against a real production build, both hero flows, both hero packs, 390x844 and 1440x1000):
+1. Sub-44px touch targets on Include/Exclude/Question/Save-option/Edit (car-purchase + home-energy-guardian, shared components) -- fixed, `994bfbd`/`370971c` (1 fix round: the first pass missed the actual "Save" submit button, fixing "Add" instead by name-mismatch).
+2. Decision-pack badge hash silently clipped (invisibly cropped, no ellipsis) at 390px -- fixed, `d7d7ef7`.
+3. "Latest command" breadcrumb grew unbounded (42 `<li>` for one Swarm run) -- fixed, `f294be2` (bounded to last 4, current phase always last, truncation indicator only when truncated).
+4. "Latest command" panel didn't rehydrate after reload despite Readiness/Evidence/Activity all correctly doing so -- fixed, `f46d979` (derive a fallback receipt from replayed events), plus a fix round wiring the Runtime Inspector button to the same derived receipt, `a32a5d1`.
+5. Runtime Inspector ships only Overview+Timeline, not the full 6-view spec -- **accepted, not fixed**: a disclosed, deliberate Tier-2 scope decision already stated in the component's own header comment, predating this session. Not this task's charter to build a new feature.
+6. A "Critical: the demo can never reach approval" report -- **ruled a false positive** after direct first-party reproduction: `determineCarPurchaseRound` gates strictly on the `dog_crate_fit` custom concern being confirmed before a second investigation click; the investigator's manual exploration diverged from that required order. Reproducing the correct sequence (round1 -> submit concern -> round2) reached "Ready for decision" and a real Approve button, matching the already-passing e2e assertions.
+
+**A final Opus whole-branch review** (`11c17e4..fc71714`) then found 4 more Important issues the per-task reviews couldn't see in aggregate: >=8 additional sub-44px controls (one -- the Runtime Inspector's own view selector -- named verbatim as a required 44px control in `docs/design-system.md`), touch-target regression tests sitting at the wrong layer (jsdom class-presence instead of real Playwright geometry) plus a structural blind spot in the horizontal-overflow check (`overflow-x:hidden`'s own backstop hides silent clipping from `assertNoHorizontalOverflow`), an unmet closeout (this entry), and one commit (`7ae7a1e`) that falsely checked a Final-self-review box in the same breath its own build-log entry disproved -- fixed immediately (`d88bb14`) independent of the fix wave. One consolidated fix wave (`40f09f4`, `3e93bca`, `a051597`, `5582e2a`) addressed all four plus three cheap Minors; a scoped re-review confirmed three of four cleanly and found one residual gap (the newly-fixed `ActivityTimeline` inspect-run buttons still lack a dedicated geometry assertion) -- adjudicated and parked as a disclosed, non-load-bearing coverage gap rather than spun into a third review cycle.
+
+**Baselines:** regenerated twice (40/48 after the first fix round, 16 more of home-energy-guardian's after the final fix wave -- both times root-caused via direct actual/expected/diff image comparison before regenerating, not blind `--update-snapshots`). `npx playwright test` run clean and deterministic multiple times across the session (32/32 each time it mattered).
+
+**One flake, confirmed and dismissed correctly:** the truly-final `pnpm verify` run hit one `ECONNRESET` on a raw `apiRequestContext.get()` call inside `reload-persistence.spec.ts` -- reproduced the identical narrowest command in isolation immediately afterward and it passed clean in 1.4s, consistent with this exact machine's already-documented environment-contention pattern (many concurrent unrelated sessions competing for resources tonight; load average peaked above 50 at one point). Classified as environment/flake per CLAUDE.md's taxonomy, not a regression, and not treated as one.
+
+**Commands and final counts:**
+- `pnpm verify` (final, HEAD `e431b2c`): 10/10 PASSED.
+- `pnpm --filter @pax/web test -- --run`: 496/496 passed, 28 files.
+- `npx playwright test` (final): 32/32 passed.
+- `pnpm verify:release`: verify/mutation/build/docker PASSED; `test:submission` 9 passed, 2 skipped (video durations), 1 failed (`release-metadata-public-urls`, both video URLs still empty -- unchanged, pre-existing, human-only).
+
+**Decisions made autonomously, full reasoning in the SDD ledger:** continued directly on `main` (this project's sole convention); did not create a new GitHub repository (one already exists, private, with the full history and an active Railway deployment -- the user's belief that none existed was incorrect); did not flip that repository to public (mirrors the prior session's own precedent -- a one-way, judge-visible action left for explicit confirmation); demo video recording and Devpost registration remain explicitly human-only.
+
+Final git SHA for this entry: `e431b2c` (working tree clean at write time; the completion-report.md/plan-checkbox commit that follows this entry is the true final commit of the session).
