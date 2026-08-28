@@ -13,21 +13,28 @@
     "environmentId": "9e0c95c9-2f33-431a-93c3-1a592a069d00",
     "volumeName": "pax-hackathon-volume",
     "volumeId": "477985d7-abfe-4216-8281-fa01b3e7b508",
-    "volumeMountPath": "/data"
+    "volumeMountPath": "/data",
+    "latestDeploymentId": "54fd4ac5-6094-4df1-9f8e-621ae0e00370",
+    "latestDeploymentGitSha": "b9b0b60a6dba66186befef46efaddf8bace3c285",
+    "latestDeploymentStatus": "SUCCESS"
   },
   "agentCore": {
     "deployed": false,
     "reason": "No AWS credentials were available in the build environment this session. The Railway deployment runs PAX_EXECUTION_TARGET=local; the real /ping and /invocations routes (apps/agent/src/routes/agentcore.ts) are live and verified against that local-target deployment, but no AgentCore runtime/CloudWatch correlation evidence exists yet."
   },
   "webmcpTestClients": [],
-  "screenshotInventory": [],
+  "screenshotInventory": [
+    "tests/e2e/car-purchase-journey.spec.ts-snapshots/ (24 PNGs: 6 named states x 4 viewport projects)",
+    "tests/e2e/home-energy-guardian-journey.spec.ts-snapshots/ (24 PNGs: 6 named states x 4 viewport projects)",
+    "States: initial-launcher, seeded-case, recommendation-ready, recommendation-stale, awaiting-approval, decided",
+    "Viewports: right-pane-390 (390x844), right-pane-430 (430x900), right-pane-480 (480x900), desktop-1440 (1440x1000)",
+    "Visually inspected as a set on 2026-08-28: legible and structurally sound at all viewports; desktop-1440 correctly renders the canonical right-pane content capped at 480px max-width per CLAUDE.md, not a stretched dashboard; no overlap/overflow observed. Visual polish (shadcn/ui redesign) remains queued -- see known limitations."
+  ],
   "_todo": [
     "Record the WebMCP demo video (docs/submissions/webmcp/demo-script.md) and set webmcpVideoUrl once uploaded (must be under 3:00).",
     "Record the Agents for Humans demo video (docs/submissions/agents-for-humans/demo-script.md) and set agentsForHumansVideoUrl once uploaded (must be 5:00 or under).",
     "Flip the GitHub repository to public before final submission (currently private) -- see README.md's Live demo section.",
     "List the exact WebMCP test clients/browser versions actually used in webmcpTestClients once tested (e.g. 'ChatGPT in-app browser, build X' or 'Chrome NNN with WebMCP origin trial flag Y').",
-    "If AWS credentials become available, deploy to Bedrock AgentCore and fill in agentCore.deployed=true plus its own endpoint/CloudWatch correlation details.",
-    "Add a screenshotInventory once release screenshots are captured and reviewed.",
-    "Re-run `pnpm verify` and `pnpm test:submission` at the exact commit being submitted so release-verification-sha matches."
+    "If AWS credentials become available, deploy to Bedrock AgentCore and fill in agentCore.deployed=true plus its own endpoint/CloudWatch correlation details."
   ]
 }
