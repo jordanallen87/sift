@@ -32,6 +32,8 @@
  * primitives, entity-detail wiring, or Strata19-specific types are copied.
  */
 import type { JsonValue, PublicActivityEvent } from '@pax/contracts';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { STATUS_TONE_META, getActivityLabel } from './activity-labels.js';
 
 export interface ActivityTimelineProps {
@@ -84,8 +86,8 @@ function ActivityItem({
       data-testid={`activity-item-${correlationId}`}
       data-event-id={event.eventId}
       data-debug-event-id={event.debugEventId ?? ''}
-      className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] border p-[var(--space-3)]"
-      style={{ borderColor: meta.border, backgroundColor: meta.bg }}
+      className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+      style={{ backgroundColor: meta.bg }}
     >
       <div className="flex flex-wrap items-center justify-between gap-[var(--space-2)]">
         <span
@@ -109,21 +111,22 @@ function ActivityItem({
         <time dateTime={event.timestamp}>{formatTimestamp(event.timestamp)}</time>
         <span className="font-[family-name:var(--font-mono)]">#{event.sequence}</span>
         {onInspectRun !== undefined && event.runId !== undefined ? (
-          <button
+          <Button
             type="button"
             data-testid={`activity-item-inspect-run-${event.eventId}`}
             onClick={() => onInspectRun(event.runId!)}
-            className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-[var(--space-2)] text-[length:var(--font-size-2xs)] text-[var(--color-ink-secondary)]"
+            variant="secondary"
+            size="xs"
           >
             Inspect run
-          </button>
+          </Button>
         ) : null}
       </div>
 
       {detailEntries.length > 0 ? (
         <dl
           data-testid="activity-item-details"
-          className="flex flex-col gap-[var(--space-0-5)] rounded-[var(--radius-sm)] bg-[var(--color-surface-sunken)] p-[var(--space-2)] font-[family-name:var(--font-mono)] text-[length:var(--font-size-2xs)] text-[var(--color-ink-secondary)]"
+          className="flex flex-col gap-[var(--space-0-5)] rounded-[var(--radius-sm)] bg-muted p-[var(--space-2)] font-[family-name:var(--font-mono)] text-[length:var(--font-size-2xs)] text-[var(--color-ink-secondary)]"
         >
           {detailEntries.map(([key, value]) => (
             <div key={key} className="flex gap-[var(--space-1)]">
@@ -149,18 +152,14 @@ export function ActivityTimeline({
     <section
       data-testid="activity-timeline"
       aria-labelledby="activity-timeline-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
       <h2 id="activity-timeline-heading">Activity</h2>
 
       {error ? (
-        <div
-          role="alert"
-          data-testid="activity-timeline-error"
-          className="rounded-[var(--radius-md)] border border-[var(--color-status-error-border)] bg-[var(--color-status-error-bg)] p-[var(--space-3)] text-[var(--color-status-error-ink)]"
-        >
-          {error}
-        </div>
+        <Alert role="alert" data-testid="activity-timeline-error" variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
       {ordered === null ? (
@@ -171,8 +170,8 @@ export function ActivityTimeline({
             aria-live="polite"
             className="flex flex-col gap-[var(--space-2)]"
           >
-            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-sunken)]" />
-            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-sunken)]" />
+            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-muted" />
+            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-muted" />
             <span className="visually-hidden">Loading activity…</span>
           </div>
         ) : (

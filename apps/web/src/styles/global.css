@@ -203,6 +203,21 @@
     font: inherit;
     color: inherit;
     letter-spacing: inherit;
+    /* The same flat-by-design reasoning as `button` below: every browser's
+       native UA stylesheet draws its own inset border on these elements,
+       which (once the `button` background/border bug above was fixed) was
+       the next thing standing between ui/input.tsx's/ui/textarea.tsx's flat
+       `bg-muted` treatment and an actually-flat rendered result -- found
+       live, via a real computed-style check, not assumed (docs/build-log.md's
+       dated entry). Deliberately NOT `appearance: none`: a few components
+       (e.g. DynamicAttributeField.tsx's enum/duration-unit fields) keep a
+       real native <select> on purpose, for Playwright/testing-library's
+       selectOption()/selectOptions() -- Radix's Select has no underlying
+       <select> element for those to target -- and `appearance: none` would
+       strip that native element's dropdown chevron with nothing to replace
+       it, a real regression this fix must not introduce. */
+    border: none;
+    background: none;
   }
 
   button {

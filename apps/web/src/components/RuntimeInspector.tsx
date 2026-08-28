@@ -31,6 +31,10 @@ import {
   useRuntimeInspector,
   type RuntimeInspectorEvent,
 } from '../hooks/use-runtime-inspector.js';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 
 export interface RuntimeInspectorApiConfig {
@@ -80,7 +84,7 @@ function CountsList({ testId, counts }: { testId: string; counts: Record<string,
       {entries.map(([key, count]) => (
         <div
           key={key}
-          className="flex items-center gap-[var(--space-1)] rounded-[var(--radius-pill)] bg-[var(--color-surface-sunken)] px-[var(--space-2)] py-[var(--space-0-5)]"
+          className="flex items-center gap-[var(--space-1)] rounded-[var(--radius-pill)] bg-muted px-[var(--space-2)] py-[var(--space-0-5)]"
         >
           <dt className="font-[family-name:var(--font-mono)] text-[var(--color-ink-secondary)]">
             {key}
@@ -98,8 +102,8 @@ function TimelineItem({ event }: { event: RuntimeInspectorEvent }) {
     <li
       data-testid={`runtime-inspector-timeline-item-${event.id}`}
       data-run-id={event.runId}
-      className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] border p-[var(--space-3)]"
-      style={{ borderColor: tone.border, backgroundColor: tone.bg }}
+      className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+      style={{ backgroundColor: tone.bg }}
     >
       <div className="flex flex-wrap items-center justify-between gap-[var(--space-2)]">
         <span
@@ -140,7 +144,7 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
     <section
       data-testid="runtime-inspector"
       aria-labelledby="runtime-inspector-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
       <div className="flex items-start justify-between gap-[var(--space-3)]">
         <div className="flex flex-col gap-[var(--space-1)]">
@@ -152,14 +156,16 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
             run: {runId}
           </span>
         </div>
-        <button
+        <Button
           type="button"
           data-testid="runtime-inspector-close"
           onClick={onClose}
-          className="min-h-[var(--size-touch-target-min)] shrink-0 rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)]"
+          variant="secondary"
+          size="sm"
+          className="shrink-0"
         >
           Return to case
-        </button>
+        </Button>
       </div>
 
       <div className="flex items-center gap-[var(--space-2)]">
@@ -168,48 +174,48 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
           aria-label="Runtime Inspector view"
           className="flex gap-[var(--space-2)]"
         >
-          <button
+          <Button
             type="button"
             role="tab"
             aria-selected={view === 'overview'}
             data-testid="runtime-inspector-tab-overview"
             onClick={() => setView('overview')}
-            className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)]"
+            variant="ghost"
+            size="sm"
             style={view === 'overview' ? { backgroundColor: 'var(--color-brand-tint)' } : undefined}
           >
             Overview
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             role="tab"
             aria-selected={view === 'timeline'}
             data-testid="runtime-inspector-tab-timeline"
             onClick={() => setView('timeline')}
-            className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)]"
+            variant="ghost"
+            size="sm"
             style={view === 'timeline' ? { backgroundColor: 'var(--color-brand-tint)' } : undefined}
           >
             Timeline
-          </button>
+          </Button>
         </div>
-        <button
+        <Button
           type="button"
           data-testid="runtime-inspector-refresh"
           onClick={refresh}
           aria-busy={loading}
-          className="min-h-[var(--size-touch-target-min)] ml-auto rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-[var(--space-3)] text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+          variant="ghost"
+          size="sm"
+          className="ml-auto"
         >
           {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
+        </Button>
       </div>
 
       {error ? (
-        <div
-          role="alert"
-          data-testid="runtime-inspector-error"
-          className="rounded-[var(--radius-md)] border border-[var(--color-status-error-border)] bg-[var(--color-status-error-bg)] p-[var(--space-3)] text-[var(--color-status-error-ink)]"
-        >
-          {error}
-        </div>
+        <Alert role="alert" data-testid="runtime-inspector-error" variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
       {overview === null ? (
@@ -220,7 +226,7 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
             aria-live="polite"
             className="flex flex-col gap-[var(--space-2)]"
           >
-            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-sunken)]" />
+            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-muted" />
             <span className="visually-hidden">Loading run…</span>
           </div>
         ) : !error ? (
@@ -237,16 +243,16 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
           className="flex flex-col gap-[var(--space-3)]"
         >
           <div className="flex flex-wrap gap-[var(--space-2)]">
-            <span
+            <Badge
               data-testid="runtime-inspector-status"
-              className="label-caps inline-flex items-center rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+              className="label-caps rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
               style={{
                 color: 'var(--color-status-active-ink)',
                 backgroundColor: 'var(--color-status-active-bg)',
               }}
             >
               {overview.status}
-            </span>
+            </Badge>
             <span
               data-testid="runtime-inspector-duration"
               className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
@@ -315,6 +321,7 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
               counts={overview.countsByCategory}
             />
           </div>
+          <Separator />
           <div className="flex flex-col gap-[var(--space-1)]">
             <h3 className="label-caps text-[var(--color-ink-secondary)]">By level</h3>
             <CountsList testId="runtime-inspector-level-counts" counts={overview.countsByLevel} />
@@ -332,7 +339,7 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
                 data-testid="runtime-inspector-filter-category"
                 value={category}
                 onChange={(event) => setCategory(event.target.value as RuntimeDebugCategory | '')}
-                className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-2)] text-[length:var(--font-size-sm)]"
+                className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] text-[length:var(--font-size-sm)]"
               >
                 <option value="">All</option>
                 {RUNTIME_DEBUG_CATEGORIES.map((entry) => (
@@ -348,7 +355,7 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
                 data-testid="runtime-inspector-filter-level"
                 value={level}
                 onChange={(event) => setLevel(event.target.value as RuntimeDebugLevel | '')}
-                className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-2)] text-[length:var(--font-size-sm)]"
+                className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] text-[length:var(--font-size-sm)]"
               >
                 <option value="">All</option>
                 {RUNTIME_DEBUG_LEVELS.map((entry) => (

@@ -86,11 +86,19 @@ export function OptionComparison({
     [applicableDefinitions, presentation],
   );
 
+  // Alternating row tint (instead of a `border-t` rule) for row legibility
+  // across every attribute group -- a running counter over the flattened
+  // row sequence, not per-group, so the stripe stays consistent across a
+  // group boundary. Declared here (not inside the JSX below) since it must
+  // mutate across the nested `groups.map`/`definitions.map` calls in render
+  // order.
+  let stripeIndex = 0;
+
   return (
     <section
       data-testid="option-comparison"
       aria-labelledby="option-comparison-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
       <h2 id="option-comparison-heading">Comparison</h2>
 
@@ -152,41 +160,49 @@ export function OptionComparison({
                     {group.label}
                   </th>
                 </tr>
-                {group.definitions.map((definition) => (
-                  <tr
-                    key={definition.id}
-                    data-testid={`option-comparison-row-${definition.id}`}
-                    className="border-t border-[var(--color-border-subtle)]"
-                  >
-                    <th
-                      scope="row"
-                      className="p-[var(--space-2)] text-[length:var(--font-size-sm)] font-normal text-[var(--color-ink-secondary)]"
+                {group.definitions.map((definition) => {
+                  // No border-t: alternating bg-muted tint carries the
+                  // row-legibility job instead (CLAUDE.md "no cell/row
+                  // borders ... use bg-muted/alternating subtle background
+                  // tint").
+                  const isStriped = stripeIndex % 2 === 1;
+                  stripeIndex += 1;
+                  return (
+                    <tr
+                      key={definition.id}
+                      data-testid={`option-comparison-row-${definition.id}`}
+                      className={isStriped ? 'bg-muted' : undefined}
                     >
-                      {definition.label}
-                    </th>
-                    {options.map((option) => {
-                      const record = option.attributes[definition.id];
-                      const display =
-                        record?.value !== undefined
-                          ? formatAttributeValue(record.value)
-                          : 'Unknown';
-                      return (
-                        <td
-                          key={option.id}
-                          data-testid={`option-comparison-cell-${definition.id}-${option.id}`}
-                          className="p-[var(--space-2)] text-[length:var(--font-size-sm)]"
-                          style={
-                            record?.value === undefined
-                              ? { color: 'var(--color-ink-muted)' }
-                              : undefined
-                          }
-                        >
-                          {display}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                      <th
+                        scope="row"
+                        className="p-[var(--space-2)] text-[length:var(--font-size-sm)] font-normal text-[var(--color-ink-secondary)]"
+                      >
+                        {definition.label}
+                      </th>
+                      {options.map((option) => {
+                        const record = option.attributes[definition.id];
+                        const display =
+                          record?.value !== undefined
+                            ? formatAttributeValue(record.value)
+                            : 'Unknown';
+                        return (
+                          <td
+                            key={option.id}
+                            data-testid={`option-comparison-cell-${definition.id}-${option.id}`}
+                            className="p-[var(--space-2)] text-[length:var(--font-size-sm)]"
+                            style={
+                              record?.value === undefined
+                                ? { color: 'var(--color-ink-muted)' }
+                                : undefined
+                            }
+                          >
+                            {display}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             ))}
           </table>

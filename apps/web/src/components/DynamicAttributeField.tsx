@@ -16,9 +16,19 @@
  * caller can tell "not filled in yet" apart from "filled in with an empty
  * string" -- pack-authoring.md's evidence-status model treats an absent
  * value as `unknown`, never a placeholder empty string.
+ *
+ * The `enum` and `duration` unit controls stay native `<select>` elements
+ * rather than the shadcn `Select*` primitives: Radix's `Select` has no
+ * underlying `<select>` element for `@testing-library/user-event`'s
+ * `selectOptions()` (used throughout `DynamicAttributeField.test.tsx`) to
+ * drive. They are hand-styled to the same flat `bg-muted`/`rounded-sm`
+ * recipe `ui/input.tsx` uses so they read as the same family of control.
  */
 import type { ChangeEvent } from 'react';
 import type { AttributeDefinition, AttributeValue, DurationUnit } from '@pax/contracts';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 export interface DynamicAttributeFieldProps {
   definition: AttributeDefinition;
@@ -31,14 +41,15 @@ export interface DynamicAttributeFieldProps {
 
 const DURATION_UNITS: readonly DurationUnit[] = ['minute', 'hour', 'day', 'month', 'year'];
 
+// See the file header for why enum/duration-unit stay native <select>
+// elements styled to match ui/input.tsx's own flat recipe.
+const selectClassName =
+  'min-h-[var(--size-touch-target-min)] h-9 w-full min-w-0 rounded-[var(--radius-sm)] border-0 bg-muted px-3 py-1 text-[length:var(--font-size-base)] outline-none transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60';
+
 function toNumberOrUndefined(raw: string): number | undefined {
   if (raw.trim().length === 0) return undefined;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function fieldClassName(): string {
-  return 'min-h-[var(--size-touch-target-min)] w-full rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[var(--space-2)] text-[length:var(--font-size-base)] disabled:cursor-not-allowed disabled:opacity-60';
 }
 
 export function DynamicAttributeField({
@@ -56,12 +67,12 @@ export function DynamicAttributeField({
       case 'string': {
         const current = value?.type === 'string' ? value.value : '';
         return (
-          <input
+          <Input
             id={fieldId}
             type="text"
             value={current}
             disabled={disabled}
-            className={fieldClassName()}
+            className="min-h-[var(--size-touch-target-min)] border-0"
             onChange={(event: ChangeEvent<HTMLInputElement>) => {
               const raw = event.target.value;
               onChange(raw.length === 0 ? undefined : { type: 'string', value: raw });
@@ -72,12 +83,12 @@ export function DynamicAttributeField({
       case 'text': {
         const current = value?.type === 'text' ? value.value : '';
         return (
-          <textarea
+          <Textarea
             id={fieldId}
             value={current}
             disabled={disabled}
             rows={3}
-            className={fieldClassName()}
+            className="min-h-[var(--size-touch-target-min)] border-0"
             onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
               const raw = event.target.value;
               onChange(raw.length === 0 ? undefined : { type: 'text', value: raw });
@@ -88,12 +99,12 @@ export function DynamicAttributeField({
       case 'number': {
         const current = value?.type === 'number' ? String(value.value) : '';
         return (
-          <input
+          <Input
             id={fieldId}
             type="number"
             value={current}
             disabled={disabled}
-            className={fieldClassName()}
+            className="min-h-[var(--size-touch-target-min)] border-0"
             onChange={(event: ChangeEvent<HTMLInputElement>) => {
               const parsed = toNumberOrUndefined(event.target.value);
               if (parsed === undefined) {
@@ -114,13 +125,13 @@ export function DynamicAttributeField({
         const currency = value?.type === 'money' ? value.currency : 'USD';
         return (
           <div className="flex gap-[var(--space-2)]">
-            <input
+            <Input
               id={fieldId}
               aria-label={`${definition.label} amount`}
               type="number"
               value={amount}
               disabled={disabled}
-              className={fieldClassName()}
+              className="min-h-[var(--size-touch-target-min)] border-0"
               onChange={(event: ChangeEvent<HTMLInputElement>) => {
                 const parsed = toNumberOrUndefined(event.target.value);
                 if (parsed === undefined) {
@@ -130,13 +141,13 @@ export function DynamicAttributeField({
                 onChange({ type: 'money', amount: parsed, currency: currency || 'USD' });
               }}
             />
-            <input
+            <Input
               aria-label={`${definition.label} currency`}
               type="text"
               maxLength={3}
               value={currency}
               disabled={disabled}
-              className={`${fieldClassName()} w-20 uppercase`}
+              className="min-h-[var(--size-touch-target-min)] w-20 border-0 uppercase"
               onChange={(event: ChangeEvent<HTMLInputElement>) => {
                 // Reflects exactly what was typed (uppercased), including a
                 // transiently empty or fewer-than-3-letter value while the
@@ -174,12 +185,12 @@ export function DynamicAttributeField({
       case 'date': {
         const current = value?.type === 'date' ? value.value : '';
         return (
-          <input
+          <Input
             id={fieldId}
             type="date"
             value={current}
             disabled={disabled}
-            className={fieldClassName()}
+            className="min-h-[var(--size-touch-target-min)] border-0"
             onChange={(event: ChangeEvent<HTMLInputElement>) => {
               const raw = event.target.value;
               onChange(raw.length === 0 ? undefined : { type: 'date', value: raw });
@@ -192,14 +203,14 @@ export function DynamicAttributeField({
         const unit = value?.type === 'duration' ? value.unit : 'day';
         return (
           <div className="flex gap-[var(--space-2)]">
-            <input
+            <Input
               id={fieldId}
               aria-label={`${definition.label} amount`}
               type="number"
               min={0}
               value={amount}
               disabled={disabled}
-              className={fieldClassName()}
+              className="min-h-[var(--size-touch-target-min)] border-0"
               onChange={(event: ChangeEvent<HTMLInputElement>) => {
                 const parsed = toNumberOrUndefined(event.target.value);
                 if (parsed === undefined) {
@@ -213,7 +224,7 @@ export function DynamicAttributeField({
               aria-label={`${definition.label} unit`}
               value={unit}
               disabled={disabled}
-              className={fieldClassName()}
+              className={selectClassName}
               onChange={(event: ChangeEvent<HTMLSelectElement>) => {
                 const nextUnit = event.target.value as DurationUnit;
                 if (value?.type === 'duration') {
@@ -238,7 +249,7 @@ export function DynamicAttributeField({
             id={fieldId}
             value={current}
             disabled={disabled}
-            className={fieldClassName()}
+            className={selectClassName}
             onChange={(event: ChangeEvent<HTMLSelectElement>) => {
               const raw = event.target.value;
               onChange(raw.length === 0 ? undefined : { type: 'enum', value: raw });
@@ -258,13 +269,13 @@ export function DynamicAttributeField({
         const maximum = value?.type === 'range' ? value.maximum : undefined;
         return (
           <div className="flex gap-[var(--space-2)]">
-            <input
+            <Input
               id={fieldId}
               aria-label={`${definition.label} minimum`}
               type="number"
               value={minimum ?? ''}
               disabled={disabled}
-              className={fieldClassName()}
+              className="min-h-[var(--size-touch-target-min)] border-0"
               onChange={(event: ChangeEvent<HTMLInputElement>) => {
                 const parsedMin = toNumberOrUndefined(event.target.value);
                 if (parsedMin === undefined && maximum === undefined) {
@@ -279,12 +290,12 @@ export function DynamicAttributeField({
                 });
               }}
             />
-            <input
+            <Input
               aria-label={`${definition.label} maximum`}
               type="number"
               value={maximum ?? ''}
               disabled={disabled}
-              className={fieldClassName()}
+              className="min-h-[var(--size-touch-target-min)] border-0"
               onChange={(event: ChangeEvent<HTMLInputElement>) => {
                 const parsedMax = toNumberOrUndefined(event.target.value);
                 if (minimum === undefined && parsedMax === undefined) {
@@ -305,13 +316,13 @@ export function DynamicAttributeField({
       case 'string_list': {
         const current = value?.type === 'string_list' ? value.values.join('\n') : '';
         return (
-          <textarea
+          <Textarea
             id={fieldId}
             value={current}
             disabled={disabled}
             rows={3}
             placeholder="One item per line"
-            className={fieldClassName()}
+            className="min-h-[var(--size-touch-target-min)] border-0"
             onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
               const values = event.target.value
                 .split('\n')
@@ -330,9 +341,9 @@ export function DynamicAttributeField({
       data-testid={`dynamic-attribute-field-${definition.id}`}
       className="flex flex-col gap-[var(--space-1)]"
     >
-      <label htmlFor={fieldId} className={labelClassName}>
+      <Label htmlFor={fieldId} className={labelClassName}>
         {definition.label}
-      </label>
+      </Label>
       {renderControl()}
     </div>
   );

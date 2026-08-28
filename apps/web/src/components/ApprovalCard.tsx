@@ -10,12 +10,16 @@
  * the envelope's single `primaryAction`; the card never invents a second
  * one, which is also how 'no self-approval' stays enforceable server-side
  * rather than being a UI convention" (docs/reuse-source-map.md) -- see
- * docs/reuse-attribution.md. Here, Approve is the single visually primary
- * action; Reject and Request revision remain available but secondary,
- * matching product.md's requirement for "explicit approve/revise/reject
- * controls" while keeping one clear default. The settled-state stamp
- * treatment is this task's build of docs/design-system.md's documented
- * "signature element" ("a human stamps the case; the agent never does").
+ * docs/reuse-attribution.md. Here, Approve and Reject both read as
+ * meaningful, weighted actions (`Button` `variant="default"` /
+ * `variant="destructive"`); Request revision remains available but visually
+ * secondary, matching product.md's requirement for "explicit
+ * approve/revise/reject controls" while keeping one clear default. The
+ * settled-state stamp is a solid tinted fill rather than a bordered
+ * signature element -- CLAUDE.md's flat-design mandate applies even to this
+ * "a human stamps the case; the agent never does" moment
+ * (docs/design-system.md); background-color contrast alone carries the
+ * weight a border used to.
  *
  * HUMAN-ONLY APPROVAL, ENFORCED STRUCTURALLY, NOT BY CONVENTION:
  * architecture.md "Security and authority": "`reviewProposal` rejects
@@ -34,6 +38,11 @@
  */
 import { useState } from 'react';
 import type { DecisionProposal, ReviewProposalDecision } from '@pax/contracts';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 
 export interface ApprovalCardReview {
@@ -92,18 +101,14 @@ export function ApprovalCard({
     <section
       data-testid="approval-card"
       aria-labelledby="approval-card-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
       <h2 id="approval-card-heading">Approval</h2>
 
       {error ? (
-        <div
-          role="alert"
-          data-testid="approval-card-error"
-          className="rounded-[var(--radius-md)] border border-[var(--color-status-error-border)] bg-[var(--color-status-error-bg)] p-[var(--space-3)] text-[var(--color-status-error-ink)]"
-        >
-          {error}
-        </div>
+        <Alert variant="destructive" data-testid="approval-card-error">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
       {proposal === null ? (
@@ -123,17 +128,13 @@ export function ApprovalCard({
               className="flex flex-col items-start gap-[var(--space-2)]"
             >
               {/* The "stamp" signature element (docs/design-system.md): a
-                  near-square, doubled-border, uppercase, slightly rotated
-                  badge -- a human stamps the case, the agent never does. */}
+                  human stamps the case, the agent never does. Flat by
+                  design -- a solid tinted fill, not a bordered badge, is
+                  the whole signal. */}
               <div
                 data-testid="approval-card-stamp"
                 className="label-caps inline-block -rotate-3 rounded-[var(--radius-xs)] px-[var(--space-3)] py-[var(--space-1-5)]"
-                style={{
-                  color: meta.ink,
-                  borderStyle: 'double',
-                  borderWidth: '6px',
-                  borderColor: meta.ink,
-                }}
+                style={{ color: meta.ink, backgroundColor: meta.bg }}
               >
                 {settledMeta.label}
               </div>
@@ -151,22 +152,19 @@ export function ApprovalCard({
       ) : (
         <div
           data-testid="approval-card-pending"
-          className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border p-[var(--space-3)]"
-          style={{
-            borderColor: STATUS_TONE_META.ready.border,
-            backgroundColor: STATUS_TONE_META.ready.bg,
-          }}
+          className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+          style={{ backgroundColor: STATUS_TONE_META.ready.bg }}
         >
-          <span
-            className="label-caps inline-flex w-fit items-center gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+          <Badge
+            className="label-caps w-fit gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
             style={{ color: STATUS_TONE_META.ready.ink, backgroundColor: 'var(--color-surface)' }}
           >
             Your approval needed
-          </span>
+          </Badge>
 
           {!revisionForm.open ? (
             <div className="flex flex-col gap-[var(--space-2)]">
-              <button
+              <Button
                 type="button"
                 data-testid="approval-card-approve"
                 aria-busy={reviewPending}
@@ -174,34 +172,45 @@ export function ApprovalCard({
                 onClick={() => {
                   submit('approve');
                 }}
-                className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-[var(--space-4)] font-[var(--font-weight-semibold)] text-[var(--color-ink-on-brand)] disabled:cursor-not-allowed disabled:opacity-60"
+                variant="default"
+                className="min-h-[var(--size-touch-target-min)]"
               >
                 {reviewPending ? 'Submitting…' : 'Approve'}
-              </button>
+              </Button>
 
               <div className="flex flex-wrap gap-[var(--space-2)]">
-                <button
+                <Button
                   type="button"
                   data-testid="approval-card-reject"
                   disabled={reviewPending}
                   onClick={() => {
                     submit('reject');
                   }}
-                  className="min-h-[var(--size-touch-target-min)] flex-1 rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
+                  variant="destructive"
+                  className="min-h-[var(--size-touch-target-min)] flex-1"
                 >
                   Reject
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   data-testid="approval-card-request-revision"
                   disabled={reviewPending}
                   onClick={() => {
                     setRevisionForm({ open: true, instructions: '' });
                   }}
-                  className="min-h-[var(--size-touch-target-min)] flex-1 rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
+                  variant="secondary"
+                  // The pending panel behind this button is itself a
+                  // tinted `ready` surface (STATUS_TONE_META.ready.bg) --
+                  // Button's default `secondary` fill
+                  // (--color-surface-sunken) sits only a hair lighter than
+                  // that tint and reads as no button at all. `bg-card`
+                  // (pure white) restores real contrast the same way the
+                  // "Your approval needed" badge above already pops off
+                  // this same backdrop.
+                  className="min-h-[var(--size-touch-target-min)] flex-1 bg-card text-card-foreground hover:bg-card/90"
                 >
                   Request revision
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
@@ -217,13 +226,13 @@ export function ApprovalCard({
                 setRevisionForm({ open: false, instructions: '' });
               }}
             >
-              <label
+              <Label
                 htmlFor="approval-card-revision-instructions"
                 className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
               >
                 What should Pax revise?
-              </label>
-              <textarea
+              </Label>
+              <Textarea
                 id="approval-card-revision-instructions"
                 data-testid="approval-card-revision-instructions-input"
                 value={revisionForm.instructions}
@@ -232,28 +241,32 @@ export function ApprovalCard({
                 }}
                 required
                 rows={3}
-                className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-[var(--space-2)] text-[length:var(--font-size-base)]"
+                className="min-h-[var(--size-touch-target-min)] border-0"
               />
               <div className="flex flex-wrap gap-[var(--space-2)]">
-                <button
+                <Button
                   type="submit"
                   data-testid="approval-card-revision-submit"
                   disabled={reviewPending || revisionForm.instructions.trim().length === 0}
-                  className="min-h-[var(--size-touch-target-min)] flex-1 rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-[var(--space-3)] text-[length:var(--font-size-sm)] font-[var(--font-weight-semibold)] text-[var(--color-ink-on-brand)] disabled:cursor-not-allowed disabled:opacity-60"
+                  variant="default"
+                  className="min-h-[var(--size-touch-target-min)] flex-1"
                 >
                   Submit revision request
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   data-testid="approval-card-revision-cancel"
                   disabled={reviewPending}
                   onClick={() => {
                     setRevisionForm({ open: false, instructions: '' });
                   }}
-                  className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
+                  variant="secondary"
+                  // Same contrast fix as "Request revision" above -- this
+                  // form is rendered inside the same tinted `ready` panel.
+                  className="min-h-[var(--size-touch-target-min)] bg-card text-card-foreground hover:bg-card/90"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </form>
           )}

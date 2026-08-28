@@ -128,7 +128,7 @@ export function CaseHeader({
           onClick={onResetDemo}
           variant="secondary"
           size="sm"
-          className="shrink-0"
+          className="min-h-[var(--size-touch-target-min)] shrink-0"
         >
           {resetPending ? 'Resetting…' : 'Reset demo'}
         </Button>

@@ -26,6 +26,7 @@
  * whereas a bare empty state means no attempt has happened yet.
  */
 import type { Recommendation, Source } from '@pax/contracts';
+import { Badge } from '@/components/ui/badge';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 
 export interface RecommendationWithheld {
@@ -69,7 +70,7 @@ export function RecommendationCard({
     <section
       data-testid="recommendation-card"
       aria-labelledby="recommendation-card-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
       <h2 id="recommendation-card-heading">Recommendation</h2>
 
@@ -81,18 +82,15 @@ export function RecommendationCard({
             aria-live="polite"
             className="flex flex-col gap-[var(--space-2)]"
           >
-            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-sunken)]" />
+            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-muted" />
             <span className="visually-hidden">Loading recommendation…</span>
           </div>
         ) : withheld ? (
           <div
             data-testid="recommendation-card-withheld"
             role="status"
-            className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] border p-[var(--space-3)]"
-            style={{
-              borderColor: STATUS_TONE_META.blocked.border,
-              backgroundColor: STATUS_TONE_META.blocked.bg,
-            }}
+            className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+            style={{ backgroundColor: STATUS_TONE_META.blocked.bg }}
           >
             <p className="label-caps" style={{ color: STATUS_TONE_META.blocked.ink }}>
               Draft withheld
@@ -119,9 +117,9 @@ export function RecommendationCard({
           {(() => {
             const statusMeta = RECOMMENDATION_STATUS_META[recommendation.status];
             return (
-              <span
+              <Badge
                 data-testid="recommendation-card-status"
-                className="label-caps inline-flex w-fit items-center gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+                className="label-caps w-fit gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
                 style={{
                   color: STATUS_TONE_META[statusMeta.tone].ink,
                   backgroundColor: STATUS_TONE_META[statusMeta.tone].bg,
@@ -129,7 +127,7 @@ export function RecommendationCard({
               >
                 <span aria-hidden="true">{STATUS_TONE_META[statusMeta.tone].icon}</span>
                 {statusMeta.label}
-              </span>
+              </Badge>
             );
           })()}
 
@@ -154,11 +152,8 @@ export function RecommendationCard({
           <div className="flex flex-col gap-[var(--space-2)]">
             <div
               data-testid="recommendation-card-facts"
-              className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] border p-[var(--space-2)]"
-              style={{
-                borderColor: STATUS_TONE_META.satisfied.border,
-                backgroundColor: STATUS_TONE_META.satisfied.bg,
-              }}
+              className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-2)]"
+              style={{ backgroundColor: STATUS_TONE_META.satisfied.bg }}
             >
               <h3 className="label-caps" style={{ color: STATUS_TONE_META.satisfied.ink }}>
                 Facts
@@ -183,11 +178,8 @@ export function RecommendationCard({
 
             <div
               data-testid="recommendation-card-hypotheses"
-              className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] border p-[var(--space-2)]"
-              style={{
-                borderColor: STATUS_TONE_META['accepted-uncertainty'].border,
-                backgroundColor: STATUS_TONE_META['accepted-uncertainty'].bg,
-              }}
+              className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-2)]"
+              style={{ backgroundColor: STATUS_TONE_META['accepted-uncertainty'].bg }}
             >
               <h3
                 className="label-caps"

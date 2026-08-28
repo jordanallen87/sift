@@ -12,6 +12,7 @@
  */
 import { EvidenceCard, type EvidenceItemData } from './EvidenceCard.js';
 import type { EvidenceDisposition } from '@pax/contracts';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export interface EvidenceListProps {
   /** `null` means no case is open yet (initial/empty). An empty array means a case exists but no evidence has been gathered yet -- a distinct, also-honest empty state. */
@@ -36,18 +37,19 @@ export function EvidenceList({
     <section
       data-testid="evidence-list"
       aria-labelledby="evidence-list-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      // No fill of its own -- a list-of-cards container, not a leaf region
+      // (DemoLauncher's identical pattern): each `EvidenceCard` beneath is
+      // its own bg-card island; the visual separation between this list and
+      // its sibling regions is the page's own bg-background gap, matching
+      // every other top-level region in App.tsx's workspace column.
+      className="flex flex-col gap-[var(--space-3)]"
     >
       <h2 id="evidence-list-heading">Evidence</h2>
 
       {error ? (
-        <div
-          role="alert"
-          data-testid="evidence-list-error"
-          className="rounded-[var(--radius-md)] border border-[var(--color-status-error-border)] bg-[var(--color-status-error-bg)] p-[var(--space-3)] text-[var(--color-status-error-ink)]"
-        >
-          {error}
-        </div>
+        <Alert role="alert" data-testid="evidence-list-error" variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
       {items === null ? (
@@ -58,8 +60,9 @@ export function EvidenceList({
             aria-live="polite"
             className="flex flex-col gap-[var(--space-2)]"
           >
-            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-sunken)]" />
-            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-[var(--color-surface-sunken)]" />
+            {/* bg-card, matching the actual EvidenceCard items these bars stand in for -- the same white-on-paper contrast, not bg-muted (nearly the same lightness as the page). */}
+            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-card" />
+            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-card" />
             <span className="visually-hidden">Loading evidence…</span>
           </div>
         ) : (

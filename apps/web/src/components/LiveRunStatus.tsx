@@ -18,6 +18,7 @@
  */
 import { getActivityLabel, STATUS_TONE_META } from './activity-labels.js';
 import type { PublicActivityEvent, PublicActivityPhase } from '@pax/contracts';
+import { Badge } from '@/components/ui/badge';
 
 export interface LiveRunStatusReceipt {
   commandId: string;
@@ -65,7 +66,12 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
       <section
         data-testid="live-run-status"
         aria-labelledby="live-run-status-heading"
-        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-3)]"
+        // bg-muted, not bg-card: App.tsx always nests this section inside
+        // the "Current focus" card (itself bg-card) -- a second bg-card fill
+        // here would be visually indistinguishable from its own parent now
+        // that both are flat/borderless, so this reaches for the same
+        // muted-fill-inside-a-card contrast mechanism ui/input.tsx uses.
+        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-muted p-[var(--space-3)]"
       >
         <h2 id="live-run-status-heading" className="label-caps text-[var(--color-ink-secondary)]">
           Latest command
@@ -102,20 +108,20 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
     <section
       data-testid="live-run-status"
       aria-labelledby="live-run-status-heading"
-      className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-3)]"
+      className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-3)]"
     >
       <h2 id="live-run-status-heading" className="label-caps text-[var(--color-ink-secondary)]">
         Latest command
       </h2>
 
-      <span
+      <Badge
         data-testid="live-run-status-phase"
-        className="label-caps inline-flex w-fit items-center gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+        className="label-caps gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
         style={{ color: tone.ink, backgroundColor: tone.bg }}
       >
         <span aria-hidden="true">{tone.icon}</span>
         {PHASE_LABEL[phase]}
-      </span>
+      </Badge>
 
       {latest ? (
         <p

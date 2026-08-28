@@ -16,6 +16,14 @@
  * `origin`/`confirmation`/`proposedBy`/`createdAt` -- those are assigned by
  * the command handler, exactly as webmcp.md documents for a user-originated
  * call ("records origin `user`").
+ *
+ * The value-type/evidence-expectation/comparison controls stay native
+ * `<select>` elements rather than the shadcn `Select*` primitives: Radix's
+ * `Select` renders a button-triggered floating listbox with no underlying
+ * `<select>` element, which `@testing-library/user-event`'s
+ * `selectOptions()` (used throughout `CustomConcernForm.test.tsx`) cannot
+ * drive. They are hand-styled to the same flat `bg-muted`/`rounded-sm`
+ * recipe `ui/input.tsx` uses so they read as the same family of control.
  */
 import { useState } from 'react';
 import {
@@ -27,6 +35,11 @@ import {
   type EvidenceExpectation,
 } from '@pax/contracts';
 import { usePaxCommands } from '../app/AppProviders.js';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export interface CustomConcernFormProps {
   caseId: string;
@@ -63,8 +76,11 @@ function blankForm(applicableKinds: string[]): FormState {
   };
 }
 
-const fieldClassName =
-  'min-h-[var(--size-touch-target-min)] w-full rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[var(--space-2)] text-[length:var(--font-size-base)] disabled:cursor-not-allowed disabled:opacity-60';
+// Same flat recipe as ui/input.tsx's own bg-muted/rounded-sm treatment,
+// applied to a native <select> -- see the file header for why this cannot
+// be the shadcn Select* primitives.
+const selectClassName =
+  'min-h-[var(--size-touch-target-min)] h-9 w-full min-w-0 rounded-[var(--radius-sm)] border-0 bg-muted px-3 py-1 text-[length:var(--font-size-base)] outline-none transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60';
 const labelClassName = 'text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]';
 
 export function CustomConcernForm({
@@ -125,7 +141,7 @@ export function CustomConcernForm({
     <section
       data-testid="custom-concern-form"
       aria-labelledby="custom-concern-form-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
       <div className="flex flex-col gap-[var(--space-1)]">
         <h2 id="custom-concern-form-heading">Add a concern this pack didn&apos;t anticipate</h2>
@@ -143,14 +159,14 @@ export function CustomConcernForm({
         }}
       >
         <div className="flex flex-col gap-[var(--space-1)]">
-          <label htmlFor="custom-concern-form-id" className={labelClassName}>
+          <Label htmlFor="custom-concern-form-id" className={labelClassName}>
             Concern id
-          </label>
+          </Label>
           <div className="flex items-center gap-[var(--space-1)]">
             <span className="font-[family-name:var(--font-mono)] text-[length:var(--font-size-sm)] text-[var(--color-ink-muted)]">
               custom.
             </span>
-            <input
+            <Input
               id="custom-concern-form-id"
               type="text"
               value={form.slug}
@@ -158,16 +174,16 @@ export function CustomConcernForm({
               onChange={(event) => {
                 setForm((prev) => ({ ...prev, slug: event.target.value }));
               }}
-              className={fieldClassName}
+              className="min-h-[var(--size-touch-target-min)] border-0"
             />
           </div>
         </div>
 
         <div className="flex flex-col gap-[var(--space-1)]">
-          <label htmlFor="custom-concern-form-label" className={labelClassName}>
+          <Label htmlFor="custom-concern-form-label" className={labelClassName}>
             Label
-          </label>
-          <input
+          </Label>
+          <Input
             id="custom-concern-form-label"
             type="text"
             value={form.label}
@@ -175,14 +191,14 @@ export function CustomConcernForm({
             onChange={(event) => {
               setForm((prev) => ({ ...prev, label: event.target.value }));
             }}
-            className={fieldClassName}
+            className="min-h-[var(--size-touch-target-min)] border-0"
           />
         </div>
 
         <div className="flex flex-col gap-[var(--space-1)]">
-          <label htmlFor="custom-concern-form-value-type" className={labelClassName}>
+          <Label htmlFor="custom-concern-form-value-type" className={labelClassName}>
             Value type
-          </label>
+          </Label>
           <select
             id="custom-concern-form-value-type"
             value={form.valueType}
@@ -190,7 +206,7 @@ export function CustomConcernForm({
             onChange={(event) => {
               setForm((prev) => ({ ...prev, valueType: event.target.value as AttributeValueType }));
             }}
-            className={fieldClassName}
+            className={selectClassName}
           >
             {ATTRIBUTE_VALUE_TYPES.map((type) => (
               <option key={type} value={type}>
@@ -201,10 +217,10 @@ export function CustomConcernForm({
         </div>
 
         <div className="flex flex-col gap-[var(--space-1)]">
-          <label htmlFor="custom-concern-form-unit" className={labelClassName}>
+          <Label htmlFor="custom-concern-form-unit" className={labelClassName}>
             Unit (optional)
-          </label>
-          <input
+          </Label>
+          <Input
             id="custom-concern-form-unit"
             type="text"
             value={form.unit}
@@ -212,15 +228,15 @@ export function CustomConcernForm({
             onChange={(event) => {
               setForm((prev) => ({ ...prev, unit: event.target.value }));
             }}
-            className={fieldClassName}
+            className="min-h-[var(--size-touch-target-min)] border-0"
           />
         </div>
 
         <div className="flex flex-col gap-[var(--space-1)]">
-          <label htmlFor="custom-concern-form-allowed-values" className={labelClassName}>
+          <Label htmlFor="custom-concern-form-allowed-values" className={labelClassName}>
             Allowed values (optional, comma-separated)
-          </label>
-          <input
+          </Label>
+          <Input
             id="custom-concern-form-allowed-values"
             type="text"
             value={form.allowedValues}
@@ -228,14 +244,14 @@ export function CustomConcernForm({
             onChange={(event) => {
               setForm((prev) => ({ ...prev, allowedValues: event.target.value }));
             }}
-            className={fieldClassName}
+            className="min-h-[var(--size-touch-target-min)] border-0"
           />
         </div>
 
         <div className="flex flex-col gap-[var(--space-1)]">
-          <label htmlFor="custom-concern-form-evidence-expectation" className={labelClassName}>
+          <Label htmlFor="custom-concern-form-evidence-expectation" className={labelClassName}>
             Evidence expectation
-          </label>
+          </Label>
           <select
             id="custom-concern-form-evidence-expectation"
             value={form.evidenceExpectation}
@@ -246,7 +262,7 @@ export function CustomConcernForm({
                 evidenceExpectation: event.target.value as EvidenceExpectation,
               }));
             }}
-            className={fieldClassName}
+            className={selectClassName}
           >
             {EVIDENCE_EXPECTATIONS.map((expectation) => (
               <option key={expectation} value={expectation}>
@@ -257,9 +273,9 @@ export function CustomConcernForm({
         </div>
 
         <div className="flex flex-col gap-[var(--space-1)]">
-          <label htmlFor="custom-concern-form-comparison" className={labelClassName}>
+          <Label htmlFor="custom-concern-form-comparison" className={labelClassName}>
             Comparison
-          </label>
+          </Label>
           <select
             id="custom-concern-form-comparison"
             value={form.comparison}
@@ -270,7 +286,7 @@ export function CustomConcernForm({
                 comparison: event.target.value as AttributeComparison,
               }));
             }}
-            className={fieldClassName}
+            className={selectClassName}
           >
             {ATTRIBUTE_COMPARISONS.map((comparison) => (
               <option key={comparison} value={comparison}>
@@ -281,10 +297,10 @@ export function CustomConcernForm({
         </div>
 
         <div className="flex flex-col gap-[var(--space-1)]">
-          <label htmlFor="custom-concern-form-reason" className={labelClassName}>
+          <Label htmlFor="custom-concern-form-reason" className={labelClassName}>
             Why this matters to you
-          </label>
-          <textarea
+          </Label>
+          <Textarea
             id="custom-concern-form-reason"
             value={form.reason}
             disabled={submitting}
@@ -292,27 +308,22 @@ export function CustomConcernForm({
             onChange={(event) => {
               setForm((prev) => ({ ...prev, reason: event.target.value }));
             }}
-            className={fieldClassName}
+            className="min-h-[var(--size-touch-target-min)] border-0"
           />
         </div>
 
         {error ? (
-          <div
-            role="alert"
-            data-testid="custom-concern-form-error"
-            className="rounded-[var(--radius-md)] border border-[var(--color-status-error-border)] bg-[var(--color-status-error-bg)] p-[var(--space-3)] text-[var(--color-status-error-ink)]"
-          >
-            {error}
-          </div>
+          <Alert variant="destructive" data-testid="custom-concern-form-error">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
 
         {success ? (
           <div
             role="status"
             data-testid="custom-concern-form-success"
-            className="rounded-[var(--radius-md)] border p-[var(--space-3)]"
+            className="rounded-[var(--radius-md)] p-[var(--space-3)]"
             style={{
-              borderColor: 'var(--color-status-satisfied-border)',
               backgroundColor: 'var(--color-status-satisfied-bg)',
               color: 'var(--color-status-satisfied-ink)',
             }}
@@ -321,15 +332,15 @@ export function CustomConcernForm({
           </div>
         ) : null}
 
-        <button
+        <Button
           type="submit"
           data-testid="custom-concern-form-submit"
           aria-busy={submitting}
           disabled={!canSubmit || submitting}
-          className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-[var(--space-3)] font-[var(--font-weight-semibold)] text-[var(--color-ink-on-brand)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-[var(--size-touch-target-min)]"
         >
           {submitting ? 'Adding…' : 'Add concern'}
-        </button>
+        </Button>
       </form>
     </section>
   );

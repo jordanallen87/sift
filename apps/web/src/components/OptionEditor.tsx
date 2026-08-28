@@ -15,6 +15,10 @@ import { useMemo, useState } from 'react';
 import type { AttributeDefinition, AttributeValue, EntityRecord } from '@pax/contracts';
 import { usePaxCommands } from '../app/AppProviders.js';
 import { DynamicAttributeField } from './DynamicAttributeField.js';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export interface OptionEditorProps {
   caseId: string;
@@ -106,21 +110,22 @@ export function OptionEditor({
     <section
       data-testid="option-editor"
       aria-labelledby="option-editor-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
       <div className="flex items-center justify-between gap-[var(--space-2)]">
         <h2 id="option-editor-heading" className="capitalize">
           {optionLabel} candidates
         </h2>
-        <button
+        <Button
           type="button"
           data-testid="option-editor-new"
+          variant="secondary"
+          size="sm"
           disabled={atCapacity}
           onClick={startNew}
-          className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           Add {optionLabel}
-        </button>
+        </Button>
       </div>
 
       {options.length === 0 ? (
@@ -136,21 +141,28 @@ export function OptionEditor({
             <li
               key={entity.id}
               data-testid={`option-editor-option-${entity.id}`}
-              className="flex items-center justify-between gap-[var(--space-2)] rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-[var(--space-2)] py-[var(--space-1)]"
+              // bg-muted: a recessed row inside this bg-card region (same
+              // mechanism as OptionComparison's zebra-striped rows).
+              className="flex items-center justify-between gap-[var(--space-2)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] py-[var(--space-1)]"
             >
               <span className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]">
                 {entity.label}
               </span>
-              <button
+              <Button
                 type="button"
                 data-testid={`option-editor-edit-${entity.id}`}
+                // ghost, not secondary: this row is already bg-muted, so the
+                // flat "secondary" fill (the same bg-muted value) would be
+                // invisible at rest -- ghost stays transparent until
+                // hover/focus, which still reads clearly against the row.
+                variant="ghost"
+                size="xs"
                 onClick={() => {
                   startEdit(entity);
                 }}
-                className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-[var(--space-2)] text-[length:var(--font-size-xs)]"
               >
                 Edit
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
@@ -176,13 +188,13 @@ export function OptionEditor({
         }}
       >
         <div className="flex flex-col gap-[var(--space-1)]">
-          <label
+          <Label
             htmlFor="option-editor-label"
             className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
           >
             Option label
-          </label>
-          <input
+          </Label>
+          <Input
             id="option-editor-label"
             type="text"
             value={form.label}
@@ -190,7 +202,10 @@ export function OptionEditor({
             onChange={(event) => {
               setForm((prev) => ({ ...prev, label: event.target.value }));
             }}
-            className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-[var(--space-2)] text-[length:var(--font-size-base)] disabled:cursor-not-allowed disabled:opacity-60"
+            // border-0: see EvidenceCard.tsx's identical comment -- a real
+            // native <input> user-agent border otherwise shows through
+            // unsuppressed.
+            className="border-0"
           />
         </div>
 
@@ -207,35 +222,31 @@ export function OptionEditor({
         ))}
 
         {error ? (
-          <div
-            role="alert"
-            data-testid="option-editor-error"
-            className="rounded-[var(--radius-md)] border border-[var(--color-status-error-border)] bg-[var(--color-status-error-bg)] p-[var(--space-3)] text-[var(--color-status-error-ink)]"
-          >
-            {error}
-          </div>
+          <Alert role="alert" data-testid="option-editor-error" variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
 
         <div className="flex gap-[var(--space-2)]">
-          <button
+          <Button
             type="submit"
             data-testid="option-editor-save"
             aria-busy={saving}
             disabled={saving || form.label.trim().length === 0}
-            className="min-h-[var(--size-touch-target-min)] flex-1 rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-[var(--space-3)] font-[var(--font-weight-semibold)] text-[var(--color-ink-on-brand)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex-1"
           >
             {saving ? 'Saving…' : form.optionId !== null ? 'Save changes' : `Save ${optionLabel}`}
-          </button>
+          </Button>
           {form.optionId !== null ? (
-            <button
+            <Button
               type="button"
               data-testid="option-editor-cancel"
+              variant="secondary"
               disabled={saving}
               onClick={startNew}
-              className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancel
-            </button>
+            </Button>
           ) : null}
         </div>
       </form>

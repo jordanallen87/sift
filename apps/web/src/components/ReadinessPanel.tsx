@@ -32,6 +32,7 @@
  */
 import type { ReactNode } from 'react';
 import type { ObligationState } from '@pax/contracts';
+import { Badge } from '@/components/ui/badge';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 
 /** Structural mirror of `packages/core/src/readiness.ts`'s `ReadinessResult` -- see the file header comment above for why this is not a direct import. */
@@ -92,13 +93,13 @@ function totalObligationCount(readiness: ReadinessPanelData): number {
 function StatusBadge({ tone, children }: { tone: StatusTone; children: ReactNode }) {
   const meta = STATUS_TONE_META[tone];
   return (
-    <span
-      className="label-caps inline-flex items-center gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+    <Badge
+      className="label-caps gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
       style={{ color: meta.ink, backgroundColor: meta.bg }}
     >
       <span aria-hidden="true">{meta.icon}</span>
       {children}
-    </span>
+    </Badge>
   );
 }
 
@@ -113,8 +114,8 @@ function BucketSection({
   return (
     <div
       data-testid={`readiness-panel-bucket-${bucket.testId}`}
-      className="flex flex-col gap-[var(--space-1-5)] rounded-[var(--radius-md)] border p-[var(--space-3)]"
-      style={{ borderColor: meta.border, backgroundColor: meta.bg }}
+      className="flex flex-col gap-[var(--space-1-5)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+      style={{ backgroundColor: meta.bg }}
     >
       <div className="flex items-center justify-between gap-[var(--space-2)]">
         <h3 className="text-[length:var(--font-size-sm)]" style={{ color: meta.ink }}>
@@ -160,7 +161,7 @@ export function ReadinessPanel({ readiness, loading = false }: ReadinessPanelPro
       <section
         data-testid="readiness-panel"
         aria-labelledby="readiness-panel-heading"
-        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
       >
         <h2 id="readiness-panel-heading">Readiness</h2>
         {loading ? (
@@ -170,8 +171,8 @@ export function ReadinessPanel({ readiness, loading = false }: ReadinessPanelPro
             aria-live="polite"
             className="flex flex-col gap-[var(--space-2)]"
           >
-            <div className="h-[var(--space-6)] animate-pulse rounded-[var(--radius-sm)] bg-[var(--color-surface-sunken)]" />
-            <div className="h-[var(--space-6)] animate-pulse rounded-[var(--radius-sm)] bg-[var(--color-surface-sunken)]" />
+            <div className="h-[var(--space-6)] animate-pulse rounded-[var(--radius-sm)] bg-muted" />
+            <div className="h-[var(--space-6)] animate-pulse rounded-[var(--radius-sm)] bg-muted" />
             <span className="visually-hidden">Loading readiness…</span>
           </div>
         ) : (
@@ -194,7 +195,7 @@ export function ReadinessPanel({ readiness, loading = false }: ReadinessPanelPro
     <section
       data-testid="readiness-panel"
       aria-labelledby="readiness-panel-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
       <div className="flex items-center justify-between gap-[var(--space-2)]">
         <h2 id="readiness-panel-heading">Readiness</h2>
@@ -211,9 +212,8 @@ export function ReadinessPanel({ readiness, loading = false }: ReadinessPanelPro
 
       <div
         data-testid="readiness-panel-status"
-        className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] border p-[var(--space-3)]"
+        className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-3)]"
         style={{
-          borderColor: STATUS_TONE_META[readiness.ready ? 'ready' : 'blocked'].border,
           backgroundColor: STATUS_TONE_META[readiness.ready ? 'ready' : 'blocked'].bg,
         }}
       >
@@ -241,9 +241,8 @@ export function ReadinessPanel({ readiness, loading = false }: ReadinessPanelPro
         <div
           data-testid="readiness-panel-blockers"
           role="alert"
-          className="flex flex-col gap-[var(--space-1-5)] rounded-[var(--radius-md)] border p-[var(--space-3)]"
+          className="flex flex-col gap-[var(--space-1-5)] rounded-[var(--radius-md)] p-[var(--space-3)]"
           style={{
-            borderColor: STATUS_TONE_META.blocked.border,
             backgroundColor: STATUS_TONE_META.blocked.bg,
           }}
         >

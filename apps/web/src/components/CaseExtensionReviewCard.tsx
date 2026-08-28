@@ -18,6 +18,11 @@
 import { useState } from 'react';
 import type { CaseExtension } from '@pax/contracts';
 import { usePaxCommands } from '../app/AppProviders.js';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export interface CaseExtensionReviewCardProps {
   caseId: string;
@@ -70,7 +75,7 @@ export function CaseExtensionReviewCard({
     <section
       data-testid="case-extension-review-card"
       aria-labelledby="case-extension-review-card-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
       <h2 id="case-extension-review-card-heading">Proposed concern</h2>
 
@@ -82,10 +87,10 @@ export function CaseExtensionReviewCard({
           No agent-proposed concern is pending review.
         </p>
       ) : extension.definition.confirmation !== 'pending' ? (
-        <div
+        <Badge
           data-testid="case-extension-review-card-settled"
           role="status"
-          className="label-caps inline-flex w-fit items-center rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+          className="label-caps w-fit rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
           style={{
             color:
               extension.definition.confirmation === 'confirmed'
@@ -98,15 +103,12 @@ export function CaseExtensionReviewCard({
           }}
         >
           {CONFIRMATION_LABEL[extension.definition.confirmation]}
-        </div>
+        </Badge>
       ) : (
         <div
           data-testid="case-extension-review-card-pending"
-          className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] border p-[var(--space-3)]"
-          style={{
-            borderColor: 'var(--color-status-ready-border)',
-            backgroundColor: 'var(--color-status-ready-bg)',
-          }}
+          className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+          style={{ backgroundColor: 'var(--color-status-ready-bg)' }}
         >
           <p
             data-testid="case-extension-review-card-label"
@@ -127,13 +129,13 @@ export function CaseExtensionReviewCard({
             Proposed by {extension.definition.proposedBy}
           </p>
 
-          <label
+          <Label
             htmlFor="case-extension-review-card-note-input"
             className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
           >
             Note (optional)
-          </label>
-          <textarea
+          </Label>
+          <Textarea
             id="case-extension-review-card-note-input"
             data-testid="case-extension-review-card-note"
             value={note}
@@ -142,21 +144,17 @@ export function CaseExtensionReviewCard({
             onChange={(event) => {
               setNote(event.target.value);
             }}
-            className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] p-[var(--space-2)] text-[length:var(--font-size-base)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="min-h-[var(--size-touch-target-min)] border-0"
           />
 
           {error ? (
-            <div
-              role="alert"
-              data-testid="case-extension-review-card-error"
-              className="rounded-[var(--radius-md)] border border-[var(--color-status-error-border)] bg-[var(--color-status-error-bg)] p-[var(--space-3)] text-[var(--color-status-error-ink)]"
-            >
-              {error}
-            </div>
+            <Alert variant="destructive" data-testid="case-extension-review-card-error">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           ) : null}
 
           <div className="flex flex-wrap gap-[var(--space-2)]">
-            <button
+            <Button
               type="button"
               data-testid="case-extension-review-card-confirm"
               aria-busy={pending}
@@ -164,21 +162,23 @@ export function CaseExtensionReviewCard({
               onClick={() => {
                 submit('confirm');
               }}
-              className="min-h-[var(--size-touch-target-min)] flex-1 rounded-[var(--radius-sm)] bg-[var(--color-brand)] px-[var(--space-3)] font-[var(--font-weight-semibold)] text-[var(--color-ink-on-brand)] disabled:cursor-not-allowed disabled:opacity-60"
+              variant="default"
+              className="min-h-[var(--size-touch-target-min)] flex-1"
             >
               {pending ? 'Submitting…' : 'Confirm'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               data-testid="case-extension-review-card-reject"
               disabled={pending}
               onClick={() => {
                 submit('reject');
               }}
-              className="min-h-[var(--size-touch-target-min)] flex-1 rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
+              variant="destructive"
+              className="min-h-[var(--size-touch-target-min)] flex-1"
             >
               Reject
-            </button>
+            </Button>
           </div>
         </div>
       )}

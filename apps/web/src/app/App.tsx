@@ -50,6 +50,7 @@ import {
   type EvidenceDisposition,
 } from '@pax/contracts';
 import { evaluateReadiness } from '@pax/core';
+import { Button } from '@/components/ui/button';
 import { PaxClientError } from '../api/pax-client.js';
 import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active-case-storage.js';
 import { DemoLauncher } from '../components/DemoLauncher.js';
@@ -396,7 +397,7 @@ export function App() {
           data-testid="case-workspace-restoring"
           aria-busy="true"
           aria-live="polite"
-          className="mx-auto flex min-h-screen w-full max-w-[480px] items-center justify-center p-[var(--space-4)] text-[var(--color-ink-secondary)]"
+          className="mx-auto flex min-h-screen w-full max-w-[480px] items-center justify-center bg-background p-[var(--space-4)] text-[var(--color-ink-secondary)]"
         >
           Restoring your case…
         </div>
@@ -464,7 +465,7 @@ export function App() {
           data-testid="case-workspace-loading"
           aria-busy="true"
           aria-live="polite"
-          className="flex items-center justify-center rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)] text-[var(--color-ink-secondary)]"
+          className="flex items-center justify-center rounded-[var(--radius-md)] bg-card p-[var(--space-4)] text-[var(--color-ink-secondary)]"
         >
           Loading case…
         </div>
@@ -485,7 +486,7 @@ export function App() {
           <section
             data-testid="current-focus"
             aria-labelledby="current-focus-heading"
-            className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-[var(--space-4)]"
+            className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
           >
             <h2 id="current-focus-heading">Current focus</h2>
             {activeFocus !== null ? (
@@ -525,7 +526,7 @@ export function App() {
               </p>
             )}
 
-            <button
+            <Button
               type="button"
               data-testid="request-investigation"
               aria-busy={runRequestPending}
@@ -533,10 +534,11 @@ export function App() {
               onClick={() => {
                 handleRequestInvestigation();
               }}
-              className="min-h-[var(--size-touch-target-min)] self-start rounded-[var(--radius-sm)] border border-[var(--color-border-strong)] px-[var(--space-3)] text-[length:var(--font-size-sm)] disabled:cursor-not-allowed disabled:opacity-60"
+              size="sm"
+              className="min-h-[var(--size-touch-target-min)] self-start"
             >
               {runRequestPending ? 'Requesting…' : 'Request investigation'}
-            </button>
+            </Button>
 
             {runRequestError ? (
               <p
@@ -552,14 +554,16 @@ export function App() {
             <LiveRunStatus receipt={lastRunReceipt} events={events} />
 
             {lastRunReceipt?.runId !== undefined ? (
-              <button
+              <Button
                 type="button"
                 data-testid="open-runtime-inspector"
                 onClick={() => setInspectingRunId(lastRunReceipt.runId!)}
-                className="min-h-[var(--size-touch-target-min)] self-start rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-[var(--space-3)] text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+                variant="secondary"
+                size="sm"
+                className="min-h-[var(--size-touch-target-min)] self-start"
               >
                 Inspect run
-              </button>
+              </Button>
             ) : null}
           </section>
 

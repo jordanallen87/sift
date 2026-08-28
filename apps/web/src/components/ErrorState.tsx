@@ -14,6 +14,9 @@
  * locally; this component is the shared, reusable version of that same
  * banner for `App.tsx`'s own workspace-level (e.g. live-stream) errors.
  */
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+
 export interface ErrorStateProps {
   message: string;
   onRetry?: () => void;
@@ -23,22 +26,24 @@ export interface ErrorStateProps {
 
 export function ErrorState({ message, onRetry, retryLabel = 'Try again' }: ErrorStateProps) {
   return (
-    <div
+    <Alert
       role="alert"
       data-testid="error-state"
-      className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] border border-[var(--color-status-error-border)] bg-[var(--color-status-error-bg)] p-[var(--space-3)] text-[var(--color-status-error-ink)]"
+      variant="destructive"
+      className="flex-col items-start gap-[var(--space-2)]"
     >
-      <p data-testid="error-state-message">{message}</p>
+      <AlertDescription data-testid="error-state-message">{message}</AlertDescription>
       {onRetry ? (
-        <button
+        <Button
           type="button"
           data-testid="error-state-retry"
           onClick={onRetry}
-          className="min-h-[var(--size-touch-target-min)] self-start rounded-[var(--radius-sm)] border border-[var(--color-status-error-border)] px-[var(--space-3)] text-[length:var(--font-size-sm)]"
+          variant="secondary"
+          size="sm"
         >
           {retryLabel}
-        </button>
+        </Button>
       ) : null}
-    </div>
+    </Alert>
   );
 }
