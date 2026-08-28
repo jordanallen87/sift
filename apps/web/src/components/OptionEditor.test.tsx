@@ -308,5 +308,17 @@ describe('OptionEditor', () => {
       // would blend in.
       expect(editButton).toHaveClass('bg-card');
     });
+
+    // `option-editor-save` (the "Save {optionLabel}"/"Save changes" submit
+    // button, the form's primary persist action) had no `size` prop at all,
+    // so it defaulted to `size="default"` -> `h-9` = 36px -- still under
+    // the 44px minimum, and distinct from `option-editor-new` ("Add
+    // {optionLabel}") above.
+    it('gives the Save option button the 44px touch-target override', () => {
+      renderEditor();
+      expect(screen.getByTestId('option-editor-save')).toHaveClass(
+        'min-h-[var(--size-touch-target-min)]',
+      );
+    });
   });
 });

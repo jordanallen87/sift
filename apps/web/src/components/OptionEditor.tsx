@@ -241,7 +241,7 @@ export function OptionEditor({
             data-testid="option-editor-save"
             aria-busy={saving}
             disabled={saving || form.label.trim().length === 0}
-            className="flex-1"
+            className="min-h-[var(--size-touch-target-min)] flex-1"
           >
             {saving ? 'Saving…' : form.optionId !== null ? 'Save changes' : `Save ${optionLabel}`}
           </Button>
