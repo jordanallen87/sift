@@ -39,6 +39,23 @@ export const CAR_PURCHASE_CRITERION_IDS = {
   ownershipCost: 'pref.ownership_cost',
 } as const;
 
+/** Real, stable Home Energy Guardian fixture response-option entity ids (`packages/scenarios/src/seeds.ts` `buildHomeEnergyResponseOptionEntities`; confirmed directly against the real running app). */
+export const HOME_ENERGY_RESPONSE_OPTION_IDS = [
+  'change-rate-plan',
+  'monitor-one-cycle',
+  'request-energy-audit',
+  'request-hvac-inspection',
+] as const;
+
+/** Real pack-declared criterion ids the proven scenario trajectory reweights (`apps/agent/src/runtime/home-energy-guardian-scenario.ts`). */
+export const HOME_ENERGY_CRITERION_IDS = {
+  cost: 'energy.cost',
+  conservation: 'energy.conservation',
+} as const;
+
+/** The one obligation id Home Energy Guardian's round-2 investigation targets (`home-energy-engine.ts`'s `determineHomeEnergyRound`; `home-energy-guardian-scenario.ts`'s own round-2 `requestInvestigation` call). See `postRunRequest` below for why this id must be supplied explicitly for round 2. */
+export const HOME_ENERGY_RESPONSE_OPTIONS_OBLIGATION_ID = 'energy.response_options';
+
 export interface LaunchedCase {
   caseId: string;
 }
@@ -65,6 +82,40 @@ export async function postCommand(
   commandId: string = randomCommandId(commandName),
 ): Promise<APIResponse> {
   return request.post(`/api/cases/${encodeURIComponent(caseId)}/commands/${commandName}`, {
+    data: { ...body, caseId },
+    headers: { 'Idempotency-Key': commandId },
+  });
+}
+
+/**
+ * Issues a real `POST /api/cases/:caseId/run` request -- the exact same
+ * route `PaxCommands.requestInvestigation`/the visible "Request
+ * investigation" button (`App.tsx`'s `handleRequestInvestigation`) both call
+ * -- with an explicit `obligationId`. This is the honest way to drive Home
+ * Energy Guardian's round-2 investigation from Playwright: confirmed
+ * directly against the real running app, once round 1 satisfies every one
+ * of the pack's obligations, there is no longer any *open* obligation left
+ * for the generic, no-argument "Request investigation" click to
+ * auto-select -- the real server returns a genuine `400`
+ * ("No obligation is available to investigate ... No open obligation
+ * remains to select") for that click at that point, and `ReadinessPanel` is
+ * purely read-only (no per-obligation "investigate" control anywhere in
+ * `apps/web/src/components` to target one explicitly). `obligationId` is a
+ * real, documented field of the same `RequestInvestigationInput` contract
+ * (`pax-client.ts`) the visible control already uses -- this exercises it
+ * directly rather than bypassing it, exactly like this file's other
+ * `post*` helpers (see this file's header comment). See
+ * `home-energy-guardian-journey.spec.ts`'s header comment for the full
+ * reasoning and `PaxPage.waitForRecommendationRationaleContains` below for
+ * why this path also cannot be awaited through `LiveRunStatus`.
+ */
+export async function postRunRequest(
+  request: APIRequestContext,
+  caseId: string,
+  body: Record<string, unknown>,
+  commandId: string = randomCommandId('run'),
+): Promise<APIResponse> {
+  return request.post(`/api/cases/${encodeURIComponent(caseId)}/run`, {
     data: { ...body, caseId },
     headers: { 'Idempotency-Key': commandId },
   });
@@ -97,6 +148,19 @@ export class PaxPage {
         (res) => res.url().includes('/api/cases/demo') && res.request().method() === 'POST',
       ),
       this.page.getByTestId('demo-launcher-car-purchase').click(),
+    ]);
+    const body = (await response.json()) as { caseId: string };
+    await expect(this.page.getByTestId('case-workspace')).toBeVisible();
+    return { caseId: body.caseId };
+  }
+
+  /** Clicks "Investigate my energy bill" and waits for the real `POST /api/cases/demo` response, returning its `caseId`. */
+  async launchHomeEnergyGuardian(): Promise<LaunchedCase> {
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (res) => res.url().includes('/api/cases/demo') && res.request().method() === 'POST',
+      ),
+      this.page.getByTestId('demo-launcher-home-energy-guardian').click(),
     ]);
     const body = (await response.json()) as { caseId: string };
     await expect(this.page.getByTestId('case-workspace')).toBeVisible();
@@ -163,6 +227,34 @@ export class PaxPage {
       {
         timeout: 30_000,
       },
+    );
+  }
+
+  /**
+   * Waits for `RecommendationCard` to report "Ready for review" again with a
+   * rationale containing `expectedSubstring` -- the honest, real,
+   * SSE-driven completion signal for an investigation issued through
+   * `postRunRequest` rather than a browser click. `waitForInvestigationCompleted`
+   * above cannot be used for that case: `LiveRunStatus`'s `runId`/`phase`
+   * come from `lastRunReceipt`, client-local React state only ever set
+   * inside `App.tsx`'s own `handleRequestInvestigation` from
+   * `commands.requestInvestigation(...).then(...)` -- a run requested
+   * directly over HTTP, outside that call, never populates it, so
+   * `live-run-status-run-id`/`-phase` simply never mention that run at all
+   * (confirmed directly against the real running app). The recommendation
+   * card, by contrast, is driven purely from the canonical `CaseState`
+   * snapshot streamed over SSE, exactly like the criteria-reweight step
+   * every journey spec already exercises -- this is genuinely the same "no
+   * click, no reload, reflected live" proof, not a weaker substitute for it.
+   */
+  async waitForRecommendationRationaleContains(expectedSubstring: string): Promise<void> {
+    await expect(this.page.getByTestId('recommendation-card-status')).toContainText(
+      'Ready for review',
+      { timeout: 30_000 },
+    );
+    await expect(this.page.getByTestId('recommendation-card-rationale')).toContainText(
+      expectedSubstring,
+      { timeout: 30_000 },
     );
   }
 

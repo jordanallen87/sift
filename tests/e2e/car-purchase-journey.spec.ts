@@ -29,6 +29,7 @@ import { expect, test } from '@playwright/test';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
 import { installConsoleGuard } from './helpers/console-guard.js';
 import { assertRightPaneIntegrity, disableAnimations } from './helpers/layout-assertions.js';
+import { dynamicScreenshotMasks, withVolatileRegionsHidden } from './helpers/visual-masks.js';
 import {
   CAR_PURCHASE_CANDIDATE_IDS,
   CAR_PURCHASE_CRITERION_IDS,
@@ -45,6 +46,28 @@ test.describe('Choose our next car -- full demo journey', () => {
     await disableAnimations(page);
     const guard = installConsoleGuard(page);
     const pax = new PaxPage(page);
+    const masks = dynamicScreenshotMasks(page);
+    // The real six-node Strands Graph genuinely fans four specialist nodes
+    // out in parallel (car-purchase-engine.ts's `drainGraphToActivity`) --
+    // confirmed by an actual failed double-run: three independent round-1
+    // investigations against the same fixture converged on an identical
+    // final case state and an identical *set* of 87 activity events every
+    // time, but the exact interleaved *order* those events streamed in
+    // genuinely differed run to run (real concurrent async completion
+    // timing, not a bug). `ActivityTimeline` renders in that arrival order,
+    // and `LiveRunStatus`'s phase breadcrumb (built by walking the same
+    // order) varies in *line count*, not just content -- so a plain `mask`
+    // is not enough (it paints over an existing box without changing that
+    // box's size); every screenshot captured after round 1 starts wraps the
+    // capture in `withVolatileRegionsHidden`, which removes both regions
+    // from layout for the duration of the capture and restores them
+    // immediately after (see `visual-masks.ts`'s header comment for the
+    // full causal chain -- including the actual failed-double-run evidence
+    // -- and why forcing artificial ordering onto a genuinely concurrent
+    // Strands Graph is not the correct fix here). Home Energy Guardian's
+    // Swarm, by contrast, hands off between specialists strictly
+    // sequentially (`HOME_ENERGY_SEQUENTIAL_SPECIALIST_IDS`), which is why
+    // `home-energy-guardian-journey.spec.ts` needs no equivalent treatment.
 
     // --- Launch ---
     await pax.open();
@@ -53,6 +76,9 @@ test.describe('Choose our next car -- full demo journey', () => {
       'demo-launcher-car-purchase',
       'demo-launcher-home-energy-guardian',
     ]);
+    await expect(page.getByTestId('demo-launcher')).toHaveScreenshot('initial-launcher.png', {
+      maxDiffPixelRatio: 0.01,
+    });
 
     const { caseId } = await pax.launchCarPurchase();
     expect(caseId).toMatch(/.+/);
@@ -66,6 +92,14 @@ test.describe('Choose our next car -- full demo journey', () => {
     for (const candidateId of CAR_PURCHASE_CANDIDATE_IDS) {
       await expect(page.getByTestId(`option-comparison-header-${candidateId}`)).toBeVisible();
     }
+
+    // Fully settled, non-racing checkpoint: case loaded, seeded, nothing
+    // investigated yet -- a stable baseline before any async run starts.
+    await expect(page.getByTestId('current-focus-empty')).toBeVisible();
+    await expect(page.getByTestId('case-workspace')).toHaveScreenshot('seeded-case.png', {
+      mask: masks,
+      maxDiffPixelRatio: 0.01,
+    });
 
     // --- Round 1: real live streaming investigation ---
     const round1 = await pax.requestInvestigation();
@@ -87,6 +121,12 @@ test.describe('Choose our next car -- full demo journey', () => {
       .count();
     expect(round1SourceCount).toBeGreaterThan(0);
 
+    await withVolatileRegionsHidden(page, () =>
+      expect(page.getByTestId('case-workspace')).toHaveScreenshot('recommendation-ready.png', {
+        maxDiffPixelRatio: 0.01,
+      }),
+    );
+
     // --- Criteria reweight: the real command route, no click, no reload ---
     const beforeReweight = await getCaseState(page.request, caseId);
     const reweightResponse = await postCommand(page.request, caseId, 'updateCriteria', {
@@ -104,6 +144,14 @@ test.describe('Choose our next car -- full demo journey', () => {
       timeout: 15_000,
     });
     await expect(page.getByTestId('recommendation-card-stale-note')).toBeVisible();
+
+    // A stable, fully-settled pause point (nothing is in flight -- round 2
+    // has not been requested yet).
+    await withVolatileRegionsHidden(page, () =>
+      expect(page.getByTestId('case-workspace')).toHaveScreenshot('recommendation-stale.png', {
+        maxDiffPixelRatio: 0.01,
+      }),
+    );
 
     // --- Custom concern: the visible-control equivalent of pax_define_case_attribute ---
     await pax.submitCustomConcern({
@@ -135,9 +183,19 @@ test.describe('Choose our next car -- full demo journey', () => {
     await expect(page.getByTestId('approval-card-pending')).toBeVisible();
     await assertNoSeriousAxeViolations(page, 'awaiting human approval');
     await assertRightPaneIntegrity(page, ['approval-card-approve', 'approval-card-reject']);
+    await withVolatileRegionsHidden(page, () =>
+      expect(page.getByTestId('case-workspace')).toHaveScreenshot('awaiting-approval.png', {
+        maxDiffPixelRatio: 0.01,
+      }),
+    );
 
     await pax.approveProposal();
     await expect(page.getByTestId('approval-card-settled')).toBeVisible();
+    await withVolatileRegionsHidden(page, () =>
+      expect(page.getByTestId('case-workspace')).toHaveScreenshot('decided.png', {
+        maxDiffPixelRatio: 0.01,
+      }),
+    );
 
     const finalState = await getCaseState(page.request, caseId);
     expect(finalState['status']).toBe('decided');
