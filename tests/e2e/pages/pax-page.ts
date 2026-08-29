@@ -276,6 +276,18 @@ export class PaxPage {
     await expect(details).toHaveJSProperty('open', true);
   }
 
+  /** The `openDisclosure` counterpart -- closes a `DisclosureSection` row if it is currently open. A no-op otherwise. */
+  async closeDisclosure(testId: string): Promise<void> {
+    const details = this.page.getByTestId(`disclosure-${testId}`);
+    const isOpen = await details
+      .evaluate((el) => (el as HTMLDetailsElement).open)
+      .catch(() => false);
+    if (isOpen) {
+      await this.page.getByTestId(`disclosure-${testId}-summary`).click();
+    }
+    await expect(details).toHaveJSProperty('open', false);
+  }
+
   /** Opens the "What Pax found" review Sheet -- a trigger row, not a native disclosure (`DisclosureSection`'s `onTriggerClick` mode), since it opens `FindingsSheet` rather than expanding inline. */
   async openFindingsSheet(): Promise<void> {
     await this.page.getByTestId('disclosure-findings-summary').click();
