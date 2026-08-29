@@ -175,103 +175,261 @@ describe('EvidenceCard', () => {
     expect(overflowRisks).toEqual([]);
   });
 
-  describe('disposition controls (webmcp.md pax_set_evidence_disposition, visible-control equivalent)', () => {
-    it('renders no disposition controls when onSetDisposition is not provided (backward compatible)', () => {
+  describe('disposition controls (webmcp.md pax_set_evidence_disposition, visible-control equivalent -- one segmented control, not three buttons)', () => {
+    it('renders no disposition control when onSetDisposition is not provided (backward compatible)', () => {
       render(<EvidenceCard item={buildItem()} />);
-      expect(screen.queryByTestId('evidence-card-set-included')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('evidence-card-disposition-control')).not.toBeInTheDocument();
     });
 
-    it('calls onSetDisposition with the chosen disposition and the entered reason', async () => {
+    it('renders the segmented control with the current disposition visually distinguished from the alternatives', () => {
+      render(
+        <EvidenceCard
+          item={buildItem({ evidenceLink: buildEvidenceLink({ disposition: 'included' }) })}
+          onSetDisposition={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByTestId('evidence-card-disposition-control')).toBeInTheDocument();
+      expect(screen.getByTestId('evidence-card-disposition-option-included')).toHaveAttribute(
+        'data-state',
+        'on',
+      );
+      expect(screen.getByTestId('evidence-card-disposition-option-excluded')).toHaveAttribute(
+        'data-state',
+        'off',
+      );
+      expect(screen.getByTestId('evidence-card-disposition-option-questioned')).toHaveAttribute(
+        'data-state',
+        'off',
+      );
+    });
+
+    it('does not prefill or auto-display a reason -- the reason input is absent until a different disposition is chosen', () => {
+      render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} />);
+      expect(screen.queryByLabelText(/reason/i)).not.toBeInTheDocument();
+      expect(screen.queryByText('Reviewed by user')).not.toBeInTheDocument();
+    });
+
+    it('selecting a different segment reveals an empty, required reason input and does not call onSetDisposition yet', async () => {
       const onSetDisposition = vi.fn();
       const user = userEvent.setup();
       render(<EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />);
 
-      await user.clear(screen.getByLabelText(/reason/i));
-      await user.type(screen.getByLabelText(/reason/i), 'Duplicate of another source');
-      await user.click(screen.getByTestId('evidence-card-set-excluded'));
+      await user.click(screen.getByTestId('evidence-card-disposition-option-excluded'));
 
-      expect(onSetDisposition).toHaveBeenCalledWith('excluded', 'Duplicate of another source');
+      const reasonInput = screen.getByTestId('evidence-card-reason-evidence-1');
+      expect(reasonInput).toBeInTheDocument();
+      expect(reasonInput).toHaveValue('');
+      expect(onSetDisposition).not.toHaveBeenCalled();
     });
 
-    it('calls onSetDisposition with "included" and falls back to a default reason when left blank', async () => {
+    it('re-selecting the already-current disposition is a no-op: no reason input, no callback', async () => {
       const onSetDisposition = vi.fn();
       const user = userEvent.setup();
       render(<EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />);
 
-      await user.clear(screen.getByLabelText(/reason/i));
-      await user.click(screen.getByTestId('evidence-card-set-included'));
+      await user.click(screen.getByTestId('evidence-card-disposition-option-included'));
 
-      expect(onSetDisposition).toHaveBeenCalledWith('included', 'Reviewed by user');
+      expect(screen.queryByTestId('evidence-card-reason-evidence-1')).not.toBeInTheDocument();
+      expect(onSetDisposition).not.toHaveBeenCalled();
+      expect(screen.getByTestId('evidence-card-disposition-option-included')).toHaveAttribute(
+        'data-state',
+        'on',
+      );
     });
 
-    it('calls onSetDisposition with "questioned"', async () => {
+    it('disables the confirm action while the reason is empty or whitespace-only', async () => {
+      const user = userEvent.setup();
+      render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} />);
+
+      await user.click(screen.getByTestId('evidence-card-disposition-option-excluded'));
+      const confirm = screen.getByTestId('evidence-card-reason-confirm-evidence-1');
+      const reasonInput = screen.getByTestId('evidence-card-reason-evidence-1');
+
+      expect(confirm).toBeDisabled();
+
+      await user.type(reasonInput, '   ');
+      expect(confirm).toBeDisabled();
+
+      await user.type(reasonInput, 'Duplicate of another source');
+      expect(confirm).not.toBeDisabled();
+    });
+
+    it('submitting with a non-empty reason calls onSetDisposition with the new disposition and that reason, then hides the reason panel', async () => {
       const onSetDisposition = vi.fn();
       const user = userEvent.setup();
       render(<EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />);
 
-      await user.click(screen.getByTestId('evidence-card-set-questioned'));
+      await user.click(screen.getByTestId('evidence-card-disposition-option-excluded'));
+      await user.type(
+        screen.getByTestId('evidence-card-reason-evidence-1'),
+        'Duplicate of another source',
+      );
+      await user.click(screen.getByTestId('evidence-card-reason-confirm-evidence-1'));
 
-      expect(onSetDisposition).toHaveBeenCalledWith('questioned', 'Reviewed by user');
+      expect(onSetDisposition).toHaveBeenCalledExactlyOnceWith(
+        'excluded',
+        'Duplicate of another source',
+      );
+      expect(screen.queryByTestId('evidence-card-reason-evidence-1')).not.toBeInTheDocument();
     });
 
-    it('calls onSetDisposition with "excluded" and falls back to a default reason when left blank', async () => {
+    it('cancelling a pending disposition change hides the reason input without calling onSetDisposition', async () => {
       const onSetDisposition = vi.fn();
       const user = userEvent.setup();
       render(<EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />);
 
-      await user.clear(screen.getByLabelText(/reason/i));
-      await user.click(screen.getByTestId('evidence-card-set-excluded'));
+      await user.click(screen.getByTestId('evidence-card-disposition-option-questioned'));
+      await user.type(screen.getByTestId('evidence-card-reason-evidence-1'), 'Not sure yet');
+      await user.click(screen.getByTestId('evidence-card-reason-cancel-evidence-1'));
 
-      expect(onSetDisposition).toHaveBeenCalledWith('excluded', 'Reviewed by user');
+      expect(screen.queryByTestId('evidence-card-reason-evidence-1')).not.toBeInTheDocument();
+      expect(onSetDisposition).not.toHaveBeenCalled();
     });
 
-    it('calls onSetDisposition with "questioned" and falls back to a default reason when left blank', async () => {
-      const onSetDisposition = vi.fn();
-      const user = userEvent.setup();
-      render(<EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />);
-
-      await user.clear(screen.getByLabelText(/reason/i));
-      await user.click(screen.getByTestId('evidence-card-set-questioned'));
-
-      expect(onSetDisposition).toHaveBeenCalledWith('questioned', 'Reviewed by user');
-    });
-
-    it('disables the controls while a disposition change is pending', () => {
+    it('disables the segmented control while a disposition change is pending', () => {
       render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} dispositionPending />);
-      expect(screen.getByTestId('evidence-card-set-included')).toBeDisabled();
-      expect(screen.getByTestId('evidence-card-set-excluded')).toBeDisabled();
-      expect(screen.getByTestId('evidence-card-set-questioned')).toBeDisabled();
+      expect(screen.getByTestId('evidence-card-disposition-option-included')).toBeDisabled();
+      expect(screen.getByTestId('evidence-card-disposition-option-excluded')).toBeDisabled();
+      expect(screen.getByTestId('evidence-card-disposition-option-questioned')).toBeDisabled();
     });
 
-    it('has no axe violations with disposition controls rendered', async () => {
+    it('disables the reason input and its confirm/cancel actions while a disposition change is pending', async () => {
+      const onSetDisposition = vi.fn();
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} />,
+      );
+
+      await user.click(screen.getByTestId('evidence-card-disposition-option-excluded'));
+      rerender(
+        <EvidenceCard item={buildItem()} onSetDisposition={onSetDisposition} dispositionPending />,
+      );
+
+      expect(screen.getByTestId('evidence-card-reason-evidence-1')).toBeDisabled();
+      expect(screen.getByTestId('evidence-card-reason-confirm-evidence-1')).toBeDisabled();
+      expect(screen.getByTestId('evidence-card-reason-cancel-evidence-1')).toBeDisabled();
+    });
+
+    it('has no axe violations with the segmented control rendered', async () => {
       const { container } = render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} />);
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('has no axe violations while the reason panel is open', async () => {
+      const user = userEvent.setup();
+      const { container } = render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} />);
+      await user.click(screen.getByTestId('evidence-card-disposition-option-excluded'));
       expect(await axe(container)).toHaveNoViolations();
     });
   });
 
   describe('touch targets (docs/specs/testing.md 44px minimum)', () => {
-    // These three buttons use the compact `size="sm"` variant (`h-8`, 32px
-    // tall -- apps/web/src/components/ui/button.tsx), which is below
-    // tokens.css's `--size-touch-target-min: 44px`. The established fix
-    // elsewhere in this codebase (e.g. CaseHeader.tsx's "Reset demo" button,
-    // ApprovalCard.tsx) is a `min-h-[var(--size-touch-target-min)]`
-    // className override that raises the rendered height to 44px while
-    // keeping the compact visual density -- asserted here via class
-    // presence, since jsdom (this test's environment) does not run a real
-    // layout engine and cannot measure an actual rendered pixel height (see
-    // ../test/narrow-viewport.tsx's identical caveat).
-    it('gives the Include, Exclude, and Question buttons the 44px touch-target override despite their compact "sm" size', () => {
+    // The segmented control's three options use the compact `size="sm"`
+    // toggle sizing, below tokens.css's `--size-touch-target-min: 44px`.
+    // The established fix elsewhere in this codebase (e.g. CaseHeader.tsx's
+    // "Reset demo" button, ApprovalCard.tsx) is a
+    // `min-h-[var(--size-touch-target-min)]` className override -- asserted
+    // here via class presence, since jsdom (this test's environment) does
+    // not run a real layout engine and cannot measure an actual rendered
+    // pixel height (see ../test/narrow-viewport.tsx's identical caveat).
+    it('gives each disposition option the 44px touch-target override', () => {
       render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} />);
 
-      expect(screen.getByTestId('evidence-card-set-included')).toHaveClass(
+      expect(screen.getByTestId('evidence-card-disposition-option-included')).toHaveClass(
         'min-h-[var(--size-touch-target-min)]',
       );
-      expect(screen.getByTestId('evidence-card-set-excluded')).toHaveClass(
+      expect(screen.getByTestId('evidence-card-disposition-option-excluded')).toHaveClass(
         'min-h-[var(--size-touch-target-min)]',
       );
-      expect(screen.getByTestId('evidence-card-set-questioned')).toHaveClass(
+      expect(screen.getByTestId('evidence-card-disposition-option-questioned')).toHaveClass(
         'min-h-[var(--size-touch-target-min)]',
       );
+    });
+
+    it('gives the collapsed summary expand control a 44px touch target', () => {
+      render(<EvidenceCard item={buildItem()} collapsed />);
+      expect(screen.getByTestId('evidence-card-expand-evidence-1')).toHaveClass(
+        'min-h-[var(--size-touch-target-min)]',
+      );
+    });
+  });
+
+  describe('collapsed presentation (session-local expand override)', () => {
+    it('renders only the compact summary when collapsed, hiding badges, claim, source, and controls', () => {
+      render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} collapsed />);
+
+      expect(screen.getByTestId('evidence-card-expand-evidence-1')).toBeInTheDocument();
+      expect(screen.queryByTestId('evidence-card-claim')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('evidence-card-source')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('evidence-card-disposition')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('evidence-card-disposition-control')).not.toBeInTheDocument();
+      expect(screen.queryByText('Verified')).not.toBeInTheDocument();
+    });
+
+    it('names the current disposition in the collapsed summary', () => {
+      render(
+        <EvidenceCard
+          item={buildItem({ evidenceLink: buildEvidenceLink({ disposition: 'excluded' }) })}
+          collapsed
+        />,
+      );
+      expect(screen.getByTestId('evidence-card-expand-evidence-1')).toHaveTextContent(
+        'Excluded from the case',
+      );
+    });
+
+    it('renders full content when collapsed is false, the default', () => {
+      render(<EvidenceCard item={buildItem()} />);
+      expect(screen.queryByTestId('evidence-card-expand-evidence-1')).not.toBeInTheDocument();
+      expect(screen.getByTestId('evidence-card-claim')).toBeInTheDocument();
+    });
+
+    it('clicking the collapsed summary reveals full card content', async () => {
+      const user = userEvent.setup();
+      render(<EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} collapsed />);
+
+      await user.click(screen.getByTestId('evidence-card-expand-evidence-1'));
+
+      expect(screen.queryByTestId('evidence-card-expand-evidence-1')).not.toBeInTheDocument();
+      expect(screen.getByTestId('evidence-card-claim')).toBeInTheDocument();
+      expect(screen.getByTestId('evidence-card-disposition-control')).toBeInTheDocument();
+    });
+
+    it('resets the expand override when collapsed toggles off and back on', async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<EvidenceCard item={buildItem()} collapsed />);
+
+      await user.click(screen.getByTestId('evidence-card-expand-evidence-1'));
+      expect(screen.getByTestId('evidence-card-claim')).toBeInTheDocument();
+
+      rerender(<EvidenceCard item={buildItem()} collapsed={false} />);
+      expect(screen.getByTestId('evidence-card-claim')).toBeInTheDocument();
+
+      rerender(<EvidenceCard item={buildItem()} collapsed />);
+      expect(screen.queryByTestId('evidence-card-claim')).not.toBeInTheDocument();
+      expect(screen.getByTestId('evidence-card-expand-evidence-1')).toBeInTheDocument();
+    });
+
+    it('has no axe violations when collapsed and read-only', async () => {
+      const { container } = render(<EvidenceCard item={buildItem()} collapsed />);
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('has no axe violations when collapsed with disposition controls available', async () => {
+      const { container } = render(
+        <EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} collapsed />,
+      );
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('has no axe violations after expanding a collapsed item', async () => {
+      const user = userEvent.setup();
+      const { container } = render(
+        <EvidenceCard item={buildItem()} onSetDisposition={vi.fn()} collapsed />,
+      );
+      await user.click(screen.getByTestId('evidence-card-expand-evidence-1'));
+      expect(await axe(container)).toHaveNoViolations();
     });
   });
 });

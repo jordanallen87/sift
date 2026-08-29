@@ -109,11 +109,17 @@ describe('EvidenceList', () => {
       />,
     );
 
-    await user.click(screen.getByTestId('evidence-card-set-excluded'));
-    expect(onSetDisposition).toHaveBeenCalledWith('evidence-9', 'excluded', expect.any(String));
+    await user.click(screen.getByTestId('evidence-card-disposition-option-excluded'));
+    await user.type(screen.getByTestId('evidence-card-reason-evidence-9'), 'No longer relevant.');
+    await user.click(screen.getByTestId('evidence-card-reason-confirm-evidence-9'));
+    expect(onSetDisposition).toHaveBeenCalledWith(
+      'evidence-9',
+      'excluded',
+      'No longer relevant.',
+    );
   });
 
-  it("marks only the pending item's controls as busy via dispositionPendingId", () => {
+  it("marks only the pending item's disposition control as busy via dispositionPendingId", () => {
     render(
       <EvidenceList
         items={[
@@ -128,12 +134,12 @@ describe('EvidenceList', () => {
     expect(
       screen
         .getByTestId('evidence-card-evidence-1')
-        .querySelector('[data-testid="evidence-card-set-included"]'),
+        .querySelector('[data-testid="evidence-card-disposition-option-included"]'),
     ).toBeDisabled();
     expect(
       screen
         .getByTestId('evidence-card-evidence-2')
-        .querySelector('[data-testid="evidence-card-set-included"]'),
+        .querySelector('[data-testid="evidence-card-disposition-option-included"]'),
     ).not.toBeDisabled();
   });
 });

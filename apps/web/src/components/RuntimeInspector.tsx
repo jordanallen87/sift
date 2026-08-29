@@ -7,10 +7,15 @@
  * (`apps/agent/src/routes/debug.ts`) via `useRuntimeInspector`, which reads
  * genuinely persisted `runtime_events` rows -- never mocked or fabricated.
  *
- * "The inspector replaces the case body within the right pane and includes
- * a clear return action; it is not a desktop-only modal"
- * (debugging-and-observability.md) -- `App.tsx` renders this in place of the
- * normal workspace body when open, and `onClose` is that return action.
+ * Renders as a bottom sheet (`components/ui/sheet.tsx`) that slides up over
+ * the workspace rather than swapping out the case body on its own page --
+ * "Inspect run" is a still-visible, non-navigating trigger (ADR 0002
+ * follow-up: "Inspect run becomes the same sheet mechanism, not a new
+ * page"). `App.tsx` still owns mount/unmount via `inspectingRunId !== null`;
+ * this component only owns the Sheet's `open` state once mounted, and
+ * Escape, an overlay click, and the sheet's own close control all route
+ * through `onOpenChange` to the same `onClose` prop that "Return to case"
+ * called before.
  * "The 390 px layout uses a single view selector and stacked event details.
  * It must not rely on a side-by-side trace tree and payload panel" -- the
  * Overview/Timeline toggle below is exactly that one selector, and every
@@ -35,6 +40,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 
 export interface RuntimeInspectorApiConfig {
@@ -44,7 +50,7 @@ export interface RuntimeInspectorApiConfig {
 
 export interface RuntimeInspectorProps {
   runId: string;
-  /** The clear return action back to the normal case workspace (debugging-and-observability.md). */
+  /** Called whenever the sheet closes -- Escape, an overlay click, or its own close control -- returning to the normal case workspace (debugging-and-observability.md). */
   onClose: () => void;
   apiConfig?: RuntimeInspectorApiConfig;
 }
@@ -141,255 +147,256 @@ export function RuntimeInspector({ runId, onClose, apiConfig = {} }: RuntimeInsp
   });
 
   return (
-    <section
-      data-testid="runtime-inspector"
-      aria-labelledby="runtime-inspector-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
+    <Sheet
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
     >
-      <div className="flex items-start justify-between gap-[var(--space-3)]">
-        <div className="flex flex-col gap-[var(--space-1)]">
-          <h2 id="runtime-inspector-heading">Runtime Inspector</h2>
+      <SheetContent data-testid="runtime-inspector">
+        <SheetHeader>
+          <SheetTitle>Run details</SheetTitle>
           <span
             data-testid="runtime-inspector-run-id"
             className="font-[family-name:var(--font-mono)] text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]"
           >
             run: {runId}
           </span>
-        </div>
-        <Button
-          type="button"
-          data-testid="runtime-inspector-close"
-          onClick={onClose}
-          variant="secondary"
-          size="sm"
-          className="min-h-[var(--size-touch-target-min)] shrink-0"
-        >
-          Return to case
-        </Button>
-      </div>
-
-      <div className="flex items-center gap-[var(--space-2)]">
-        <div
-          role="tablist"
-          aria-label="Runtime Inspector view"
-          className="flex gap-[var(--space-2)]"
-        >
-          <Button
-            type="button"
-            role="tab"
-            aria-selected={view === 'overview'}
-            data-testid="runtime-inspector-tab-overview"
-            onClick={() => setView('overview')}
-            variant="ghost"
-            size="sm"
-            className="min-h-[var(--size-touch-target-min)]"
-            style={view === 'overview' ? { backgroundColor: 'var(--color-brand-tint)' } : undefined}
-          >
-            Overview
-          </Button>
-          <Button
-            type="button"
-            role="tab"
-            aria-selected={view === 'timeline'}
-            data-testid="runtime-inspector-tab-timeline"
-            onClick={() => setView('timeline')}
-            variant="ghost"
-            size="sm"
-            className="min-h-[var(--size-touch-target-min)]"
-            style={view === 'timeline' ? { backgroundColor: 'var(--color-brand-tint)' } : undefined}
-          >
-            Timeline
-          </Button>
-        </div>
-        <Button
-          type="button"
-          data-testid="runtime-inspector-refresh"
-          onClick={refresh}
-          aria-busy={loading}
-          variant="ghost"
-          size="sm"
-          className="min-h-[var(--size-touch-target-min)] ml-auto"
-        >
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </Button>
-      </div>
-
-      {error ? (
-        <Alert role="alert" data-testid="runtime-inspector-error" variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      {overview === null ? (
-        loading ? (
-          <div
-            data-testid="runtime-inspector-loading"
-            aria-busy="true"
-            aria-live="polite"
-            className="flex flex-col gap-[var(--space-2)]"
-          >
-            <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-muted" />
-            <span className="visually-hidden">Loading run…</span>
-          </div>
-        ) : !error ? (
-          <p
-            data-testid="runtime-inspector-empty"
-            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-          >
-            No run data yet.
-          </p>
-        ) : null
-      ) : view === 'overview' ? (
-        <div
-          data-testid="runtime-inspector-overview"
-          className="flex flex-col gap-[var(--space-3)]"
-        >
-          <div className="flex flex-wrap gap-[var(--space-2)]">
-            <Badge
-              data-testid="runtime-inspector-status"
-              className="label-caps rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
-              style={{
-                color: 'var(--color-status-active-ink)',
-                backgroundColor: 'var(--color-status-active-bg)',
-              }}
+        </SheetHeader>
+        <SheetBody className="flex flex-col gap-[var(--space-3)]">
+          <div className="flex items-center gap-[var(--space-2)]">
+            <div
+              role="tablist"
+              aria-label="Runtime Inspector view"
+              className="flex gap-[var(--space-2)]"
             >
-              {overview.status}
-            </Badge>
-            <span
-              data-testid="runtime-inspector-duration"
-              className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+              <Button
+                type="button"
+                role="tab"
+                aria-selected={view === 'overview'}
+                data-testid="runtime-inspector-tab-overview"
+                onClick={() => setView('overview')}
+                variant="ghost"
+                size="sm"
+                className="min-h-[var(--size-touch-target-min)]"
+                style={
+                  view === 'overview' ? { backgroundColor: 'var(--color-brand-tint)' } : undefined
+                }
+              >
+                Overview
+              </Button>
+              <Button
+                type="button"
+                role="tab"
+                aria-selected={view === 'timeline'}
+                data-testid="runtime-inspector-tab-timeline"
+                onClick={() => setView('timeline')}
+                variant="ghost"
+                size="sm"
+                className="min-h-[var(--size-touch-target-min)]"
+                style={
+                  view === 'timeline' ? { backgroundColor: 'var(--color-brand-tint)' } : undefined
+                }
+              >
+                Timeline
+              </Button>
+            </div>
+            <Button
+              type="button"
+              data-testid="runtime-inspector-refresh"
+              onClick={refresh}
+              aria-busy={loading}
+              variant="ghost"
+              size="sm"
+              className="min-h-[var(--size-touch-target-min)] ml-auto"
             >
-              Duration: {formatDuration(overview.durationMs)}
-            </span>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </Button>
           </div>
 
-          <dl className="grid grid-cols-2 gap-[var(--space-2)] text-[length:var(--font-size-sm)]">
-            <div>
-              <dt className="text-[var(--color-ink-muted)]">Obligation</dt>
-              <dd data-testid="runtime-inspector-obligation-id">{overview.obligationId}</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--color-ink-muted)]">Case</dt>
-              <dd data-testid="runtime-inspector-case-id">{overview.caseId}</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--color-ink-muted)]">Trace</dt>
-              <dd
-                data-testid="runtime-inspector-trace-id"
-                className="font-[family-name:var(--font-mono)]"
-              >
-                {overview.traceId ?? '(none)'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[var(--color-ink-muted)]">Session</dt>
-              <dd
-                data-testid="runtime-inspector-session-id"
-                className="font-[family-name:var(--font-mono)]"
-              >
-                {overview.sessionId ?? '(none)'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[var(--color-ink-muted)]">Events</dt>
-              <dd data-testid="runtime-inspector-event-count">{overview.eventCount}</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--color-ink-muted)]">Errors</dt>
-              <dd data-testid="runtime-inspector-error-count">{overview.errorCount}</dd>
-            </div>
-          </dl>
-
-          {overview.tokenUsage !== null || overview.estimatedCostUsd !== null ? (
-            <div className="flex flex-wrap gap-[var(--space-3)] text-[length:var(--font-size-sm)]">
-              {overview.tokenUsage !== null ? (
-                <span data-testid="runtime-inspector-token-usage">
-                  Tokens: {overview.tokenUsage.input} in / {overview.tokenUsage.output} out /{' '}
-                  {overview.tokenUsage.total} total
-                </span>
-              ) : null}
-              {overview.estimatedCostUsd !== null ? (
-                <span data-testid="runtime-inspector-estimated-cost">
-                  Est. cost: ${overview.estimatedCostUsd.toFixed(4)}
-                </span>
-              ) : null}
-            </div>
+          {error ? (
+            <Alert role="alert" data-testid="runtime-inspector-error" variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           ) : null}
 
-          <div className="flex flex-col gap-[var(--space-1)]">
-            <h3 className="label-caps text-[var(--color-ink-secondary)]">By category</h3>
-            <CountsList
-              testId="runtime-inspector-category-counts"
-              counts={overview.countsByCategory}
-            />
-          </div>
-          <Separator />
-          <div className="flex flex-col gap-[var(--space-1)]">
-            <h3 className="label-caps text-[var(--color-ink-secondary)]">By level</h3>
-            <CountsList testId="runtime-inspector-level-counts" counts={overview.countsByLevel} />
-          </div>
-        </div>
-      ) : (
-        <div
-          data-testid="runtime-inspector-timeline"
-          className="flex flex-col gap-[var(--space-3)]"
-        >
-          <div className="flex flex-wrap gap-[var(--space-2)]">
-            <label className="flex flex-col gap-[var(--space-0-5)] text-[length:var(--font-size-xs)]">
-              Category
-              <select
-                data-testid="runtime-inspector-filter-category"
-                value={category}
-                onChange={(event) => setCategory(event.target.value as RuntimeDebugCategory | '')}
-                className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] text-[length:var(--font-size-sm)]"
+          {overview === null ? (
+            loading ? (
+              <div
+                data-testid="runtime-inspector-loading"
+                aria-busy="true"
+                aria-live="polite"
+                className="flex flex-col gap-[var(--space-2)]"
               >
-                <option value="">All</option>
-                {RUNTIME_DEBUG_CATEGORIES.map((entry) => (
-                  <option key={entry} value={entry}>
-                    {entry}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-[var(--space-0-5)] text-[length:var(--font-size-xs)]">
-              Level
-              <select
-                data-testid="runtime-inspector-filter-level"
-                value={level}
-                onChange={(event) => setLevel(event.target.value as RuntimeDebugLevel | '')}
-                className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] text-[length:var(--font-size-sm)]"
+                <div className="h-[var(--space-10)] animate-pulse rounded-[var(--radius-md)] bg-muted" />
+                <span className="visually-hidden">Loading run…</span>
+              </div>
+            ) : !error ? (
+              <p
+                data-testid="runtime-inspector-empty"
+                className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
               >
-                <option value="">All</option>
-                {RUNTIME_DEBUG_LEVELS.map((entry) => (
-                  <option key={entry} value={entry}>
-                    {entry}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+                No run data yet.
+              </p>
+            ) : null
+          ) : view === 'overview' ? (
+            <div
+              data-testid="runtime-inspector-overview"
+              className="flex flex-col gap-[var(--space-3)]"
+            >
+              <div className="flex flex-wrap gap-[var(--space-2)]">
+                <Badge
+                  data-testid="runtime-inspector-status"
+                  className="label-caps rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+                  style={{
+                    color: 'var(--color-status-active-ink)',
+                    backgroundColor: 'var(--color-status-active-bg)',
+                  }}
+                >
+                  {overview.status}
+                </Badge>
+                <span
+                  data-testid="runtime-inspector-duration"
+                  className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+                >
+                  Duration: {formatDuration(overview.durationMs)}
+                </span>
+              </div>
 
-          {events.length === 0 ? (
-            <p
-              data-testid="runtime-inspector-timeline-empty"
-              className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-            >
-              No events match this filter.
-            </p>
+              <dl className="grid grid-cols-2 gap-[var(--space-2)] text-[length:var(--font-size-sm)]">
+                <div>
+                  <dt className="text-[var(--color-ink-muted)]">Obligation</dt>
+                  <dd data-testid="runtime-inspector-obligation-id">{overview.obligationId}</dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--color-ink-muted)]">Case</dt>
+                  <dd data-testid="runtime-inspector-case-id">{overview.caseId}</dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--color-ink-muted)]">Trace</dt>
+                  <dd
+                    data-testid="runtime-inspector-trace-id"
+                    className="font-[family-name:var(--font-mono)]"
+                  >
+                    {overview.traceId ?? '(none)'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--color-ink-muted)]">Session</dt>
+                  <dd
+                    data-testid="runtime-inspector-session-id"
+                    className="font-[family-name:var(--font-mono)]"
+                  >
+                    {overview.sessionId ?? '(none)'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--color-ink-muted)]">Events</dt>
+                  <dd data-testid="runtime-inspector-event-count">{overview.eventCount}</dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--color-ink-muted)]">Errors</dt>
+                  <dd data-testid="runtime-inspector-error-count">{overview.errorCount}</dd>
+                </div>
+              </dl>
+
+              {overview.tokenUsage !== null || overview.estimatedCostUsd !== null ? (
+                <div className="flex flex-wrap gap-[var(--space-3)] text-[length:var(--font-size-sm)]">
+                  {overview.tokenUsage !== null ? (
+                    <span data-testid="runtime-inspector-token-usage">
+                      Tokens: {overview.tokenUsage.input} in / {overview.tokenUsage.output} out /{' '}
+                      {overview.tokenUsage.total} total
+                    </span>
+                  ) : null}
+                  {overview.estimatedCostUsd !== null ? (
+                    <span data-testid="runtime-inspector-estimated-cost">
+                      Est. cost: ${overview.estimatedCostUsd.toFixed(4)}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="flex flex-col gap-[var(--space-1)]">
+                <h3 className="label-caps text-[var(--color-ink-secondary)]">By category</h3>
+                <CountsList
+                  testId="runtime-inspector-category-counts"
+                  counts={overview.countsByCategory}
+                />
+              </div>
+              <Separator />
+              <div className="flex flex-col gap-[var(--space-1)]">
+                <h3 className="label-caps text-[var(--color-ink-secondary)]">By level</h3>
+                <CountsList
+                  testId="runtime-inspector-level-counts"
+                  counts={overview.countsByLevel}
+                />
+              </div>
+            </div>
           ) : (
-            <ol
-              data-testid="runtime-inspector-timeline-list"
-              className="flex flex-col gap-[var(--space-2)]"
+            <div
+              data-testid="runtime-inspector-timeline"
+              className="flex flex-col gap-[var(--space-3)]"
             >
-              {[...events]
-                .sort((a, b) => a.sequence - b.sequence)
-                .map((event) => (
-                  <TimelineItem key={event.id} event={event} />
-                ))}
-            </ol>
+              <div className="flex flex-wrap gap-[var(--space-2)]">
+                <label className="flex flex-col gap-[var(--space-0-5)] text-[length:var(--font-size-xs)]">
+                  Category
+                  <select
+                    data-testid="runtime-inspector-filter-category"
+                    value={category}
+                    onChange={(event) =>
+                      setCategory(event.target.value as RuntimeDebugCategory | '')
+                    }
+                    className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] text-[length:var(--font-size-sm)]"
+                  >
+                    <option value="">All</option>
+                    {RUNTIME_DEBUG_CATEGORIES.map((entry) => (
+                      <option key={entry} value={entry}>
+                        {entry}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-[var(--space-0-5)] text-[length:var(--font-size-xs)]">
+                  Level
+                  <select
+                    data-testid="runtime-inspector-filter-level"
+                    value={level}
+                    onChange={(event) => setLevel(event.target.value as RuntimeDebugLevel | '')}
+                    className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] text-[length:var(--font-size-sm)]"
+                  >
+                    <option value="">All</option>
+                    {RUNTIME_DEBUG_LEVELS.map((entry) => (
+                      <option key={entry} value={entry}>
+                        {entry}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              {events.length === 0 ? (
+                <p
+                  data-testid="runtime-inspector-timeline-empty"
+                  className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+                >
+                  No events match this filter.
+                </p>
+              ) : (
+                <ol
+                  data-testid="runtime-inspector-timeline-list"
+                  className="flex flex-col gap-[var(--space-2)]"
+                >
+                  {[...events]
+                    .sort((a, b) => a.sequence - b.sequence)
+                    .map((event) => (
+                      <TimelineItem key={event.id} event={event} />
+                    ))}
+                </ol>
+              )}
+            </div>
           )}
-        </div>
-      )}
-    </section>
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }

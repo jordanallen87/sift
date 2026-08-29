@@ -19,7 +19,8 @@
  * `commands.setEvidenceDisposition` on the shared `PaxCommands` instance;
  * this component only reports the human's choice and typed reason.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { EVIDENCE_DISPOSITIONS } from '@pax/contracts';
 import type { Claim, EvidenceDisposition, EvidenceLink, Source } from '@pax/contracts';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 export interface EvidenceItemData {
   evidenceLink: EvidenceLink;
@@ -52,6 +54,14 @@ export interface EvidenceCardProps {
   onSetDisposition?: (disposition: EvidenceDisposition, reason: string) => void;
   /** True while a disposition change for this item is in flight; disables the controls. */
   dispositionPending?: boolean;
+  /**
+   * Render only a dimmed one-line summary instead of full card content. A
+   * sibling findings-review sheet (built in parallel) owns deciding *when*
+   * an item counts as reviewed and passes this in; this component only
+   * renders the collapsed/expanded presentation and the local override that
+   * lets a person tap back into a collapsed item.
+   */
+  collapsed?: boolean;
 }
 
 const VERDICT_LABEL: Record<EvidenceLink['verdict'], { label: string; tone: StatusTone }> = {
@@ -66,6 +76,20 @@ const DISPOSITION_LABEL: Record<EvidenceLink['disposition'], string> = {
   included: 'Included in the case',
   excluded: 'Excluded from the case',
   questioned: 'Questioned',
+};
+
+/** Short verb-form labels for the segmented control's three options, distinct from `DISPOSITION_LABEL`'s longer badge/summary phrasing. */
+const DISPOSITION_ACTION_LABEL: Record<EvidenceLink['disposition'], string> = {
+  included: 'Include',
+  excluded: 'Exclude',
+  questioned: 'Question',
+};
+
+/** Segment color per disposition (mockup direction: "green-tinted for included, neutral/grey for excluded, amber for questioned"), reusing the app's one status-tone vocabulary rather than inventing new colors. */
+const DISPOSITION_TONE: Record<EvidenceLink['disposition'], StatusTone> = {
+  included: 'satisfied',
+  excluded: 'neutral',
+  questioned: 'accepted-uncertainty',
 };
 
 const STANCE_LABEL: Record<Claim['stance'], string> = {
@@ -91,11 +115,74 @@ export function EvidenceCard({
   item,
   onSetDisposition,
   dispositionPending = false,
+  collapsed = false,
 }: EvidenceCardProps) {
   const { evidenceLink, claim, source, conflictingEvidenceIds = [] } = item;
   const verdictMeta = VERDICT_LABEL[evidenceLink.verdict];
   const hasConflict = conflictingEvidenceIds.length > 0;
-  const [reason, setReason] = useState('Reviewed by user');
+  // A change is only "pending confirmation" once the human taps a segment
+  // that differs from the current disposition -- `null` means the reason
+  // panel stays hidden and the segmented control just reflects the real
+  // (core-owned) state.
+  const [pendingDisposition, setPendingDisposition] = useState<EvidenceDisposition | null>(null);
+  const [reason, setReason] = useState('');
+  // "I've been asked to expand despite being told collapsed" -- session-local
+  // only, never reported upward. Re-derived from `collapsed` below so a
+  // fresh collapse instruction always starts collapsed again.
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!collapsed) {
+      setExpanded(false);
+    }
+  }, [collapsed]);
+
+  function selectDisposition(value: string) {
+    // Radix reports "" when the already-active radio is re-clicked
+    // (deactivation); both that and re-selecting the current value are a
+    // no-op here, matching the mockup's "tap another option to override".
+    if (!value || value === evidenceLink.disposition) {
+      return;
+    }
+    setPendingDisposition(value as EvidenceDisposition);
+    setReason('');
+  }
+
+  function confirmPendingDisposition() {
+    const trimmed = reason.trim();
+    if (!onSetDisposition || !pendingDisposition || trimmed.length === 0) {
+      return;
+    }
+    onSetDisposition(pendingDisposition, trimmed);
+    setPendingDisposition(null);
+    setReason('');
+  }
+
+  function cancelPendingDisposition() {
+    setPendingDisposition(null);
+    setReason('');
+  }
+
+  if (collapsed && !expanded) {
+    return (
+      <article
+        data-testid={`evidence-card-${evidenceLink.id}`}
+        className="rounded-[var(--radius-md)] bg-card p-[var(--space-3)] opacity-60"
+      >
+        <button
+          type="button"
+          data-testid={`evidence-card-expand-${evidenceLink.id}`}
+          onClick={() => {
+            setExpanded(true);
+          }}
+          className="flex min-h-[var(--size-touch-target-min)] w-full items-center gap-[var(--space-2)] text-left text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+        >
+          <span aria-hidden="true">{STATUS_TONE_META.satisfied.icon}</span>
+          {`Reviewed — kept as ${DISPOSITION_LABEL[evidenceLink.disposition]}`}
+        </button>
+      </article>
+    );
+  }
 
   return (
     <article
@@ -190,69 +277,91 @@ export function EvidenceCard({
       {onSetDisposition ? (
         <div className="flex flex-col gap-[var(--space-1-5)] pt-[var(--space-2)]">
           <Separator />
-          <Label
-            htmlFor={`evidence-card-reason-${evidenceLink.id}`}
-            className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]"
-          >
-            Reason
-          </Label>
-          <Input
-            id={`evidence-card-reason-${evidenceLink.id}`}
-            type="text"
-            value={reason}
+          <ToggleGroup
+            type="single"
+            value={evidenceLink.disposition}
+            onValueChange={selectDisposition}
             disabled={dispositionPending}
-            onChange={(event) => {
-              setReason(event.target.value);
-            }}
-            // border-0: `ui/input.tsx`'s own class list has no border-width
-            // reset, so a real, visible native <input> user-agent border
-            // (Chromium's default `2px inset` text-field chrome) otherwise
-            // shows through unsuppressed -- global.css's reset only zeroes
-            // `border` on `button`, not `input`. Overridden locally rather
-            // than editing the shared primitive (out of this task's scope).
-            className="border-0"
-          />
-          <div className="flex flex-wrap gap-[var(--space-1-5)]">
-            <Button
-              type="button"
-              data-testid="evidence-card-set-included"
-              variant="secondary"
-              size="sm"
-              className="min-h-[var(--size-touch-target-min)]"
-              disabled={dispositionPending}
-              onClick={() => {
-                onSetDisposition('included', reason.trim() || 'Reviewed by user');
-              }}
-            >
-              Include
-            </Button>
-            <Button
-              type="button"
-              data-testid="evidence-card-set-excluded"
-              variant="secondary"
-              size="sm"
-              className="min-h-[var(--size-touch-target-min)]"
-              disabled={dispositionPending}
-              onClick={() => {
-                onSetDisposition('excluded', reason.trim() || 'Reviewed by user');
-              }}
-            >
-              Exclude
-            </Button>
-            <Button
-              type="button"
-              data-testid="evidence-card-set-questioned"
-              variant="secondary"
-              size="sm"
-              className="min-h-[var(--size-touch-target-min)]"
-              disabled={dispositionPending}
-              onClick={() => {
-                onSetDisposition('questioned', reason.trim() || 'Reviewed by user');
-              }}
-            >
-              Question
-            </Button>
-          </div>
+            data-testid="evidence-card-disposition-control"
+            aria-label="Set this item's disposition"
+            className="w-full"
+          >
+            {EVIDENCE_DISPOSITIONS.map((option) => {
+              const isCurrent = option === evidenceLink.disposition;
+              const meta = STATUS_TONE_META[DISPOSITION_TONE[option]];
+              return (
+                <ToggleGroupItem
+                  key={option}
+                  value={option}
+                  data-testid={`evidence-card-disposition-option-${option}`}
+                  // Flat by design (button.tsx's own convention): the
+                  // non-current segments get a plain secondary fill, not a
+                  // border, so they still read as clearly-distinct
+                  // alternatives next to the current segment's tinted fill.
+                  className={
+                    isCurrent
+                      ? 'min-h-[var(--size-touch-target-min)] flex-1'
+                      : 'min-h-[var(--size-touch-target-min)] flex-1 bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }
+                  style={isCurrent ? { color: meta.ink, backgroundColor: meta.bg } : undefined}
+                >
+                  {DISPOSITION_ACTION_LABEL[option]}
+                </ToggleGroupItem>
+              );
+            })}
+          </ToggleGroup>
+
+          {pendingDisposition ? (
+            <div className="flex flex-col gap-[var(--space-1-5)]">
+              <Label
+                htmlFor={`evidence-card-reason-${evidenceLink.id}`}
+                className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]"
+              >
+                {`Reason for changing to "${DISPOSITION_LABEL[pendingDisposition]}"`}
+              </Label>
+              <Input
+                id={`evidence-card-reason-${evidenceLink.id}`}
+                data-testid={`evidence-card-reason-${evidenceLink.id}`}
+                type="text"
+                value={reason}
+                disabled={dispositionPending}
+                onChange={(event) => {
+                  setReason(event.target.value);
+                }}
+                // border-0: `ui/input.tsx`'s own class list has no border-width
+                // reset, so a real, visible native <input> user-agent border
+                // (Chromium's default `2px inset` text-field chrome) otherwise
+                // shows through unsuppressed -- global.css's reset only zeroes
+                // `border` on `button`, not `input`. Overridden locally rather
+                // than editing the shared primitive (out of this task's scope).
+                className="border-0"
+              />
+              <div className="flex flex-wrap gap-[var(--space-1-5)]">
+                <Button
+                  type="button"
+                  data-testid={`evidence-card-reason-confirm-${evidenceLink.id}`}
+                  variant="default"
+                  size="sm"
+                  className="min-h-[var(--size-touch-target-min)]"
+                  disabled={dispositionPending || reason.trim().length === 0}
+                  onClick={confirmPendingDisposition}
+                >
+                  Confirm
+                </Button>
+                <Button
+                  type="button"
+                  data-testid={`evidence-card-reason-cancel-${evidenceLink.id}`}
+                  variant="secondary"
+                  size="sm"
+                  className="min-h-[var(--size-touch-target-min)]"
+                  disabled={dispositionPending}
+                  onClick={cancelPendingDisposition}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </article>

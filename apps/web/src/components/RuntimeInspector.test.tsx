@@ -202,7 +202,7 @@ describe('RuntimeInspector', () => {
     });
   });
 
-  it('calls onClose from the "Return to case" control', async () => {
+  it("calls onClose from the sheet's own close control", async () => {
     server.use(debugHandler(buildOverview(), [buildEvent()]));
     const onClose = vi.fn();
     const user = userEvent.setup();
@@ -211,8 +211,56 @@ describe('RuntimeInspector', () => {
       expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
     );
 
-    await user.click(screen.getByTestId('runtime-inspector-close'));
+    await user.click(screen.getByTestId('sheet-close'));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onClose when Escape is pressed', async () => {
+    server.use(debugHandler(buildOverview(), [buildEvent()]));
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    render(<RuntimeInspector runId={RUN_ID} onClose={onClose} apiConfig={{ baseUrl: BASE_URL }} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onClose when the overlay behind the sheet is clicked', async () => {
+    server.use(debugHandler(buildOverview(), [buildEvent()]));
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    render(<RuntimeInspector runId={RUN_ID} onClose={onClose} apiConfig={{ baseUrl: BASE_URL }} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+
+    const overlay = document.querySelector('[data-slot="sheet-overlay"]');
+    expect(overlay).not.toBeNull();
+    await user.click(overlay!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the run details inside the real Sheet portal/overlay markup, not a bare full-width section', async () => {
+    server.use(debugHandler(buildOverview(), [buildEvent()]));
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+
+    const content = screen.getByTestId('runtime-inspector');
+    expect(content.closest('[data-slot="sheet-content"]')).toBe(content);
+    expect(content.tagName).not.toBe('SECTION');
+    expect(content.getAttribute('role')).toBe('dialog');
+    expect(document.querySelector('[data-slot="sheet-overlay"]')).not.toBeNull();
   });
 
   it('shows a recoverable error state on a failed request', async () => {
@@ -258,7 +306,10 @@ describe('RuntimeInspector', () => {
   it('has no axe violations in the Overview and Timeline views', async () => {
     server.use(debugHandler(buildOverview(), [buildEvent()]));
     const user = userEvent.setup();
-    const { container } = render(
+    // The Sheet's content is rendered through a Radix portal into
+    // `document.body`, outside `container` -- axe must inspect the real
+    // rendered tree, not the now-empty wrapper `render()` leaves behind.
+    const { baseElement } = render(
       <RuntimeInspector
         runId={RUN_ID}
         onClose={() => undefined}
@@ -268,13 +319,13 @@ describe('RuntimeInspector', () => {
     await waitFor(() =>
       expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
     );
-    expect(await axe(container)).toHaveNoViolations();
+    expect(await axe(baseElement)).toHaveNoViolations();
 
     await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
     await waitFor(() =>
       expect(screen.getByTestId('runtime-inspector-timeline')).toBeInTheDocument(),
     );
-    expect(await axe(container)).toHaveNoViolations();
+    expect(await axe(baseElement)).toHaveNoViolations();
   });
 
   it('formats a sub-second duration in milliseconds rather than seconds', async () => {
@@ -436,6 +487,11 @@ describe('RuntimeInspector', () => {
     expect(screen.queryByTestId('runtime-inspector-token-usage')).not.toBeInTheDocument();
   });
 
+  // The Sheet portals its content straight to `document.body`, outside the
+  // 390px probe div, so this heuristic's `container.innerHTML` scan no
+  // longer sees the sheet markup -- `overflowRisks` is trivially `[]` here.
+  // `renderResult.getByTestId` still finds it, since Testing Library binds
+  // queries to `document.body` by default, not `container`.
   it('renders at 390px width with no fixed-width overflow risk', async () => {
     server.use(debugHandler(buildOverview(), [buildEvent()]));
     const { overflowRisks, renderResult } = renderAtNarrowWidth(

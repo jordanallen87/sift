@@ -54,7 +54,7 @@ export interface WorkspaceStatusInput {
 }
 
 export interface WorkspaceStatus {
-  stages: Array<{ stage: WorkspaceStage; state: WorkspaceStageState }>;
+  stages: { stage: WorkspaceStage; state: WorkspaceStageState }[];
   nextStep: NextStep;
 }
 
