@@ -134,8 +134,13 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
       </h2>
 
       <Badge
+        // Remounts (replaying `.status-change-enter`) on every real phase
+        // transition (queued -> active -> completed/failed) -- a live run
+        // progressing should read as a felt moment, not a silent label
+        // swap.
+        key={phase}
         data-testid="live-run-status-phase"
-        className="label-caps gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+        className="status-change-enter label-caps gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
         style={{ color: tone.ink, backgroundColor: tone.bg }}
       >
         <span aria-hidden="true">{tone.icon}</span>

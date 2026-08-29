@@ -233,7 +233,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
   return (
     <div
       data-testid="vehicle-catalog-flow"
-      className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col gap-[var(--space-4)] p-[var(--space-4)]"
+      className="page-enter mx-auto flex min-h-screen w-full max-w-[480px] flex-col gap-[var(--space-4)] p-[var(--space-4)]"
     >
       <div className="flex items-center justify-between gap-[var(--space-2)]">
         <div className="flex flex-col gap-[var(--space-1)]">
@@ -288,7 +288,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
               <li
                 key={vehicle.id}
                 data-testid={`shortlist-item-${vehicle.id}`}
-                className="flex items-center justify-between gap-[var(--space-2)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] py-[var(--space-1)]"
+                className="list-item-enter flex items-center justify-between gap-[var(--space-2)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] py-[var(--space-1)]"
               >
                 <span className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]">
                   {vehicleLabel(vehicle)}
@@ -453,7 +453,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
           <p
             data-testid="vehicle-catalog-loading"
             aria-live="polite"
-            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+            className="loading-pulse text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
           >
             Searching…
           </p>
@@ -501,7 +501,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
                   <li
                     key={vehicle.id}
                     data-testid={`vehicle-card-${vehicle.id}`}
-                    className="flex items-center justify-between gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-3)]"
+                    className="list-item-enter flex items-center justify-between gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-3)]"
                   >
                     <div className="flex flex-col gap-[var(--space-1)]">
                       <span className="text-[length:var(--font-size-sm)] font-[var(--font-weight-semibold)] text-[var(--color-ink)]">

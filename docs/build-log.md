@@ -5118,6 +5118,33 @@ Item 2 of the project owner's explicit 3-part sequence ("make all of those UI ch
 - `npx playwright test` (`--workers=2`, twice consecutively): 40/40.
 - `pnpm typecheck`, `pnpm lint`, `npx prettier --check .`: all clean, full repo.
 
-**Not yet started (item 3 of the project owner's own sequence, explicit and separate):** "we need to animate this stuff. We want things to be solidly animated to give the full experience." Some incidental groundwork exists from the prior ADR 0002 pass (`fade-slide-in`/`pop-in` keyframes, Sheet enter/exit transitions, `.disclosure-content-enter`), but no dedicated animation pass has been done. Continuing directly into that next.
+Final git SHA for this entry: `de9eb90`.
+
+## 2026-08-29 -- Task 17: solid animation pass (item 3 of the project owner's 3-part sequence)
+
+Closes the project owner's own explicit final item: "we need to animate this stuff. We want things to be solidly animated to give the full experience."
+
+**Audit first.** Read `apps/web/src/styles/global.css`'s existing "Motion" section (built during the ADR 0002 pass) and grepped every component for its two entrance/emphasis utility classes. Finding: `.disclosure-content-enter` was genuinely wired (`DisclosureSection.tsx`), but `.list-item-enter` and `.status-change-enter` were defined with real, well-reasoned doc comments and **never applied anywhere** -- the CSS existed, the product wasn't actually using it. This matches the project owner's complaint exactly: the "solid experience" groundwork was there, the follow-through wasn't.
+
+**Applied the existing, previously-unused utility classes** to every place they were originally written for:
+- `.list-item-enter` (a calm fade+slide for a freshly-arrived list row): `ActivityTimeline` items, `FindingsSheet` list/kanban cards, `OptionEditor`'s candidate list, `VehicleCatalogFlow`'s search results and shortlist items.
+- `.status-change-enter` (a quicker pop, for an already-visible element's state changing): the `WorkspaceStatusHeader` tracker's next-step banner (keyed by `nextStep.tone`), `RecommendationCard`'s ready/stale status badge (keyed by `recommendation.status`), `EvidenceCard`'s "Reviewed" collapsed summary, `CustomConcernForm`'s success banner, `CaseExtensionReviewCard`'s settled outcome badge, `LiveRunStatus`'s phase badge (keyed by `phase`).
+
+**New, purpose-built motion added this task:**
+- `stamp-in` (`global.css`) -- a dedicated keyframe for `ApprovalCard`'s "stamp" signature element (docs/design-system.md's own "signature element" section, which this task also found and corrected a stale claim in -- it said "building the actual stamp component is a later UI task" despite the component having shipped in an earlier session): scales down from 1.35x unrotated into the stamp's resting -3deg tilt, reading as a genuine stamp landing rather than a generic fade.
+- `page-enter` (`global.css`, same underlying `fade-slide-in` keyframe as `.disclosure-content-enter` under a name that reads correctly at its call sites) -- applied to the root of all three top-level views `App.tsx` switches between (`DemoLauncher`, `VehicleCatalogFlow`, the case workspace). Each root DOM node persists across its own later re-renders (no `key` forces a remount), so this plays exactly once per real view transition, never on a routine live update.
+- `loading-pulse` (`global.css`, a gentle opacity breathe, deliberately *not* a spinner or progress bar -- CLAUDE.md "no fabricated progress") -- applied to every short indeterminate-wait text state: `VehicleCatalogFlow`'s "Searching…", `App.tsx`'s "Restoring your case…" and "Loading case…".
+- The `WorkspaceStatusHeader` tracker's connector line gained a real `transition-colors` so a stage completing visibly fills in, not a hard color cut; its stage dot is `key`ed on its own `state` so `.status-change-enter` correctly replays on every real transition -- including the tracker's own documented "honest, not one-way" behavior (a stage reverting from `done` back to `current` on new evidence).
+
+**Why this was low-risk for the existing Playwright visual-regression suite:** `tests/e2e/helpers/layout-assertions.ts`'s `disableAnimations` installs a blanket `*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; ... }` init script before first paint -- every new animation/transition added this task is zeroed before any `toHaveScreenshot()` capture, regardless of class name, with no per-class allowlist to maintain. Confirmed empirically, not just by reading the helper: a full `pnpm run verify` (including `test:e2e`) passed clean, twice consecutively, with **zero** baseline diffs from this entire task -- every change here only affects the transient period between states, never the settled, captured state.
+
+**Live-verified in a real running browser** (`pnpm --filter @pax/agent start` + `pnpm --filter @pax/web dev`, Chrome), not just asserted via tests: walked the full "Compare vehicles" -> shortlist two Audis -> "Start comparison" -> case workspace -> "Compare the options" open flow, confirming both the new motion and (incidentally) re-confirming Task 16's packs-fetch bug fix rendering correctly outside of any test harness (real grouped "DEAL AND PRICING" attribute header, real Make/Model/Drivetrain/Powertrain values, honest "Unknown" for catalog-unknowable fields). One tooling-only false alarm during this session: the browser automation's screenshot image dimensions and real CSS viewport size had a ~7% scale mismatch, making raw pixel-coordinate clicks land off-target -- resolved by clicking via accessibility-tree element refs instead; confirmed via direct `element.click()` and reading `<details>.open` that the underlying disclosure-toggle interaction itself was never broken.
+
+**Verification:**
+- `pnpm --filter @pax/web typecheck`, `npx eslint ... --max-warnings=0`, `npx prettier --write`: all clean.
+- `pnpm --filter @pax/web test`: 600/600, twice.
+- `pnpm run verify`: **PASSED, 10/10 stages**, three times consecutively across this task (two clean back-to-back at the very end). Two unrelated flakes hit and correctly classified along the way, neither touching any file this task changed: `commands.test.ts`'s conflict-envelope test (`apps/agent`, a stale-`expectedSequence` HTTP 409 check) failed once under a load average of ~30 on this shared machine and passed clean standalone the moment load dropped to ~13 -- the same environment-contention pattern this project's build log has already documented and correctly dismissed twice before (Task 15, Task 16).
+
+All three items of the project owner's explicit sequence are now complete: (1) the UI/UX redesign (ADR 0002, prior session), (2) the vehicle-catalog product extension (ADR 0003, this session's Task 16), (3) this animation pass.
 
 Final git SHA for this entry: working tree not yet committed at write time (see the commit immediately following this entry).

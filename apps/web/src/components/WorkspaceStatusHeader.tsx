@@ -75,13 +75,19 @@ function ProgressTracker({ stages }: { stages: WorkspaceStatus['stages'] }) {
                 aria-hidden="true"
                 data-testid={`tracker-connector-${entry.stage}`}
                 data-state={previous.state === 'done' ? 'done' : 'upcoming'}
-                className="absolute top-[10px] right-1/2 z-0 h-[2px] w-full"
+                className="absolute top-[10px] right-1/2 z-0 h-[2px] w-full transition-colors duration-[var(--duration-normal)] ease-[var(--ease-standard)]"
                 style={{ backgroundColor: connectorColor(previous.state) }}
               />
             ) : null}
+            {/* `key={entry.state}` deliberately remounts this dot whenever
+                the stage's own state changes (including reverting from
+                `done` back to `current` -- an honest tracker, not a
+                one-way checkout stepper) so `.status-change-enter` plays
+                again on every real transition, not just on first mount. */}
             <span
+              key={entry.state}
               aria-hidden="true"
-              className="relative z-[1] flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[var(--radius-full)] border-2 text-[length:var(--font-size-2xs)] font-[var(--font-weight-semibold)]"
+              className="status-change-enter relative z-[1] flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[var(--radius-full)] border-2 text-[length:var(--font-size-2xs)] font-[var(--font-weight-semibold)]"
               style={stageDotStyle(entry.state)}
             >
               {entry.state === 'done' ? '✓' : null}
@@ -136,10 +142,15 @@ function NextStepBanner({
   const meta = NEXT_STEP_TONE_META[nextStep.tone];
   return (
     <div
+      // Remounts (and replays `.status-change-enter`) whenever the tone
+      // itself changes -- e.g. "nothing started" -> "investigating" ->
+      // "pick ready" -- so the banner's own state changes read as a real
+      // moment, not a silent DOM swap.
+      key={nextStep.tone}
       data-testid="workspace-next-step"
       data-tone={nextStep.tone}
       role="status"
-      className="flex flex-col items-start gap-[var(--space-2)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+      className="status-change-enter flex flex-col items-start gap-[var(--space-2)] rounded-[var(--radius-md)] p-[var(--space-3)]"
       style={{ backgroundColor: meta.bg, color: meta.ink }}
     >
       <p data-testid="workspace-next-step-text" className="text-[length:var(--font-size-sm)]">

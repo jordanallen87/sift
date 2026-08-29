@@ -118,8 +118,12 @@ export function RecommendationCard({
             const statusMeta = RECOMMENDATION_STATUS_META[recommendation.status];
             return (
               <Badge
+                // Remounts (replaying `.status-change-enter`) whenever the
+                // recommendation's own status flips between `ready` and
+                // `stale` -- a moment worth a beat of visible emphasis.
+                key={recommendation.status}
                 data-testid="recommendation-card-status"
-                className="label-caps w-fit gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+                className="status-change-enter label-caps w-fit gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
                 style={{
                   color: STATUS_TONE_META[statusMeta.tone].ink,
                   backgroundColor: STATUS_TONE_META[statusMeta.tone].bg,
@@ -134,7 +138,7 @@ export function RecommendationCard({
           {recommendation.status === 'stale' ? (
             <p
               data-testid="recommendation-card-stale-note"
-              className="text-[length:var(--font-size-sm)]"
+              className="list-item-enter text-[length:var(--font-size-sm)]"
               style={{ color: STATUS_TONE_META.stale.ink }}
             >
               New evidence or a criteria change has invalidated this recommendation. Pax is

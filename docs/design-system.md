@@ -117,11 +117,12 @@ rendered in the outcome's ink color (`satisfied`/`error`/
 `accepted-uncertainty`). It is a direct, literal expression of the
 product's core authority rule — "the final decision remains recognizably
 theirs" — a human stamps the case; the agent never does. It appears in
-exactly one place (the recommendation/approval card) so it stays a
-signature rather than a decoration repeated everywhere. Token support
-(`--color-stamp-ink`, `--radius-xs` for its near-square corners, the
-`accepted-uncertainty`/`satisfied`/`error` inks it borrows) is in place;
-building the actual stamp component is a later UI task.
+exactly one place (`ApprovalCard.tsx`'s `approval-card-stamp`, once a
+proposal has settled) so it stays a signature rather than a decoration
+repeated everywhere. It plays a dedicated `stamp-in` entrance animation
+(`apps/web/src/styles/global.css`'s Motion section) the moment it first
+mounts — scaling and rotating down into its rest position, reading as a
+genuine stamp landing rather than a generic fade.
 
 ## Typography
 

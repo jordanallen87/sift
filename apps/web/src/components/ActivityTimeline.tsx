@@ -86,7 +86,7 @@ function ActivityItem({
       data-testid={`activity-item-${correlationId}`}
       data-event-id={event.eventId}
       data-debug-event-id={event.debugEventId ?? ''}
-      className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+      className="list-item-enter flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-3)]"
       style={{ backgroundColor: meta.bg }}
     >
       <div className="flex flex-wrap items-center justify-between gap-[var(--space-2)]">

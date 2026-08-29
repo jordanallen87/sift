@@ -397,7 +397,33 @@
   }
 }
 
+/* The approval "stamp" signature element (docs/design-system.md) is
+   already rotated -3deg at rest -- this keyframe animates *into* that
+   rest rotation from a larger, unrotated scale, reading as a genuine
+   stamp landing rather than a generic fade. Component-local (only
+   `ApprovalCard.tsx` uses it) rather than folded into `pop-in`, since it
+   bakes in that specific rotation. */
+@keyframes stamp-in {
+  from {
+    opacity: 0;
+    transform: scale(1.35) rotate(0deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(-3deg);
+  }
+}
+
 .disclosure-content-enter {
+  animation: fade-slide-in var(--duration-normal) var(--ease-standard);
+}
+
+/* One of the three top-level views (`DemoLauncher`, `VehicleCatalogFlow`,
+   the case workspace) settling in after `App`'s state machine switches
+   between them -- the same fade+slide as a disclosure row opening, under
+   a name that reads correctly at that call site instead of implying a
+   disclosure relationship that isn't there. */
+.page-enter {
   animation: fade-slide-in var(--duration-normal) var(--ease-standard);
 }
 
@@ -415,6 +441,31 @@
    an already-visible element rather than introducing a new one. */
 .status-change-enter {
   animation: pop-in var(--duration-fast) var(--ease-enter);
+}
+
+.stamp-enter {
+  animation: stamp-in var(--duration-slow) var(--ease-enter);
+}
+
+@keyframes loading-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* A gentle opacity breathe for a short, indeterminate "waiting on the
+   server" text state ("Searching…", "Restoring your case…", "Loading
+   case…") -- confirms the page is genuinely working without borrowing a
+   spinner or progress-bar metaphor CLAUDE.md's "no fabricated progress"
+   rule would otherwise flag. Infinite by design (the element unmounts
+   once the real wait ends -- there is no fixed duration to time this
+   against). */
+.loading-pulse {
+  animation: loading-breathe 1.6s var(--ease-standard) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

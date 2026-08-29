@@ -322,7 +322,7 @@ export function CustomConcernForm({
           <div
             role="status"
             data-testid="custom-concern-form-success"
-            className="rounded-[var(--radius-md)] p-[var(--space-3)]"
+            className="status-change-enter rounded-[var(--radius-md)] p-[var(--space-3)]"
             style={{
               backgroundColor: 'var(--color-status-satisfied-bg)',
               color: 'var(--color-status-satisfied-ink)',

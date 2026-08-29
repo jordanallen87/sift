@@ -526,7 +526,7 @@ export function App() {
           data-testid="case-workspace-restoring"
           aria-busy="true"
           aria-live="polite"
-          className="mx-auto flex min-h-screen w-full max-w-[480px] items-center justify-center bg-background p-[var(--space-4)] text-[var(--color-ink-secondary)]"
+          className="loading-pulse mx-auto flex min-h-screen w-full max-w-[480px] items-center justify-center bg-background p-[var(--space-4)] text-[var(--color-ink-secondary)]"
         >
           Restoring your case…
         </div>
@@ -646,7 +646,11 @@ export function App() {
   return (
     <div
       data-testid="case-workspace"
-      className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col gap-[var(--space-4)] p-[var(--space-4)]"
+      // This same DOM node persists across every later snapshot/SSE-driven
+      // re-render (no key change forces a remount), so `.page-enter` plays
+      // exactly once -- when the workspace first appears -- never on a
+      // routine live update.
+      className="page-enter mx-auto flex min-h-screen w-full max-w-[480px] flex-col gap-[var(--space-4)] p-[var(--space-4)]"
     >
       {snapshot ? (
         <CaseHeader
@@ -662,7 +666,7 @@ export function App() {
           data-testid="case-workspace-loading"
           aria-busy="true"
           aria-live="polite"
-          className="flex items-center justify-center rounded-[var(--radius-md)] bg-card p-[var(--space-4)] text-[var(--color-ink-secondary)]"
+          className="loading-pulse flex items-center justify-center rounded-[var(--radius-md)] bg-card p-[var(--space-4)] text-[var(--color-ink-secondary)]"
         >
           Loading case…
         </div>

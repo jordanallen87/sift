@@ -167,7 +167,12 @@ export function EvidenceCard({
     return (
       <article
         data-testid={`evidence-card-${evidenceLink.id}`}
-        className="rounded-[var(--radius-md)] bg-card p-[var(--space-3)] opacity-60"
+        // `status-change-enter`: this element only ever mounts the moment
+        // a disposition is confirmed and the card settles into "done" --
+        // the pop-in reads as the item visibly settling, matching the
+        // round-2 design review's "dimming ... to make it look like
+        // they're done" ask.
+        className="status-change-enter rounded-[var(--radius-md)] bg-card p-[var(--space-3)] opacity-60"
       >
         <button
           type="button"

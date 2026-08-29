@@ -144,7 +144,7 @@ export function OptionEditor({
               data-testid={`option-editor-option-${entity.id}`}
               // bg-muted: a recessed row inside this bg-card region (same
               // mechanism as OptionComparison's zebra-striped rows).
-              className="flex items-center justify-between gap-[var(--space-2)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] py-[var(--space-1)]"
+              className="list-item-enter flex items-center justify-between gap-[var(--space-2)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] py-[var(--space-1)]"
             >
               <span className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]">
                 {entity.label}

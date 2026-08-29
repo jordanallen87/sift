@@ -133,7 +133,7 @@ export function ApprovalCard({
                   the whole signal. */}
               <div
                 data-testid="approval-card-stamp"
-                className="label-caps inline-block -rotate-3 rounded-[var(--radius-xs)] px-[var(--space-3)] py-[var(--space-1-5)]"
+                className="stamp-enter label-caps inline-block -rotate-3 rounded-[var(--radius-xs)] px-[var(--space-3)] py-[var(--space-1-5)]"
                 style={{ color: meta.ink, backgroundColor: meta.bg }}
               >
                 {settledMeta.label}

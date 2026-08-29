@@ -90,7 +90,7 @@ export function CaseExtensionReviewCard({
         <Badge
           data-testid="case-extension-review-card-settled"
           role="status"
-          className="label-caps w-fit rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+          className="status-change-enter label-caps w-fit rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
           style={{
             color:
               extension.definition.confirmation === 'confirmed'

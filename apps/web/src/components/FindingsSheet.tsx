@@ -183,7 +183,7 @@ export function FindingsSheet({
                     className="flex flex-col gap-[var(--space-2)]"
                   >
                     {items.map((item) => (
-                      <li key={item.evidenceLink.id}>
+                      <li key={item.evidenceLink.id} className="list-item-enter">
                         <EvidenceCard
                           item={item}
                           collapsed={reviewedThisSession.has(item.evidenceLink.id)}
@@ -258,7 +258,7 @@ export function FindingsSheet({
                               <li
                                 key={item.evidenceLink.id}
                                 data-testid={`findings-sheet-kanban-card-${item.evidenceLink.id}`}
-                                className="rounded-[var(--radius-md)] bg-card p-[var(--space-2)] text-[length:var(--font-size-sm)] text-[var(--color-ink)]"
+                                className="list-item-enter rounded-[var(--radius-md)] bg-card p-[var(--space-2)] text-[length:var(--font-size-sm)] text-[var(--color-ink)]"
                               >
                                 {item.claim?.statement ?? item.evidenceLink.summary}
                               </li>
