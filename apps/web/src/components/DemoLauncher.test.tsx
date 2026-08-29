@@ -26,9 +26,9 @@ describe('DemoLauncher', () => {
 
     expect(carOption).toHaveAttribute('data-testid', 'demo-launcher-car-purchase');
     expect(energyOption).toHaveAttribute('data-testid', 'demo-launcher-home-energy-guardian');
-    // Three buttons total (ADR 0003): the primary "Compare vehicles" action
-    // plus the two unchanged demo cards.
-    expect(screen.getAllByRole('button')).toHaveLength(3);
+    // Four buttons total: the help trigger, the primary "Compare vehicles"
+    // action (ADR 0003), and the two unchanged demo cards.
+    expect(screen.getAllByRole('button')).toHaveLength(4);
   });
 
   it('renders the primary "Compare vehicles" action and calls onCompareVehicles when clicked', async () => {

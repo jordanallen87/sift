@@ -18,6 +18,7 @@
 import type { CaseState } from '@pax/contracts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { HelpButton } from './HelpButton.js';
 
 export type CaseHeaderConnectionState = 'live' | 'reconnecting' | 'polling' | 'offline';
 
@@ -119,19 +120,22 @@ export function CaseHeader({
         <h1 data-testid="case-header-title" className="min-w-0 flex-1">
           {title}
         </h1>
-        <Button
-          type="button"
-          data-testid="case-header-reset-demo"
-          aria-label="Reset demo"
-          aria-busy={resetPending}
-          disabled={resetPending}
-          onClick={onResetDemo}
-          variant="secondary"
-          size="sm"
-          className="min-h-[var(--size-touch-target-min)] shrink-0"
-        >
-          {resetPending ? 'Resetting…' : 'Reset demo'}
-        </Button>
+        <div className="flex shrink-0 items-start gap-[var(--space-1)]">
+          <HelpButton />
+          <Button
+            type="button"
+            data-testid="case-header-reset-demo"
+            aria-label="Reset demo"
+            aria-busy={resetPending}
+            disabled={resetPending}
+            onClick={onResetDemo}
+            variant="secondary"
+            size="sm"
+            className="min-h-[var(--size-touch-target-min)] shrink-0"
+          >
+            {resetPending ? 'Resetting…' : 'Reset demo'}
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-[var(--space-2)]">

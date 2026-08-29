@@ -35,6 +35,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState } from './ErrorState.js';
+import { HelpButton } from './HelpButton.js';
 
 export const MAX_SHORTLIST_SIZE = 5;
 export const MIN_SHORTLIST_SIZE = 2;
@@ -245,17 +246,20 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
             a real comparison case.
           </p>
         </div>
-        <Button
-          type="button"
-          data-testid="vehicle-catalog-back"
-          variant="secondary"
-          size="sm"
-          className="min-h-[var(--size-touch-target-min)] shrink-0"
-          onClick={onCancel}
-          disabled={creating}
-        >
-          Back
-        </Button>
+        <div className="flex shrink-0 items-start gap-[var(--space-1)]">
+          <HelpButton />
+          <Button
+            type="button"
+            data-testid="vehicle-catalog-back"
+            variant="secondary"
+            size="sm"
+            className="min-h-[var(--size-touch-target-min)] shrink-0"
+            onClick={onCancel}
+            disabled={creating}
+          >
+            Back
+          </Button>
+        </div>
       </div>
 
       <section

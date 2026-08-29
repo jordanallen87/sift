@@ -30,6 +30,7 @@ import { usePaxCommands } from '../app/AppProviders.js';
 import { CardDescription, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { HelpButton } from './HelpButton.js';
 
 export interface DemoLauncherProps {
   /** Called once `startDemo` resolves, with the real `CommandReceipt` (carrying the fresh `caseId`) -- lets `App` transition from the launcher to the case workspace. */
@@ -109,16 +110,19 @@ export function DemoLauncher({ onDemoStarted, onCompareVehicles }: DemoLauncherP
         aria-labelledby="demo-launcher-heading"
         className="page-enter flex w-full max-w-[480px] flex-col gap-[var(--space-4)]"
       >
-        <div className="flex flex-col gap-[var(--space-1)]">
-          <h1
-            id="demo-launcher-heading"
-            className="font-[family-name:var(--font-display)] text-[length:var(--font-size-xl)] font-semibold text-foreground"
-          >
-            Start a Pax case
-          </h1>
-          <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-            Compare real vehicles from the bundled catalog, or try a finished example.
-          </p>
+        <div className="flex items-start justify-between gap-[var(--space-2)]">
+          <div className="flex flex-col gap-[var(--space-1)]">
+            <h1
+              id="demo-launcher-heading"
+              className="font-[family-name:var(--font-display)] text-[length:var(--font-size-xl)] font-semibold text-foreground"
+            >
+              Start a Pax case
+            </h1>
+            <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
+              Compare real vehicles from the bundled catalog, or try a finished example.
+            </p>
+          </div>
+          <HelpButton />
         </div>
 
         {/* Primary, non-demo entry point (ADR 0003): a normal, useful
