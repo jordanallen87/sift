@@ -38,7 +38,6 @@ function buildProposal(overrides: Partial<DecisionProposal> = {}): DecisionPropo
 
 function buildInput(overrides: Partial<WorkspaceStatusInput> = {}): WorkspaceStatusInput {
   return {
-    hasEvents: false,
     isRunActive: false,
     recommendation: null,
     proposal: null,
@@ -48,14 +47,14 @@ function buildInput(overrides: Partial<WorkspaceStatusInput> = {}): WorkspaceSta
 }
 
 describe('WorkspaceStatusHeader', () => {
-  it('renders stage one as current and every other stage upcoming for a fresh case, with the open next step', () => {
+  it('renders started done, investigating current, and the rest upcoming for a fresh case, with the open next step', () => {
     const status = deriveWorkspaceStatus(buildInput());
     render(<WorkspaceStatusHeader status={status} />);
 
-    expect(screen.getByTestId('tracker-stage-started')).toHaveAttribute('data-state', 'current');
+    expect(screen.getByTestId('tracker-stage-started')).toHaveAttribute('data-state', 'done');
     expect(screen.getByTestId('tracker-stage-investigating')).toHaveAttribute(
       'data-state',
-      'upcoming',
+      'current',
     );
     expect(screen.getByTestId('tracker-stage-pick-ready')).toHaveAttribute(
       'data-state',
@@ -85,7 +84,6 @@ describe('WorkspaceStatusHeader', () => {
   it('gives a done stage a visually distinct marker (a checkmark) from current and upcoming stages', () => {
     const status = deriveWorkspaceStatus(
       buildInput({
-        hasEvents: true,
         recommendation: buildRecommendation({ status: 'ready' }),
         proposal: buildProposal({ status: 'pending' }),
         flaggedFindingsCount: 2,
@@ -108,7 +106,7 @@ describe('WorkspaceStatusHeader', () => {
   });
 
   it('renders the active next step with no action button', () => {
-    const status = deriveWorkspaceStatus(buildInput({ isRunActive: true, hasEvents: true }));
+    const status = deriveWorkspaceStatus(buildInput({ isRunActive: true }));
     render(<WorkspaceStatusHeader status={status} />);
 
     expect(screen.getByTestId('workspace-next-step')).toHaveAttribute('data-tone', 'active');
@@ -119,7 +117,7 @@ describe('WorkspaceStatusHeader', () => {
   });
 
   it('renders the accepted-uncertainty next step for flagged findings, with a review action', () => {
-    const status = deriveWorkspaceStatus(buildInput({ hasEvents: true, flaggedFindingsCount: 3 }));
+    const status = deriveWorkspaceStatus(buildInput({ flaggedFindingsCount: 3 }));
     render(<WorkspaceStatusHeader status={status} />);
 
     expect(screen.getByTestId('workspace-next-step')).toHaveAttribute('data-tone', 'accepted');
@@ -132,7 +130,6 @@ describe('WorkspaceStatusHeader', () => {
   it('renders the calm next step with no action button once a proposal is settled', () => {
     const status = deriveWorkspaceStatus(
       buildInput({
-        hasEvents: true,
         recommendation: buildRecommendation({ status: 'ready' }),
         proposal: buildProposal({ status: 'approved' }),
       }),
@@ -167,7 +164,6 @@ describe('WorkspaceStatusHeader', () => {
 
     const pickReady = deriveWorkspaceStatus(
       buildInput({
-        hasEvents: true,
         recommendation: buildRecommendation({ status: 'ready' }),
         proposal: buildProposal({ status: 'pending' }),
       }),

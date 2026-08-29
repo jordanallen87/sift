@@ -364,7 +364,58 @@
  * prefers-reduced-motion there). This rule additionally removes
  * scroll-driven and CSS-animation motion outright for users who asked for
  * less motion, rather than merely speeding it up.
+ *
+ * Shared keyframes/utility classes live here rather than per-component
+ * Tailwind `animate-[...]` arbitrary values: a bracketed arbitrary value
+ * combining multiple space-separated `var(--...)` tokens is fragile to
+ * parse correctly, where a plain class bound to the same tokens is not,
+ * and it lets the small fixed set of real entrance/emphasis motions in
+ * this app (disclosure content opening, a freshly-arrived list item, a
+ * status change worth a beat of attention) stay visually consistent
+ * rather than each component inventing its own curve.
  * ------------------------------------------------------------------- */
+
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.disclosure-content-enter {
+  animation: fade-slide-in var(--duration-normal) var(--ease-standard);
+}
+
+/* A card/row that just arrived in a live list (a new finding, a new
+   activity item, a freshly-collapsed "Reviewed" summary) -- a brief,
+   calm entrance rather than an abrupt pop, so real-time updates read as
+   alive without being distracting. */
+.list-item-enter {
+  animation: fade-slide-in var(--duration-normal) var(--ease-enter);
+}
+
+/* A status/tone change worth a beat of attention (a stage advancing on
+   the progress tracker, a recommendation becoming ready) -- reuses the
+   same keyframe at a slightly quicker duration since it draws the eye to
+   an already-visible element rather than introducing a new one. */
+.status-change-enter {
+  animation: pop-in var(--duration-fast) var(--ease-enter);
+}
 
 @media (prefers-reduced-motion: reduce) {
   html {

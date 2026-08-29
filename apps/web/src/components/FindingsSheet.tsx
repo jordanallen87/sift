@@ -23,7 +23,11 @@
  * reuses `EvidenceCard`, both render their own compact markup.
  */
 import { useState } from 'react';
-import { EVIDENCE_DISPOSITIONS, type EvidenceDisposition, type EvidenceVerdict } from '@pax/contracts';
+import {
+  EVIDENCE_DISPOSITIONS,
+  type EvidenceDisposition,
+  type EvidenceVerdict,
+} from '@pax/contracts';
 import { EvidenceCard, type EvidenceItemData } from './EvidenceCard.js';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 import { Badge } from '@/components/ui/badge';
@@ -239,10 +243,7 @@ export function FindingsSheet({
                     role="region"
                     aria-label="Findings by disposition -- scroll horizontally to see every column"
                   >
-                    <div
-                      data-testid="findings-sheet-kanban"
-                      className="flex gap-[var(--space-3)]"
-                    >
+                    <div data-testid="findings-sheet-kanban" className="flex gap-[var(--space-3)]">
                       {EVIDENCE_DISPOSITIONS.map((disposition) => (
                         <div
                           key={disposition}

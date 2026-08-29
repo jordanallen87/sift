@@ -112,11 +112,7 @@ describe('EvidenceList', () => {
     await user.click(screen.getByTestId('evidence-card-disposition-option-excluded'));
     await user.type(screen.getByTestId('evidence-card-reason-evidence-9'), 'No longer relevant.');
     await user.click(screen.getByTestId('evidence-card-reason-confirm-evidence-9'));
-    expect(onSetDisposition).toHaveBeenCalledWith(
-      'evidence-9',
-      'excluded',
-      'No longer relevant.',
-    );
+    expect(onSetDisposition).toHaveBeenCalledWith('evidence-9', 'excluded', 'No longer relevant.');
   });
 
   it("marks only the pending item's disposition control as busy via dispositionPendingId", () => {

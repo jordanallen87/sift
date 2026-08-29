@@ -40,7 +40,10 @@ function SheetPortal({ ...props }: React.ComponentProps<typeof SheetPrimitive.Po
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
 }
 
-function SheetOverlay({ className, ...props }: React.ComponentProps<typeof SheetPrimitive.Overlay>) {
+function SheetOverlay({
+  className,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Overlay>) {
   return (
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
@@ -83,7 +86,10 @@ function SheetContent({
         {...props}
       >
         {side === 'bottom' ? (
-          <div aria-hidden="true" className="mx-auto mt-[var(--space-2)] h-1 w-9 shrink-0 rounded-[var(--radius-pill)] bg-[var(--color-border-strong)] opacity-50" />
+          <div
+            aria-hidden="true"
+            className="mx-auto mt-[var(--space-2)] h-1 w-9 shrink-0 rounded-[var(--radius-pill)] bg-[var(--color-border-strong)] opacity-50"
+          />
         ) : null}
         {children}
         {showCloseButton && (
@@ -104,7 +110,10 @@ function SheetHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="sheet-header"
-      className={cn('flex shrink-0 flex-col gap-[var(--space-1)] p-[var(--space-4)] pb-[var(--space-2)]', className)}
+      className={cn(
+        'flex shrink-0 flex-col gap-[var(--space-1)] p-[var(--space-4)] pb-[var(--space-2)]',
+        className,
+      )}
       {...props}
     />
   );
@@ -124,13 +133,19 @@ function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPr
   return (
     <SheetPrimitive.Title
       data-slot="sheet-title"
-      className={cn('font-[family-name:var(--font-display)] text-[length:var(--font-size-md)] font-[var(--font-weight-medium)] text-card-foreground', className)}
+      className={cn(
+        'font-[family-name:var(--font-display)] text-[length:var(--font-size-md)] font-[var(--font-weight-medium)] text-card-foreground',
+        className,
+      )}
       {...props}
     />
   );
 }
 
-function SheetDescription({ className, ...props }: React.ComponentProps<typeof SheetPrimitive.Description>) {
+function SheetDescription({
+  className,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Description>) {
   return (
     <SheetPrimitive.Description
       data-slot="sheet-description"

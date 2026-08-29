@@ -145,6 +145,16 @@ async function startDemoAndWait() {
   return user;
 }
 
+// "What Pax found" is now a FindingsSheet trigger, not an inline
+// DisclosureSection (round-2 design review) -- tests that need to reach a
+// real evidence-card control open the sheet first.
+async function openFindingsSheet(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByTestId('disclosure-findings-summary'));
+  await waitFor(() => {
+    expect(screen.getByTestId('findings-sheet')).toBeInTheDocument();
+  });
+}
+
 describe('App', () => {
   it('renders the demo launcher when no case is active', () => {
     render(
@@ -345,7 +355,8 @@ describe('App', () => {
         ],
       });
       renderLiveWorkspace(snapshot);
-      await startDemoAndWait();
+      const user = await startDemoAndWait();
+      await openFindingsSheet(user);
 
       await waitFor(() => {
         expect(screen.getByTestId('evidence-card-evidence-1')).toBeInTheDocument();
@@ -599,11 +610,14 @@ describe('App', () => {
         ),
       );
       const user = await startDemoAndWait();
+      await openFindingsSheet(user);
 
       await waitFor(() =>
-        expect(screen.getByTestId('evidence-card-set-excluded')).toBeInTheDocument(),
+        expect(screen.getByTestId('evidence-card-disposition-option-excluded')).toBeInTheDocument(),
       );
-      await user.click(screen.getByTestId('evidence-card-set-excluded'));
+      await user.click(screen.getByTestId('evidence-card-disposition-option-excluded'));
+      await user.type(screen.getByTestId('evidence-card-reason-evidence-1'), 'No longer relevant.');
+      await user.click(screen.getByTestId('evidence-card-reason-confirm-evidence-1'));
 
       await waitFor(() => {
         expect(capturedBody).toMatchObject({
@@ -614,7 +628,7 @@ describe('App', () => {
       });
     });
 
-    it('shows a recoverable error on the EvidenceList when setEvidenceDisposition fails', async () => {
+    it('shows a recoverable error when setEvidenceDisposition fails', async () => {
       const snapshot = buildFixtureCaseState({
         id: CASE_ID,
         evidenceLinks: [
@@ -641,14 +655,17 @@ describe('App', () => {
         ),
       );
       const user = await startDemoAndWait();
+      await openFindingsSheet(user);
 
       await waitFor(() =>
-        expect(screen.getByTestId('evidence-card-set-excluded')).toBeInTheDocument(),
+        expect(screen.getByTestId('evidence-card-disposition-option-excluded')).toBeInTheDocument(),
       );
-      await user.click(screen.getByTestId('evidence-card-set-excluded'));
+      await user.click(screen.getByTestId('evidence-card-disposition-option-excluded'));
+      await user.type(screen.getByTestId('evidence-card-reason-evidence-1'), 'No longer relevant.');
+      await user.click(screen.getByTestId('evidence-card-reason-confirm-evidence-1'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('evidence-list-error')).toHaveTextContent('Stale sequence.');
+        expect(screen.getByTestId('error-state-message')).toHaveTextContent('Stale sequence.');
       });
     });
 
@@ -683,7 +700,8 @@ describe('App', () => {
         ],
       });
       renderLiveWorkspace(snapshot);
-      await startDemoAndWait();
+      const user = await startDemoAndWait();
+      await openFindingsSheet(user);
 
       await waitFor(() => {
         expect(screen.getByTestId('evidence-card-claim')).toHaveTextContent(
@@ -1233,17 +1251,17 @@ describe('App', () => {
           expect(screen.getByTestId('runtime-inspector')).toBeInTheDocument();
         });
         expect(screen.getByTestId('runtime-inspector-run-id')).toHaveTextContent('run-inspect-1');
-        // The inspector genuinely replaces the case body -- current focus / activity / approval are gone while it is open.
-        expect(screen.queryByTestId('current-focus')).not.toBeInTheDocument();
-        expect(screen.queryByTestId('activity-timeline')).not.toBeInTheDocument();
-        // The case header stays visible.
+        // The inspector is now a Sheet overlay (round-2 design review: "show
+        // these in ... a side sliding sheet" rather than navigating to a
+        // separate page) -- the case body stays mounted underneath it.
+        expect(screen.getByTestId('current-focus')).toBeInTheDocument();
         expect(screen.getByTestId('case-header')).toBeInTheDocument();
 
         await waitFor(() => {
           expect(screen.getByTestId('runtime-inspector-status')).toHaveTextContent('completed');
         });
 
-        await user.click(screen.getByTestId('runtime-inspector-close'));
+        await user.click(screen.getByTestId('sheet-close'));
 
         await waitFor(() => {
           expect(screen.queryByTestId('runtime-inspector')).not.toBeInTheDocument();
@@ -1351,12 +1369,15 @@ describe('App', () => {
 
       for (const testId of [
         'disclosure-compare',
-        'disclosure-findings',
         'disclosure-still-checking',
         'disclosure-work-so-far',
       ]) {
         expect(screen.getByTestId<HTMLDetailsElement>(testId).open).toBe(false);
       }
+      // "What Pax found" is a FindingsSheet trigger, not a native disclosure
+      // (round-2 design review) -- "closed by default" for this row means
+      // the sheet is not open yet.
+      expect(screen.queryByTestId('findings-sheet')).not.toBeInTheDocument();
     });
 
     it('shows a live option count on the closed "Compare the options" row', async () => {
@@ -1970,14 +1991,18 @@ describe('App', () => {
         </AppProviders>,
       );
       await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
-      await waitFor(() =>
-        expect(screen.getByTestId('evidence-card-set-excluded')).toBeInTheDocument(),
-      );
+      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+      await openFindingsSheet(user);
 
-      await user.click(screen.getByTestId('evidence-card-set-excluded'));
+      await waitFor(() =>
+        expect(screen.getByTestId('evidence-card-disposition-option-excluded')).toBeInTheDocument(),
+      );
+      await user.click(screen.getByTestId('evidence-card-disposition-option-excluded'));
+      await user.type(screen.getByTestId('evidence-card-reason-evidence-1'), 'No longer relevant.');
+      await user.click(screen.getByTestId('evidence-card-reason-confirm-evidence-1'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('evidence-list-error')).toHaveTextContent(
+        expect(screen.getByTestId('error-state-message')).toHaveTextContent(
           'Could not update this evidence item.',
         );
       });

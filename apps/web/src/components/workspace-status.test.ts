@@ -31,7 +31,6 @@ function buildProposal(overrides: Partial<DecisionProposal> = {}): DecisionPropo
 
 function buildInput(overrides: Partial<WorkspaceStatusInput> = {}): WorkspaceStatusInput {
   return {
-    hasEvents: false,
     isRunActive: false,
     recommendation: null,
     proposal: null,
@@ -45,30 +44,30 @@ function stageState(status: ReturnType<typeof deriveWorkspaceStatus>, stage: str
 }
 
 describe('deriveWorkspaceStatus', () => {
-  it('a fresh case with nothing started shows the open next step and stage 1 as current', () => {
+  it('a fresh case with nothing started shows the open next step, started done, investigating current', () => {
     const status = deriveWorkspaceStatus(buildInput());
     expect(status.nextStep).toEqual({
       tone: 'open',
       text: "Nothing's been looked into yet.",
       action: { label: 'Request investigation' },
     });
-    expect(stageState(status, 'started')).toBe('current');
-    expect(stageState(status, 'investigating')).toBe('upcoming');
+    expect(stageState(status, 'started')).toBe('done');
+    expect(stageState(status, 'investigating')).toBe('current');
     expect(stageState(status, 'pick-ready')).toBe('upcoming');
     expect(stageState(status, 'decided')).toBe('upcoming');
   });
 
   it('a genuinely active run shows the active next step, not the open one', () => {
-    const status = deriveWorkspaceStatus(buildInput({ isRunActive: true, hasEvents: true }));
+    const status = deriveWorkspaceStatus(buildInput({ isRunActive: true }));
     expect(status.nextStep.tone).toBe('active');
     expect(status.nextStep.action).toBeUndefined();
     expect(stageState(status, 'investigating')).toBe('current');
   });
 
   it('singular vs plural finding count in the flagged-findings next step', () => {
-    const one = deriveWorkspaceStatus(buildInput({ hasEvents: true, flaggedFindingsCount: 1 }));
+    const one = deriveWorkspaceStatus(buildInput({ flaggedFindingsCount: 1 }));
     expect(one.nextStep.text).toBe('1 finding may need a closer look before Pax can finish.');
-    const three = deriveWorkspaceStatus(buildInput({ hasEvents: true, flaggedFindingsCount: 3 }));
+    const three = deriveWorkspaceStatus(buildInput({ flaggedFindingsCount: 3 }));
     expect(three.nextStep.text).toBe('3 findings may need a closer look before Pax can finish.');
     expect(three.nextStep.action).toEqual({ label: 'Review findings' });
   });
@@ -76,7 +75,6 @@ describe('deriveWorkspaceStatus', () => {
   it('a pending proposal wins over flagged findings and marks every earlier stage done', () => {
     const status = deriveWorkspaceStatus(
       buildInput({
-        hasEvents: true,
         recommendation: buildRecommendation({ status: 'ready' }),
         proposal: buildProposal({ status: 'pending' }),
         flaggedFindingsCount: 2,
@@ -93,7 +91,6 @@ describe('deriveWorkspaceStatus', () => {
   it('a settled proposal marks every stage done and falls through to the calm state', () => {
     const status = deriveWorkspaceStatus(
       buildInput({
-        hasEvents: true,
         recommendation: buildRecommendation({ status: 'ready' }),
         proposal: buildProposal({ status: 'approved' }),
       }),
@@ -108,7 +105,6 @@ describe('deriveWorkspaceStatus', () => {
   it('a reopened case (stale recommendation after new evidence) reverts pick-ready to current', () => {
     const status = deriveWorkspaceStatus(
       buildInput({
-        hasEvents: true,
         recommendation: buildRecommendation({ status: 'stale' }),
         proposal: null,
       }),

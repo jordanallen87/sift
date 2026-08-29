@@ -93,10 +93,13 @@ test.describe('Choose our next car -- full demo journey', () => {
     // "Browser adapter"; CLAUDE.md "Non-negotiable product truths").
     await expect(page.getByTestId('webmcp-status-unsupported')).toBeVisible();
 
-    // --- 4 seeded candidates ---
-    for (const candidateId of CAR_PURCHASE_CANDIDATE_IDS) {
-      await expect(page.getByTestId(`option-comparison-header-${candidateId}`)).toBeVisible();
-    }
+    // --- 4 seeded candidates (ADR 0002: "Compare the options" is a
+    // closed-by-default disclosure row -- the seeded count is proven from
+    // its own live meta summary rather than the comparison table itself,
+    // which is not yet in the DOM's visible flow). ---
+    await expect(page.getByTestId('disclosure-compare-meta')).toHaveText(
+      `${CAR_PURCHASE_CANDIDATE_IDS.length} options`,
+    );
 
     // Fully settled, non-racing checkpoint: case loaded, seeded, nothing
     // investigated yet -- a stable baseline before any async run starts.
@@ -105,6 +108,17 @@ test.describe('Choose our next car -- full demo journey', () => {
       mask: masks,
       maxDiffPixelRatio: 0.01,
     });
+
+    // Opened once here and left open for the rest of the journey (ADR
+    // 0002's "Compare the options" row) -- every later step that reaches
+    // OptionEditor/OptionComparison content depends on it, and re-toggling
+    // it closed and open again between each step would add fragile
+    // sequencing with no real coverage benefit.
+    await pax.openDisclosure('compare');
+
+    for (const candidateId of CAR_PURCHASE_CANDIDATE_IDS) {
+      await expect(page.getByTestId(`option-comparison-header-${candidateId}`)).toBeVisible();
+    }
 
     // Case-header pack badge: real rendered right edge, not just the
     // document-level scrollWidth proxy (layout-assertions.ts's
@@ -128,6 +142,9 @@ test.describe('Choose our next car -- full demo journey', () => {
 
     // --- Round 1: real live streaming investigation ---
     const round1 = await pax.requestInvestigation();
+    // Opened once, same reasoning as "compare" above (ADR 0002's "Pax's
+    // work so far" row) -- left open for the rest of the journey.
+    await pax.openDisclosure('work-so-far');
     // Mid-investigation state: the activity timeline is already populating
     // live from real streamed events (not a static end state).
     await expect(page.getByTestId('activity-timeline')).toBeVisible();
@@ -144,20 +161,23 @@ test.describe('Choose our next car -- full demo journey', () => {
     // a run has been requested (`liveRunStatusReceipt?.runId`, `App.tsx`),
     // which just happened above -- this is the first point in the journey
     // it is genuinely reachable. Real rendered geometry for the view
-    // selector tabs, "Return to case", and "Refresh" (all fixed for 44px
-    // touch targets tonight -- design-system.md names the view selector
-    // verbatim). Opening/closing is a pure client-side route swap (no case
-    // command fires), so it does not disturb the investigation running
-    // underneath or any later screenshot.
+    // selector tabs and "Refresh" (all fixed for 44px touch targets tonight
+    // -- design-system.md names the view selector verbatim). It is now a
+    // Sheet overlay, not a route swap (round-2 design review: "show these
+    // in ... a side sliding sheet"), closed via the Sheet's own close
+    // control -- opening/closing still fires no case command, so it does
+    // not disturb the investigation running underneath or any later
+    // screenshot.
     await page.getByTestId('open-runtime-inspector').click();
     await expect(page.getByTestId('runtime-inspector')).toBeVisible();
     await assertPrimaryTouchTargets(page, [
-      'runtime-inspector-close',
+      'sheet-close',
       'runtime-inspector-tab-overview',
       'runtime-inspector-tab-timeline',
       'runtime-inspector-refresh',
     ]);
-    await page.getByTestId('runtime-inspector-close').click();
+    await page.getByTestId('sheet-close').click();
+    await expect(page.getByTestId('runtime-inspector')).not.toBeVisible();
     await expect(page.getByTestId('case-workspace')).toBeVisible();
 
     await pax.waitForInvestigationCompleted(round1.runId);
@@ -233,16 +253,28 @@ test.describe('Choose our next car -- full demo journey', () => {
     // --- Revised recommendation + human-only approval ---
     await expect(page.getByTestId('approval-card-pending')).toBeVisible();
     await assertNoSeriousAxeViolations(page, 'awaiting human approval');
+
+    // Evidence exists for real by this point (both rounds' evidence has
+    // landed), but every evidence card now lives inside the "What Pax
+    // found" review Sheet, not inline (round-2 design review) -- opened
+    // just for this touch-target check, then closed again before the
+    // baseline screenshot below, which must show the normal workspace, not
+    // a Sheet overlay on top of it.
+    await pax.openFindingsSheet();
+    await assertPrimaryTouchTargets(page, [
+      // The same `evidence-card-disposition-option-*` testid repeats per
+      // card; `assertPrimaryTouchTargets` checks the first match, which is
+      // representative of every card since they share one ToggleGroup config.
+      'evidence-card-disposition-option-included',
+      'evidence-card-disposition-option-excluded',
+      'evidence-card-disposition-option-questioned',
+    ]);
+    await page.getByTestId('sheet-close').click();
+    await expect(page.getByTestId('findings-sheet')).not.toBeVisible();
+
     await assertRightPaneIntegrity(page, [
       'approval-card-approve',
       'approval-card-reject',
-      // Evidence exists for real by this point (both rounds' evidence has
-      // landed) -- the same `evidence-card-set-*` testid repeats per card,
-      // and `assertPrimaryTouchTargets` checks the first match, which is
-      // representative of every card since they share one Button config.
-      'evidence-card-set-included',
-      'evidence-card-set-excluded',
-      'evidence-card-set-questioned',
       'option-editor-new',
       'option-editor-save',
       `option-editor-edit-${CAR_PURCHASE_CANDIDATE_IDS[0]}`,

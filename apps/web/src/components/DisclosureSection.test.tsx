@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
@@ -94,6 +94,79 @@ describe('DisclosureSection', () => {
       <DisclosureSection testId="findings" title="What Pax found" meta="3 findings" defaultOpen>
         <p>Hidden content</p>
       </DisclosureSection>,
+    );
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('renders as a plain trigger button when onTriggerClick is supplied, not a details element', () => {
+    const onTriggerClick = vi.fn();
+    render(
+      <DisclosureSection
+        testId="findings"
+        title="What Pax found"
+        meta="2 need a look"
+        onTriggerClick={onTriggerClick}
+      />,
+    );
+    const row = screen.getByTestId('disclosure-findings');
+    expect(row).not.toBeInstanceOf(HTMLDetailsElement);
+    const trigger = screen.getByTestId('disclosure-findings-summary');
+    expect(trigger.tagName).toBe('BUTTON');
+    expect(screen.getByText('2 need a look')).toBeInTheDocument();
+  });
+
+  it('calls onTriggerClick and never renders children when in trigger mode', async () => {
+    const user = userEvent.setup();
+    const onTriggerClick = vi.fn();
+    render(
+      <DisclosureSection testId="findings" title="What Pax found" onTriggerClick={onTriggerClick}>
+        <p>Should never render</p>
+      </DisclosureSection>,
+    );
+    expect(screen.queryByText('Should never render')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('disclosure-findings-summary'));
+    expect(onTriggerClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('the trigger button resolves to a real 44px touch target', () => {
+    render(<DisclosureSection testId="findings" title="What Pax found" onTriggerClick={vi.fn()} />);
+    expect(screen.getByTestId('disclosure-findings-summary')).toHaveClass(
+      'min-h-[var(--size-touch-target-min)]',
+    );
+  });
+
+  it('applies a flagged tone to the trigger row when flagged is true', () => {
+    render(
+      <DisclosureSection
+        testId="findings"
+        title="What Pax found"
+        flagged
+        onTriggerClick={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByTestId('disclosure-findings-summary');
+    expect(trigger).toHaveStyle({ color: 'var(--color-status-accepted-uncertainty-ink)' });
+  });
+
+  it('has no axe violations in trigger mode, flagged or not', async () => {
+    const { container, rerender } = render(
+      <DisclosureSection
+        testId="findings"
+        title="What Pax found"
+        meta="2 need a look"
+        onTriggerClick={vi.fn()}
+      />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
+
+    rerender(
+      <DisclosureSection
+        testId="findings"
+        title="What Pax found"
+        meta="2 need a look"
+        flagged
+        onTriggerClick={vi.fn()}
+      />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });

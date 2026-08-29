@@ -100,11 +100,19 @@ function buildItem(overrides: Partial<EvidenceItemData> = {}): EvidenceItemData 
 function buildMixedItems(): EvidenceItemData[] {
   return [
     buildItem({
-      evidenceLink: buildEvidenceLink({ id: 'evidence-1', disposition: 'included', verdict: 'pass' }),
+      evidenceLink: buildEvidenceLink({
+        id: 'evidence-1',
+        disposition: 'included',
+        verdict: 'pass',
+      }),
       claim: buildClaim({ id: 'claim-1', statement: 'Confirmed dealer price of $28,450.' }),
     }),
     buildItem({
-      evidenceLink: buildEvidenceLink({ id: 'evidence-2', disposition: 'included', verdict: 'degraded' }),
+      evidenceLink: buildEvidenceLink({
+        id: 'evidence-2',
+        disposition: 'included',
+        verdict: 'degraded',
+      }),
       claim: buildClaim({ id: 'claim-2', statement: 'Warranty terms partially confirmed.' }),
     }),
     buildItem({
@@ -117,7 +125,11 @@ function buildMixedItems(): EvidenceItemData[] {
       claim: undefined,
     }),
     buildItem({
-      evidenceLink: buildEvidenceLink({ id: 'evidence-4', disposition: 'questioned', verdict: 'skipped' }),
+      evidenceLink: buildEvidenceLink({
+        id: 'evidence-4',
+        disposition: 'questioned',
+        verdict: 'skipped',
+      }),
       claim: buildClaim({ id: 'claim-4', statement: 'Trade-in value is disputed.' }),
     }),
   ];
@@ -194,18 +206,24 @@ describe('FindingsSheet', () => {
     const kanbanView = screen.getByTestId('findings-sheet-view-kanban');
     expect(kanbanView).toBeVisible();
     const includedColumn = within(kanbanView).getByTestId('findings-sheet-kanban-column-included');
-    expect(within(includedColumn).getByTestId('findings-sheet-kanban-card-evidence-1')).toHaveTextContent(
-      'Confirmed dealer price of $28,450.',
-    );
-    expect(within(includedColumn).getByTestId('findings-sheet-kanban-card-evidence-2')).toBeInTheDocument();
+    expect(
+      within(includedColumn).getByTestId('findings-sheet-kanban-card-evidence-1'),
+    ).toHaveTextContent('Confirmed dealer price of $28,450.');
+    expect(
+      within(includedColumn).getByTestId('findings-sheet-kanban-card-evidence-2'),
+    ).toBeInTheDocument();
 
     const excludedColumn = within(kanbanView).getByTestId('findings-sheet-kanban-column-excluded');
-    expect(within(excludedColumn).getByTestId('findings-sheet-kanban-card-evidence-3')).toHaveTextContent(
-      'Rebate could not be confirmed.',
-    );
+    expect(
+      within(excludedColumn).getByTestId('findings-sheet-kanban-card-evidence-3'),
+    ).toHaveTextContent('Rebate could not be confirmed.');
 
-    const questionedColumn = within(kanbanView).getByTestId('findings-sheet-kanban-column-questioned');
-    expect(within(questionedColumn).getByTestId('findings-sheet-kanban-card-evidence-4')).toBeInTheDocument();
+    const questionedColumn = within(kanbanView).getByTestId(
+      'findings-sheet-kanban-column-questioned',
+    );
+    expect(
+      within(questionedColumn).getByTestId('findings-sheet-kanban-card-evidence-4'),
+    ).toBeInTheDocument();
   });
 
   it('marks an item collapsed only after the human acts on its disposition, and only that item', async () => {
@@ -220,14 +238,26 @@ describe('FindingsSheet', () => {
       />,
     );
 
-    expect(screen.getByTestId('mock-evidence-card-evidence-1')).toHaveAttribute('data-collapsed', 'false');
-    expect(screen.getByTestId('mock-evidence-card-evidence-2')).toHaveAttribute('data-collapsed', 'false');
+    expect(screen.getByTestId('mock-evidence-card-evidence-1')).toHaveAttribute(
+      'data-collapsed',
+      'false',
+    );
+    expect(screen.getByTestId('mock-evidence-card-evidence-2')).toHaveAttribute(
+      'data-collapsed',
+      'false',
+    );
 
     await user.click(screen.getByTestId('mock-set-excluded-evidence-1'));
 
     expect(onSetDisposition).toHaveBeenCalledWith('evidence-1', 'excluded', 'Reviewed by user');
-    expect(screen.getByTestId('mock-evidence-card-evidence-1')).toHaveAttribute('data-collapsed', 'true');
-    expect(screen.getByTestId('mock-evidence-card-evidence-2')).toHaveAttribute('data-collapsed', 'false');
+    expect(screen.getByTestId('mock-evidence-card-evidence-1')).toHaveAttribute(
+      'data-collapsed',
+      'true',
+    );
+    expect(screen.getByTestId('mock-evidence-card-evidence-2')).toHaveAttribute(
+      'data-collapsed',
+      'false',
+    );
   });
 
   it('marks only the pending item as busy via dispositionPendingId', () => {
@@ -241,8 +271,14 @@ describe('FindingsSheet', () => {
       />,
     );
 
-    expect(screen.getByTestId('mock-evidence-card-evidence-1')).toHaveAttribute('data-pending', 'false');
-    expect(screen.getByTestId('mock-evidence-card-evidence-2')).toHaveAttribute('data-pending', 'true');
+    expect(screen.getByTestId('mock-evidence-card-evidence-1')).toHaveAttribute(
+      'data-pending',
+      'false',
+    );
+    expect(screen.getByTestId('mock-evidence-card-evidence-2')).toHaveAttribute(
+      'data-pending',
+      'true',
+    );
   });
 
   it('renders every list item read-only when onSetDisposition is not provided', () => {

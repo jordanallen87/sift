@@ -19,23 +19,28 @@
  * implementation").
  *
  * Region order matches product.md's "Workspace layout" exactly (ADR 0002,
- * "answer-first, everything else one tap away"): case header, what Pax is
+ * "answer-first, everything else one tap away"): case header,
+ * `WorkspaceStatusHeader` (a pure-presentation next-step banner + progress
+ * tracker over `deriveWorkspaceStatus`, added in the round-2 design-review
+ * pass -- product feedback: "I have no clue where to start"), what Pax is
  * doing, our pick (recommendation + approval, always expanded), then four
  * closed-by-default `DisclosureSection` rows -- compare the options, what
  * Pax found, still checking, Pax's work so far -- and a fifth disclosure
  * for adding a concern that opens itself only when an agent-proposed case
- * extension is awaiting confirmation. Region 9 (Runtime Inspector) is the
- * minimum-viable Overview + Timeline slice this task adds -- not the full
- * six-view spec (Execution/State/Context/Errors remain later Tier-2 work).
- * Reachable two ways, both
- * feeding the same `inspectingRunId` state: an "Inspect run" control next to
+ * extension is awaiting confirmation. The "What Pax found" row is a
+ * trigger, not a native disclosure (`DisclosureSection`'s `onTriggerClick`):
+ * it opens `FindingsSheet`, a dedicated List/Table/Kanban review surface,
+ * instead of expanding a wall of evidence cards inline -- also round-2
+ * feedback, on the same live product.
+ *
+ * The Runtime Inspector is a Sheet overlay, not a route/full-body swap:
+ * `RuntimeInspector` renders as a sibling of the normal workspace (mounted
+ * only while `inspectingRunId !== null`) rather than replacing it, so the
+ * case body stays visible underneath. Reachable two ways, both feeding the
+ * same `inspectingRunId` state: an "Inspect run" control next to
  * `LiveRunStatus` (enabled once a real `runId` exists this session) and a
  * per-item "Inspect run" button `ActivityTimeline` renders for any streamed
- * activity event that carries a `runId`. Per
- * debugging-and-observability.md ("The inspector replaces the case body
- * within the right pane and includes a clear return action; it is not a
- * desktop-only modal"), opening it swaps out everything below `CaseHeader`
- * for `RuntimeInspector`, which owns its own "Return to case" control.
+ * activity event that carries a `runId`.
  *
  * `readiness` is computed by calling the REAL `evaluateReadiness` from
  * `@pax/core` directly (this task added `@pax/core` as a runtime dependency
@@ -62,8 +67,10 @@ import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active
 import { DemoLauncher } from '../components/DemoLauncher.js';
 import { CaseHeader, type CaseHeaderConnectionState } from '../components/CaseHeader.js';
 import { DisclosureSection } from '../components/DisclosureSection.js';
+import { WorkspaceStatusHeader } from '../components/WorkspaceStatusHeader.js';
+import { deriveWorkspaceStatus } from '../components/workspace-status.js';
 import { ReadinessPanel } from '../components/ReadinessPanel.js';
-import { EvidenceList } from '../components/EvidenceList.js';
+import { FindingsSheet } from '../components/FindingsSheet.js';
 import { ActivityTimeline } from '../components/ActivityTimeline.js';
 import { RecommendationCard } from '../components/RecommendationCard.js';
 import { ApprovalCard, type ApprovalCardReview } from '../components/ApprovalCard.js';
@@ -163,6 +170,7 @@ export function App() {
   // the Inspector, or `null` when the normal case body is showing. See this
   // file's own header comment for how it is reached and closed.
   const [inspectingRunId, setInspectingRunId] = useState<string | null>(null);
+  const [findingsSheetOpen, setFindingsSheetOpen] = useState(false);
   const [resetPending, setResetPending] = useState(false);
   const [runRequestPending, setRunRequestPending] = useState(false);
   const [runRequestError, setRunRequestError] = useState<string | null>(null);
@@ -170,6 +178,10 @@ export function App() {
   const [proposalReviewError, setProposalReviewError] = useState<string | null>(null);
   const [dispositionPendingId, setDispositionPendingId] = useState<string | null>(null);
   const [dispositionError, setDispositionError] = useState<string | null>(null);
+  // "Go to Our pick" (the next-step banner's action once a proposal is
+  // pending) scrolls here rather than navigating -- the hero is already on
+  // the page, just possibly below the fold.
+  const recommendationHeroRef = useRef<HTMLDivElement | null>(null);
 
   const {
     snapshot,
@@ -545,6 +557,39 @@ export function App() {
   const workSoFarLive = runRequestPending || isRunActive;
   const addConcernMeta = pendingExtension !== null ? '1 needs your review' : undefined;
 
+  // "What Pax found" urgency signal (round-2 design review): a real count
+  // of findings that are not fully verified or have aged past their
+  // validity window -- never a fabricated "unread" count. Deliberately
+  // excludes `evidence.conflicted` correlation, which the public activity
+  // stream does not currently thread back onto individual evidence items
+  // (see docs/build-log.md's dated entry for this task).
+  const flaggedFindingsCount =
+    evidenceItems?.filter((item) => item.evidenceLink.verdict !== 'pass' || item.evidenceLink.stale)
+      .length ?? 0;
+
+  const workspaceStatus = deriveWorkspaceStatus({
+    isRunActive,
+    recommendation: snapshot?.recommendation ?? null,
+    proposal: snapshot?.proposal ?? null,
+    flaggedFindingsCount,
+  });
+
+  function handleNextStepAction() {
+    switch (workspaceStatus.nextStep.action?.label) {
+      case 'Request investigation':
+        handleRequestInvestigation();
+        return;
+      case 'Review findings':
+        setFindingsSheetOpen(true);
+        return;
+      case 'Go to Our pick':
+        recommendationHeroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      default:
+        return;
+    }
+  }
+
   return (
     <div
       data-testid="case-workspace"
@@ -570,199 +615,205 @@ export function App() {
         </div>
       )}
 
+      {snapshot ? (
+        <WorkspaceStatusHeader status={workspaceStatus} onNextStepAction={handleNextStepAction} />
+      ) : null}
+
+      <WebMcpStatus adapter={webMcpAdapter} />
+
+      {streamError ? <ErrorState message={streamError} /> : null}
+
+      <section
+        data-testid="current-focus"
+        aria-labelledby="current-focus-heading"
+        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
+      >
+        <h2 id="current-focus-heading">What Pax is doing</h2>
+        {activeFocus !== null ? (
+          <div data-testid="current-focus-detail" className="flex flex-col gap-[var(--space-1)]">
+            <p
+              data-testid="current-focus-obligation"
+              className="font-[var(--font-weight-semibold)] text-[var(--color-ink)]"
+            >
+              {focusedObligation?.label ?? activeFocus.obligationId}
+            </p>
+            <p
+              data-testid="current-focus-reason"
+              className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+            >
+              {activeFocus.reason}
+            </p>
+            <div className="flex flex-wrap gap-[var(--space-2)] text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]">
+              {activeFocus.skillId !== undefined ? (
+                <span data-testid="current-focus-skill">Skill: {activeFocus.skillId}</span>
+              ) : null}
+              {activeFocus.specialistId !== undefined ? (
+                <span data-testid="current-focus-specialist">
+                  Specialist: {activeFocus.specialistId}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <p
+            data-testid="current-focus-empty"
+            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+          >
+            Nothing is being actively investigated right now.
+          </p>
+        )}
+
+        <Button
+          type="button"
+          data-testid="request-investigation"
+          aria-busy={runRequestPending}
+          disabled={runRequestPending || snapshot === null}
+          onClick={() => {
+            handleRequestInvestigation();
+          }}
+          size="sm"
+          className="min-h-[var(--size-touch-target-min)] self-start"
+        >
+          {runRequestPending ? 'Requesting…' : 'Request investigation'}
+        </Button>
+
+        {runRequestError ? (
+          <p
+            role="alert"
+            data-testid="request-investigation-error"
+            className="text-[length:var(--font-size-sm)]"
+            style={{ color: 'var(--color-status-error-ink)' }}
+          >
+            {runRequestError}
+          </p>
+        ) : null}
+
+        <LiveRunStatus receipt={liveRunStatusReceipt} events={events} />
+
+        {liveRunStatusReceipt?.runId !== undefined ? (
+          <Button
+            type="button"
+            data-testid="open-runtime-inspector"
+            onClick={() => setInspectingRunId(liveRunStatusReceipt.runId!)}
+            variant="secondary"
+            size="sm"
+            className="min-h-[var(--size-touch-target-min)] self-start"
+          >
+            Inspect run
+          </Button>
+        ) : null}
+      </section>
+
+      {/* Region 3, "Our pick" (ADR 0002): the recommendation and the
+              human decision controls, grouped as one always-visible hero
+              directly below "What Pax is doing" -- the first substantial
+              content a user reaches, deliberately never a disclosure row. */}
+      <div
+        ref={recommendationHeroRef}
+        data-testid="recommendation-hero"
+        className="flex flex-col gap-[var(--space-3)]"
+      >
+        <RecommendationCard
+          recommendation={snapshot?.recommendation ?? null}
+          withheld={withheld}
+          loading={snapshot === null}
+          sources={sources}
+        />
+
+        <ApprovalCard
+          proposal={snapshot?.proposal ?? null}
+          onReview={handleReviewProposal}
+          reviewPending={proposalReviewPending}
+          error={proposalReviewError}
+        />
+      </div>
+
+      <DisclosureSection
+        testId="compare"
+        title="Compare the options"
+        meta={`${optionsCount} option${optionsCount === 1 ? '' : 's'}`}
+      >
+        <OptionEditor
+          caseId={activeCaseId}
+          expectedSequence={snapshot?.eventSequence ?? 0}
+          optionKind={optionKind}
+          optionLabel={optionLabel}
+          attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+          options={snapshot?.entities ?? []}
+        />
+
+        <OptionComparison
+          options={snapshot?.entities ?? []}
+          attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+          presentation={activePack?.presentation ?? null}
+          selectedOptionId={snapshot?.selectedOptionId ?? null}
+        />
+      </DisclosureSection>
+
+      <DisclosureSection
+        testId="findings"
+        title="What Pax found"
+        meta={
+          flaggedFindingsCount > 0
+            ? `${flaggedFindingsCount} need${flaggedFindingsCount === 1 ? 's' : ''} a look`
+            : `${evidenceCount} finding${evidenceCount === 1 ? '' : 's'}`
+        }
+        flagged={flaggedFindingsCount > 0}
+        onTriggerClick={() => setFindingsSheetOpen(true)}
+      />
+      {dispositionError ? <ErrorState message={dispositionError} /> : null}
+
+      <FindingsSheet
+        open={findingsSheetOpen}
+        onOpenChange={setFindingsSheetOpen}
+        items={evidenceItems ?? []}
+        onSetDisposition={handleSetDisposition}
+        dispositionPendingId={dispositionPendingId}
+      />
+
+      <DisclosureSection testId="still-checking" title="Still checking" meta={stillCheckingMeta}>
+        <ReadinessPanel readiness={readiness} loading={snapshot === null} />
+      </DisclosureSection>
+
+      <DisclosureSection
+        testId="work-so-far"
+        title="Pax's work so far"
+        meta={`${events.length} step${events.length === 1 ? '' : 's'}`}
+        live={workSoFarLive}
+      >
+        <ActivityTimeline
+          events={snapshot === null ? null : events}
+          loading={snapshot === null}
+          onInspectRun={setInspectingRunId}
+        />
+      </DisclosureSection>
+
+      <DisclosureSection
+        testId="add-concern"
+        title="Add something Pax should check"
+        meta={addConcernMeta}
+        defaultOpen={pendingExtension !== null}
+      >
+        <CustomConcernForm
+          caseId={activeCaseId}
+          expectedSequence={snapshot?.eventSequence ?? 0}
+          applicableKinds={applicableKinds}
+        />
+
+        <CaseExtensionReviewCard
+          caseId={activeCaseId}
+          expectedSequence={snapshot?.eventSequence ?? 0}
+          extension={pendingExtension}
+        />
+      </DisclosureSection>
+
       {inspectingRunId !== null ? (
         <RuntimeInspector
           runId={inspectingRunId}
           onClose={() => setInspectingRunId(null)}
           apiConfig={apiConfig}
         />
-      ) : (
-        <>
-          <WebMcpStatus adapter={webMcpAdapter} />
-
-          {streamError ? <ErrorState message={streamError} /> : null}
-
-          <section
-            data-testid="current-focus"
-            aria-labelledby="current-focus-heading"
-            className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
-          >
-            <h2 id="current-focus-heading">What Pax is doing</h2>
-            {activeFocus !== null ? (
-              <div
-                data-testid="current-focus-detail"
-                className="flex flex-col gap-[var(--space-1)]"
-              >
-                <p
-                  data-testid="current-focus-obligation"
-                  className="font-[var(--font-weight-semibold)] text-[var(--color-ink)]"
-                >
-                  {focusedObligation?.label ?? activeFocus.obligationId}
-                </p>
-                <p
-                  data-testid="current-focus-reason"
-                  className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-                >
-                  {activeFocus.reason}
-                </p>
-                <div className="flex flex-wrap gap-[var(--space-2)] text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]">
-                  {activeFocus.skillId !== undefined ? (
-                    <span data-testid="current-focus-skill">Skill: {activeFocus.skillId}</span>
-                  ) : null}
-                  {activeFocus.specialistId !== undefined ? (
-                    <span data-testid="current-focus-specialist">
-                      Specialist: {activeFocus.specialistId}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <p
-                data-testid="current-focus-empty"
-                className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-              >
-                Nothing is being actively investigated right now.
-              </p>
-            )}
-
-            <Button
-              type="button"
-              data-testid="request-investigation"
-              aria-busy={runRequestPending}
-              disabled={runRequestPending || snapshot === null}
-              onClick={() => {
-                handleRequestInvestigation();
-              }}
-              size="sm"
-              className="min-h-[var(--size-touch-target-min)] self-start"
-            >
-              {runRequestPending ? 'Requesting…' : 'Request investigation'}
-            </Button>
-
-            {runRequestError ? (
-              <p
-                role="alert"
-                data-testid="request-investigation-error"
-                className="text-[length:var(--font-size-sm)]"
-                style={{ color: 'var(--color-status-error-ink)' }}
-              >
-                {runRequestError}
-              </p>
-            ) : null}
-
-            <LiveRunStatus receipt={liveRunStatusReceipt} events={events} />
-
-            {liveRunStatusReceipt?.runId !== undefined ? (
-              <Button
-                type="button"
-                data-testid="open-runtime-inspector"
-                onClick={() => setInspectingRunId(liveRunStatusReceipt.runId!)}
-                variant="secondary"
-                size="sm"
-                className="min-h-[var(--size-touch-target-min)] self-start"
-              >
-                Inspect run
-              </Button>
-            ) : null}
-          </section>
-
-          {/* Region 3, "Our pick" (ADR 0002): the recommendation and the
-              human decision controls, grouped as one always-visible hero
-              directly below "What Pax is doing" -- the first substantial
-              content a user reaches, deliberately never a disclosure row. */}
-          <div data-testid="recommendation-hero" className="flex flex-col gap-[var(--space-3)]">
-            <RecommendationCard
-              recommendation={snapshot?.recommendation ?? null}
-              withheld={withheld}
-              loading={snapshot === null}
-              sources={sources}
-            />
-
-            <ApprovalCard
-              proposal={snapshot?.proposal ?? null}
-              onReview={handleReviewProposal}
-              reviewPending={proposalReviewPending}
-              error={proposalReviewError}
-            />
-          </div>
-
-          <DisclosureSection
-            testId="compare"
-            title="Compare the options"
-            meta={`${optionsCount} option${optionsCount === 1 ? '' : 's'}`}
-          >
-            <OptionEditor
-              caseId={activeCaseId}
-              expectedSequence={snapshot?.eventSequence ?? 0}
-              optionKind={optionKind}
-              optionLabel={optionLabel}
-              attributeDefinitions={snapshot?.attributeDefinitions ?? []}
-              options={snapshot?.entities ?? []}
-            />
-
-            <OptionComparison
-              options={snapshot?.entities ?? []}
-              attributeDefinitions={snapshot?.attributeDefinitions ?? []}
-              presentation={activePack?.presentation ?? null}
-              selectedOptionId={snapshot?.selectedOptionId ?? null}
-            />
-          </DisclosureSection>
-
-          <DisclosureSection
-            testId="findings"
-            title="What Pax found"
-            meta={`${evidenceCount} finding${evidenceCount === 1 ? '' : 's'}`}
-          >
-            <EvidenceList
-              items={evidenceItems}
-              loading={snapshot === null}
-              error={dispositionError}
-              onSetDisposition={handleSetDisposition}
-              dispositionPendingId={dispositionPendingId}
-            />
-          </DisclosureSection>
-
-          <DisclosureSection
-            testId="still-checking"
-            title="Still checking"
-            meta={stillCheckingMeta}
-          >
-            <ReadinessPanel readiness={readiness} loading={snapshot === null} />
-          </DisclosureSection>
-
-          <DisclosureSection
-            testId="work-so-far"
-            title="Pax's work so far"
-            meta={`${events.length} step${events.length === 1 ? '' : 's'}`}
-            live={workSoFarLive}
-          >
-            <ActivityTimeline
-              events={snapshot === null ? null : events}
-              loading={snapshot === null}
-              onInspectRun={setInspectingRunId}
-            />
-          </DisclosureSection>
-
-          <DisclosureSection
-            testId="add-concern"
-            title="Add something Pax should check"
-            meta={addConcernMeta}
-            defaultOpen={pendingExtension !== null}
-          >
-            <CustomConcernForm
-              caseId={activeCaseId}
-              expectedSequence={snapshot?.eventSequence ?? 0}
-              applicableKinds={applicableKinds}
-            />
-
-            <CaseExtensionReviewCard
-              caseId={activeCaseId}
-              expectedSequence={snapshot?.eventSequence ?? 0}
-              extension={pendingExtension}
-            />
-          </DisclosureSection>
-        </>
-      )}
+      ) : null}
     </div>
   );
 }

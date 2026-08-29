@@ -258,8 +258,33 @@ export class PaxPage {
     );
   }
 
-  /** Fills and submits `CustomConcernForm` without asserting the outcome -- used directly by tests that expect a real error (`error-recovery.spec.ts`); `submitCustomConcern` below is the success-asserting convenience wrapper every other spec uses. */
+  /**
+   * Opens a closed-by-default `DisclosureSection` row (ADR 0002, round-2
+   * design review: "answer-first, everything else one tap away") by its
+   * `testId` suffix, e.g. `openDisclosure('compare')` for
+   * `disclosure-compare`. A no-op if the row is already open (native
+   * `<details>` state, checked directly rather than assumed).
+   */
+  async openDisclosure(testId: string): Promise<void> {
+    const details = this.page.getByTestId(`disclosure-${testId}`);
+    const isOpen = await details
+      .evaluate((el) => (el as HTMLDetailsElement).open)
+      .catch(() => false);
+    if (!isOpen) {
+      await this.page.getByTestId(`disclosure-${testId}-summary`).click();
+    }
+    await expect(details).toHaveJSProperty('open', true);
+  }
+
+  /** Opens the "What Pax found" review Sheet -- a trigger row, not a native disclosure (`DisclosureSection`'s `onTriggerClick` mode), since it opens `FindingsSheet` rather than expanding inline. */
+  async openFindingsSheet(): Promise<void> {
+    await this.page.getByTestId('disclosure-findings-summary').click();
+    await expect(this.page.getByTestId('findings-sheet')).toBeVisible();
+  }
+
+  /** Fills and submits `CustomConcernForm` without asserting the outcome -- used directly by tests that expect a real error (`error-recovery.spec.ts`); `submitCustomConcern` below is the success-asserting convenience wrapper every other spec uses. Opens the "Add something Pax should check" disclosure row first (ADR 0002) -- a no-op once an agent-proposed extension is already pending, since that row opens itself in that case. */
   async fillAndSubmitCustomConcern(input: CustomConcernInput): Promise<void> {
+    await this.openDisclosure('add-concern');
     const form = this.page.getByTestId('custom-concern-form');
     await form.getByLabel('Concern id').fill(input.slug);
     await form.getByLabel('Label', { exact: true }).fill(input.label);
