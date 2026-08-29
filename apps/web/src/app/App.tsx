@@ -645,11 +645,25 @@ export function App() {
 
   return (
     <div
+      // Keyed by `activeCaseId` (manual QA finding, this task): several
+      // case-scoped children below -- `OptionEditor`, `CustomConcernForm`,
+      // `CaseExtensionReviewCard` -- own local `useState` (in-progress form
+      // fields, a submission `success`/`error` flag) that is otherwise never
+      // reset by a prop change alone, since React reuses the same component
+      // instance across a re-render with no identity change. Confirmed live:
+      // submitting a custom concern against one case and then clicking
+      // "Reset demo" left that concern's "Concern added..." success banner
+      // showing on the *next* case's otherwise-untouched form -- falsely
+      // implying something had just been added to a case nothing had been
+      // submitted against (product.md's real-time contract: render only
+      // from what actually happened in the active case). Keying the whole
+      // workspace by the case it belongs to forces every case-scoped child
+      // to remount -- resetting all such local state -- exactly when the
+      // active case actually changes, and not on any other re-render (a
+      // routine snapshot/SSE update never changes `activeCaseId`, so
+      // `.page-enter` below still plays only once per case, as before).
+      key={activeCaseId}
       data-testid="case-workspace"
-      // This same DOM node persists across every later snapshot/SSE-driven
-      // re-render (no key change forces a remount), so `.page-enter` plays
-      // exactly once -- when the workspace first appears -- never on a
-      // routine live update.
       className="page-enter mx-auto flex min-h-screen w-full max-w-[480px] flex-col gap-[var(--space-4)] p-[var(--space-4)]"
     >
       {snapshot ? (

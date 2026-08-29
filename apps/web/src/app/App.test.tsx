@@ -517,6 +517,65 @@ describe('App', () => {
       expect(capturedBody).toMatchObject({ demoId: 'car-purchase' });
     });
 
+    it('resets a case-scoped component\'s stale local UI state (e.g. a leftover "Concern added" success banner) when Reset demo switches to a different case', async () => {
+      // Manual QA finding (live browser pass, this task): `CustomConcernForm`
+      // (and every other case-scoped child App.tsx renders without a `key`
+      // tied to the active case -- `OptionEditor`, `CaseExtensionReviewCard`)
+      // owns local `useState` (`success`/`error`/`form`) that used to survive
+      // a case switch, because React reuses the same component instance
+      // across a prop change with no identity change. Confirmed live: submit
+      // a custom concern against case A, click "Reset demo" to land on a
+      // brand-new case B, and the "Concern added..." success banner from
+      // case A was still showing on case B's otherwise-empty form -- falsely
+      // implying something had just been added to a case nothing had been
+      // submitted against. `App.tsx` now keys the whole case workspace by
+      // `activeCaseId` so every case-scoped child remounts (and its local
+      // state resets) exactly when the active case actually changes.
+      const secondCaseId = 'case-live-2';
+      const secondSnapshot = buildFixtureCaseState({ id: secondCaseId, title: 'Second case' });
+      let demoCallCount = 0;
+      server.use(
+        http.post('/api/cases/demo', () => {
+          demoCallCount += 1;
+          return HttpResponse.json(
+            buildFakeCommandReceipt({ caseId: demoCallCount === 1 ? CASE_ID : secondCaseId }),
+          );
+        }),
+        pollHandler(buildFixtureCaseState({ id: CASE_ID, title: 'First case' })),
+        http.get(`/api/cases/${secondCaseId}/events`, () =>
+          HttpResponse.json({ snapshot: secondSnapshot, events: [] }),
+        ),
+        packsHandler([DEFAULT_PACK]),
+        commandHandler('defineCaseAttribute', buildFakeCommandReceipt({ caseId: CASE_ID })),
+      );
+
+      render(
+        <AppProviders caseEventsConfig={{ createEventSource: createFakeEventSource }}>
+          <App />
+        </AppProviders>,
+      );
+      const user = await startDemoAndWait();
+      await waitFor(() => {
+        expect(screen.getByTestId('case-header-title')).toHaveTextContent('First case');
+      });
+
+      await user.click(screen.getByTestId('disclosure-add-concern-summary'));
+      await user.type(screen.getByLabelText('Concern id'), 'trunk_space');
+      await user.type(screen.getByLabelText('Label'), 'Trunk space');
+      await user.type(screen.getByLabelText('Why this matters to you'), 'Need cargo room');
+      await user.click(screen.getByTestId('custom-concern-form-submit'));
+      await waitFor(() => {
+        expect(screen.getByTestId('custom-concern-form-success')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('case-header-reset-demo'));
+      await waitFor(() => {
+        expect(screen.getByTestId('case-header-title')).toHaveTextContent('Second case');
+      });
+
+      expect(screen.queryByTestId('custom-concern-form-success')).not.toBeInTheDocument();
+    });
+
     it('the "Request investigation" control calls requestInvestigation and LiveRunStatus reflects the correlated run', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       let capturedBody: unknown;
