@@ -65,7 +65,9 @@ test.describe('reload persistence', () => {
 
     // The activity backlog also came back from the server (not just the
     // canonical snapshot) -- the poll-fallback/initial-load endpoint
-    // returns both together.
+    // returns both together. "Pax's work so far" is a closed-by-default
+    // disclosure row (ADR 0002), so it's opened before this check.
+    await pax.openDisclosure('work-so-far');
     await expect(page.getByTestId('activity-timeline-list')).toBeVisible();
     const activityItemCount = await page
       .getByTestId('activity-timeline-list')

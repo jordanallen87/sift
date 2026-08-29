@@ -64,6 +64,11 @@ test.describe('keyboard operation and accessibility', () => {
     await pax.waitForInvestigationCompleted(round1.runId);
     await pax.waitForRecommendationReady();
 
+    // "Add something Pax should check" is a closed-by-default disclosure
+    // row (ADR 0002) -- opened before the form fields below become
+    // reachable at all.
+    await pax.openDisclosure('add-concern');
+
     // --- Fill CustomConcernForm using real keystrokes, not `.fill()` ---
     const form = page.getByTestId('custom-concern-form');
     await form.getByLabel('Concern id').focus();
