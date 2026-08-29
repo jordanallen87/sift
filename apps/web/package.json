@@ -17,6 +17,7 @@
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/newsreader": "^5.3.0",
     "@fontsource/public-sans": "^5.3.0",
+    "@pax/catalog": "workspace:*",
     "@pax/contracts": "workspace:*",
     "@pax/core": "workspace:*",
     "class-variance-authority": "^0.7.1",

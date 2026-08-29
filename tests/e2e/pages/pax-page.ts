@@ -154,6 +154,39 @@ export class PaxPage {
     return { caseId: body.caseId };
   }
 
+  /** Clicks the primary "Compare vehicles" launcher action (ADR 0003) and waits for the `VehicleCatalogFlow` shell to become visible -- no case exists yet at this point. */
+  async openVehicleCatalog(): Promise<void> {
+    await this.page.getByTestId('demo-launcher-compare-vehicles').click();
+    await expect(this.page.getByTestId('vehicle-catalog-flow')).toBeVisible();
+  }
+
+  /**
+   * Adds one catalog search result to the shortlist by its exact
+   * `data-testid` vehicle id suffix (e.g. `addVehicleToShortlist('veh-...')`
+   * for `vehicle-add-veh-...`). Waits for its results-list card to exist
+   * first -- the search results are real, debounced, network-driven state,
+   * never a fixed sleep.
+   */
+  async addVehicleToShortlist(vehicleId: string): Promise<void> {
+    const addButton = this.page.getByTestId(`vehicle-add-${vehicleId}`);
+    await expect(addButton).toBeVisible();
+    await addButton.click();
+    await expect(this.page.getByTestId(`shortlist-item-${vehicleId}`)).toBeVisible();
+  }
+
+  /** Clicks "Start comparison" and waits for the real `POST /api/cases` response, returning its `caseId`. The subsequent per-vehicle `upsertOption` calls happen after this resolves; callers that need to wait for the full case body should also wait for `case-workspace`. */
+  async startVehicleComparison(): Promise<LaunchedCase> {
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (res) => new URL(res.url()).pathname === '/api/cases' && res.request().method() === 'POST',
+      ),
+      this.page.getByTestId('vehicle-catalog-start-comparison').click(),
+    ]);
+    const body = (await response.json()) as { caseId: string };
+    await expect(this.page.getByTestId('case-workspace')).toBeVisible();
+    return { caseId: body.caseId };
+  }
+
   /** Clicks "Investigate my energy bill" and waits for the real `POST /api/cases/demo` response, returning its `caseId`. */
   async launchHomeEnergyGuardian(): Promise<LaunchedCase> {
     const [response] = await Promise.all([

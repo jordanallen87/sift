@@ -8,7 +8,7 @@ Pax is a supervised adaptive decision workspace. A person and an agent work in t
 
 This directory is the canonical product and engineering specification for the hackathon build. Implementers must read this file and every linked specification before changing product code.
 
-Accepted cross-cutting rationale is recorded in [ADR 0001](../decisions/0001-hackathon-runtime-storage-and-heroes.md).
+Accepted cross-cutting rationale is recorded in [ADR 0001](../decisions/0001-hackathon-runtime-storage-and-heroes.md), [ADR 0002](../decisions/0002-answer-first-workspace-layout.md), and [ADR 0003](../decisions/0003-vehicle-catalog-and-normal-case-creation.md).
 
 Every planned Praetor, Strata19, and Think OS adaptation is tracked in the [source reuse map](../reuse-source-map.md), including canonical source, intended Pax destination, reuse posture, and attribution requirements.
 
@@ -77,6 +77,7 @@ All implementation tasks and automated scenarios must cite one or more requireme
 | PAX-P25 | Packs define strongly validated defaults while cases accept typed user-defined criteria, attributes, and evidence questions without changing the installed pack; extensions preserve origin, provenance, uncertainty, and dependency invalidation. |
 | PAX-P26 | A real `pack-authoring` Strands skill plus bounded authoring tools can draft, validate, test, diff, and request human publication of a non-executable Decision Pack; the unauthenticated public deployment keeps authoring disabled. |
 | PAX-P27 | Runtime agents may adapt a case-specific run plan only within the compiled pack's skills, specialists, tools, orchestration bounds, evidence rules, and human-authority policies. |
+| PAX-P28 | A user can browse a bundled, offline vehicle catalog, build a 2-5 vehicle shortlist, and start a real, persisted `car-purchase` case from it (`startCase` + `upsertOption`) using the exact same commands visible controls and WebMCP callbacks already share; catalog facts, listing/dealer facts, and case data remain distinct fact classes, and a catalog-built case that cannot run guided investigation fails that specific request honestly rather than fabricating a result. |
 
 ## Precedence
 

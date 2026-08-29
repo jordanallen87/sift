@@ -13,6 +13,7 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
+    "@pax/catalog": "workspace:*",
     "@pax/contracts": "workspace:*",
     "@pax/core": "workspace:*",
     "@pax/packs": "workspace:*",

@@ -1,16 +1,19 @@
 /**
- * The demo launcher (docs/specs/product.md "Demo launcher"): "The initial
- * page presents exactly two options: Choose our next car ... Investigate my
- * energy bill ... Starting a demo resets its case to the checked-in fixture
- * and generates a fresh case ID." Both option labels below are copied
- * verbatim from that section -- they are also the exact accessible names
+ * The demo launcher (docs/specs/product.md "Demo launcher"). Since ADR 0003
+ * (docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md), this
+ * renders one primary, non-demo action ("Compare vehicles", handled by
+ * `onCompareVehicles` -- `App.tsx` owns what happens next) above the two
+ * original demo cards, grouped under an "Or try a finished example" heading.
+ * Both demo option labels below are still copied verbatim from product.md's
+ * "Demo launcher" section -- they are also the exact accessible names
  * product.md's demo video scripts (docs/demo/*.md) expect a judge/host to
- * see and click.
+ * see and click, and their `startDemo` wiring, copy, and `data-testid`s are
+ * completely unchanged by that ADR.
  *
- * Both options call `startDemo` on the one shared `PaxCommands` client from
- * `usePaxCommands()` (CLAUDE.md "Visible UI controls and WebMCP callbacks
- * use the same command implementation") -- there is no separate launcher-only
- * fetch call.
+ * Both demo options call `startDemo` on the one shared `PaxCommands` client
+ * from `usePaxCommands()` (CLAUDE.md "Visible UI controls and WebMCP
+ * callbacks use the same command implementation") -- there is no separate
+ * launcher-only fetch call.
  *
  * Required visible states covered here (product.md "Required visible
  * states"): initial/empty (both options enabled, nothing started yet),
@@ -31,6 +34,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 export interface DemoLauncherProps {
   /** Called once `startDemo` resolves, with the real `CommandReceipt` (carrying the fresh `caseId`) -- lets `App` transition from the launcher to the case workspace. */
   onDemoStarted?: (receipt: CommandReceipt) => void;
+  /** Called when the primary "Compare vehicles" action is clicked (docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md) -- lets `App` transition into `VehicleCatalogFlow`. Optional so this component still renders correctly (minus that one action) in isolation/tests that don't need it. */
+  onCompareVehicles?: () => void;
 }
 
 interface DemoOption {
@@ -60,7 +65,7 @@ type LauncherStatus =
   | { kind: 'starting'; demoId: DemoId }
   | { kind: 'error'; demoId: DemoId; message: string };
 
-export function DemoLauncher({ onDemoStarted }: DemoLauncherProps) {
+export function DemoLauncher({ onDemoStarted, onCompareVehicles }: DemoLauncherProps) {
   const commands = usePaxCommands();
   const [status, setStatus] = useState<LauncherStatus>({ kind: 'idle' });
 
@@ -112,43 +117,66 @@ export function DemoLauncher({ onDemoStarted }: DemoLauncherProps) {
             Start a Pax case
           </h1>
           <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-            Choose a decision to investigate. Starting a demo resets it to the checked-in fixture
-            and creates a fresh case.
+            Compare real vehicles from the bundled catalog, or try a finished example.
           </p>
         </div>
 
-        <div className="flex flex-col gap-[var(--space-3)] min-[900px]:flex-row">
-          {DEMO_OPTIONS.map((option) => {
-            const optionIsStarting = status.kind === 'starting' && status.demoId === option.demoId;
-            return (
-              // A native <button>, not the Card *component* (Card has no
-              // `asChild` -- only Button/Badge get Radix's Slot support) --
-              // styled with the same flat bg-card/rounded-[var(--radius-lg)]
-              // classes Card itself uses, so this option keeps real button
-              // semantics (keyboard activation, disabled state, focus ring)
-              // while still reading as a card.
-              <button
-                key={option.demoId}
-                type="button"
-                data-testid={option.testId}
-                aria-label={option.label}
-                aria-describedby={`${option.testId}-description`}
-                aria-busy={optionIsStarting}
-                disabled={isBusy}
-                onClick={() => {
-                  startDemo(option.demoId);
-                }}
-                className="flex min-h-[var(--size-touch-target-min)] flex-1 cursor-pointer flex-col gap-[var(--space-1)] rounded-[var(--radius-lg)] bg-card px-[var(--space-4)] py-[var(--space-4)] text-left transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <CardTitle className="font-[family-name:var(--font-display)] text-[length:var(--font-size-md)]">
-                  {option.label}
-                </CardTitle>
-                <CardDescription id={`${option.testId}-description`}>
-                  {option.description}
-                </CardDescription>
-              </button>
-            );
-          })}
+        {/* Primary, non-demo entry point (ADR 0003): a normal, useful
+            product action, not a fixture reset -- placed above the demo
+            cards and visually distinguished by the default (filled) Button
+            variant instead of the demo cards' flat bg-card treatment. */}
+        <button
+          type="button"
+          data-testid="demo-launcher-compare-vehicles"
+          onClick={onCompareVehicles}
+          className="flex min-h-[var(--size-touch-target-min)] cursor-pointer flex-col gap-[var(--space-1)] rounded-[var(--radius-lg)] bg-primary px-[var(--space-4)] py-[var(--space-4)] text-left text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+        >
+          <CardTitle className="font-[family-name:var(--font-display)] text-[length:var(--font-size-md)] text-primary-foreground">
+            Compare vehicles
+          </CardTitle>
+          <CardDescription className="text-primary-foreground/80">
+            Browse a real vehicle catalog, build a shortlist, and start your own comparison.
+          </CardDescription>
+        </button>
+
+        <div className="flex flex-col gap-[var(--space-2)]">
+          <p className="label-caps text-[length:var(--font-size-xs)] text-muted-foreground">
+            Or try a finished example
+          </p>
+          <div className="flex flex-col gap-[var(--space-3)] min-[900px]:flex-row">
+            {DEMO_OPTIONS.map((option) => {
+              const optionIsStarting =
+                status.kind === 'starting' && status.demoId === option.demoId;
+              return (
+                // A native <button>, not the Card *component* (Card has no
+                // `asChild` -- only Button/Badge get Radix's Slot support) --
+                // styled with the same flat bg-card/rounded-[var(--radius-lg)]
+                // classes Card itself uses, so this option keeps real button
+                // semantics (keyboard activation, disabled state, focus ring)
+                // while still reading as a card.
+                <button
+                  key={option.demoId}
+                  type="button"
+                  data-testid={option.testId}
+                  aria-label={option.label}
+                  aria-describedby={`${option.testId}-description`}
+                  aria-busy={optionIsStarting}
+                  disabled={isBusy}
+                  onClick={() => {
+                    startDemo(option.demoId);
+                  }}
+                  className="flex min-h-[var(--size-touch-target-min)] flex-1 cursor-pointer flex-col gap-[var(--space-1)] rounded-[var(--radius-lg)] bg-card px-[var(--space-4)] py-[var(--space-4)] text-left transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <CardTitle className="font-[family-name:var(--font-display)] text-[length:var(--font-size-md)]">
+                    {option.label}
+                  </CardTitle>
+                  <CardDescription id={`${option.testId}-description`}>
+                    {option.description}
+                  </CardDescription>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <p

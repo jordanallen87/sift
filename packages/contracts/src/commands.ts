@@ -65,6 +65,21 @@ export const StartDemoInputSchema = z
   .strict();
 export type StartDemoInput = z.infer<typeof StartDemoInputSchema>;
 
+// --- StartCaseInput ---
+// Added for docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md:
+// a normal, non-demo case-creation entry point pinned to any registered
+// pack id, not just the closed `DemoId` enum `startDemo` is scoped to. A
+// sibling command, not an overload of `startDemo` -- see that ADR's
+// "Decision" §3 for why `startDemo`'s fixture-reset semantics are kept
+// separately intact rather than widened.
+
+export const StartCaseInputSchema = z
+  .object({
+    packId: idString(),
+  })
+  .strict();
+export type StartCaseInput = z.infer<typeof StartCaseInputSchema>;
+
 // --- SelectPackInput (webmcp.md `pax_select_pack`) ---
 
 export const SelectPackInputSchema = z

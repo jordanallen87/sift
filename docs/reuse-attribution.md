@@ -295,3 +295,97 @@ identical binary rather than a 404-turned-`index.html` fallback. See
 "Playwright visual verification") are the behavioral proof that these
 fonts render instead of falling back to system fonts — no unit test
 exists for a static binary asset in isolation.
+
+## 2026-08-29 — Vehicle catalog dataset (EPA fueleconomy.gov)
+
+**Source:** `https://www.fueleconomy.gov/feg/epadata/vehicles.csv`, the
+U.S. Environmental Protection Agency / Department of Energy's public bulk
+vehicle fuel-economy dataset (the same data that powers fueleconomy.gov).
+Retrieved live 2026-08-29 (`Last-Modified: Fri, 07 Aug 2026 13:13:18 GMT`,
+`ETag "3d9b9836e26dd1:0"`, ~21.7 MB, 47 columns, tens of thousands of
+model/trim rows spanning decades).
+
+**Ownership/license conclusion:** This is a work of the U.S. federal
+government, public domain in the United States under 17 U.S.C. § 105 — no
+copyright attaches, so no license, attribution requirement, or
+redistribution restriction applies. This is a materially different
+posture from the `think-os`/Praetor private-sibling-repository entries
+above (which required a "no explicit license → do not copy source"
+judgment call): here, the *entire raw dataset* could be redistributed
+verbatim with no legal obligation at all. Pax nonetheless (a) transforms
+rather than redistributes the raw file, and (b) attributes it here as
+accurate sourcing practice, not because either is legally required.
+
+**Why this source over the alternatives considered:** the spec brief
+(`docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md`) asked
+for a bounded, deterministic, offline-capable vehicle catalog with real
+(not fabricated) year/make/model/trim/body-style/drivetrain/powertrain/
+fuel-economy data. EPA fueleconomy.gov was chosen over other candidate
+open automotive datasets (e.g. community-maintained VIN-decoder or
+NHTSA-derived GitHub repositories) because: it requires no external
+research to confirm licensing (government-work status is unambiguous,
+unlike a community repository whose own license file would need separate
+verification); it is authoritative and independently well-known, not a
+scraped or derived secondary copy; it updates yearly and includes the two
+most recent model years at retrieval time; and its schema is flat,
+well-documented, and trivially machine-parseable (a single CSV with a
+stable column set), removing any need for HTML scraping or an unstable
+third-party API. NHTSA's separate APIs (recalls, safety ratings, VIN
+decoding) were evaluated per the spec brief's §12 and deliberately **not**
+integrated — optional live enrichment was judged out of this task's scope
+and unnecessary to make the catalog useful (see the completion report).
+
+**What was copied, transformed, and retained:** the raw 21.7 MB / 47-column
+CSV was **not** committed or redistributed wholesale. A one-time, offline,
+checked-in Python transform
+(`packages/catalog/scripts/import-vehicle-catalog.py`) reads the raw CSV
+and produces the checked-in `packages/catalog/data/vehicle-catalog.json`
+(151 records, ~60 KB) by:
+
+- filtering to the two most recent model years present in the source at
+  retrieval time (2025/2026);
+- filtering to a hand-curated list of 44 popular make/model families
+  (`CURATED` in the script) — a deliberate, bounded scope per the spec
+  brief's "do NOT turn this task into building a comprehensive automotive
+  data company" (§4/§25), not an attempt at exhaustive market coverage;
+- keeping at most 2 distinct drivetrain/powertrain/fuel-economy variants
+  per model-year, deduplicated by `(drivetrain, fuelType, combinedMpg)`
+  signature, to avoid dozens of near-duplicate trim rows for one popular
+  model;
+- retaining only 10 fields per record (`year`, `make`, `model`, `trim`,
+  `bodyStyle`, `drivetrain`, `fuelType`, `combinedMpg`, `cylinders`,
+  `transmission`) plus a `source.recordId` pointing back to the EPA
+  dataset's own row id — every other EPA column (36 of the original 47:
+  city/highway MPG breakdowns, CO2/greenhouse-gas scores, alternative-fuel
+  range fields, engine descriptor codes, etc.) was dropped as unnecessary
+  for Pax's comparison use case;
+- normalizing free-text EPA values into Pax's own vocabulary (e.g. EPA's
+  `VClass` "Small Sport Utility Vehicle 4WD" → Pax's `bodyStyle`
+  "Compact SUV"; EPA's `drive` "All-Wheel Drive" → Pax's `drivetrain`
+  "AWD"; EPA's `fuelType1`/`atvType` combination → Pax's single `fuelType`
+  string) via explicit, reviewable lookup tables in the transform script,
+  not inference or guessing — every mapping is a literal table entry, and
+  any EPA value with no table entry is left as its raw string rather than
+  silently dropped or mis-mapped.
+
+**Destination:** `packages/catalog/data/vehicle-catalog.json` (the
+committed, curated output), `packages/catalog/scripts/import-vehicle-catalog.py`
+(the committed transform, for reproducibility — not run as part of any
+`pnpm` script), `packages/catalog/src/schema.ts` (the Zod schema every
+record is validated against on load).
+
+**Limitations, stated honestly (also surfaced in-product per
+docs/decisions/0003, §"Product limitations"):** catalog coverage is 44
+popular families across 2 model years, not a comprehensive market survey;
+EPA's own per-field completeness varies (e.g. `cylinders` is null for
+electric vehicles by nature, `trim` is occasionally EPA's own generic
+placeholder text rather than a marketing trim name); the catalog describes
+*published specifications*, never a specific listing's price, mileage, or
+dealer terms — those remain a separate, explicitly-unknown-until-supplied
+layer (`docs/decisions/0003`, "Listing/dealer facts").
+
+**Test owner:** `packages/catalog/src/data.test.ts` (load/validate/cache/
+error-path coverage) and `packages/catalog/src/query.test.ts`/
+`map-to-option.test.ts` (query correctness and the catalog-to-pack-
+attribute mapping, including the "never fabricate an out-of-enum value"
+rule) — all written alongside this entry.

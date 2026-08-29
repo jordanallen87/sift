@@ -4,9 +4,13 @@
  *
  * product.md's "Primary experience" describes one page, not a multi-page
  * site: "The page contains a seeded demo launcher and the active case
- * workspace." There is no router -- `App` is a plain state machine with
- * exactly two branches: `DemoLauncher` when no case exists yet, and the
- * live case workspace once `startDemo` has returned a receipt.
+ * workspace." There is no router -- `App` is a plain state machine. While
+ * `activeCaseId === null`, `launcherMode` picks between `DemoLauncher`
+ * (`startDemo`/two example cases) and `VehicleCatalogFlow`
+ * (`startCase` + `upsertOption`, docs/decisions/0003-vehicle-catalog-and-
+ * normal-case-creation.md's "Compare vehicles" primary entry point); either
+ * one calling back with a real receipt sets `activeCaseId` and renders the
+ * live case workspace below.
  *
  * This pass wires the entire workspace to real data: `useCaseEvents` (the
  * real SSE/poll-fallback subscription) supplies the canonical `CaseState`
@@ -65,6 +69,7 @@ import { Button } from '@/components/ui/button';
 import { PaxClientError } from '../api/pax-client.js';
 import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active-case-storage.js';
 import { DemoLauncher } from '../components/DemoLauncher.js';
+import { VehicleCatalogFlow } from '../components/VehicleCatalogFlow.js';
 import { CaseHeader, type CaseHeaderConnectionState } from '../components/CaseHeader.js';
 import { DisclosureSection } from '../components/DisclosureSection.js';
 import { WorkspaceStatusHeader } from '../components/WorkspaceStatusHeader.js';
@@ -89,7 +94,31 @@ import {
   type PaxToolRegistrationHandle,
 } from '../model-context/register-pax-tools.js';
 
-const InstalledPacksResponseSchema = z.array(CompiledDecisionPackSchema);
+// Matches the real server contract exactly (`apps/agent/src/routes/packs.ts`
+// `ListPacksResponseSchema`: `{ packs: CompiledDecisionPack[] }`, a `.strict()`
+// wrapper object, never a bare array). A prior version of this schema was a
+// bare `z.array(CompiledDecisionPackSchema)` -- a genuine, silent client/
+// server contract mismatch (confirmed directly against the real running
+// app): `safeParse` on the real `{ packs: [...] }` payload always failed,
+// and the failure was swallowed by this fetch's own deliberately-lenient
+// `if (parsed.success) setInstalledPacks(...)` degrade-gracefully path (see
+// that effect's own comment below), so `installedPacks` silently stayed `[]`
+// forever in every real (non-test) session -- `activePack` was always
+// `null`, `OptionComparison` always fell back to one ungrouped "All
+// attributes" row instead of the pack's real named groups, and
+// `OptionEditor`'s `optionKind`/`optionLabel` always fell back to the
+// generic `'option'` default, which matches none of `car-purchase`'s
+// declared attributes' `appliesTo: ['candidate']` -- so the manual
+// candidate-entry form (product.md "Explicit scope cuts": "users may
+// manually enter up to five car candidates ... ") silently rendered zero
+// attribute fields for every real user. Caught by
+// `vehicle-catalog-journey.spec.ts` (this task), which is the first
+// Playwright spec to actually open `OptionEditor`'s attribute fields against
+// the real server rather than a component test's own hand-built props or a
+// (also incorrectly bare-array) mocked `/api/packs` MSW handler.
+const InstalledPacksResponseSchema = z
+  .object({ packs: z.array(CompiledDecisionPackSchema) })
+  .strict();
 
 /**
  * Reconstructs a fallback `LiveRunStatusReceipt` from replayed
@@ -156,6 +185,11 @@ export function App() {
   const webMcpAdapter = useWebMcpAdapter();
 
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  // Pre-case launcher mode (docs/decisions/0003-vehicle-catalog-and-normal-
+  // case-creation.md): only meaningful while `activeCaseId === null`. Starts
+  // on the plain launcher; "Compare vehicles" switches to the catalog/
+  // shortlist flow without creating anything yet.
+  const [launcherMode, setLauncherMode] = useState<'launcher' | 'catalog'>('launcher');
   // Reload persistence (product.md real-time contract: a mid-case reload
   // must restore state from the server, not local state). Only a *pointer*
   // to which case was open is ever read from `localStorage` synchronously
@@ -195,6 +229,12 @@ export function App() {
     setLastRunReceipt(null);
   }, []);
 
+  const handleCaseCreated = useCallback((receipt: CommandReceipt) => {
+    setActiveCaseId(receipt.caseId);
+    setLastRunReceipt(null);
+    setLauncherMode('launcher');
+  }, []);
+
   // Installed Decision Pack catalog -- fetched once (independent of the
   // active case) and reused both for the `pax_list_packs` WebMCP tool and
   // `OptionComparison`'s pack presentation metadata. `GET /api/packs` has no
@@ -214,7 +254,7 @@ export function App() {
       .then((payload: unknown) => {
         if (cancelled) return;
         const parsed = InstalledPacksResponseSchema.safeParse(payload);
-        if (parsed.success) setInstalledPacks(parsed.data);
+        if (parsed.success) setInstalledPacks(parsed.data.packs);
       })
       .catch(() => undefined);
     return () => {
@@ -492,7 +532,20 @@ export function App() {
         </div>
       );
     }
-    return <DemoLauncher onDemoStarted={handleDemoStarted} />;
+    if (launcherMode === 'catalog') {
+      return (
+        <VehicleCatalogFlow
+          onCaseCreated={handleCaseCreated}
+          onCancel={() => setLauncherMode('launcher')}
+        />
+      );
+    }
+    return (
+      <DemoLauncher
+        onDemoStarted={handleDemoStarted}
+        onCompareVehicles={() => setLauncherMode('catalog')}
+      />
+    );
   }
 
   const activePack = installedPacks.find((pack) => pack.identity.id === snapshot?.pack.id) ?? null;

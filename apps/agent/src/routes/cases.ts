@@ -1,11 +1,17 @@
 /**
- * `POST /api/cases/demo` and `GET /api/cases/:caseId`
+ * `POST /api/cases/demo`, `POST /api/cases`, and `GET /api/cases/:caseId`
  * (docs/specs/architecture.md "HTTP service").
  *
  * `POST /api/cases/demo` dispatches to `CommandService.startDemo`, which
  * resolves `demoId` against the injected `PackRegistry` rather than
  * hardcoding a specific pack -- see `command-service.ts` and
  * `routes/packs.ts` for the same principle.
+ *
+ * `POST /api/cases` dispatches to `CommandService.startCase`
+ * (docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md): a
+ * normal, non-demo case-creation entry point pinned to any registered pack
+ * id. Distinct from `POST /api/cases/demo` rather than folding into it --
+ * see that ADR's "Decision" §3.
  */
 import { Router } from 'express';
 import { CaseStateSchema } from '@pax/contracts';
@@ -26,6 +32,14 @@ export function createCasesRouter(deps: CasesRouterDeps): Router {
     if (commandId === undefined) return;
 
     const result = deps.commandService.startDemo(commandId, req.body);
+    respondWithServiceResult(res, result);
+  });
+
+  router.post('/api/cases', (req, res) => {
+    const commandId = readCommandId(req, res);
+    if (commandId === undefined) return;
+
+    const result = deps.commandService.startCase(commandId, req.body);
     respondWithServiceResult(res, result);
   });
 

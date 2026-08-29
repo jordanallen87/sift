@@ -34,6 +34,7 @@ export function createFakePaxCommands(overrides: Partial<PaxCommands> = {}): Pax
 
   return {
     startDemo: vi.fn().mockResolvedValue(defaultReceipt),
+    startCase: vi.fn().mockResolvedValue(defaultReceipt),
     selectPack: vi.fn().mockResolvedValue(defaultReceipt),
     upsertOption: vi.fn().mockResolvedValue(defaultReceipt),
     focusOption: vi.fn().mockResolvedValue(defaultReceipt),

@@ -1,0 +1,21 @@
+{
+  "name": "@pax/catalog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bundled vehicle catalog (EPA fueleconomy.gov, public domain), bounded query functions, and the one adaptation boundary from a catalog record to a car-purchase pack option's attributes.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pax/contracts": "workspace:*",
+    "zod": "^4.4.3"
+  }
+}

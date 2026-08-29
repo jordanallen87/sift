@@ -84,6 +84,7 @@ import type { PaxDatabase } from './db/connection.js';
 import { createAgentCoreRouter } from './routes/agentcore.js';
 import { createHealthRouter } from './routes/health.js';
 import { createCasesRouter } from './routes/cases.js';
+import { createCatalogRouter } from './routes/catalog.js';
 import { createCommandsRouter } from './routes/commands.js';
 import { createDebugRouter } from './routes/debug.js';
 import { createEventsRouter } from './routes/events.js';
@@ -127,6 +128,7 @@ export function buildApp(deps: BuildAppDeps): Application {
   app.use(express.json());
   app.use(createHealthRouter({ database: deps.database }));
   app.use(createPacksRouter({ registry: deps.registry }));
+  app.use(createCatalogRouter());
   app.use(createCasesRouter({ commandService: deps.commandService, caseStore: deps.caseStore }));
   app.use(createCommandsRouter({ commandService: deps.commandService }));
   app.use(createRunsRouter({ runService: deps.runService }));

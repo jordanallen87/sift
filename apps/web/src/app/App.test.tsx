@@ -44,8 +44,12 @@ function pollHandler(snapshot: CaseState, events: PublicActivityEvent[] = []) {
   });
 }
 
+// Matches the real server contract exactly (`apps/agent/src/routes/packs.ts`
+// `ListPacksResponseSchema`: `{ packs: [...] }`, never a bare array) -- see
+// `App.tsx`'s own `InstalledPacksResponseSchema` comment for the real,
+// previously-silent bug this mock's earlier bare-array shape masked.
 function packsHandler(packs: ReturnType<typeof buildFixtureCompiledPack>[]) {
-  return http.get('/api/packs', () => HttpResponse.json(packs));
+  return http.get('/api/packs', () => HttpResponse.json({ packs }));
 }
 
 function commandHandler(
@@ -186,6 +190,83 @@ describe('App', () => {
       expect(screen.getByTestId('case-workspace')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('demo-launcher')).not.toBeInTheDocument();
+  });
+
+  it('transitions launcher -> catalog -> back to launcher, and launcher -> catalog -> case workspace once a case is created', async () => {
+    server.use(
+      http.get('/api/catalog/makes', () => HttpResponse.json({ makes: ['Toyota'] })),
+      http.get('/api/catalog/body-styles', () => HttpResponse.json({ bodyStyles: ['Sedan'] })),
+      http.get('/api/catalog/vehicles', () =>
+        HttpResponse.json({
+          records: [
+            {
+              id: 'veh-camry-1',
+              year: 2025,
+              make: 'Toyota',
+              model: 'Camry',
+              trim: null,
+              bodyStyle: 'Sedan',
+              drivetrain: null,
+              fuelType: null,
+              combinedMpg: null,
+              cylinders: null,
+              transmission: null,
+              source: { dataset: 'epa-fueleconomy-gov', recordId: '1' },
+            },
+            {
+              id: 'veh-corolla-1',
+              year: 2025,
+              make: 'Toyota',
+              model: 'Corolla',
+              trim: null,
+              bodyStyle: 'Sedan',
+              drivetrain: null,
+              fuelType: null,
+              combinedMpg: null,
+              cylinders: null,
+              transmission: null,
+              source: { dataset: 'epa-fueleconomy-gov', recordId: '2' },
+            },
+          ],
+          total: 2,
+        }),
+      ),
+    );
+    const startCaseReceipt = buildFakeCommandReceipt({ caseId: 'case-catalog-1' });
+    const commands = createFakePaxCommands({
+      startCase: () => Promise.resolve(startCaseReceipt),
+      upsertOption: () => Promise.resolve(buildFakeCommandReceipt({ caseId: 'case-catalog-1' })),
+    });
+    const user = userEvent.setup();
+
+    render(
+      <AppProviders commandsClient={commands}>
+        <App />
+      </AppProviders>,
+    );
+
+    await user.click(screen.getByTestId('demo-launcher-compare-vehicles'));
+    await waitFor(() => {
+      expect(screen.getByTestId('vehicle-catalog-flow')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('demo-launcher')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('vehicle-catalog-back'));
+    expect(screen.getByTestId('demo-launcher')).toBeInTheDocument();
+    expect(screen.queryByTestId('vehicle-catalog-flow')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('demo-launcher-compare-vehicles'));
+    await waitFor(() => {
+      expect(screen.getByTestId('vehicle-card-veh-camry-1')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('vehicle-add-veh-camry-1'));
+    await user.click(screen.getByTestId('vehicle-add-veh-corolla-1'));
+    await user.click(screen.getByTestId('vehicle-catalog-start-comparison'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('case-workspace')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('vehicle-catalog-flow')).not.toBeInTheDocument();
   });
 
   it('has no routing chrome -- renders exactly one top-level region at a time', () => {
@@ -1612,7 +1693,7 @@ describe('App', () => {
           await new Promise<void>((resolve) => {
             releasePacks = resolve;
           });
-          return HttpResponse.json([DEFAULT_PACK]);
+          return HttpResponse.json({ packs: [DEFAULT_PACK] });
         }),
       );
 

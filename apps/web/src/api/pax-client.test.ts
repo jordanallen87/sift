@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import type { StartDemoInput } from '@pax/contracts';
+import type { StartCaseInput, StartDemoInput } from '@pax/contracts';
 import { createPaxClient, PaxClientError } from './pax-client.js';
 
 const BASE_URL = 'http://pax.test';
@@ -54,6 +54,37 @@ describe('createPaxClient', () => {
     const invalidInput = { demoId: 'not-a-real-demo' } as unknown as StartDemoInput;
 
     await expect(client.startDemo(invalidInput)).rejects.toMatchObject({
+      code: 'VALIDATION',
+    });
+  });
+
+  it('posts startCase to /api/cases and returns a validated CommandReceipt', async () => {
+    let capturedBody: unknown;
+    server.use(
+      http.post(`${BASE_URL}/api/cases`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(baseReceipt);
+      }),
+    );
+
+    const client = createPaxClient({ baseUrl: BASE_URL });
+    const receipt = await client.startCase({ packId: 'car-purchase' });
+
+    expect(receipt).toEqual(baseReceipt);
+    expect(capturedBody).toMatchObject({ packId: 'car-purchase' });
+  });
+
+  it('rejects an invalid startCase input locally, without making a network request', async () => {
+    server.use(
+      http.post(`${BASE_URL}/api/cases`, () => {
+        throw new Error('startCase must not reach the network with invalid input');
+      }),
+    );
+
+    const client = createPaxClient({ baseUrl: BASE_URL });
+    const invalidInput = {} as unknown as StartCaseInput;
+
+    await expect(client.startCase(invalidInput)).rejects.toMatchObject({
       code: 'VALIDATION',
     });
   });

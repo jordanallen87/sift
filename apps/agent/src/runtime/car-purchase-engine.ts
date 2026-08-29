@@ -142,6 +142,41 @@ import {
 /** The typed `custom.*` case-attribute id the household's confirmed two-dog-crate concern is defined under (`command-service.ts` `defineCaseAttribute`). See this file's header comment. */
 export const DOG_CRATE_EXTENSION_ID = 'custom.dog_crate_fit';
 
+/**
+ * The exact candidate id set the deterministic car-purchase demo fixture
+ * seeds (`buildCarPurchaseCandidateEntities`, `server.ts`'s
+ * `buildCarPurchaseCandidateEntities` call site, and this file's own
+ * `seedRealCandidates`-shaped test helper). This engine's entire scripted
+ * two-round investigation -- `HARD_CONSTRAINTS_SUMMARY`'s named sentence,
+ * `TEASER_PRICE_SOURCE_ID`, and every scripted provider in
+ * `scripted-beats/car-purchase.ts` -- is written specifically around these
+ * four candidates, not a generic shortlist. See
+ * docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md "Decision"
+ * §4.
+ */
+export const DETERMINISTIC_DEMO_CANDIDATE_IDS = [
+  'candidate-rav4',
+  'candidate-crv',
+  'candidate-cx5',
+  'candidate-outback',
+] as const;
+
+/**
+ * True only when `caseState`'s entity id set is EXACTLY the deterministic
+ * demo's four candidate ids (no more, no fewer, regardless of order) -- see
+ * docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md "Decision"
+ * §4. A catalog-built case (via `startCase` + `upsertOption`) will virtually
+ * never match this exactly, even if it happens to contain a RAV4 -- its
+ * entity ids come from `idGenerator.next('option')`, not these literal
+ * fixture strings. Order-independent (a `Set` comparison) because nothing
+ * about entity array order is a durable contract elsewhere in this codebase.
+ */
+export function isDeterministicCarPurchaseDemoCase(caseState: CaseState): boolean {
+  const actualIds = new Set(caseState.entities.map((entity) => entity.id));
+  if (actualIds.size !== DETERMINISTIC_DEMO_CANDIDATE_IDS.length) return false;
+  return DETERMINISTIC_DEMO_CANDIDATE_IDS.every((demoId) => actualIds.has(demoId));
+}
+
 /** The real `source-dealer-offer-candidate-rav4` teaser-price evidence link(s) round 2 supersedes -- see `car-purchase-scenario.ts`'s identical rationale at its own round-2 fold. */
 const TEASER_PRICE_SOURCE_ID = 'source-dealer-offer-candidate-rav4';
 
@@ -808,6 +843,34 @@ async function runOneInvestigation(
       throw new Error(
         `car-purchase-engine: pinned pack "${initialSnapshot.pack.id}@${initialSnapshot.pack.version}" is not registered`,
       );
+    }
+
+    // A catalog-built case (startCase + upsertOption) fails fast and
+    // honestly here, before any scripted round/graph work starts -- see
+    // isDeterministicCarPurchaseDemoCase's own doc comment and
+    // docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md
+    // "Decision" §4. This is a deliberate, disclosed scope boundary, not a
+    // crash and not a fabricated result built around a fixture the case has
+    // no real relationship to.
+    if (!isDeterministicCarPurchaseDemoCase(initialSnapshot)) {
+      const message =
+        'Guided investigation currently runs only against the deterministic example case. ' +
+        "This case's vehicles were added directly — you can still compare them, add your own " +
+        'criteria, submit your own sources, and record findings yourself; automated ' +
+        "investigation for custom shortlists isn't available yet.";
+      deps.runStore.updateStatus(params.runId, {
+        status: 'failed',
+        updatedAt: deps.clock.now(),
+        result: { error: message },
+      });
+      appendActivity(deps.activityStore, deps.clock, params.caseId, {
+        runId: params.runId,
+        obligationId: params.obligationId,
+        type: 'run.failed',
+        phase: 'failed',
+        summary: message,
+      });
+      return;
     }
 
     const round = determineCarPurchaseRound(initialSnapshot);

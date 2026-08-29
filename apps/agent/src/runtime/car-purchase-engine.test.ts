@@ -35,8 +35,10 @@ import type { CarPurchaseGraphResult } from './car-purchase-graph.js';
 import {
   createCarPurchaseEngine,
   determineCarPurchaseRound,
+  DETERMINISTIC_DEMO_CANDIDATE_IDS,
   foldRound1,
   foldRound2,
+  isDeterministicCarPurchaseDemoCase,
   type CarPurchaseEngine,
   type CarPurchaseEngineDeps,
 } from './car-purchase-engine.js';
@@ -259,6 +261,45 @@ describe('determineCarPurchaseRound', () => {
   it('is round2 once the dog-crate extension is confirmed', () => {
     const state = caseStateWithExtensions([dogCrateExtension('confirmed')]);
     expect(determineCarPurchaseRound(state)).toBe('round2');
+  });
+});
+
+describe('isDeterministicCarPurchaseDemoCase', () => {
+  function caseStateWithEntityIds(ids: readonly string[]): CaseState {
+    return {
+      entities: ids.map((id) => ({
+        id,
+        kind: 'candidate',
+        label: id,
+        attributes: {},
+        createdAt: '2026-08-27T00:00:00.000Z',
+        updatedAt: '2026-08-27T00:00:00.000Z',
+      })),
+    } as CaseState;
+  }
+
+  it('is true when entities are exactly the 4 demo ids, in any order', () => {
+    const shuffled = [...DETERMINISTIC_DEMO_CANDIDATE_IDS].reverse();
+    expect(isDeterministicCarPurchaseDemoCase(caseStateWithEntityIds(shuffled))).toBe(true);
+  });
+
+  it('is false for a case with 0 entities', () => {
+    expect(isDeterministicCarPurchaseDemoCase(caseStateWithEntityIds([]))).toBe(false);
+  });
+
+  it('is false for a case with 3 of the 4 demo ids plus one extra id', () => {
+    const ids = ['candidate-rav4', 'candidate-crv', 'candidate-cx5', 'option-abc123'];
+    expect(isDeterministicCarPurchaseDemoCase(caseStateWithEntityIds(ids))).toBe(false);
+  });
+
+  it('is false for a case with entirely different ids', () => {
+    const ids = ['option-abc123', 'option-def456'];
+    expect(isDeterministicCarPurchaseDemoCase(caseStateWithEntityIds(ids))).toBe(false);
+  });
+
+  it('is false for a case with the 4 demo ids plus a 5th id', () => {
+    const ids = [...DETERMINISTIC_DEMO_CANDIDATE_IDS, 'option-extra'];
+    expect(isDeterministicCarPurchaseDemoCase(caseStateWithEntityIds(ids))).toBe(false);
   });
 });
 
@@ -545,6 +586,88 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
       .find((event) => event.type === 'run.failed');
     expect(failedActivity).toBeDefined();
     expect(failedActivity?.summary).toContain('is not registered');
+  });
+
+  it('fails fast and honestly on a catalog-built case, without ever running the scripted graph (ADR 0003 "Decision" §4)', async () => {
+    const { caseStore, activityStore, runStore, runtimeEventStore, commandService, runService } =
+      buildLiveStack();
+
+    // --- Exactly the real, live path a normal (non-demo) user takes:
+    // startCase (zero seeded entities) + two upsertOption calls, each
+    // minting its own generated id via idGenerator.next('option') -- never
+    // one of the four literal demo fixture ids. ---
+    const startResult = commandService.startCase('cmd-start', { packId: 'car-purchase' });
+    requireOkCommand(startResult);
+    let snapshot = requireSnapshot(startResult.value);
+    const caseId = snapshot.id;
+    expect(snapshot.entities).toHaveLength(0);
+
+    const option1Result = commandService.upsertOption('cmd-opt-1', {
+      caseId,
+      expectedSequence: snapshot.eventSequence,
+      option: { label: 'A random SUV', kind: 'candidate', attributes: [] },
+    });
+    requireOkCommand(option1Result);
+    snapshot = requireSnapshot(option1Result.value);
+
+    const option2Result = commandService.upsertOption('cmd-opt-2', {
+      caseId,
+      expectedSequence: snapshot.eventSequence,
+      option: { label: 'Another random SUV', kind: 'candidate', attributes: [] },
+    });
+    requireOkCommand(option2Result);
+    snapshot = requireSnapshot(option2Result.value);
+
+    expect(snapshot.entities).toHaveLength(2);
+    expect(isDeterministicCarPurchaseDemoCase(snapshot)).toBe(false);
+
+    // --- POST .../run against this catalog-built case ---
+    const runResult = runService.requestInvestigation('cmd-run', {
+      caseId,
+      obligationId: 'car.deal_normalization',
+      expectedSequence: snapshot.eventSequence,
+    });
+    requireOkRun(runResult);
+    const runId = runResult.value.runId;
+
+    const record = await waitForRunSettled(runStore, runId);
+    expect(record.status).toBe('failed');
+    expect(JSON.stringify(record.result)).toContain('deterministic example case');
+
+    const activity = activityStore.replayFrom(caseId, 0);
+    const failedActivity = activity.find(
+      (event) => event.runId === runId && event.type === 'run.failed',
+    );
+    expect(failedActivity).toBeDefined();
+    expect(failedActivity?.summary).toContain('deterministic example case');
+    expect(failedActivity?.summary).toContain('vehicles were added directly');
+
+    // --- The scripted graph never ran at all: no `run.started`, no
+    // specialist/skill/tool activity for this run, and -- most decisively
+    // -- no runtime_events were ever drained for it (the real round1/round2
+    // test above proves executeCarPurchaseGraph always yields a non-empty,
+    // durably persisted RuntimeEvent stream via drainGraphToActivity; its
+    // total absence here is direct proof the graph itself was never
+    // invoked, not merely that its output went unobserved). ---
+    // Exactly two activity events ever reference this runId: RunService's
+    // own `run.queued` (recorded synchronously before the engine is ever
+    // triggered) and this engine's early `run.failed` -- nothing in
+    // between.
+    const activityForRun = activity.filter((event) => event.runId === runId);
+    expect(activityForRun.map((event) => event.type)).toEqual(['run.queued', 'run.failed']);
+    expect(activityForRun.some((event) => event.type === 'run.started')).toBe(false);
+    expect(activityForRun.some((event) => event.type === 'specialist.started')).toBe(false);
+    expect(activityForRun.some((event) => event.type === 'specialist.completed')).toBe(false);
+    expect(activityForRun.some((event) => event.type === 'skill.activated')).toBe(false);
+    expect(activityForRun.some((event) => event.type === 'tool.started')).toBe(false);
+    expect(runtimeEventStore.listByRun(runId)).toHaveLength(0);
+
+    // --- Case state itself is untouched by the failed run: no fabricated
+    // recommendation or proposal ever got recorded. ---
+    const finalSnapshot = caseStore.load(caseId)!;
+    expect(finalSnapshot.recommendation).toBeNull();
+    expect(finalSnapshot.proposal).toBeNull();
+    expect(finalSnapshot.eventSequence).toBe(snapshot.eventSequence);
   });
 });
 

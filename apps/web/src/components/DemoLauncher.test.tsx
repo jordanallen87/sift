@@ -18,7 +18,7 @@ function renderLauncher(overrides: Parameters<typeof createFakePaxCommands>[0] =
 }
 
 describe('DemoLauncher', () => {
-  it('renders exactly the two demo options from product.md, with the exact required labels', () => {
+  it('renders the two demo options from product.md, with the exact required labels', () => {
     renderLauncher();
 
     const carOption = screen.getByRole('button', { name: 'Choose our next car' });
@@ -26,7 +26,21 @@ describe('DemoLauncher', () => {
 
     expect(carOption).toHaveAttribute('data-testid', 'demo-launcher-car-purchase');
     expect(energyOption).toHaveAttribute('data-testid', 'demo-launcher-home-energy-guardian');
-    expect(screen.getAllByRole('button')).toHaveLength(2);
+    // Three buttons total (ADR 0003): the primary "Compare vehicles" action
+    // plus the two unchanged demo cards.
+    expect(screen.getAllByRole('button')).toHaveLength(3);
+  });
+
+  it('renders the primary "Compare vehicles" action and calls onCompareVehicles when clicked', async () => {
+    const onCompareVehicles = vi.fn();
+    const user = userEvent.setup();
+    renderLauncher({}, { onCompareVehicles });
+
+    const compareButton = screen.getByTestId('demo-launcher-compare-vehicles');
+    expect(compareButton).toBeInTheDocument();
+    await user.click(compareButton);
+
+    expect(onCompareVehicles).toHaveBeenCalledTimes(1);
   });
 
   it('calls startDemo with the matching demoId when an option is clicked (initial/empty state -> command)', async () => {

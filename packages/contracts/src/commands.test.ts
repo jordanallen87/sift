@@ -14,6 +14,7 @@ import {
   RunReceiptSchema,
   SelectPackInputSchema,
   SetEvidenceDispositionInputSchema,
+  StartCaseInputSchema,
   StartDemoInputSchema,
   SubmitSourceInputSchema,
   UpdateCriteriaInputSchema,
@@ -29,6 +30,23 @@ describe('StartDemoInputSchema', () => {
 
   it('rejects an unlisted demo id', () => {
     expect(StartDemoInputSchema.safeParse({ demoId: 'apartment-hunt' }).success).toBe(false);
+  });
+});
+
+describe('StartCaseInputSchema', () => {
+  it('accepts any well-formed pack id, not just the closed DemoId enum', () => {
+    expect(StartCaseInputSchema.safeParse({ packId: 'car-purchase' }).success).toBe(true);
+    expect(StartCaseInputSchema.safeParse({ packId: 'apartment-hunt' }).success).toBe(true);
+  });
+
+  it('rejects a missing packId', () => {
+    expect(StartCaseInputSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('rejects an unknown field (strict)', () => {
+    expect(StartCaseInputSchema.safeParse({ packId: 'car-purchase', extra: 1 }).success).toBe(
+      false,
+    );
   });
 });
 

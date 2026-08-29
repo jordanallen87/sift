@@ -54,10 +54,14 @@ In production (and in the Docker image), there is no separate dev server: the ag
 
 ## Running the demo locally
 
-1. Open the web app. The launcher presents two options: **"Choose our next car"** and **"Investigate my energy bill."**
+1. Open the web app. The launcher's primary action is **"Compare vehicles"**; below it, under **"Or try a finished example,"** are the two original demo cards: **"Choose our next car"** and **"Investigate my energy bill."**
 2. Click **"Choose our next car"** to start the car-purchase case from its checked-in fixture (a fresh case ID every time), then **"Request investigation"** to drive the live Strands Graph, watch skill activation, tool calls, evidence, and readiness update in real time in the activity ledger, edit criteria or candidates, and review the resulting recommendation.
 3. **"Investigate my energy bill"** starts the Home Energy Guardian case the same way, driving a real bounded Strands Swarm across its six specialists instead of a Graph — including a real steering intervention on repeated evidence-gathering and a `ConsequenceGuard` confirmation gate before it will ever propose a home inspection.
 4. Click **"Inspect run"** (next to the live run status, or on any activity item that carries a run) to open the Runtime Inspector and drill into correlated Strands hooks, OpenTelemetry spans, and state diffs. This currently ships as an Overview + Timeline slice; the fuller Execution/State/Context/Errors views described in `docs/specs/debugging-and-observability.md` are tracked as follow-on work, not yet built.
+
+## Vehicle catalog and "Compare vehicles"
+
+Beyond the two seeded demos, Pax is a normal, useful vehicle-comparison product on its own (`docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md`): click **"Compare vehicles"** to browse a bundled, offline catalog of real published vehicle specifications (year/make/model/trim/body style/drivetrain/powertrain/combined fuel economy — sourced from the EPA's public fueleconomy.gov dataset, see `docs/reuse-attribution.md`), build a 2–5 vehicle shortlist, and start a real, persisted `car-purchase` case from it (`startCase`, then one `upsertOption` per vehicle — the exact same commands the visible UI and WebMCP already share). From there you can add listing-specific facts, change criteria, submit your own sources, and record findings yourself. Guided/automated investigation (`requestInvestigation`) currently runs only against the deterministic example case above; a catalog-built case's investigation request fails fast with a clear, honest explanation rather than a crash or a fabricated result — every other capability works identically on both kinds of case.
 
 ## WebMCP
 

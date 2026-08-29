@@ -17,6 +17,7 @@ pax/
     contracts/              Zod schemas and shared API/event types
     core/                   Pure case reducer, routing, obligations, evidence, readiness
     packs/                  Compiler, registry, built-in manifests, authoring tools
+    catalog/                Bundled vehicle catalog, bounded queries, pack-attribute mapping
     scenarios/              Fixture data, scripted tools, scenario runner, assertions
     ui/                     Small reusable visual primitives and case components
   tests/
@@ -60,6 +61,7 @@ Every user or WebMCP mutation calls a named command through the same interface:
 ```ts
 interface PaxCommands {
   startDemo(input: StartDemoInput): Promise<CommandReceipt>
+  startCase(input: StartCaseInput): Promise<CommandReceipt>
   selectPack(input: SelectPackInput): Promise<CommandReceipt>
   upsertOption(input: UpsertOptionInput): Promise<CommandReceipt>
   focusOption(input: FocusOptionInput): Promise<CommandReceipt>
@@ -92,6 +94,7 @@ The service exposes:
 - `GET /health` for the web deployment;
 - `GET /api/packs`;
 - `POST /api/cases/demo`;
+- `POST /api/cases` — normal, non-demo case creation pinned to any registered pack id (docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md);
 - `GET /api/cases/:caseId`;
 - `GET /api/cases/:caseId/events` as SSE;
 - `POST /api/cases/:caseId/commands/:commandName`;
@@ -99,6 +102,7 @@ The service exposes:
 - `GET /api/debug/runs/:runId`;
 - `GET /api/debug/runs/:runId/events` as SSE;
 - `GET /api/debug/runs/:runId/export`;
+- `GET /api/catalog/years`, `GET /api/catalog/makes`, `GET /api/catalog/models`, `GET /api/catalog/body-styles`, `GET /api/catalog/vehicles`, `GET /api/catalog/vehicles/:id` — read-only, bounded, offline vehicle catalog queries (docs/decisions/0003), backed by `@pax/catalog`;
 - `GET /ping` for AgentCore;
 - `POST /invocations` for AgentCore.
 

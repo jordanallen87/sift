@@ -60,6 +60,7 @@ import {
   RunReceiptSchema,
   SelectPackInputSchema,
   SetEvidenceDispositionInputSchema,
+  StartCaseInputSchema,
   StartDemoInputSchema,
   SubmitSourceInputSchema,
   UpdateCriteriaInputSchema,
@@ -76,6 +77,7 @@ import {
   type RunReceipt,
   type SelectPackInput,
   type SetEvidenceDispositionInput,
+  type StartCaseInput,
   type StartDemoInput,
   type SubmitSourceInput,
   type ToolErrorCode,
@@ -124,6 +126,8 @@ export interface CommandCallOptions {
  */
 export interface PaxCommands {
   startDemo: (input: StartDemoInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
+  /** Docs/decisions/0003: a normal, non-demo case-creation entry point pinned to any registered pack id -- see `POST /api/cases`. */
+  startCase: (input: StartCaseInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
   selectPack: (input: SelectPackInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
   upsertOption: (input: UpsertOptionInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
   focusOption: (input: FocusOptionInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
@@ -381,6 +385,16 @@ export function createPaxClient(options: CreatePaxClientOptions = {}): PaxComman
       return postJson(
         fetchImpl,
         `${baseUrl}/api/cases/demo`,
+        validated,
+        CommandReceiptSchema,
+        options,
+      ) as Promise<CommandReceipt>;
+    },
+    startCase: async (input, options) => {
+      const validated = validate(StartCaseInputSchema, input) as StartCaseInput;
+      return postJson(
+        fetchImpl,
+        `${baseUrl}/api/cases`,
         validated,
         CommandReceiptSchema,
         options,

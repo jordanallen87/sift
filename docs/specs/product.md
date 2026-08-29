@@ -90,12 +90,29 @@ Errors must preserve the last valid case state. A failed model or tool call beco
 
 ## Demo launcher
 
-The initial page presents exactly two options:
+`docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md` (ADR 0003) changed this section: the launcher's job is no longer only to start one of two fixtures — it is the front door into two genuinely different ways of using Pax.
 
-- **Choose our next car** — starts the Car Purchase fixture and permits editing the seeded household priorities and candidates.
-- **Investigate my energy bill** — starts the Home Energy Guardian fixture.
+The launcher presents one primary action above a visually secondary, grouped pair of example cards:
 
-Starting a demo resets its case to the checked-in fixture and generates a fresh case ID. It does not depend on a previous demo run.
+- **Compare vehicles** (primary) — opens the vehicle catalog and shortlist flow (see "Vehicle catalog and normal case creation" below). This is a normal product action, not a demo: it creates a fresh, empty `car-purchase` case (`startCase`) and lets the user add real vehicles to it themselves.
+- **Or try a finished example** (secondary group heading), containing the two pre-existing demo cards, copy and behavior completely unchanged:
+  - **Choose our next car** — starts the checked-in deterministic Car Purchase fixture and permits editing the seeded household priorities and candidates.
+  - **Investigate my energy bill** — starts the Home Energy Guardian fixture.
+
+Starting either example resets its case to the checked-in fixture and generates a fresh case ID; it does not depend on a previous demo run. Both example cards keep their pre-existing `data-testid`s, copy, and `startDemo` command wiring exactly as they were — this ADR is additive to the launcher (a new primary action, a new group heading, and visual demotion of the pre-existing pair), not a rewrite of the demo path.
+
+## Vehicle catalog and normal case creation
+
+ADR 0003's core product change: **Pax is useful as a normal vehicle-comparison website before ChatGPT/WebMCP is involved.** A user reaching "Compare vehicles" can:
+
+1. Browse/search a bundled catalog of real published vehicle specifications (year, make, model, trim, body style, drivetrain, powertrain, combined fuel economy) — no network access required, no live pricing or dealer data.
+2. Add up to five vehicles to a shortlist, removing or replacing any before committing.
+3. Start a real, persisted `car-purchase` case from that shortlist (`startCase`, then one `upsertOption` per selected vehicle — the exact same command visible controls and WebMCP callbacks already share). The resulting case is pinned to the `car-purchase` Decision Pack's ID/version/compiled hash exactly like a demo case.
+4. Continue in the normal case workspace: compare candidates, add listing-specific facts (price, mileage, dealer, listing URL) via the existing `OptionEditor`, change criteria, add a custom concern, submit their own sources, and set evidence dispositions — every one of these commands works identically on a catalog-built case and a demo case, since none of them are demo-specific.
+
+**Known, disclosed limitation:** guided/automated investigation (`requestInvestigation`) currently runs only against the deterministic Car Purchase example case. A catalog-built case's `requestInvestigation` call fails honestly with a clear explanation rather than crashing or fabricating a plausible-looking recommendation — see ADR 0003 §4. Every other capability above remains fully real and functional on a catalog-built case. Building a genuine, generic investigation engine for arbitrary user-built shortlists is out of scope for this task and is recorded as a known limitation, not silently implied as working.
+
+Catalog data is intentionally a separate, narrower fact class from case data (ADR 0003): a catalog record describes a year/make/model/trim's *published specifications* and is never mutated once a case has copied its known fields onto a candidate entity — later catalog updates never reinterpret an existing case.
 
 ## User-facing terminology
 
@@ -116,6 +133,9 @@ Starting a demo resets its case to the checked-in fixture and generates a fresh 
 | Approval | **Your decision** |
 | Option comparison | **Compare the options** |
 | Current focus | **What Pax is doing** |
+| `VehicleCatalogRecord` | Vehicle |
+| Shortlist (pre-case candidate selection) | Your shortlist |
+| `startCase` | Compare vehicles |
 
 ## Success criteria
 
@@ -138,9 +158,9 @@ The hackathon build succeeds when:
 The following do not ship in the hackathon version:
 
 - accounts, authentication, teams, or multi-user collaboration;
-- arbitrary file uploads beyond the provided demo fixtures; users may manually enter up to five car candidates and paste structured listing or offer details;
+- arbitrary file uploads beyond the provided demo fixtures; users may manually enter up to five car candidates, select them from the bundled vehicle catalog, and paste structured listing or offer details;
 - OCR or general document ingestion;
-- automated vehicle marketplace scraping, utility accounts, email, calendar, dealer contact, purchasing, financing applications, or scheduling;
+- automated vehicle marketplace scraping, live pricing, VIN-level inventory, utility accounts, email, calendar, dealer contact, purchasing, financing applications, or scheduling — the bundled vehicle catalog (ADR 0003) is a static, offline, bounded snapshot of published specifications, never a live marketplace integration;
 - autonomous final decisions;
 - a graphical Pack Studio, pack marketplace, runtime self-modification, or pack composition; a local conversational `pack-authoring` skill and CLI are included;
 - unrestricted browser automation;

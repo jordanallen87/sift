@@ -71,6 +71,7 @@ import {
   RequestRevisionInputSchema,
   SelectPackInputSchema,
   SetEvidenceDispositionInputSchema,
+  StartCaseInputSchema,
   StartDemoInputSchema,
   SubmitSourceInputSchema,
   UpdateCriteriaInputSchema,
@@ -252,6 +253,87 @@ export class CommandService {
           summary: `Added option "${entity.label}".`,
         });
       }
+    }
+    return this.toReceipt(commandId, result);
+  }
+
+  /**
+   * `startCase` (docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md):
+   * a normal, non-demo case-creation entry point pinned to any registered
+   * pack id -- unlike `startDemo`, never resets to a fixture and seeds zero
+   * entities (a catalog-built case's candidates are added afterward, one
+   * per vehicle, via the existing, unmodified `upsertOption`). Mirrors
+   * `startDemo`'s exact event sequence (`case.created` then
+   * `criteria.updated` then one `obligation.updated` per derived
+   * obligation) minus the seed-entity events `startDemo`'s
+   * `demoSeedEntities` hook adds -- `instantiateCase` always derives
+   * `entities: []`, so there is nothing to seed here by construction.
+   */
+  startCase(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+    const parsed = StartCaseInputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return validationFailure('Invalid startCase input.', formatZodIssues(parsed.error.issues));
+    }
+    const input = parsed.data;
+
+    const duplicate = this.checkIdempotent(commandId);
+    if (duplicate !== undefined) return duplicate;
+
+    const pack = resolveLatestPack(this.deps.registry, input.packId);
+    if (pack === undefined) {
+      return notFound(`No installed Decision Pack was found for pack id "${input.packId}".`);
+    }
+
+    const selection: PackSelection = {
+      selectedBy: 'user',
+      reasons: [`Started a new case against "${pack.identity.name}".`],
+    };
+    const seed = instantiateCase(pack, selection, this.deps.clock, this.deps.idGenerator);
+
+    const events: CaseEvent[] = [
+      {
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: seed.id,
+        sequence: 1,
+        timestamp: seed.createdAt,
+        commandId,
+        type: 'case.created',
+        payload: { title: seed.title, pack: seed.pack },
+      },
+      {
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: seed.id,
+        sequence: 2,
+        timestamp: seed.createdAt,
+        commandId,
+        type: 'criteria.updated',
+        payload: { criteria: seed.criteria },
+      },
+      ...seed.obligations.map((obligation, index): CaseEvent => ({
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: seed.id,
+        sequence: 3 + index,
+        timestamp: seed.createdAt,
+        commandId,
+        type: 'obligation.updated',
+        payload: { obligation },
+      })),
+    ];
+
+    const result = this.deps.caseStore.append(seed.id, events, 0, {
+      seedSnapshot: seed,
+      idempotency: { commandId, commandName: 'startCase' },
+    });
+
+    if (result.status === 'applied') {
+      this.emitActivity({
+        timestamp: seed.createdAt,
+        caseId: result.snapshot.id,
+        commandId,
+        type: 'command.accepted',
+        phase: 'completed',
+        summary: `Started a new case against "${pack.identity.name}".`,
+      });
     }
     return this.toReceipt(commandId, result);
   }

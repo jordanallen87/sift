@@ -1,0 +1,2569 @@
+[
+  {
+    "id": "veh-2025-audi-a4-s-line-quattro-47974",
+    "year": 2025,
+    "make": "Audi",
+    "model": "A4",
+    "trim": "S line quattro",
+    "bodyStyle": "Compact car",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 26,
+    "cylinders": 4,
+    "transmission": "Automatic (AM-S7)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47974"
+    }
+  },
+  {
+    "id": "veh-2025-audi-a4-quattro-47975",
+    "year": 2025,
+    "make": "Audi",
+    "model": "A4",
+    "trim": "quattro",
+    "bodyStyle": "Compact car",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 29,
+    "cylinders": 4,
+    "transmission": "Automatic (AM-S7)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47975"
+    }
+  },
+  {
+    "id": "veh-2026-chevrolet-equinox-awd-49480",
+    "year": 2026,
+    "make": "Chevrolet",
+    "model": "Equinox",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 26,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49480"
+    }
+  },
+  {
+    "id": "veh-2026-chevrolet-equinox-ev-awd-11-kw-charger-49955",
+    "year": 2026,
+    "make": "Chevrolet",
+    "model": "Equinox",
+    "trim": "EV AWD (11 kW Charger)",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 103,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49955"
+    }
+  },
+  {
+    "id": "veh-2025-chevrolet-equinox-awd-48089",
+    "year": 2025,
+    "make": "Chevrolet",
+    "model": "Equinox",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 26,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48089"
+    }
+  },
+  {
+    "id": "veh-2025-chevrolet-equinox-ev-awd-11-kw-charger-48695",
+    "year": 2025,
+    "make": "Chevrolet",
+    "model": "Equinox",
+    "trim": "EV AWD (11 kW Charger)",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 103,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48695"
+    }
+  },
+  {
+    "id": "veh-2026-chevrolet-silverado-with-sport-mode-2wd-49357",
+    "year": 2026,
+    "make": "Chevrolet",
+    "model": "Silverado",
+    "trim": "(with Sport Mode) 2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 19,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49357"
+    }
+  },
+  {
+    "id": "veh-2026-chevrolet-silverado-with-sport-mode-2wd-49360",
+    "year": 2026,
+    "make": "Chevrolet",
+    "model": "Silverado",
+    "trim": "(with Sport Mode) 2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 18,
+    "cylinders": 8,
+    "transmission": "Automatic 10-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49360"
+    }
+  },
+  {
+    "id": "veh-2025-chevrolet-silverado-2wd-48199",
+    "year": 2025,
+    "make": "Chevrolet",
+    "model": "Silverado",
+    "trim": "2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Diesel",
+    "combinedMpg": 26,
+    "cylinders": 6,
+    "transmission": "Automatic 10-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48199"
+    }
+  },
+  {
+    "id": "veh-2025-chevrolet-silverado-2wd-48200",
+    "year": 2025,
+    "make": "Chevrolet",
+    "model": "Silverado",
+    "trim": "2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 19,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48200"
+    }
+  },
+  {
+    "id": "veh-2026-chevrolet-traverse-awd-49574",
+    "year": 2026,
+    "make": "Chevrolet",
+    "model": "Traverse",
+    "trim": "AWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49574"
+    }
+  },
+  {
+    "id": "veh-2026-chevrolet-traverse-fwd-49550",
+    "year": 2026,
+    "make": "Chevrolet",
+    "model": "Traverse",
+    "trim": "FWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 22,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49550"
+    }
+  },
+  {
+    "id": "veh-2025-chevrolet-traverse-awd-48117",
+    "year": 2025,
+    "make": "Chevrolet",
+    "model": "Traverse",
+    "trim": "AWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48117"
+    }
+  },
+  {
+    "id": "veh-2025-chevrolet-traverse-fwd-48110",
+    "year": 2025,
+    "make": "Chevrolet",
+    "model": "Traverse",
+    "trim": "FWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 23,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48110"
+    }
+  },
+  {
+    "id": "veh-2026-chrysler-pacifica-base-49434",
+    "year": 2026,
+    "make": "Chrysler",
+    "model": "Pacifica",
+    "trim": null,
+    "bodyStyle": "Minivan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 22,
+    "cylinders": 6,
+    "transmission": "Automatic 9-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49434"
+    }
+  },
+  {
+    "id": "veh-2026-chrysler-pacifica-hybrid-49762",
+    "year": 2026,
+    "make": "Chrysler",
+    "model": "Pacifica",
+    "trim": "Hybrid",
+    "bodyStyle": "Minivan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 30,
+    "cylinders": 6,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49762"
+    }
+  },
+  {
+    "id": "veh-2025-chrysler-pacifica-base-48252",
+    "year": 2025,
+    "make": "Chrysler",
+    "model": "Pacifica",
+    "trim": null,
+    "bodyStyle": "Minivan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 22,
+    "cylinders": 6,
+    "transmission": "Automatic 9-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48252"
+    }
+  },
+  {
+    "id": "veh-2025-chrysler-pacifica-awd-48255",
+    "year": 2025,
+    "make": "Chrysler",
+    "model": "Pacifica",
+    "trim": "AWD",
+    "bodyStyle": "Minivan",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 20,
+    "cylinders": 6,
+    "transmission": "Automatic 9-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48255"
+    }
+  },
+  {
+    "id": "veh-2026-ford-escape-awd-49849",
+    "year": 2026,
+    "make": "Ford",
+    "model": "Escape",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 26,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49849"
+    }
+  },
+  {
+    "id": "veh-2026-ford-escape-awd-49850",
+    "year": 2026,
+    "make": "Ford",
+    "model": "Escape",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 3,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49850"
+    }
+  },
+  {
+    "id": "veh-2025-ford-escape-awd-48607",
+    "year": 2025,
+    "make": "Ford",
+    "model": "Escape",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 26,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48607"
+    }
+  },
+  {
+    "id": "veh-2025-ford-escape-awd-48608",
+    "year": 2025,
+    "make": "Ford",
+    "model": "Escape",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 3,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48608"
+    }
+  },
+  {
+    "id": "veh-2026-ford-explorer-awd-49906",
+    "year": 2026,
+    "make": "Ford",
+    "model": "Explorer",
+    "trim": "AWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "4WD (part-time)",
+    "fuelType": "Gasoline",
+    "combinedMpg": 20,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49906"
+    }
+  },
+  {
+    "id": "veh-2026-ford-explorer-awd-49907",
+    "year": 2026,
+    "make": "Ford",
+    "model": "Explorer",
+    "trim": "AWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "4WD (part-time)",
+    "fuelType": "Gasoline",
+    "combinedMpg": 23,
+    "cylinders": 4,
+    "transmission": "Automatic 10-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49907"
+    }
+  },
+  {
+    "id": "veh-2025-ford-explorer-awd-48118",
+    "year": 2025,
+    "make": "Ford",
+    "model": "Explorer",
+    "trim": "AWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "4WD (part-time)",
+    "fuelType": "Gasoline",
+    "combinedMpg": 20,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48118"
+    }
+  },
+  {
+    "id": "veh-2025-ford-explorer-awd-48119",
+    "year": 2025,
+    "make": "Ford",
+    "model": "Explorer",
+    "trim": "AWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "4WD (part-time)",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 6,
+    "transmission": "Automatic 10-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48119"
+    }
+  },
+  {
+    "id": "veh-2026-ford-f150-pickup-2wd-50092",
+    "year": 2026,
+    "make": "Ford",
+    "model": "F150",
+    "trim": "Pickup 2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50092"
+    }
+  },
+  {
+    "id": "veh-2026-ford-f150-pickup-2wd-50093",
+    "year": 2026,
+    "make": "Ford",
+    "model": "F150",
+    "trim": "Pickup 2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 20,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50093"
+    }
+  },
+  {
+    "id": "veh-2025-ford-f150-pickup-2wd-48884",
+    "year": 2025,
+    "make": "Ford",
+    "model": "F150",
+    "trim": "Pickup 2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 20,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48884"
+    }
+  },
+  {
+    "id": "veh-2025-ford-f150-pickup-2wd-48885",
+    "year": 2025,
+    "make": "Ford",
+    "model": "F150",
+    "trim": "Pickup 2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48885"
+    }
+  },
+  {
+    "id": "veh-2026-honda-accord-base-50070",
+    "year": 2026,
+    "make": "Honda",
+    "model": "Accord",
+    "trim": null,
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 32,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50070"
+    }
+  },
+  {
+    "id": "veh-2026-honda-accord-hybrid-50071",
+    "year": 2026,
+    "make": "Honda",
+    "model": "Accord",
+    "trim": "Hybrid",
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 48,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50071"
+    }
+  },
+  {
+    "id": "veh-2025-honda-accord-base-48504",
+    "year": 2025,
+    "make": "Honda",
+    "model": "Accord",
+    "trim": null,
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 32,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48504"
+    }
+  },
+  {
+    "id": "veh-2025-honda-accord-hybrid-48505",
+    "year": 2025,
+    "make": "Honda",
+    "model": "Accord",
+    "trim": "Hybrid",
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 48,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48505"
+    }
+  },
+  {
+    "id": "veh-2026-honda-cr-v-awd-49487",
+    "year": 2026,
+    "make": "Honda",
+    "model": "CR-V",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 29,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49487"
+    }
+  },
+  {
+    "id": "veh-2026-honda-cr-v-awd-49488",
+    "year": 2026,
+    "make": "Honda",
+    "model": "CR-V",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 37,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49488"
+    }
+  },
+  {
+    "id": "veh-2025-honda-cr-v-awd-47956",
+    "year": 2025,
+    "make": "Honda",
+    "model": "CR-V",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47956"
+    }
+  },
+  {
+    "id": "veh-2025-honda-cr-v-awd-47957",
+    "year": 2025,
+    "make": "Honda",
+    "model": "CR-V",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 37,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47957"
+    }
+  },
+  {
+    "id": "veh-2026-honda-civic-4dr-49286",
+    "year": 2026,
+    "make": "Honda",
+    "model": "Civic",
+    "trim": "4Dr",
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline (premium)",
+    "combinedMpg": 31,
+    "cylinders": 4,
+    "transmission": "Manual 6-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49286"
+    }
+  },
+  {
+    "id": "veh-2026-honda-civic-4dr-49287",
+    "year": 2026,
+    "make": "Honda",
+    "model": "Civic",
+    "trim": "4Dr",
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 36,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49287"
+    }
+  },
+  {
+    "id": "veh-2025-honda-civic-4dr-48016",
+    "year": 2025,
+    "make": "Honda",
+    "model": "Civic",
+    "trim": "4Dr",
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 36,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48016"
+    }
+  },
+  {
+    "id": "veh-2025-honda-civic-4dr-48017",
+    "year": 2025,
+    "make": "Honda",
+    "model": "Civic",
+    "trim": "4Dr",
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 34,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S7)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48017"
+    }
+  },
+  {
+    "id": "veh-2026-honda-odyssey-base-49436",
+    "year": 2026,
+    "make": "Honda",
+    "model": "Odyssey",
+    "trim": null,
+    "bodyStyle": "Minivan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 22,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49436"
+    }
+  },
+  {
+    "id": "veh-2025-honda-odyssey-base-48254",
+    "year": 2025,
+    "make": "Honda",
+    "model": "Odyssey",
+    "trim": null,
+    "bodyStyle": "Minivan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 22,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48254"
+    }
+  },
+  {
+    "id": "veh-2026-honda-pilot-awd-50154",
+    "year": 2026,
+    "make": "Honda",
+    "model": "Pilot",
+    "trim": "AWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50154"
+    }
+  },
+  {
+    "id": "veh-2026-honda-pilot-awd-trailsport-50156",
+    "year": 2026,
+    "make": "Honda",
+    "model": "Pilot",
+    "trim": "AWD TrailSport",
+    "bodyStyle": "SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 20,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50156"
+    }
+  },
+  {
+    "id": "veh-2025-honda-pilot-awd-47753",
+    "year": 2025,
+    "make": "Honda",
+    "model": "Pilot",
+    "trim": "AWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47753"
+    }
+  },
+  {
+    "id": "veh-2025-honda-pilot-awd-trailsport-47755",
+    "year": 2025,
+    "make": "Honda",
+    "model": "Pilot",
+    "trim": "AWD TrailSport",
+    "bodyStyle": "SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 20,
+    "cylinders": 6,
+    "transmission": "Automatic (S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47755"
+    }
+  },
+  {
+    "id": "veh-2026-hyundai-elantra-base-49815",
+    "year": 2026,
+    "make": "Hyundai",
+    "model": "Elantra",
+    "trim": null,
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 31,
+    "cylinders": 4,
+    "transmission": "Automatic (AM-S7)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49815"
+    }
+  },
+  {
+    "id": "veh-2026-hyundai-elantra-hybrid-49816",
+    "year": 2026,
+    "make": "Hyundai",
+    "model": "Elantra",
+    "trim": "Hybrid",
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 50,
+    "cylinders": 4,
+    "transmission": "Automatic (AM-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49816"
+    }
+  },
+  {
+    "id": "veh-2025-hyundai-elantra-base-48019",
+    "year": 2025,
+    "make": "Hyundai",
+    "model": "Elantra",
+    "trim": null,
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 34,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48019"
+    }
+  },
+  {
+    "id": "veh-2025-hyundai-elantra-base-48020",
+    "year": 2025,
+    "make": "Hyundai",
+    "model": "Elantra",
+    "trim": null,
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 36,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48020"
+    }
+  },
+  {
+    "id": "veh-2026-hyundai-santa-fe-awd-49496",
+    "year": 2026,
+    "make": "Hyundai",
+    "model": "Santa Fe",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 23,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49496"
+    }
+  },
+  {
+    "id": "veh-2026-hyundai-santa-fe-awd-xrt-49495",
+    "year": 2026,
+    "make": "Hyundai",
+    "model": "Santa Fe",
+    "trim": "AWD XRT",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49495"
+    }
+  },
+  {
+    "id": "veh-2025-hyundai-santa-fe-awd-48269",
+    "year": 2025,
+    "make": "Hyundai",
+    "model": "Santa Fe",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 23,
+    "cylinders": 4,
+    "transmission": "Automatic (AM-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48269"
+    }
+  },
+  {
+    "id": "veh-2025-hyundai-santa-fe-awd-xrt-48268",
+    "year": 2025,
+    "make": "Hyundai",
+    "model": "Santa Fe",
+    "trim": "AWD XRT",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 22,
+    "cylinders": 4,
+    "transmission": "Automatic (AM-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48268"
+    }
+  },
+  {
+    "id": "veh-2026-hyundai-sonata-awd-49317",
+    "year": 2026,
+    "make": "Hyundai",
+    "model": "Sonata",
+    "trim": "AWD",
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 27,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49317"
+    }
+  },
+  {
+    "id": "veh-2026-hyundai-sonata-fwd-49318",
+    "year": 2026,
+    "make": "Hyundai",
+    "model": "Sonata",
+    "trim": "FWD",
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 29,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49318"
+    }
+  },
+  {
+    "id": "veh-2025-hyundai-sonata-awd-48043",
+    "year": 2025,
+    "make": "Hyundai",
+    "model": "Sonata",
+    "trim": "AWD",
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48043"
+    }
+  },
+  {
+    "id": "veh-2025-hyundai-sonata-fwd-48044",
+    "year": 2025,
+    "make": "Hyundai",
+    "model": "Sonata",
+    "trim": "FWD",
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 29,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48044"
+    }
+  },
+  {
+    "id": "veh-2026-hyundai-tucson-awd-49500",
+    "year": 2026,
+    "make": "Hyundai",
+    "model": "Tucson",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 26,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49500"
+    }
+  },
+  {
+    "id": "veh-2026-hyundai-tucson-fwd-49453",
+    "year": 2026,
+    "make": "Hyundai",
+    "model": "Tucson",
+    "trim": "FWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49453"
+    }
+  },
+  {
+    "id": "veh-2025-hyundai-tucson-awd-47793",
+    "year": 2025,
+    "make": "Hyundai",
+    "model": "Tucson",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 26,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47793"
+    }
+  },
+  {
+    "id": "veh-2025-hyundai-tucson-fwd-47789",
+    "year": 2025,
+    "make": "Hyundai",
+    "model": "Tucson",
+    "trim": "FWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47789"
+    }
+  },
+  {
+    "id": "veh-2026-jeep-grand-cherokee-2wd-50143",
+    "year": 2026,
+    "make": "Jeep",
+    "model": "Grand Cherokee",
+    "trim": "2WD",
+    "bodyStyle": "SUV",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 23,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50143"
+    }
+  },
+  {
+    "id": "veh-2026-jeep-grand-cherokee-2wd-50145",
+    "year": 2026,
+    "make": "Jeep",
+    "model": "Grand Cherokee",
+    "trim": "2WD",
+    "bodyStyle": "SUV",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 22,
+    "cylinders": 6,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50145"
+    }
+  },
+  {
+    "id": "veh-2025-jeep-grand-cherokee-2wd-48552",
+    "year": 2025,
+    "make": "Jeep",
+    "model": "Grand Cherokee",
+    "trim": "2WD",
+    "bodyStyle": "SUV",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 22,
+    "cylinders": 6,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48552"
+    }
+  },
+  {
+    "id": "veh-2025-jeep-grand-cherokee-4wd-48564",
+    "year": 2025,
+    "make": "Jeep",
+    "model": "Grand Cherokee",
+    "trim": "4WD",
+    "bodyStyle": "SUV",
+    "drivetrain": "4WD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 22,
+    "cylinders": 6,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48564"
+    }
+  },
+  {
+    "id": "veh-2026-jeep-wrangler-2dr-4wd-49852",
+    "year": 2026,
+    "make": "Jeep",
+    "model": "Wrangler",
+    "trim": "2dr 4WD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "4WD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49852"
+    }
+  },
+  {
+    "id": "veh-2026-jeep-wrangler-2dr-4wd-49853",
+    "year": 2026,
+    "make": "Jeep",
+    "model": "Wrangler",
+    "trim": "2dr 4WD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "4WD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 19,
+    "cylinders": 6,
+    "transmission": "Manual 6-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49853"
+    }
+  },
+  {
+    "id": "veh-2025-jeep-wrangler-2dr-4wd-48530",
+    "year": 2025,
+    "make": "Jeep",
+    "model": "Wrangler",
+    "trim": "2dr 4WD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "4WD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 4,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48530"
+    }
+  },
+  {
+    "id": "veh-2025-jeep-wrangler-2dr-4wd-48531",
+    "year": 2025,
+    "make": "Jeep",
+    "model": "Wrangler",
+    "trim": "2dr 4WD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "4WD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 19,
+    "cylinders": 6,
+    "transmission": "Manual 6-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48531"
+    }
+  },
+  {
+    "id": "veh-2026-kia-k5-base-49324",
+    "year": 2026,
+    "make": "Kia",
+    "model": "K5",
+    "trim": null,
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 29,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49324"
+    }
+  },
+  {
+    "id": "veh-2026-kia-k5-base-49326",
+    "year": 2026,
+    "make": "Kia",
+    "model": "K5",
+    "trim": null,
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 27,
+    "cylinders": 4,
+    "transmission": "Automatic (AM-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49326"
+    }
+  },
+  {
+    "id": "veh-2025-kia-k5-base-47718",
+    "year": 2025,
+    "make": "Kia",
+    "model": "K5",
+    "trim": null,
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 29,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47718"
+    }
+  },
+  {
+    "id": "veh-2025-kia-k5-base-47719",
+    "year": 2025,
+    "make": "Kia",
+    "model": "K5",
+    "trim": null,
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 30,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47719"
+    }
+  },
+  {
+    "id": "veh-2026-kia-sportage-awd-49503",
+    "year": 2026,
+    "make": "Kia",
+    "model": "Sportage",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 26,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49503"
+    }
+  },
+  {
+    "id": "veh-2026-kia-sportage-fwd-49455",
+    "year": 2026,
+    "make": "Kia",
+    "model": "Sportage",
+    "trim": "FWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49455"
+    }
+  },
+  {
+    "id": "veh-2025-kia-sportage-awd-48096",
+    "year": 2025,
+    "make": "Kia",
+    "model": "Sportage",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 25,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48096"
+    }
+  },
+  {
+    "id": "veh-2025-kia-sportage-fwd-48065",
+    "year": 2025,
+    "make": "Kia",
+    "model": "Sportage",
+    "trim": "FWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48065"
+    }
+  },
+  {
+    "id": "veh-2025-kia-telluride-awd-48534",
+    "year": 2025,
+    "make": "Kia",
+    "model": "Telluride",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 20,
+    "cylinders": 6,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48534"
+    }
+  },
+  {
+    "id": "veh-2025-kia-telluride-fwd-48521",
+    "year": 2025,
+    "make": "Kia",
+    "model": "Telluride",
+    "trim": "FWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 22,
+    "cylinders": 6,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48521"
+    }
+  },
+  {
+    "id": "veh-2026-mazda-cx-5-4wd-50290",
+    "year": 2026,
+    "make": "Mazda",
+    "model": "CX-5",
+    "trim": "4WD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "4WD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 26,
+    "cylinders": 4,
+    "transmission": "Automatic (S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50290"
+    }
+  },
+  {
+    "id": "veh-2025-mazda-cx-5-4wd-48537",
+    "year": 2025,
+    "make": "Mazda",
+    "model": "CX-5",
+    "trim": "4WD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "4WD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 25,
+    "cylinders": 4,
+    "transmission": "Automatic (S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48537"
+    }
+  },
+  {
+    "id": "veh-2025-mazda-cx-5-4wd-48538",
+    "year": 2025,
+    "make": "Mazda",
+    "model": "CX-5",
+    "trim": "4WD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "4WD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48538"
+    }
+  },
+  {
+    "id": "veh-2026-nissan-altima-base-50064",
+    "year": 2026,
+    "make": "Nissan",
+    "model": "Altima",
+    "trim": null,
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 30,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50064"
+    }
+  },
+  {
+    "id": "veh-2026-nissan-altima-awd-50065",
+    "year": 2026,
+    "make": "Nissan",
+    "model": "Altima",
+    "trim": "AWD",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50065"
+    }
+  },
+  {
+    "id": "veh-2025-nissan-altima-base-48186",
+    "year": 2025,
+    "make": "Nissan",
+    "model": "Altima",
+    "trim": null,
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 31,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48186"
+    }
+  },
+  {
+    "id": "veh-2025-nissan-altima-awd-48187",
+    "year": 2025,
+    "make": "Nissan",
+    "model": "Altima",
+    "trim": "AWD",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48187"
+    }
+  },
+  {
+    "id": "veh-2026-nissan-rogue-awd-49524",
+    "year": 2026,
+    "make": "Nissan",
+    "model": "Rogue",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 31,
+    "cylinders": 3,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49524"
+    }
+  },
+  {
+    "id": "veh-2026-nissan-rogue-awd-rock-creek-49525",
+    "year": 2026,
+    "make": "Nissan",
+    "model": "Rogue",
+    "trim": "AWD Rock Creek",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 29,
+    "cylinders": 3,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49525"
+    }
+  },
+  {
+    "id": "veh-2025-nissan-rogue-awd-48540",
+    "year": 2025,
+    "make": "Nissan",
+    "model": "Rogue",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 31,
+    "cylinders": 3,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48540"
+    }
+  },
+  {
+    "id": "veh-2025-nissan-rogue-awd-rock-creek-48542",
+    "year": 2025,
+    "make": "Nissan",
+    "model": "Rogue",
+    "trim": "AWD Rock Creek",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 29,
+    "cylinders": 3,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48542"
+    }
+  },
+  {
+    "id": "veh-2026-ram-1500-2wd-49368",
+    "year": 2026,
+    "make": "Ram",
+    "model": "1500",
+    "trim": "2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 6,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49368"
+    }
+  },
+  {
+    "id": "veh-2026-ram-1500-2wd-49834",
+    "year": 2026,
+    "make": "Ram",
+    "model": "1500",
+    "trim": "2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 22,
+    "cylinders": 6,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49834"
+    }
+  },
+  {
+    "id": "veh-2025-ram-1500-2wd-47722",
+    "year": 2025,
+    "make": "Ram",
+    "model": "1500",
+    "trim": "2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 6,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47722"
+    }
+  },
+  {
+    "id": "veh-2025-ram-1500-2wd-47723",
+    "year": 2025,
+    "make": "Ram",
+    "model": "1500",
+    "trim": "2WD",
+    "bodyStyle": "Pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 22,
+    "cylinders": 6,
+    "transmission": "Automatic 8-spd",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47723"
+    }
+  },
+  {
+    "id": "veh-2026-subaru-forester-awd-49530",
+    "year": 2026,
+    "make": "Subaru",
+    "model": "Forester",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 29,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49530"
+    }
+  },
+  {
+    "id": "veh-2026-subaru-forester-hybrid-awd-50131",
+    "year": 2026,
+    "make": "Subaru",
+    "model": "Forester",
+    "trim": "Hybrid AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 35,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50131"
+    }
+  },
+  {
+    "id": "veh-2025-subaru-forester-awd-47740",
+    "year": 2025,
+    "make": "Subaru",
+    "model": "Forester",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 29,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47740"
+    }
+  },
+  {
+    "id": "veh-2025-subaru-forester-hybrid-awd-48932",
+    "year": 2025,
+    "make": "Subaru",
+    "model": "Forester",
+    "trim": "Hybrid AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 35,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48932"
+    }
+  },
+  {
+    "id": "veh-2025-subaru-legacy-awd-47778",
+    "year": 2025,
+    "make": "Subaru",
+    "model": "Legacy",
+    "trim": "AWD",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 30,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47778"
+    }
+  },
+  {
+    "id": "veh-2025-subaru-legacy-awd-47779",
+    "year": 2025,
+    "make": "Subaru",
+    "model": "Legacy",
+    "trim": "AWD",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 26,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47779"
+    }
+  },
+  {
+    "id": "veh-2026-subaru-outback-awd-49531",
+    "year": 2026,
+    "make": "Subaru",
+    "model": "Outback",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 27,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49531"
+    }
+  },
+  {
+    "id": "veh-2026-subaru-outback-awd-49533",
+    "year": 2026,
+    "make": "Subaru",
+    "model": "Outback",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 24,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49533"
+    }
+  },
+  {
+    "id": "veh-2025-subaru-outback-awd-47801",
+    "year": 2025,
+    "make": "Subaru",
+    "model": "Outback",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47801"
+    }
+  },
+  {
+    "id": "veh-2025-subaru-outback-awd-47802",
+    "year": 2025,
+    "make": "Subaru",
+    "model": "Outback",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 25,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "47802"
+    }
+  },
+  {
+    "id": "veh-2026-tesla-model-3-performance-50036",
+    "year": 2026,
+    "make": "Tesla",
+    "model": "Model 3",
+    "trim": "Performance",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 114,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50036"
+    }
+  },
+  {
+    "id": "veh-2026-tesla-model-3-performance-awd-50250",
+    "year": 2026,
+    "make": "Tesla",
+    "model": "Model 3",
+    "trim": "Performance AWD",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 111,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50250"
+    }
+  },
+  {
+    "id": "veh-2025-tesla-model-3-long-range-awd-48764",
+    "year": 2025,
+    "make": "Tesla",
+    "model": "Model 3",
+    "trim": "Long Range AWD",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 128,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48764"
+    }
+  },
+  {
+    "id": "veh-2025-tesla-model-3-long-range-rwd-48765",
+    "year": 2025,
+    "make": "Tesla",
+    "model": "Model 3",
+    "trim": "Long Range RWD",
+    "bodyStyle": "Sedan",
+    "drivetrain": "RWD",
+    "fuelType": "Electric",
+    "combinedMpg": 137,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48765"
+    }
+  },
+  {
+    "id": "veh-2026-tesla-model-s-base-49741",
+    "year": 2026,
+    "make": "Tesla",
+    "model": "Model S",
+    "trim": null,
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 124,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49741"
+    }
+  },
+  {
+    "id": "veh-2026-tesla-model-s-plaid-49742",
+    "year": 2026,
+    "make": "Tesla",
+    "model": "Model S",
+    "trim": "Plaid",
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 110,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49742"
+    }
+  },
+  {
+    "id": "veh-2025-tesla-model-s-base-49124",
+    "year": 2025,
+    "make": "Tesla",
+    "model": "Model S",
+    "trim": null,
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 124,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49124"
+    }
+  },
+  {
+    "id": "veh-2025-tesla-model-s-plaid-19in-wheels-48766",
+    "year": 2025,
+    "make": "Tesla",
+    "model": "Model S",
+    "trim": "Plaid (19in wheels)",
+    "bodyStyle": "Full-size sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 104,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48766"
+    }
+  },
+  {
+    "id": "veh-2026-tesla-model-y-long-range-awd-49744",
+    "year": 2026,
+    "make": "Tesla",
+    "model": "Model Y",
+    "trim": "Long Range AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 123,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49744"
+    }
+  },
+  {
+    "id": "veh-2026-tesla-model-y-long-range-rwd-49743",
+    "year": 2026,
+    "make": "Tesla",
+    "model": "Model Y",
+    "trim": "Long Range RWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "RWD",
+    "fuelType": "Electric",
+    "combinedMpg": 134,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49743"
+    }
+  },
+  {
+    "id": "veh-2025-tesla-model-y-long-range-awd-48770",
+    "year": 2025,
+    "make": "Tesla",
+    "model": "Model Y",
+    "trim": "Long Range AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Electric",
+    "combinedMpg": 117,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48770"
+    }
+  },
+  {
+    "id": "veh-2025-tesla-model-y-long-range-rwd-48771",
+    "year": 2025,
+    "make": "Tesla",
+    "model": "Model Y",
+    "trim": "Long Range RWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "RWD",
+    "fuelType": "Electric",
+    "combinedMpg": 125,
+    "cylinders": null,
+    "transmission": "Automatic (A1)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48771"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-camry-hev-awd-le-49825",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Camry",
+    "trim": "HEV AWD LE",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 50,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49825"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-camry-hev-awd-se-xle-49821",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Camry",
+    "trim": "HEV AWD SE/XLE",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 46,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49821"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-camry-hev-awd-le-48034",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Camry",
+    "trim": "HEV AWD LE",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 50,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48034"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-camry-hev-awd-se-xle-48030",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Camry",
+    "trim": "HEV AWD SE/XLE",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 46,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48030"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-corolla-base-49809",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Corolla",
+    "trim": null,
+    "bodyStyle": "Compact car",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 34,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S10)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49809"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-corolla-1-mode-tm-49807",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Corolla",
+    "trim": "(1-mode TM)",
+    "bodyStyle": "Compact car",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 35,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49807"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-corolla-base-48493",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Corolla",
+    "trim": null,
+    "bodyStyle": "Compact car",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 35,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48493"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-corolla-base-48494",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Corolla",
+    "trim": null,
+    "bodyStyle": "Compact car",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 34,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48494"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-highlander-awd-50132",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Highlander",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 24,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50132"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-highlander-hybrid-awd-50181",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Highlander",
+    "trim": "Hybrid AWD",
+    "bodyStyle": "SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 35,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50181"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-highlander-base-48912",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Highlander",
+    "trim": null,
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 25,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48912"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-highlander-base-48913",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Highlander",
+    "trim": null,
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 24,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48913"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-prius-base-49301",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Prius",
+    "trim": null,
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 57,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49301"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-prius-awd-49298",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Prius",
+    "trim": "AWD",
+    "bodyStyle": "Sedan",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 54,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49298"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-prius-base-48861",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Prius",
+    "trim": null,
+    "bodyStyle": "Sedan",
+    "drivetrain": "FWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 57,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48861"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-prius-awd-48858",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Prius",
+    "trim": "AWD",
+    "bodyStyle": "Sedan",
+    "drivetrain": "4WD (part-time)",
+    "fuelType": "Hybrid",
+    "combinedMpg": 54,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48858"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-rav4-base-50285",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "RAV4",
+    "trim": null,
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 43,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50285"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-rav4-awd-limited-xse-50133",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "RAV4",
+    "trim": "AWD Limited & XSE",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 41,
+    "cylinders": 4,
+    "transmission": "Automatic (variable gear ratios)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50133"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-rav4-base-48910",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "RAV4",
+    "trim": null,
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 30,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48910"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-rav4-awd-48933",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "RAV4",
+    "trim": "AWD",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 29,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48933"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-sienna-2wd-50111",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Sienna",
+    "trim": "2WD",
+    "bodyStyle": "Minivan",
+    "drivetrain": "FWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 36,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50111"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-sienna-awd-50112",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Sienna",
+    "trim": "AWD",
+    "bodyStyle": "Minivan",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 35,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50112"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-sienna-2wd-48904",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Sienna",
+    "trim": "2WD",
+    "bodyStyle": "Minivan",
+    "drivetrain": "FWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 36,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48904"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-sienna-awd-48905",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Sienna",
+    "trim": "AWD",
+    "bodyStyle": "Minivan",
+    "drivetrain": "AWD",
+    "fuelType": "Hybrid",
+    "combinedMpg": 35,
+    "cylinders": 4,
+    "transmission": "Automatic (AV-S6)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48905"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-tacoma-2wd-50081",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Tacoma",
+    "trim": "2WD",
+    "bodyStyle": "Compact pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 23,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50081"
+    }
+  },
+  {
+    "id": "veh-2026-toyota-tacoma-4wd-50091",
+    "year": 2026,
+    "make": "Toyota",
+    "model": "Tacoma",
+    "trim": "4WD",
+    "bodyStyle": "Compact pickup truck",
+    "drivetrain": "4WD (part-time)",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "50091"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-tacoma-2wd-48872",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Tacoma",
+    "trim": "2WD",
+    "bodyStyle": "Compact pickup truck",
+    "drivetrain": "RWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 23,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48872"
+    }
+  },
+  {
+    "id": "veh-2025-toyota-tacoma-4wd-48881",
+    "year": 2025,
+    "make": "Toyota",
+    "model": "Tacoma",
+    "trim": "4WD",
+    "bodyStyle": "Compact pickup truck",
+    "drivetrain": "4WD (part-time)",
+    "fuelType": "Gasoline",
+    "combinedMpg": 21,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "48881"
+    }
+  },
+  {
+    "id": "veh-2026-volkswagen-tiguan-base-49468",
+    "year": 2026,
+    "make": "Volkswagen",
+    "model": "Tiguan",
+    "trim": null,
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49468"
+    }
+  },
+  {
+    "id": "veh-2026-volkswagen-tiguan-4motion-49544",
+    "year": 2026,
+    "make": "Volkswagen",
+    "model": "Tiguan",
+    "trim": "4motion",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 25,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49544"
+    }
+  },
+  {
+    "id": "veh-2025-volkswagen-tiguan-base-49047",
+    "year": 2025,
+    "make": "Volkswagen",
+    "model": "Tiguan",
+    "trim": null,
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "FWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 28,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49047"
+    }
+  },
+  {
+    "id": "veh-2025-volkswagen-tiguan-4motion-49060",
+    "year": 2025,
+    "make": "Volkswagen",
+    "model": "Tiguan",
+    "trim": "4motion",
+    "bodyStyle": "Compact SUV",
+    "drivetrain": "AWD",
+    "fuelType": "Gasoline",
+    "combinedMpg": 25,
+    "cylinders": 4,
+    "transmission": "Automatic (S8)",
+    "source": {
+      "dataset": "epa-fueleconomy-gov",
+      "recordId": "49060"
+    }
+  }
+]
