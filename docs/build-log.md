@@ -5203,3 +5203,21 @@ Requested directly by the project owner: "Can we also add some sort of icon/link
 - `pnpm run verify`: **PASSED, 10/10 stages**, run `2026-08-29T19-42-11-753Z-5e9dd685` (one prior run flaked at `test:unit` on an unrelated pre-existing test, see above).
 
 Final git SHA for this entry: (see the commit immediately following this entry).
+
+## 2026-08-30 -- Product rename: Pax -> Sift
+
+Project owner decision, given explicitly when asked how far the rename should reach: "Everything, including packages."
+
+**Scope applied.** All 9 workspace packages (`@pax/*` -> `@sift/*`), the 12 WebMCP tool names (`pax_*` -> `sift_*`), all 9 `PAX_*` environment variables, the data paths (`.pax-data` -> `.sift-data`, `pax.sqlite` -> `sift.sqlite`), the `X-Pax-Command-Id` request header, every code identifier (`PaxCommands` -> `SiftCommands`, `usePaxCommands`, `PaxClientError`, `registerPaxTools`, ...), every user-visible string, and 8 file names. 420 code files plus 33 living documentation files.
+
+**Deliberately NOT renamed, and why.** Three categories, each because renaming would have made the repository state a falsehood rather than a new name:
+
+1. **The live Railway resources.** The project, service, and volume are genuinely named `pax-hackathon`, and the public domain is `pax-hackathon-production.up.railway.app`. That domain is already published in `docs/submissions/release-metadata.json` and quoted in both demo scripts, so renaming it would break links a judge may already hold. A first bulk pass *did* rewrite these into a non-existent `sift-hackathon`; that was caught by re-reading the output and reverted, and README now carries an explicit note explaining the surviving `pax-` prefix.
+2. **Historical records.** `docs/build-log.md` (this file), `docs/completion-report.md`, `docs/preimplementation-audit.md`, `docs/superpowers/plans/`, `docs/change-sets/`, and `docs/audits/` are dated records of what was true when written. Rewriting "Pax" inside them would falsify the record. They stand as written; this entry is the marker that everything above it predates the rename.
+3. **`docs/change-sets/2026-08-30-generic-decision-workspace.md` section 66**, which is the owner's own text *about* the naming decision. Renaming inside it would turn "The product name is currently Pax" into nonsense.
+
+**The deployment trap, found and closed.** The deployed Railway service persists its database to a mounted volume at `/data/pax.sqlite`. Renaming `SQLITE_FILE_NAME` alone would have opened a fresh, empty database beside the populated one on the next boot -- the deployment would have appeared to lose every case rather than failing loudly, and it would most likely have been discovered during judging. `openDatabase()` now performs a one-time, idempotent adoption: when no `sift.sqlite` exists and a `pax.sqlite` does, it checkpoints that database's WAL and renames it. The WAL checkpoint is load-bearing, not boilerplate -- the database runs in WAL mode, so recently committed pages can still live in a `pax.sqlite-wal` sidecar, and renaming the main file alone would strand them under a filename SQLite will never open again. An existing `sift.sqlite` always wins, and a stale legacy file beside it is left on disk rather than deleted.
+
+Covered by three new tests in `apps/agent/src/db/connection.test.ts`, written first and confirmed failing for the right reason (`no such table: keepsake` -- proving a fresh empty database had been created instead of the legacy one adopted) before the implementation landed.
+
+**Verification.** `pnpm typecheck` clean across all 8 packages; `pnpm lint` and `check:source` clean; `pnpm test:unit` 2267/2267; `connection.test.ts` 10/10 including the three new adoption tests. Playwright baselines render the product name and were regenerated separately.

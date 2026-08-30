@@ -1,14 +1,14 @@
-# Why Pax Instead of a Direct Model Answer
+# Why Sift Instead of a Direct Model Answer
 
 ## Direct answer
 
-An LLM can often produce a useful first answer to either demo question. That is not the problem Pax claims to solve.
+An LLM can often produce a useful first answer to either demo question. That is not the problem Sift claims to solve.
 
-Pax is valuable when the answer must remain correct enough to revisit, challenge, update, and act on after the initial conversation. It turns probabilistic model work into a durable, inspectable decision process with explicit completion rules and human authority.
+Sift is valuable when the answer must remain correct enough to revisit, challenge, update, and act on after the initial conversation. It turns probabilistic model work into a durable, inspectable decision process with explicit completion rules and human authority.
 
 ## Capability boundary
 
-| A direct model interaction can | Pax adds |
+| A direct model interaction can | Sift adds |
 | --- | --- |
 | Generate a plausible recommendation | Deterministic obligations that define what must be known before a recommendation is ready |
 | Search or call tools in one run | A bounded investigation that changes skills and specialists when progress stalls |
@@ -22,7 +22,7 @@ Pax is valuable when the answer must remain correct enough to revisit, challenge
 | Describe progress after finishing | Truthful real-time specialist, skill, tool, evidence, steering, and readiness events while work is happening |
 | Recreate a domain prompt | Versioned Decision Packs with compiler, capability allowlists, conformance tests, and human publication |
 
-The moat is not a claim that Pax has a smarter base model. It is the supervisory system around models: durable state, adaptive capability selection, evidence governance, deterministic convergence, visible intervention, and shared human control.
+The moat is not a claim that Sift has a smarter base model. It is the supervisory system around models: durable state, adaptive capability selection, evidence governance, deterministic convergence, visible intervention, and shared human control.
 
 ## Required observable proof
 
@@ -45,12 +45,12 @@ Required visible copy:
 ```text
 Draft withheld
 This answer is plausible, but 3 required questions are still unresolved.
-Pax is continuing the investigation before asking you to decide.
+Sift is continuing the investigation before asking you to decide.
 ```
 
 ### Counterfactual update sequence
 
-The user excludes evidence or changes a decision criterion. Pax must identify the affected claims, obligations, option scores, and recommendation; mark them stale; and recompute them. It must not simply prompt a model to "answer again."
+The user excludes evidence or changes a decision criterion. Sift must identify the affected claims, obligations, option scores, and recommendation; mark them stale; and recompute them. It must not simply prompt a model to "answer again."
 
 Car-buying proof:
 
@@ -66,11 +66,11 @@ Option scores and recommendation invalidated
 Only affected comparisons rerun
 ```
 
-If the household later prioritizes driving comfort, Pax records that comfort is unresolved and creates a test-drive question instead of inventing a score.
+If the household later prioritizes driving comfort, Sift records that comfort is unresolved and creates a test-drive question instead of inventing a score.
 
 ### Unanticipated-concern sequence
 
-The car pack does not predeclare every household concern. When the user adds a two-dog-crate requirement, Pax creates a typed `custom.dog_crate_fit` definition and criterion, derives a case-specific evidence question, and targets household-fit capabilities. Known dimensions may be recorded as sourced facts; actual fit remains unknown until measurement or a test drive. The compiled pack ID/version/hash does not change.
+The car pack does not predeclare every household concern. When the user adds a two-dog-crate requirement, Sift creates a typed `custom.dog_crate_fit` definition and criterion, derives a case-specific evidence question, and targets household-fit capabilities. Known dimensions may be recorded as sourced facts; actual fit remains unknown until measurement or a test drive. The compiled pack ID/version/hash does not change.
 
 This is the intended meaning of adaptable: the model can reshape the case-specific run plan and extend typed case data without rewriting the safety, evidence, capability, or authority contract.
 
@@ -88,10 +88,10 @@ The car-buying demo proves that the current candidate selection and visible appl
 
 The Energy demo proves that a background Strands system can work quietly across multiple techniques, redirect itself when progress stalls, validate its own artifact, persist through interruption, and surface only a bounded decision.
 
-## Claims Pax must not make
+## Claims Sift must not make
 
-- Pax does not make the underlying model infallible.
-- Pax does not prove that its recommendation is professional advice.
+- Sift does not make the underlying model infallible.
+- Sift does not prove that its recommendation is professional advice.
 - A readiness score is evidence coverage under a Decision Pack plus confirmed case-specific questions, not objective truth.
 - Steering is a supervised trajectory control, not access to hidden reasoning.
 - Fixture-backed demo evidence proves application behavior, not real-world automotive or energy expertise.

@@ -1,13 +1,13 @@
-# Pax Hackathon Submission Packets
+# Sift Hackathon Submission Packets
 
 Status: preparation reference only; nothing has been sent to Devpost.  
 Official data fetched from the authenticated Devpost MCP server on 2026-08-26 EDT / 2026-08-27 UTC.
 
-These packets separate current official requirements from Pax-specific positioning and remaining work. The checklists convert every known requirement and scoring opportunity into a release gate. Refresh the live Devpost data before final submission because dates, fields, and organizer instructions can change. The official challenge and rules pages always prevail.
+These packets separate current official requirements from Sift-specific positioning and remaining work. The checklists convert every known requirement and scoring opportunity into a release gate. Refresh the live Devpost data before final submission because dates, fields, and organizer instructions can change. The official challenge and rules pages always prevail.
 
 Start with the [shared release checklist](./shared-release-checklist.md), then complete the appropriate competition checklist.
 
-| Competition | Pax hero | Official deadline | Video | Packet | Exhaustive checklist |
+| Competition | Sift hero | Official deadline | Video | Packet | Exhaustive checklist |
 | --- | --- | --- | --- | --- | --- |
 | The WebMCP Challenge | Choose Our Next Car: ChatGPT uses the live page as a shared control surface and steers a Strands investigation mid-run | September 3, 2026 at 1:00 p.m. PT / 4:00 p.m. ET | Public YouTube, under 3 minutes, audio required | [Submission details](./webmcp/submission-details.md) | [Requirements checklist](./webmcp/requirements-checklist.md) |
 | Agents for Humans Hackathon | Home Energy Guardian: a background Strands Swarm rejects a premature answer, redirects itself, and asks the human only at a real decision | September 14, 2026 at 5:00 p.m. PT / 8:00 p.m. ET | Maximum 5 minutes | [Submission details](./agents-for-humans/submission-details.md) | [Requirements checklist](./agents-for-humans/requirements-checklist.md) |

@@ -11,19 +11,19 @@ Three concrete layout directions were designed with real fixture content (the `c
 
 ## Decision
 
-1. **Recommendation and approval move to the top of the workspace**, directly below the case header and the existing "current focus" status strip, and stay permanently visible (not collapsible). This directly answers "what does Pax think, and what do I need to do" without any scrolling or interaction.
+1. **Recommendation and approval move to the top of the workspace**, directly below the case header and the existing "current focus" status strip, and stay permanently visible (not collapsible). This directly answers "what does Sift think, and what do I need to do" without any scrolling or interaction.
 2. **Comparison, evidence, readiness, and activity become collapsible disclosure rows** (native `<details>`/`<summary>`, one new `DisclosureSection` component), closed by default, each showing a live one-line summary (a count, and a pulsing indicator while work is genuinely in progress) in its closed `<summary>` row. Nothing is hidden — every row's live state is visible without opening it — but nothing competes with the hero for vertical space until the user asks for it.
 3. **The proposed-concern/add-a-concern region also becomes a disclosure row**, with one narrow exception: it renders open by default exactly when an agent-proposed case extension is awaiting human confirmation, since that is itself a "your input needed" state that should not be hidden behind a closed row the way passive/informational sections are.
 4. **User-facing section vocabulary is rewritten for a first-time, non-technical reader**, extending product.md's existing internal-term-to-UI-label table rather than replacing it:
-   - Evidence → **What Pax found**
+   - Evidence → **What Sift found**
    - Readiness → **Still checking**
-   - Activity → **Pax's work so far**
+   - Activity → **Sift's work so far**
    - Recommendation → **Our pick**
    - Approval → **Your decision**
    - Comparison → **Compare the options**
-   - Current focus → **What Pax is doing**
+   - Current focus → **What Sift is doing**
 5. **No existing component's internal logic, props, or `data-testid`s change.** `RecommendationCard`, `ApprovalCard`, `ReadinessPanel`, `EvidenceList`, `ActivityTimeline`, `OptionComparison`, `OptionEditor`, `CustomConcernForm`, and `CaseExtensionReviewCard` are repositioned and given new visible headings only; their existing unit test suites remain the source of truth for their internal behavior. Only `App.tsx`'s composition, a handful of literal heading strings, and the new `DisclosureSection` wrapper are new surface area.
-6. **The underlying command model is unchanged.** Every control inside a disclosure row still calls the exact same `PaxCommands` method it called before this task; WebMCP tool behavior, event contracts, and server-side logic are untouched.
+6. **The underlying command model is unchanged.** Every control inside a disclosure row still calls the exact same `SiftCommands` method it called before this task; WebMCP tool behavior, event contracts, and server-side logic are untouched.
 
 ## Consequences
 

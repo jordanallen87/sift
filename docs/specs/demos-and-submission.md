@@ -23,18 +23,18 @@ The UI labels fixture cases as demonstrations. No fixture uses a real person's a
 
 ### Required sequence
 
-1. Pax routes to Choose Our Next Car and displays at least two concrete reasons.
+1. Sift routes to Choose Our Next Car and displays at least two concrete reasons.
 2. The listing normalizer makes prices, terms, mileage, and trims comparable.
 3. The Graph runs deal, ownership-cost, safety/reliability, and household-fit specialists before source challenge and synthesis.
-4. Pax initially favors `candidate-rav4` under the seeded lowest-risk and fuel-cost preferences.
+4. Sift initially favors `candidate-rav4` under the seeded lowest-risk and fuel-cost preferences.
 5. The user selects `candidate-rav4` in the page and asks ChatGPT: `I love this one. What would have to be true for it to beat our current favorite?`
-6. ChatGPT calls `pax_get_case_context`, which returns that exact selected candidate, then requests focused deal investigation.
+6. ChatGPT calls `sift_get_case_context`, which returns that exact selected candidate, then requests focused deal investigation.
 7. A dealer offer conflicts with the advertised teaser price because of mandatory add-ons and a longer financing term. The prior deal score becomes stale and `source-challenger` activates.
-8. The user tells ChatGPT: `Driving comfort matters more to us than fuel economy.` ChatGPT calls `pax_update_criteria`.
-9. The user adds: `We also need two dog crates to fit behind the second row without folding the seats.` This field does not exist in the installed pack. ChatGPT calls `pax_define_case_attribute` and `pax_update_criteria`, creating `custom.dog_crate_fit` plus a case-specific evidence question.
-10. Pax uses known cargo dimensions where relevant but refuses to fabricate actual crate fit or driving comfort. It reopens household fit and creates explicit measurement/test-drive questions.
+8. The user tells ChatGPT: `Driving comfort matters more to us than fuel economy.` ChatGPT calls `sift_update_criteria`.
+9. The user adds: `We also need two dog crates to fit behind the second row without folding the seats.` This field does not exist in the installed pack. ChatGPT calls `sift_define_case_attribute` and `sift_update_criteria`, creating `custom.dog_crate_fit` plus a case-specific evidence question.
+10. Sift uses known cargo dimensions where relevant but refuses to fabricate actual crate fit or driving comfort. It reopens household fit and creates explicit measurement/test-drive questions.
 11. Normalized deal economics and the criteria changes revise the favored option to `candidate-crv`.
-12. Pax proposes advancing the CR-V and one close alternative to the household's test-drive shortlist, with conditions that could change the ranking.
+12. Sift proposes advancing the CR-V and one close alternative to the household's test-drive shortlist, with conditions that could change the ranking.
 13. The agent cannot advance a candidate itself. The user approves the shortlist through the visible UI.
 
 ### Required final assertions
@@ -69,14 +69,14 @@ The UI labels fixture cases as demonstrations. No fixture uses a real person's a
 ### Required sequence
 
 1. A deterministic watcher creates a case after detecting the 42% anomaly.
-2. Pax routes to Home Energy Guardian without requiring a human choice.
+2. Sift routes to Home Energy Guardian without requiring a human choice.
 3. The anomaly check reaches E3 through deterministic baseline calculation.
 4. Rate and weather analysis explain part but not all of the increase.
 5. A plausible early `monitor-one-cycle` draft is rejected because household-change evidence is unresolved; the UI displays `Draft withheld`.
 6. Repeated weather work produces no evidence delta. `RetrySteering` guides the run away from weather and the Swarm hands off from `weather-analyst` to `home-systems-analyst`.
 7. The runtime activates home-event correlation rather than asking the user an open-ended question.
 8. The thermostat event creates a supported HVAC hypothesis and the source challenger checks it.
-9. Pax surfaces one human decision with three bounded options and stated remaining uncertainty.
+9. Sift surfaces one human decision with three bounded options and stated remaining uncertainty.
 10. The user or ChatGPT reweights the criterion from lowest immediate cost to long-term waste reduction.
 11. The recommendation revises from `monitor-one-cycle` to `request-hvac-inspection` and passes GoalLoop validation.
 12. `ConsequenceGuard` emits `Confirm` and saves a session snapshot before an inspection proposal is created.
@@ -100,15 +100,15 @@ Car-buying moment:
 
 1. The user selects the car they currently prefer.
 2. The user tells ChatGPT: `I love this one. What would have to be true for it to beat our current favorite?`
-3. ChatGPT calls `pax_get_case_context`, sees the selected candidate, and calls `pax_request_investigation` for its deal/fit obligations.
+3. ChatGPT calls `sift_get_case_context`, sees the selected candidate, and calls `sift_request_investigation` for its deal/fit obligations.
 4. The page visibly challenges the teaser price, shows normalized cost, and updates the ranking.
-5. The user says: `Driving comfort matters more than fuel economy.` ChatGPT calls `pax_update_criteria`; Pax creates test-drive questions rather than inventing evidence.
+5. The user says: `Driving comfort matters more than fuel economy.` ChatGPT calls `sift_update_criteria`; Sift creates test-drive questions rather than inventing evidence.
 6. The user adds the two-dog-crate requirement. ChatGPT defines the case attribute, and the page immediately shows the new concern and its unresolved evidence question.
 
 Energy moment:
 
 1. The user tells ChatGPT: `Long-term waste matters more than the cheapest immediate option.`
-2. ChatGPT calls `pax_update_criteria` and `pax_request_investigation`.
+2. ChatGPT calls `sift_update_criteria` and `sift_request_investigation`.
 3. The criteria UI, active skill, activity ledger, and recommendation update on the page.
 
 The video must show structured tool use rather than mouse automation.
@@ -120,7 +120,7 @@ The submissions use separate edits. The complete scripts and live official requi
 ### WebMCP video — under three minutes
 
 1. Show the working right-pane car case in the first 15 seconds.
-2. Demonstrate shared selected-option context through `pax_get_case_context`.
+2. Demonstrate shared selected-option context through `sift_get_case_context`.
 3. Add an unanticipated household concern through WebMCP while work is active.
 4. Show the Strands Graph redirect, skill activation, stale recommendation, honest unknown, and revised shortlist.
 5. Show human-only approval and one correlated Runtime Inspector event.
@@ -134,7 +134,7 @@ The submissions use separate edits. The complete scripts and live official requi
 4. Show no-progress steering, specialist handoff, skill switch, thermostat evidence, and source challenge.
 5. Show confirmation, snapshot restoration, and human-only proposal approval.
 6. Show AgentCore/CloudWatch correlation when available, Runtime Inspector evidence, and the release report.
-7. Close with Pax as an agent designed to know when it has not earned the right to answer.
+7. Close with Sift as an agent designed to know when it has not earned the right to answer.
 
 ## Submission deliverables
 

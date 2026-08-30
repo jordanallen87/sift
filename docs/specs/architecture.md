@@ -2,14 +2,14 @@
 
 ## Architecture summary
 
-Pax is a pnpm TypeScript monorepo with a React/Vite browser application, an Express Strands service, and small shared packages for contracts, deterministic decision logic, Decision Packs, and scenario fixtures.
+Sift is a pnpm TypeScript monorepo with a React/Vite browser application, an Express Strands service, and small shared packages for contracts, deterministic decision logic, Decision Packs, and scenario fixtures.
 
 The browser owns visible case interaction and WebMCP registration. The service owns Strands agents, adaptive execution, intervention handling, and run persistence. Pure domain packages own routing, obligations, evidence, readiness, and proposal rules so they can be tested without a model, browser, database, or network.
 
 ## Repository structure
 
 ```text
-pax/
+sift/
   apps/
     web/                    React/Vite right-pane website and WebMCP registration
     agent/                  Express + Strands TypeScript service and static web host
@@ -39,12 +39,12 @@ No file in `packages/core` may import React, Express, Strands, a model provider,
 - pnpm workspaces.
 - TypeScript in strict mode.
 - React 19 and Vite for the browser app.
-- Tailwind CSS for styling, with a small Pax token layer.
+- Tailwind CSS for styling, with a small Sift token layer.
 - Express for the agent service because the official TypeScript AgentCore deployment path uses Express and the `/ping` plus `/invocations` contract.
 - `@strands-agents/sdk` for the runtime.
 - Zod for all external and persisted boundaries. Zod validates the stable envelope, discriminated attribute values, declared pack fields, and tool/model contracts; it does not impose a closed list of domain attributes on a case.
 - Vitest, React Testing Library, MSW, fast-check, and Playwright for testing.
-- SQLite through `better-sqlite3` and Drizzle migrations for canonical Pax persistence.
+- SQLite through `better-sqlite3` and Drizzle migrations for canonical Sift persistence.
 - Strands `SessionManager` with `LocalFileStorage` locally and `S3Storage` in AgentCore deployment.
 - Server-sent events for truthful browser activity and case updates from the first implementation milestone. Polling is an allowed fallback when a deployment proxy prevents SSE.
 
@@ -59,7 +59,7 @@ The web app renders canonical `CaseState`, registers WebMCP tools, calls the sha
 Every user or WebMCP mutation calls a named command through the same interface:
 
 ```ts
-interface PaxCommands {
+interface SiftCommands {
   startDemo(input: StartDemoInput): Promise<CommandReceipt>
   startCase(input: StartCaseInput): Promise<CommandReceipt>
   selectPack(input: SelectPackInput): Promise<CommandReceipt>
@@ -85,7 +85,7 @@ interface CommandReceipt {
 }
 ```
 
-The React controls and WebMCP callbacks consume the same `PaxCommands` instance. No WebMCP-only mutation path is permitted.
+The React controls and WebMCP callbacks consume the same `SiftCommands` instance. No WebMCP-only mutation path is permitted.
 
 ### HTTP service
 
@@ -102,7 +102,7 @@ The service exposes:
 - `GET /api/debug/runs/:runId`;
 - `GET /api/debug/runs/:runId/events` as SSE;
 - `GET /api/debug/runs/:runId/export`;
-- `GET /api/catalog/years`, `GET /api/catalog/makes`, `GET /api/catalog/models`, `GET /api/catalog/body-styles`, `GET /api/catalog/vehicles`, `GET /api/catalog/vehicles/:id` — read-only, bounded, offline vehicle catalog queries (docs/decisions/0003), backed by `@pax/catalog`;
+- `GET /api/catalog/years`, `GET /api/catalog/makes`, `GET /api/catalog/models`, `GET /api/catalog/body-styles`, `GET /api/catalog/vehicles`, `GET /api/catalog/vehicles/:id` — read-only, bounded, offline vehicle catalog queries (docs/decisions/0003), backed by `@sift/catalog`;
 - `GET /ping` for AgentCore;
 - `POST /invocations` for AgentCore.
 
@@ -180,7 +180,7 @@ All timestamps in deterministic tests come from an injected `Clock`. IDs come fr
 
 Commands use optimistic concurrency. A stale `eventSequence` produces HTTP `409` with the latest snapshot; clients refresh rather than replaying an unexamined mutation.
 
-`selectedOptionId`, `selectedEvidenceId`, `activeFocus`, and `sources` are accepted, documented exceptions to "every canonical mutation is a `CaseEvent`": `focusOption`/`focusEvidence` are pure attention-cursor changes with no decision-relevant effect ("visible selection state only... does not change ranking or evidence" per `webmcp.md`), and a submitted source's own record is distinct from any `evidence.accepted` event its content may separately produce. The service persists these directly onto the snapshot without an accompanying `case_events` row or `eventSequence` advance. This means a case reconstructed purely by replaying `case_events` from empty will not recover selection/focus state or raw submitted-source records — acceptable because normal reads (`GET /api/cases/:caseId`, `pax_get_case_context`) always serve the persisted snapshot, never a from-scratch replay, and no required demo assertion depends on these fields surviving a pure event-log reconstruction. Do not extend this exception to any field that affects evidence, readiness, or the recommendation.
+`selectedOptionId`, `selectedEvidenceId`, `activeFocus`, and `sources` are accepted, documented exceptions to "every canonical mutation is a `CaseEvent`": `focusOption`/`focusEvidence` are pure attention-cursor changes with no decision-relevant effect ("visible selection state only... does not change ranking or evidence" per `webmcp.md`), and a submitted source's own record is distinct from any `evidence.accepted` event its content may separately produce. The service persists these directly onto the snapshot without an accompanying `case_events` row or `eventSequence` advance. This means a case reconstructed purely by replaying `case_events` from empty will not recover selection/focus state or raw submitted-source records — acceptable because normal reads (`GET /api/cases/:caseId`, `sift_get_case_context`) always serve the persisted snapshot, never a from-scratch replay, and no required demo assertion depends on these fields surviving a pure event-log reconstruction. Do not extend this exception to any field that affects evidence, readiness, or the recommendation.
 
 ## Real-time event contract
 
@@ -253,13 +253,13 @@ schema_migrations    applied migration ledger
 
 Case-event append and snapshot replacement occur in one transaction. `(case_id, sequence)` and idempotency keys are unique. `activity_events` gives the normal UI one replayable public sequence across commands and runs; it is derived from committed domain or normalized runtime activity and cannot mutate the case. Detailed runtime telemetry is operational evidence and also cannot directly mutate canonical case state.
 
-Local storage defaults to `.pax-data/pax.sqlite`. Railway uses `/data/pax.sqlite` on a persistent volume. Local Strands session files live under `.pax-data/strands-sessions`; Railway uses `/data/strands-sessions`. AgentCore may use S3 session storage, but canonical case writes return through the Railway service.
+Local storage defaults to `.sift-data/sift.sqlite`. Railway uses `/data/sift.sqlite` on a persistent volume. Local Strands session files live under `.sift-data/strands-sessions`; Railway uses `/data/strands-sessions`. AgentCore may use S3 session storage, but canonical case writes return through the Railway service.
 
 Scenario and release commands export normalized JSONL event/trace bundles from SQLite into `artifacts/verification/`. JSONL is not the runtime source of truth.
 
 ## Deployment
 
-The first public deployment is a newly created Railway project and one Railway service. Express serves the Vite production build and the Pax API from the same origin. This minimizes CORS, configuration, and demo failure risk and uses a Railway volume mounted at `/data` for SQLite and local Strands sessions.
+The first public deployment is a newly created Railway project and one Railway service. Express serves the Vite production build and the Sift API from the same origin. This minimizes CORS, configuration, and demo failure risk and uses a Railway volume mounted at `/data` for SQLite and local Strands sessions.
 
 The AWS submission adds an AgentCore execution target without changing the browser contract:
 
@@ -267,18 +267,18 @@ The AWS submission adds an AgentCore execution target without changing the brows
 ChatGPT right pane -> Railway web/API gateway -> local Strands adapter or AgentCore runtime
 ```
 
-- `PAX_EXECUTION_TARGET=local|agentcore` selects execution. `local` is the development and deterministic-demo default.
+- `SIFT_EXECUTION_TARGET=local|agentcore` selects execution. `local` is the development and deterministic-demo default.
 - The AgentCore Strands image listens on port `8080` and implements `/ping` and `/invocations`.
 - Railway remains the public WebMCP origin and proxies execution to AgentCore when configured.
-- `PAX_DATA_DIR` defaults to `.pax-data` locally and `/data` on Railway.
-- `PAX_AUTHORING_ENABLED` defaults to `false`. Local `pack:author` commands enable it explicitly with a bounded draft root; the public hackathon service keeps it false and exposes no writable authoring route.
-- Deployed browser requests remain same-origin. If a separate origin is introduced, CORS allows only `PAX_PUBLIC_ORIGIN`.
+- `SIFT_DATA_DIR` defaults to `.sift-data` locally and `/data` on Railway.
+- `SIFT_AUTHORING_ENABLED` defaults to `false`. Local `pack:author` commands enable it explicitly with a bounded draft root; the public hackathon service keeps it false and exposes no writable authoring route.
+- Deployed browser requests remain same-origin. If a separate origin is introduced, CORS allows only `SIFT_PUBLIC_ORIGIN`.
 - Missing AWS credentials must not prevent the complete local deterministic demo and release suite. They may block only opt-in live deployment verification and must be reported honestly.
 - Railway authentication is available. The autonomous build must create a fresh project/service, deploy, generate a public domain, attach `/data`, set production variables, run migrations, and verify persistence across restart rather than merely writing deployment instructions.
 
 ## Security and authority
 
-- Fixture tools are read-only except canonical Pax commands.
+- Fixture tools are read-only except canonical Sift commands.
 - Agents never receive filesystem, shell, email, purchase, booking, or arbitrary HTTP tools.
 - The developer-mode `pack-author` agent receives only draft-root-confined authoring tools, never arbitrary shell or filesystem access. Pack source is declarative and cannot carry executable adapters.
 - Pack manifests declare tools, effects, extension policy, and approval posture; the runtime validates the declaration against a compiled registry.
@@ -292,6 +292,6 @@ ChatGPT right pane -> Railway web/API gateway -> local Strands adapter or AgentC
 
 ## Reuse boundary
 
-Pax may adapt styling and small presentational structures from Strata19's readiness, approval, engine-progress, activity, and source cards. It must not import Praetor packages by filesystem path or reproduce the full Strata19 workspace shell.
+Sift may adapt styling and small presentational structures from Strata19's readiness, approval, engine-progress, activity, and source cards. It must not import Praetor packages by filesystem path or reproduce the full Strata19 workspace shell.
 
-Pax may adapt Murmur's pack manifest, entity relationships, proposal semantics, and decision-stage concepts. It must not depend on Murmur's Prisma database, Mastra runtime, authentication, React Native UI, or APIs.
+Sift may adapt Murmur's pack manifest, entity relationships, proposal semantics, and decision-stage concepts. It must not depend on Murmur's Prisma database, Mastra runtime, authentication, React Native UI, or APIs.

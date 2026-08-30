@@ -10,10 +10,10 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 1. **URL.** `https://pax-hackathon-production.up.railway.app`. No login required.
 2. **Fresh case.** Click **"Investigate my energy bill"** on the launcher (label verbatim from `apps/web/src/components/DemoLauncher.tsx`). This resets to the checked-in fixture and mints a fresh case ID.
-3. **This deployment runs `PAX_EXECUTION_TARGET=local`, not AgentCore.** No AWS credentials were available at deploy time (documented in `README.md`). This is an honest external blocker, not a missing feature — the beat that mentions AgentCore/CloudWatch below is explicitly conditional and only recorded if you have since deployed to AgentCore with real credentials. Do not fabricate an AgentCore screen.
+3. **This deployment runs `SIFT_EXECUTION_TARGET=local`, not AgentCore.** No AWS credentials were available at deploy time (documented in `README.md`). This is an honest external blocker, not a missing feature — the beat that mentions AgentCore/CloudWatch below is explicitly conditional and only recorded if you have since deployed to AgentCore with real credentials. Do not fabricate an AgentCore screen.
 4. **`pnpm verify:release` is a stub today.** Per `README.md`, it currently just prints "not yet implemented" and exits 0 — it is not real evidence. Use the real `pnpm verify` report instead (`artifacts/verification/latest/report.json`), which genuinely runs `format:check`, `lint`, `typecheck`, `test:unit`, `test:pack`, `test:integration`, `test:scenario`, and `test:e2e` and is what you should show on screen. Regenerate it fresh (`pnpm verify`) shortly before recording so its `gitSha` matches the commit you're submitting.
 5. **Flagged gap #1 — "Draft withheld" does not fire in the standard click-through run.** The required sequence step 5 and this video's required beat 3 both describe a premature `monitor-one-cycle` draft being rejected with a visible `Draft withheld` card because household-change evidence is still unresolved. This mechanism is real and is proven by an automated test (`apps/agent/src/runtime/home-energy-swarm.test.ts`, describe block "intervention integrity", test "rejects a decision-synthesizer draft with no source citation, then accepts a corrected retry (GoalLoop maxAttempts: 2)") — but it is **not** part of the scripted round-1 pass that runs when you click "Request investigation" on the live product. Live-verified twice: the decision-synthesizer's structured output validates on attempt 1 both times (`goal.validated`, "Recommendation draft validated on attempt 1"), because by the time synthesis runs, all five obligations — including household-change — are already resolved. Beat 3 below is written honestly around this: it shows the real, live `goal.validated` proof that GoalLoop genuinely runs, and states plainly, on camera, that the rejection path is proven by the automated suite rather than reproduced live here. Do not re-cut this into a fake "Draft withheld" moment.
-6. **Flagged gap #2 — reweighting a criterion has no page form.** There is no visible criteria-editor control anywhere in `apps/web/src/components` (confirmed by source search) — `pax_update_criteria` is reachable only through WebMCP (asking ChatGPT, in a WebMCP-capable browser) or a direct authenticated API call. The required sequence for this scenario explicitly allows either "the user or ChatGPT" to do the reweight, so using ChatGPT here is fully spec-compliant, not a workaround. **Recommended:** record this beat in the same WebMCP-capable browser/ChatGPT in-app browser you used for the WebMCP video (see that script's "Before you record" for setup) and literally ask ChatGPT to do it, on camera. **Fallback**, if you are recording this video in isolation without a WebMCP client: use your browser's DevTools console and call the identical REST command Pax's own command layer and WebMCP tool both dispatch to (`POST /api/cases/:caseId/commands/updateCriteria`) — narrate this openly as "the same command endpoint the page and ChatGPT both use," not as a hidden trick. Either way, **rehearse this exact moment once before recording**: after the reweight, plainly asking Pax to "investigate again" can fail with `"No open obligation remains to select."` once round 1 has already resolved every obligation (live-verified) — you must ask specifically for the response-options recommendation to be revisited (e.g., "ask Pax to reconsider the response options now that long-term waste matters more" / a targeted `pax_request_investigation` call naming the `energy.response_options` obligation). Confirm your exact phrasing works before you hit record.
+6. **Flagged gap #2 — reweighting a criterion has no page form.** There is no visible criteria-editor control anywhere in `apps/web/src/components` (confirmed by source search) — `sift_update_criteria` is reachable only through WebMCP (asking ChatGPT, in a WebMCP-capable browser) or a direct authenticated API call. The required sequence for this scenario explicitly allows either "the user or ChatGPT" to do the reweight, so using ChatGPT here is fully spec-compliant, not a workaround. **Recommended:** record this beat in the same WebMCP-capable browser/ChatGPT in-app browser you used for the WebMCP video (see that script's "Before you record" for setup) and literally ask ChatGPT to do it, on camera. **Fallback**, if you are recording this video in isolation without a WebMCP client: use your browser's DevTools console and call the identical REST command Sift's own command layer and WebMCP tool both dispatch to (`POST /api/cases/:caseId/commands/updateCriteria`) — narrate this openly as "the same command endpoint the page and ChatGPT both use," not as a hidden trick. Either way, **rehearse this exact moment once before recording**: after the reweight, plainly asking Sift to "investigate again" can fail with `"No open obligation remains to select."` once round 1 has already resolved every obligation (live-verified) — you must ask specifically for the response-options recommendation to be revisited (e.g., "ask Sift to reconsider the response options now that long-term waste matters more" / a targeted `sift_request_investigation` call naming the `energy.response_options` obligation). Confirm your exact phrasing works before you hit record.
 7. Keep the browser window narrow (390–480px) so the right pane reads as the real product.
 
 ---
@@ -27,7 +27,7 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 **On screen:** the freshly-started case, loaded but not yet investigated. Case header reads **"Home Energy Guardian"**. Scroll the comparison table — it lists the four real response options (**"Monitor for one more billing cycle," "Switch to a different rate plan," "Request a home energy audit," "Request an HVAC / thermostat inspection"**) — and the Readiness panel, which already lists five real open questions: **Anomaly detection, Rate-change attribution, Weather-normalized usage attribution, Household or appliance event correlation, Response options synthesis.**
 
 **Narration:**
-> "A household's energy bill just came in 42 percent over its normal baseline — $248.50 against a weather-normalized $175.00. Nobody should have to notice that, dig through eighteen months of usage history, and guess why. Pax already flagged it as a case the moment the bill posted — quietly, in the background, before asking anyone anything."
+> "A household's energy bill just came in 42 percent over its normal baseline — $248.50 against a weather-normalized $175.00. Nobody should have to notice that, dig through eighteen months of usage history, and guess why. Sift already flagged it as a case the moment the bill posted — quietly, in the background, before asking anyone anything."
 
 ---
 
@@ -57,7 +57,7 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 **On-screen action:** once the run completes, click **"Inspect run"** to open the Runtime Inspector. On the **Overview** tab, point at the real correlated `trace` and `case` IDs. Switch to **Timeline**, filter category to **goal**, and point at the one real entry: **"Recommendation draft validated on attempt 1"** (`goal.validated`, agent: `decision-synthesizer`).
 
 **Narration:**
-> "Every recommendation Pax drafts goes through GoalLoop — a real validator that can reject a plausible-sounding answer and force a corrected retry, bounded at two attempts. In this run it validated on the first attempt, because by the time synthesis runs, every obligation — including the household-change check — is already resolved. Our automated scenario suite proves the rejection path directly: a deliberately unsupported first draft gets bounced, and the corrected second attempt is what actually gets accepted. That's not a hidden claim — it's a real test in `home-energy-swarm.test.ts`, and it runs in the release gate you'll see near the end of this video."
+> "Every recommendation Sift drafts goes through GoalLoop — a real validator that can reject a plausible-sounding answer and force a corrected retry, bounded at two attempts. In this run it validated on the first attempt, because by the time synthesis runs, every obligation — including the household-change check — is already resolved. Our automated scenario suite proves the rejection path directly: a deliberately unsupported first draft gets bounced, and the corrected second attempt is what actually gets accepted. That's not a hidden claim — it's a real test in `home-energy-swarm.test.ts`, and it runs in the release gate you'll see near the end of this video."
 
 ---
 
@@ -73,7 +73,7 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 - then **"Tool call failed" — "Tool \"weather-lookup\" failed."**
 
 **Narration:**
-> "Weather-analyst tried the same weather lookup twice with nothing new to say for itself. Watch — Pax's RetrySteering intervention catches that immediately and redirects it, live. That's a real `Guide` intervention, not a retry counter quietly incrementing somewhere."
+> "Weather-analyst tried the same weather lookup twice with nothing new to say for itself. Watch — Sift's RetrySteering intervention catches that immediately and redirects it, live. That's a real `Guide` intervention, not a retry counter quietly incrementing somewhere."
 
 **Continue scrolling; point out:**
 - **"Specialist started working" — "Swarm node \"home-systems-analyst\" started."**, then **"Skill activated" — "home-event-correlation,"** and tool call **"household-event-lookup."**
@@ -86,7 +86,7 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 > "Given the household's current criteria (energy.cost weight 80, energy.conservation weight 20), the lowest-cost options score highest… Recommend monitoring for one more billing cycle (monitor-one-cycle) before taking further action… No inspection is proposed at this weighting."
 
 **Narration:**
-> "Right now, under cost-first priorities, Pax's honest answer is: do nothing yet. That's about to change."
+> "Right now, under cost-first priorities, Sift's honest answer is: do nothing yet. That's about to change."
 
 ---
 
@@ -99,10 +99,10 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 **Say to ChatGPT (matches the "WebMCP demo moments — energy moment" line in `docs/specs/webmcp.md`-adjacent spec, exact):**
 > "Long-term waste matters more than the cheapest immediate option."
 
-This calls `pax_update_criteria`. Point out: the Recommendation card's status flips to **"Stale — recomputing."**
+This calls `sift_update_criteria`. Point out: the Recommendation card's status flips to **"Stale — recomputing."**
 
 **Say next, to target the re-investigation correctly (see gap #2 rehearsal note):**
-> "Ask Pax to reconsider the response options now that long-term waste matters more."
+> "Ask Sift to reconsider the response options now that long-term waste matters more."
 
 **What happens (live-verified):** a genuinely revised run fires. Point at the ledger:
 - **"Specialist started working" — "Swarm node \"decision-synthesizer\" started."**
@@ -110,7 +110,7 @@ This calls `pax_update_criteria`. Point out: the Recommendation card's status fl
 - **"Your approval needed" — "ConsequenceGuard: tool \"propose_inspection\" creates a consequential artifact and requires human confirmation."**
 
 **Narration:**
-> "Watch this exactly — before Pax will even draft a proposal to inspect anything in this household, ConsequenceGuard stops it and requires confirmation. That's a real ConsequenceGuard `Confirm` intervention, not a courtesy dialog bolted on afterward."
+> "Watch this exactly — before Sift will even draft a proposal to inspect anything in this household, ConsequenceGuard stops it and requires confirmation. That's a real ConsequenceGuard `Confirm` intervention, not a courtesy dialog bolted on afterward."
 
 **Continue:** the run completes. Read the new, live Recommendation text:
 > "Recommend requesting an HVAC/thermostat inspection (request-hvac-inspection) to address the confirmed thermostat sensor-drift root cause… Under the reweighted conservation-focused criteria this scores highest (0.87) versus monitor-one-cycle (0.20)."
@@ -120,7 +120,7 @@ This calls `pax_update_criteria`. Point out: the Recommendation card's status fl
 **On-screen action — human-only approval:** scroll to the **Approval** card, which reads **"Your approval needed"**. Click **Approve** (`data-testid="approval-card-approve"`) yourself. Point out the resulting rotated **"Approved"** stamp and the case header status flipping to **"Decided"** (live-verified).
 
 **Narration:**
-> "No inspection got scheduled — Pax doesn't book real-world appointments. What just happened is a human, me, approving that this proposal should exist. The agent built the case for it; only I can say yes."
+> "No inspection got scheduled — Sift doesn't book real-world appointments. What just happened is a human, me, approving that this proposal should exist. The agent built the case for it; only I can say yes."
 
 ---
 
@@ -128,7 +128,7 @@ This calls `pax_update_criteria`. Point out: the Recommendation card's status fl
 
 *(Required beat 6: "Show AgentCore/CloudWatch correlation when available, Runtime Inspector evidence, and the release report.")*
 
-**Conditional sub-beat — only if you have since deployed to a real Bedrock AgentCore runtime with AWS credentials:** show `/ping` and one `/invocations` call against the deployed AgentCore endpoint, and the matching CloudWatch trace. **If you have not** (true as of this writing — this deployment runs `PAX_EXECUTION_TARGET=local`, no AWS credentials configured) — **skip this sub-beat and say so plainly on camera** rather than staging a fake AWS console screen:
+**Conditional sub-beat — only if you have since deployed to a real Bedrock AgentCore runtime with AWS credentials:** show `/ping` and one `/invocations` call against the deployed AgentCore endpoint, and the matching CloudWatch trace. **If you have not** (true as of this writing — this deployment runs `SIFT_EXECUTION_TARGET=local`, no AWS credentials configured) — **skip this sub-beat and say so plainly on camera** rather than staging a fake AWS console screen:
 
 **Narration (if skipping):**
 > "This deployment runs its Strands execution locally — no AWS credentials were available at deploy time. That's an honest, documented limitation, not a missing feature: the same code path talks to Bedrock AgentCore's `/ping` and `/invocations` contract the moment credentials exist."
@@ -150,7 +150,7 @@ This calls `pax_update_criteria`. Point out: the Recommendation card's status fl
 > "This same engine also runs Choose Our Next Car — a different Decision Pack, a compiled Strands Graph instead of a Swarm, four real specialists instead of six. Same deterministic core owns readiness and evidence either way. A typed, case-specific concern — like needing two dog crates to fit in the back — adapts a live run without ever rewriting the installed pack."
 
 **Close (required beat 7 — exact distinguishing claim):**
-> "Most agents are optimized to finish. Pax is optimized to know when it has not earned the right to answer yet."
+> "Most agents are optimized to finish. Sift is optimized to know when it has not earned the right to answer yet."
 
 ---
 

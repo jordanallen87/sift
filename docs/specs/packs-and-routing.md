@@ -4,7 +4,7 @@
 
 A **Decision Pack** is the validated, versioned method a case uses. It supplies domain vocabulary, default attributes and criteria, required questions, skills, specialist agents, allowed tools, orchestration bounds, policies, UI labels, and evaluation scenarios. It contains no arbitrary executable code.
 
-The generic Pax engine remains stable across domains. The selected pack changes what must be resolved and which bounded capabilities are available. The pack is a supervisory contract, not a rigid questionnaire: case-specific typed extensions let users add concerns the author did not anticipate.
+The generic Sift engine remains stable across domains. The selected pack changes what must be resolved and which bounded capabilities are available. The pack is a supervisory contract, not a rigid questionnaire: case-specific typed extensions let users add concerns the author did not anticipate.
 
 The complete authoring, extension, and compiler behavior is defined in `pack-authoring.md`.
 
@@ -203,7 +203,7 @@ Orchestration: deterministic Strands Graph with bounded model work inside each n
 
 - A teaser-price claim conflicts with mandatory add-ons and financing terms, making the prior deal score stale and activating `source-challenger`.
 - Selecting a candidate in the UI makes that exact candidate available to ChatGPT through WebMCP.
-- Reweighting driving comfort above fuel economy reopens household fit; Pax creates a test-drive question instead of fabricating a comfort score.
+- Reweighting driving comfort above fuel economy reopens household fit; Sift creates a test-drive question instead of fabricating a comfort score.
 - Adding an unanticipated household criterion creates a typed case extension and targeted investigation without recompiling the pack.
 - The favored shortlist candidate changes after normalized deal terms and the user's criteria update.
 

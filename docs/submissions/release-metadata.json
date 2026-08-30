@@ -20,7 +20,7 @@
   },
   "agentCore": {
     "deployed": false,
-    "reason": "No AWS credentials were available in the build environment this session. The Railway deployment runs PAX_EXECUTION_TARGET=local; the real /ping and /invocations routes (apps/agent/src/routes/agentcore.ts) are live and verified against that local-target deployment, but no AgentCore runtime/CloudWatch correlation evidence exists yet."
+    "reason": "No AWS credentials were available in the build environment this session. The Railway deployment runs SIFT_EXECUTION_TARGET=local; the real /ping and /invocations routes (apps/agent/src/routes/agentcore.ts) are live and verified against that local-target deployment, but no AgentCore runtime/CloudWatch correlation evidence exists yet."
   },
   "webmcpTestClients": [],
   "screenshotInventory": [

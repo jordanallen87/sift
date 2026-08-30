@@ -1,4 +1,4 @@
-# Pax Design System
+# Sift Design System
 
 Status: v1 — color, type, spacing, radius, shadow, and motion tokens. No
 components yet; this document explains the token layer at
@@ -7,7 +7,7 @@ records what in it was adapted from a private reference repository.
 
 ## The design world: a case dossier, not a dashboard
 
-Pax's own language is casework: a **case**, **evidence**, **obligations**
+Sift's own language is casework: a **case**, **evidence**, **obligations**
 ("questions to resolve"), **readiness**, a **recommendation**, and a human
 **approval**. `docs/specs/product.md` describes the product as "a calm case
 board rather than a chatbot dashboard." That sentence is the design brief.
@@ -17,7 +17,7 @@ palette or an AI-generic warm-cream-and-serif landing page.
 
 Two AI-demo defaults were deliberately avoided: a warm cream background
 with a high-contrast display serif and a terracotta accent, and a
-near-black background with a single neon accent. Pax's palette instead
+near-black background with a single neon accent. Sift's palette instead
 sits on a cool, quiet paper tone with a dark desaturated "fountain-pen
 ink" blue as its brand color, and reserves saturated color entirely for
 the nine status tokens described below.
@@ -135,7 +135,7 @@ below):
   the "calm case board" requirement better than a high-contrast display
   serif would. Used with restraint: headings only, never body copy.
 - **Body/UI — Public Sans.** Designed by 18F/USWDS specifically for dense
-  civic and case-processing forms. That is a literal match for Pax's
+  civic and case-processing forms. That is a literal match for Sift's
   vocabulary (case, obligation, evidence, readiness, approval), not a
   generic Inter/system-ui default — and it is proven at small sizes and
   high information density, which the 390px pane demands.
@@ -173,7 +173,7 @@ apps/web/public/fonts/ibm-plex-mono/ibm-plex-mono-500.woff2
 
 Each file is an unmodified copy (renamed only) of the matching weight/style
 from the pinned `@fontsource/newsreader`, `@fontsource/public-sans`, and
-`@fontsource/ibm-plex-mono` npm packages — `@pax/web` `dependencies`, so
+`@fontsource/ibm-plex-mono` npm packages — `@sift/web` `dependencies`, so
 the exact source version is lockfile-pinned and reproducible on a clean
 `pnpm install`, with no separate download step and no network access
 required at build or test time. See docs/reuse-attribution.md for the full
@@ -219,10 +219,10 @@ values into CSS variables" rather than import the package — see
   documented as an intent but did not itself implement as CSS.
 
 Color and typography values are **not** adapted from think-os — they are
-new choices for Pax's own identity (see the Palette and Typography
+new choices for Sift's own identity (see the Palette and Typography
 sections above); think-os's `colors.ts` and `fonts.ts` were reviewed for
 direction only, per `docs/reuse-source-map.md`'s instruction to "select
-only values that support Pax's calm narrow-pane identity."
+only values that support Sift's calm narrow-pane identity."
 
 ## How this holds up at 390px specifically
 
@@ -250,9 +250,9 @@ desktop layout. Concrete decisions this token system makes for that width:
   desktop-only compositional gutters, but the workspace is single-column
   at every width (ADR 0002; CLAUDE.md's "canonical UI is a ChatGPT right
   pane, not a desktop dashboard shrunk after the fact") in the exact
-  region order `docs/specs/product.md` specifies: header → what Pax is
+  region order `docs/specs/product.md` specifies: header → what Sift is
   doing → our pick (recommendation + approval, always expanded) → compare
-  the options → what Pax found → still checking → Pax's work so far → add
+  the options → what Sift found → still checking → Sift's work so far → add
   a concern (the last five as closed-by-default disclosure rows). The
   Runtime Inspector is a full-width route replacing the case body — never
   a second column — consistent with `docs/specs/debugging-and-observability.md`'s

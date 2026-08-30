@@ -2,11 +2,11 @@
 
 ## Product promise
 
-Pax handles the repetitive investigation behind consequential everyday decisions and interrupts the user only when evidence, authority, or preference requires judgment.
+Sift handles the repetitive investigation behind consequential everyday decisions and interrupts the user only when evidence, authority, or preference requires judgment.
 
 The product should feel like a calm case board rather than a chatbot dashboard. The agent works visibly in the background, the person can reshape the investigation from the page or from ChatGPT, and the final decision remains recognizably theirs.
 
-Pax does not compete with the base model on eloquence. It supplies the durable evidence, completion, adaptation, persistence, and authority layer that a one-shot answer lacks. The required product proof is defined in `value-proposition.md`.
+Sift does not compete with the base model on eloquence. It supplies the durable evidence, completion, adaptation, persistence, and authority layer that a one-shot answer lacks. The required product proof is defined in `value-proposition.md`.
 
 ## Target users
 
@@ -27,7 +27,7 @@ The hackathon audience is an individual dealing with an unfamiliar, evidence-hea
 
 ## Primary experience
 
-The user opens a public Pax URL in ChatGPT's in-app browser. The page contains a seeded demo launcher and the active case workspace. The user can interact in either direction:
+The user opens a public Sift URL in ChatGPT's in-app browser. The page contains a seeded demo launcher and the active case workspace. The user can interact in either direction:
 
 - Human to page: select a claim, change a criterion, expand a source, request another investigation, approve or reject a proposal.
 - Human to ChatGPT: ask why the recommendation changed, tell the agent to ignore a line item, or request a different comparison.
@@ -55,18 +55,18 @@ At minimum, the demos visibly pass through queued, investigating, tool-active, e
 **Answer-first, everything else one tap away** (ADR 0002; before this decision the page was a single undifferentiated stack of eight regions requiring a full scroll to reach the recommendation on every case — a real usability defect the project owner identified directly against the live product). The responsive page contains these regions in this order:
 
 1. **Case header** — title, Decision Pack badge, pack-selection explanation, live connection/run status, reset-demo action.
-2. **What Pax is doing** — the obligation being investigated, why it is next, active skill, active specialist, the manual "Request investigation" control, and live run status. Always visible, never collapsible — it is both the primary manual trigger and the live-progress readout.
-3. **Our pick** — the recommendation (proposed outcome, rationale, facts, hypotheses, limitations, sources) and the human decision controls (approve/revise/reject), grouped as one visually cohesive hero directly below "What Pax is doing." Always visible, never collapsible. This is deliberately the first substantial content the user reaches: what Pax currently thinks, and what the user needs to do about it.
+2. **What Sift is doing** — the obligation being investigated, why it is next, active skill, active specialist, the manual "Request investigation" control, and live run status. Always visible, never collapsible — it is both the primary manual trigger and the live-progress readout.
+3. **Our pick** — the recommendation (proposed outcome, rationale, facts, hypotheses, limitations, sources) and the human decision controls (approve/revise/reject), grouped as one visually cohesive hero directly below "What Sift is doing." Always visible, never collapsible. This is deliberately the first substantial content the user reaches: what Sift currently thinks, and what the user needs to do about it.
 4. **Compare the options** — the side-by-side option comparison table and the option editor, collapsed by default into a disclosure row whose closed summary shows a live option count.
-5. **What Pax found** — source-linked claims, conflicts, and stale state, collapsed by default into a disclosure row whose closed summary shows a live evidence count.
+5. **What Sift found** — source-linked claims, conflicts, and stale state, collapsed by default into a disclosure row whose closed summary shows a live evidence count.
 6. **Still checking** — required obligations grouped by satisfied, active, blocked, accepted uncertainty, and open, collapsed by default into a disclosure row whose closed summary shows a live count of what remains unresolved.
-7. **Pax's work so far** — a chronological event ledger including tool calls, skill changes, steering, evidence writes, budget decisions, and pauses, collapsed by default into a disclosure row whose closed summary shows a live event count and a pulsing indicator while work is genuinely in progress.
-8. **Add something Pax should check** — the case-extension proposal form, collapsed by default into a disclosure row, with one exception: it renders open by default exactly when an agent-proposed case extension is awaiting human confirmation, since that is itself a state requiring the user's attention rather than passive information.
+7. **Sift's work so far** — a chronological event ledger including tool calls, skill changes, steering, evidence writes, budget decisions, and pauses, collapsed by default into a disclosure row whose closed summary shows a live event count and a pulsing indicator while work is genuinely in progress.
+8. **Add something Sift should check** — the case-extension proposal form, collapsed by default into a disclosure row, with one exception: it renders open by default exactly when an agent-proposed case extension is awaiting human confirmation, since that is itself a state requiring the user's attention rather than passive information.
 9. **Runtime Inspector** — a developer-facing drill-in for the active run, opened from the case header and rendered as a contained right-pane route rather than competing with the normal decision UI.
 
-Regions 4 through 8 are disclosure rows: closed by default, opened by a tap on their summary, and never hide their live state — a closed row's summary always carries an accurate, currently-true count or status, so nothing genuinely new or actionable is invisible without opening it. This preserves the real-time contract above (every region still renders only from actual committed events/snapshots) while keeping the page short: a first-time, non-technical user reaches Pax's current answer and the approve/reject controls without scrolling past readiness, evidence, or activity detail they did not ask to see yet.
+Regions 4 through 8 are disclosure rows: closed by default, opened by a tap on their summary, and never hide their live state — a closed row's summary always carries an accurate, currently-true count or status, so nothing genuinely new or actionable is invisible without opening it. This preserves the real-time contract above (every region still renders only from actual committed events/snapshots) while keeping the page short: a first-time, non-technical user reaches Sift's current answer and the approve/reject controls without scrolling past readiness, evidence, or activity detail they did not ask to see yet.
 
-The canonical viewport is ChatGPT's right pane. At widths from 390 through 480 pixels, regions stack vertically, "What Pax is doing" and "Our pick" remain immediately below the header, primary actions remain visible without scrolling, and no region introduces horizontal page scrolling. At desktop width, the same single-column order and disclosure behavior apply — the implementation must not depend on a three-column viewport or full-page navigation chrome.
+The canonical viewport is ChatGPT's right pane. At widths from 390 through 480 pixels, regions stack vertically, "What Sift is doing" and "Our pick" remain immediately below the header, primary actions remain visible without scrolling, and no region introduces horizontal page scrolling. At desktop width, the same single-column order and disclosure behavior apply — the implementation must not depend on a three-column viewport or full-page navigation chrome.
 
 ## Required visible states
 
@@ -90,7 +90,7 @@ Errors must preserve the last valid case state. A failed model or tool call beco
 
 ## Demo launcher
 
-`docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md` (ADR 0003) changed this section: the launcher's job is no longer only to start one of two fixtures — it is the front door into two genuinely different ways of using Pax.
+`docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md` (ADR 0003) changed this section: the launcher's job is no longer only to start one of two fixtures — it is the front door into two genuinely different ways of using Sift.
 
 The launcher presents one primary action above a visually secondary, grouped pair of example cards:
 
@@ -103,7 +103,7 @@ Starting either example resets its case to the checked-in fixture and generates 
 
 ## Vehicle catalog and normal case creation
 
-ADR 0003's core product change: **Pax is useful as a normal vehicle-comparison website before ChatGPT/WebMCP is involved.** A user reaching "Compare vehicles" can:
+ADR 0003's core product change: **Sift is useful as a normal vehicle-comparison website before ChatGPT/WebMCP is involved.** A user reaching "Compare vehicles" can:
 
 1. Browse/search a bundled catalog of real published vehicle specifications (year, make, model, trim, body style, drivetrain, powertrain, combined fuel economy) — no network access required, no live pricing or dealer data.
 2. Add up to five vehicles to a shortlist, removing or replacing any before committing.
@@ -125,14 +125,14 @@ Catalog data is intentionally a separate, narrower fact class from case data (AD
 | `Guide` | Agent redirected |
 | `Confirm` | Your approval needed |
 | `Deny` | Action blocked |
-| Evidence ledger | Evidence, shown under the heading **What Pax found** |
+| Evidence ledger | Evidence, shown under the heading **What Sift found** |
 | Agent graph | Investigation team |
 | Readiness | **Still checking** |
-| Activity ledger | **Pax's work so far** |
+| Activity ledger | **Sift's work so far** |
 | Recommendation | **Our pick** |
 | Approval | **Your decision** |
 | Option comparison | **Compare the options** |
-| Current focus | **What Pax is doing** |
+| Current focus | **What Sift is doing** |
 | `VehicleCatalogRecord` | Vehicle |
 | Shortlist (pre-case candidate selection) | Your shortlist |
 | `startCase` | Compare vehicles |
@@ -164,9 +164,9 @@ The following do not ship in the hackathon version:
 - autonomous final decisions;
 - a graphical Pack Studio, pack marketplace, runtime self-modification, or pack composition; a local conversational `pack-authoring` skill and CLI are included;
 - unrestricted browser automation;
-- general-purpose chat embedded in Pax;
+- general-purpose chat embedded in Sift;
 - a mobile application;
 - long-term memory across unrelated cases;
-- claims that Pax provides financial, legal, automotive, energy, or professional advice.
+- claims that Sift provides financial, legal, automotive, energy, or professional advice.
 
 The demos may include optional live research, but their required path uses deterministic local tools. The UI labels the scenarios as illustrative decision support.

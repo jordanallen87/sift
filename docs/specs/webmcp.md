@@ -7,11 +7,11 @@ Official implementation references:
 
 ## Role of WebMCP
 
-Pax is a normal browser application first. It registers structured tools with `document.modelContext` so ChatGPT's in-app browser agent can operate the active page directly. Tool callbacks reuse client commands and update the same case state rendered to the user.
+Sift is a normal browser application first. It registers structured tools with `document.modelContext` so ChatGPT's in-app browser agent can operate the active page directly. Tool callbacks reuse client commands and update the same case state rendered to the user.
 
 WebMCP complements the Strands backend. WebMCP represents page interaction; Strands performs adaptive case work.
 
-Every tool in this catalog operates identically on a demo case (`startDemo`) and a normal, user-built case (`startCase` + `upsertOption`, docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md) — none of them branch on how the case was created. This is a structural consequence of the registration lifecycle below (tools re-register against whatever the active case snapshot currently is) rather than special-cased logic; `pax_get_case_context` in particular is exactly as useful describing a shortlist a person just built from the vehicle catalog as it is describing the deterministic example case. The one exception is `pax_request_investigation` against a catalog-built `car-purchase` case: the tool call itself still succeeds (the run is durably accepted and a `RunReceipt` returned, exactly as usual), but the run then fails quickly and honestly rather than executing guided investigation, since the deterministic Strands engine behind that pack currently only knows how to investigate the checked-in example case's four candidates (ADR 0003 §4). ChatGPT and the page both observe this the normal way any run failure is observed — a `run.failed` activity event with a clear, human-readable explanation, and `pax_get_case_context`'s active-run correlation reflecting the failed status — not a distinct WebMCP error shape. Every other tool remains fully functional on a catalog-built case.
+Every tool in this catalog operates identically on a demo case (`startDemo`) and a normal, user-built case (`startCase` + `upsertOption`, docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md) — none of them branch on how the case was created. This is a structural consequence of the registration lifecycle below (tools re-register against whatever the active case snapshot currently is) rather than special-cased logic; `sift_get_case_context` in particular is exactly as useful describing a shortlist a person just built from the vehicle catalog as it is describing the deterministic example case. The one exception is `sift_request_investigation` against a catalog-built `car-purchase` case: the tool call itself still succeeds (the run is durably accepted and a `RunReceipt` returned, exactly as usual), but the run then fails quickly and honestly rather than executing guided investigation, since the deterministic Strands engine behind that pack currently only knows how to investigate the checked-in example case's four candidates (ADR 0003 §4). ChatGPT and the page both observe this the normal way any run failure is observed — a `run.failed` activity event with a clear, human-readable explanation, and `sift_get_case_context`'s active-run correlation reflecting the failed status — not a distinct WebMCP error shape. Every other tool remains fully functional on a catalog-built case.
 
 ## Browser adapter
 
@@ -38,21 +38,21 @@ When WebMCP is unavailable, the website remains fully usable through visible con
 
 ## Tool catalog
 
-### `pax_get_case_context`
+### `sift_get_case_context`
 
 Returns the active case summary, selected pack ID/version/hash, pack-defined and case-defined criteria/attributes, options, readiness counts, current focus, selected option/evidence, recommendation, active run correlation, and pending human action. It omits private model messages and oversized source bodies.
 
 Input: empty object.  
 Effect: read-only.
 
-### `pax_list_packs`
+### `sift_list_packs`
 
 Returns installed compiled Decision Packs with descriptions, versions, hashes, and activation signals.
 
 Input: empty object.  
 Effect: read-only.
 
-### `pax_select_pack`
+### `sift_select_pack`
 
 Selects a registered Decision Pack for a case that has no evidence yet.
 
@@ -64,7 +64,7 @@ Input:
 
 Effect: durable case update. The result explains why selection succeeded or why an evidence-bearing case cannot be reinterpreted.
 
-### `pax_focus_evidence`
+### `sift_focus_evidence`
 
 Changes the evidence item highlighted in the shared page. This is the primary WebMCP collaboration tool: the user can select an item manually, or ChatGPT can focus it before discussing or revising the case.
 
@@ -76,7 +76,7 @@ Input:
 
 Effect: visible selection state only; no evidence is deleted or changed.
 
-### `pax_focus_option`
+### `sift_focus_option`
 
 Changes the current option highlighted in the shared page and includes its safe summary in subsequent case context. This is the car-buying demo's primary shared-attention tool, but the contract works for any pack-defined option kind.
 
@@ -88,7 +88,7 @@ Input:
 
 Effect: visible selection state only. It does not change ranking or evidence.
 
-### `pax_upsert_option`
+### `sift_upsert_option`
 
 Adds or updates one manually supplied option using the pack's declared fields plus typed case extensions. It accepts structured facts supplied by the user or ChatGPT; it does not fetch or scrape a URL.
 
@@ -114,7 +114,7 @@ Input:
 
 Effect: durable update. The demo packs permit at most five options. Unknown `definitionId` values are accepted only under the compiled pack's extension policy and must include a valid `custom.*` definition. Changed facts invalidate affected evidence, obligations, scores, and recommendations.
 
-### `pax_update_criteria`
+### `sift_update_criteria`
 
 Adds, removes, reweights, or relabels decision criteria. Removing a criterion referenced by a decided case is rejected. A successful update invalidates the comparison and recommendation, then asks the engine to recompute.
 
@@ -147,7 +147,7 @@ Input:
 
 Effect: durable update plus deterministic invalidation. Weights must be integers from 0 through 100 and are normalized for comparison. Adding an unknown criterion creates a typed case extension; when its question requires evidence, the core derives a case-specific obligation from the pack's `userConcern` template. Protected pack criteria cannot be removed.
 
-### `pax_define_case_attribute`
+### `sift_define_case_attribute`
 
 Defines a typed case-specific concern that the installed pack did not anticipate. A WebMCP call made in response to the user's explicit request records origin `user`; an extension autonomously proposed by a runtime agent uses an internal proposal event and remains pending until the user confirms it through the visible UI.
 
@@ -173,9 +173,9 @@ Input:
 
 Effect: durable case extension when the pack permits it. It never changes or republishes the installed pack.
 
-### `pax_submit_source`
+### `sift_submit_source`
 
-Submits a structured source discovered by the user or ChatGPT for bounded Pax investigation. This lets ChatGPT contribute research while Pax retains provenance, challenge, and readiness control.
+Submits a structured source discovered by the user or ChatGPT for bounded Sift investigation. This lets ChatGPT contribute research while Sift retains provenance, challenge, and readiness control.
 
 Input:
 
@@ -197,7 +197,7 @@ Input:
 
 Effect: persists an unverified submitted source and starts no implicit network request. `source-challenger` must validate relevance, recency, contradiction, and support before it may satisfy an obligation.
 
-### `pax_set_evidence_disposition`
+### `sift_set_evidence_disposition`
 
 Lets the user tell the case to include, exclude, or question one evidence item. Exclusion preserves provenance and reason; it does not delete the source.
 
@@ -215,7 +215,7 @@ Input:
 
 Effect: durable update; affected obligations and recommendations become stale and are reevaluated.
 
-### `pax_request_investigation`
+### `sift_request_investigation`
 
 Requests the next bounded engine move or asks the engine to revisit one named obligation.
 
@@ -227,7 +227,7 @@ Input:
 
 Effect: starts a run and returns a `RunReceipt`. Duplicate idempotency keys return the existing run.
 
-### `pax_request_revision`
+### `sift_request_revision`
 
 Attaches a human revision request to the pending recommendation and reopens affected obligations.
 
@@ -244,7 +244,7 @@ Effect: durable update. It cannot approve or reject the decision.
 Every tool returns:
 
 ```ts
-interface PaxToolResult<T> {
+interface SiftToolResult<T> {
   ok: boolean
   message: string
   data?: T
@@ -271,7 +271,7 @@ Mutating tools return after command acceptance rather than waiting for the entir
 
 - Each callback accepts the browser-provided abort signal and forwards it to fetch.
 - Cancellation produces `UNAVAILABLE` with `retryable: true` and does not apply a late response.
-- Mutations include `expectedSequence`. Conflicts return the latest sequence so ChatGPT can call `pax_get_case_context` before retrying.
+- Mutations include `expectedSequence`. Conflicts return the latest sequence so ChatGPT can call `sift_get_case_context` before retrying.
 - Retried mutations reuse an idempotency key derived from the browser tool call ID.
 
 ## Automated contract requirements

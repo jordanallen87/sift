@@ -20,7 +20,7 @@ Deadline: September 14, 2026 at 5:00 p.m. PT / 8:00 p.m. ET (`2026-09-15T00:00:0
 
 ## Project and track qualification
 
-- [ ] Pax is a new AI agent built for this hackathon with Strands Agents SDK.
+- [ ] Sift is a new AI agent built for this hackathon with Strands Agents SDK.
 - [ ] The agent performs a real task for people end to end rather than only answering a prompt.
 - [ ] The selected track is `Everyday Agents` unless the final positioning is deliberately changed before submission.
 - [ ] Home Energy Guardian fits the selected track through a daily-life/home/family use case.
@@ -39,7 +39,7 @@ Deadline: September 14, 2026 at 5:00 p.m. PT / 8:00 p.m. ET (`2026-09-15T00:00:0
 
 ## Required text description
 
-- [ ] The description states what Pax and Home Energy Guardian do.
+- [ ] The description states what Sift and Home Energy Guardian do.
 - [ ] The description identifies the household audience and the repetitive vigilance problem.
 - [ ] The description explains the end-to-end flow from anomaly detection through evidence-backed human proposal.
 - [ ] The description explains why a supervised adaptive system is more valuable than a one-shot model answer.
@@ -55,7 +55,7 @@ Deadline: September 14, 2026 at 5:00 p.m. PT / 8:00 p.m. ET (`2026-09-15T00:00:0
 - [ ] The diagram is readable at Devpost preview scale.
 - [ ] The diagram distinguishes ChatGPT and WebMCP browser interaction.
 - [ ] The diagram distinguishes Railway web/API services and persistent SQLite storage.
-- [ ] The diagram distinguishes deterministic Pax evidence, readiness, budget, and authority governance.
+- [ ] The diagram distinguishes deterministic Sift evidence, readiness, budget, and authority governance.
 - [ ] The diagram distinguishes the compiled Decision Pack and mutable case/run plan.
 - [ ] The diagram shows Strands AgentSkills, Graph or Swarm, interventions, Context Injector, GoalLoop, sessions, and hooks.
 - [ ] The diagram distinguishes local and AgentCore execution targets only if both exist.

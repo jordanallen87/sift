@@ -1,4 +1,4 @@
-# The WebMCP Challenge — Pax Submission Details
+# The WebMCP Challenge — Sift Submission Details
 
 Status: local preparation packet; nothing has been sent to Devpost.  
 Official data source: authenticated Devpost MCP responses fetched 2026-08-27 UTC.  
@@ -42,7 +42,7 @@ The organizer's final checklist says to show the project working in the first 15
 
 ## Current official form fields
 
-| ID | Field | Required | Pax answer/status |
+| ID | Field | Required | Sift answer/status |
 | --- | --- | --- | --- |
 | `28249` | Submitter Type | Yes | Participant must select Individual, Team of Individuals, or Organization. |
 | `28250` | Country of residence for submitter and team | Yes | Participant must select the truthful country or countries. |
@@ -61,7 +61,7 @@ Global Devpost project fields also require a title, tagline, description, built-
 
 ## Official judging criteria
 
-| Criterion | Official description | Pax proof to foreground |
+| Criterion | Official description | Sift proof to foreground |
 | --- | --- | --- |
 | WebMCP Leverage | How thoroughly and skillfully does the project use WebMCP? Does the code reflect genuine effort and a working, non-trivial implementation? | Current page selection, shared UI/tool commands, typed custom concern, source intake, active-run correlation, and a visible Strands replan caused by a WebMCP command. |
 | Execution | Does the project deliver a working or runnable project that has a complete, coherent product experience — not just a technical proof of concept? | Public Railway deployment, polished right-pane UI, deterministic release suite, replay/reconnect, and tested live WebMCP registration. |
@@ -81,15 +81,15 @@ The official Devpost response lists ten winning submissions. Each winner's packa
 
 The Devpost prize record reports a $35,000 aggregate cash value across ten winners. Sponsor credits and non-cash benefits are additional; the official rules control eligibility and fulfillment.
 
-## Recommended Pax positioning
+## Recommended Sift positioning
 
 ### Title
 
-Pax
+Sift
 
 ### One-line summary
 
-Pax turns a WebMCP-enabled decision workspace into a shared control surface where a person and ChatGPT can redirect a supervised multi-agent investigation without losing evidence, continuity, or human authority.
+Sift turns a WebMCP-enabled decision workspace into a shared control surface where a person and ChatGPT can redirect a supervised multi-agent investigation without losing evidence, continuity, or human authority.
 
 ### Problem
 
@@ -97,7 +97,7 @@ Important everyday comparisons do not fail because a model cannot produce an ans
 
 ### Solution
 
-In Choose Our Next Car, the user and ChatGPT work against the same live case. ChatGPT reads the selected vehicle, adds or reweights a household concern through structured WebMCP tools, and requests bounded investigation. Pax converts that change into typed case state and evidence obligations. A Strands Graph switches focus and skills, challenges weak sources, recomputes only affected conclusions, and streams every meaningful transition into the right pane. The user alone approves the shortlist.
+In Choose Our Next Car, the user and ChatGPT work against the same live case. ChatGPT reads the selected vehicle, adds or reweights a household concern through structured WebMCP tools, and requests bounded investigation. Sift converts that change into typed case state and evidence obligations. A Strands Graph switches focus and skills, challenges weak sources, recomputes only affected conclusions, and streams every meaningful transition into the right pane. The user alone approves the shortlist.
 
 ### Why WebMCP is essential
 
@@ -105,14 +105,14 @@ Without WebMCP, ChatGPT would have to infer page state, ask the user to repeat s
 
 ### Distinguishing claim
 
-Most WebMCP examples let an agent operate a website. Pax lets a website mediate collaboration among a human, ChatGPT, and a separate supervised agent team.
+Most WebMCP examples let an agent operate a website. Sift lets a website mediate collaboration among a human, ChatGPT, and a separate supervised agent team.
 
 ## Required hero demonstration
 
 The under-three-minute video should put the best material first:
 
 1. **0:00–0:15 — working product immediately.** Show the narrow right-pane case with a selected vehicle and active investigation.
-2. **0:15–0:35 — shared attention.** Ask ChatGPT what would have to be true for the selected RAV4 to win; show `pax_get_case_context` read the exact selection, then `pax_request_investigation` fire in the same breath so Beat 4's active Strands investigation has a real cause on screen.
+2. **0:15–0:35 — shared attention.** Ask ChatGPT what would have to be true for the selected RAV4 to win; show `sift_get_case_context` read the exact selection, then `sift_request_investigation` fire in the same breath so Beat 4's active Strands investigation has a real cause on screen.
 3. **0:35–1:05 — unanticipated concern.** Say that driving comfort is now non-negotiable and two dog crates must fit. Show WebMCP define/reweight the concern and the page add `custom.dog_crate_fit` plus an evidence question.
 4. **1:05–1:35 — cross-agent steering.** Show the active Strands trajectory redirect, `household-fit` activate, source challenge occur, and prior recommendation become stale.
 5. **1:35–2:05 — honest adaptation.** Show sourced cargo dimensions, explicit unknown comfort/crate fit, test-drive questions, and the revised ranking.
@@ -124,9 +124,9 @@ The under-three-minute video should put the best material first:
 
 1. Open the public URL in ChatGPT's in-app browser. A compatible Chrome build with WebMCP enabled is the fallback.
 2. Launch **Choose Our Next Car**.
-3. Select a candidate and call `pax_get_case_context`; verify `selectedOptionId` matches the page.
-4. Call `pax_define_case_attribute` and `pax_update_criteria`; verify the new concern, case obligation, and unchanged pack hash appear.
-5. Call `pax_request_investigation`; observe ordered queued, specialist, skill, tool, evidence, steering, and completion events.
+3. Select a candidate and call `sift_get_case_context`; verify `selectedOptionId` matches the page.
+4. Call `sift_define_case_attribute` and `sift_update_criteria`; verify the new concern, case obligation, and unchanged pack hash appear.
+5. Call `sift_request_investigation`; observe ordered queued, specialist, skill, tool, evidence, steering, and completion events.
 6. Refresh or interrupt the connection; verify state and event replay recover.
 7. Confirm no WebMCP approval tool exists and final shortlist approval is available only in the page.
 

@@ -2,15 +2,15 @@
 
 ## Purpose
 
-A **Pax Decision Pack** is the versioned, installable definition of one class of decision. **Choose Our Next Car** and **Home Energy Guardian** are Decision Packs. A pack supplies defaults, evidence rules, capability boundaries, orchestration, and presentation vocabulary; it does not enumerate every fact or preference a person may ever care about.
+A **Sift Decision Pack** is the versioned, installable definition of one class of decision. **Choose Our Next Car** and **Home Energy Guardian** are Decision Packs. A pack supplies defaults, evidence rules, capability boundaries, orchestration, and presentation vocabulary; it does not enumerate every fact or preference a person may ever care about.
 
-The authoring system must make Pax extensible without allowing a model-generated manifest to become executable, weaken human authority, or silently reinterpret an existing case.
+The authoring system must make Sift extensible without allowing a model-generated manifest to become executable, weaken human authority, or silently reinterpret an existing case.
 
 ## Canonical vocabulary
 
 | Concept | Meaning | Example |
 | --- | --- | --- |
-| Pax engine | Stable event, evidence, readiness, policy, persistence, and streaming runtime | `packages/core` |
+| Sift engine | Stable event, evidence, readiness, policy, persistence, and streaming runtime | `packages/core` |
 | Decision Pack | Versioned bundle for a class of decision | `car-purchase@1.0.0` |
 | Pack manifest | Declarative source contract compiled into an installed pack | `pack.json` |
 | Case | One durable use of one pinned compiled pack | A household's current car comparison |
@@ -25,7 +25,7 @@ The product and code use **Decision Pack** or **Pack**. `Playbook` is not a sepa
 
 ## Three-layer adaptability model
 
-Pax separates what is fixed from what may adapt:
+Sift separates what is fixed from what may adapt:
 
 | Layer | Owns | May the runtime model change it? |
 | --- | --- | --- |
@@ -111,7 +111,7 @@ The compiler turns these definitions into runtime validators, comparison metadat
 
 ### Case-defined attributes
 
-When the user cares about something the pack did not anticipate, Pax creates a case-scoped `AttributeDefinition` under the `custom.` namespace. For a car case, examples include:
+When the user cares about something the pack did not anticipate, Sift creates a case-scoped `AttributeDefinition` under the `custom.` namespace. For a car case, examples include:
 
 - `custom.dog_crate_fit` as a boolean or explicit unknown;
 - `custom.garage_clearance` as a number with `inch` unit;
@@ -143,7 +143,7 @@ Users may add, remove, rename, or reweight non-required criteria. Pack-required 
 
 Each pack declares a `userConcern` obligation template. Adding a hard constraint or a criterion that requires evidence creates a case-specific obligation such as `case.<caseId>.dog-crate-fit`. The generated obligation inherits pack bounds and evidence semantics, records its originating criterion, and participates in readiness and invalidation like a pack obligation.
 
-The model may propose such a question but cannot mark it satisfied. If no installed tool can investigate it, Pax records the unknown explicitly and asks for user evidence or a human observation. It never fabricates a capability or a value.
+The model may propose such a question but cannot mark it satisfied. If no installed tool can investigate it, Sift records the unknown explicitly and asks for user evidence or a human observation. It never fabricates a capability or a value.
 
 ## Decision Pack source contract
 
@@ -231,12 +231,12 @@ It receives no arbitrary shell tool and cannot write outside the pack draft root
 
 Configuration:
 
-- `PAX_AUTHORING_ENABLED=false` by default;
+- `SIFT_AUTHORING_ENABLED=false` by default;
 - enabled for local/developer authoring and automated tests;
 - disabled in the unauthenticated public hackathon deployment;
 - public demo documentation shows the authoring transcript and commands without exposing a writable authoring endpoint.
 
-The initial authoring entry point is `pnpm pax pack:author`. A graphical Pack Studio, marketplace, arbitrary composition, and multi-tenant publishing are not part of the hackathon build.
+The initial authoring entry point is `pnpm sift pack:author`. A graphical Pack Studio, marketplace, arbitrary composition, and multi-tenant publishing are not part of the hackathon build.
 
 ## Compiler and registry
 
@@ -301,4 +301,4 @@ Every pack must prove:
 
 The two hero packs are hand-reviewed reference implementations. The release also includes one compact `apartment-hunt` authoring fixture used only by compiler/conformance tests and documentation. It demonstrates an unanticipated `custom.pet_sensory_fit` concern without becoming a third product demo or expanding the submission narrative.
 
-This proves Pax is a platform with a repeatable extension contract rather than two hard-coded demonstrations, while keeping the visible hackathon scope focused.
+This proves Sift is a platform with a repeatable extension contract rather than two hard-coded demonstrations, while keeping the visible hackathon scope focused.

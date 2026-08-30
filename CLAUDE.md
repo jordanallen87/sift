@@ -1,8 +1,8 @@
-# Pax Autonomous Build Instructions
+# Sift Autonomous Build Instructions
 
 ## Mission
 
-Build Pax into a working, polished, tested, deployable dual-hackathon submission. The output is running software and verifiable evidence, not a scaffold, design exercise, or partial prototype.
+Build Sift into a working, polished, tested, deployable dual-hackathon submission. The output is running software and verifiable evidence, not a scaffold, design exercise, or partial prototype.
 
 Work autonomously from the repository root until the complete deterministic release gate passes. Make reasonable product and engineering decisions from the specifications. Do not stop to ask the user to choose routine libraries, file names, styling details, test structure, or implementation tactics.
 
@@ -42,7 +42,7 @@ The review must evaluate:
 - whether scoring, evidence, readiness, invalidation, fixture math, and every demo outcome are deterministic enough to test without hard-coded final strings;
 - current official WebMCP, Strands TypeScript, AgentCore, Railway CLI, and dependency APIs rather than remembered or invented interfaces;
 - every `PAX-Pxx` requirement against an implementation owner, test layer, demo beat, and submission proof;
-- every item in `docs/reuse-source-map.md`, including exact source existence, canonical versus generated source, intended Pax destination, dependency cost, and license/ownership posture;
+- every item in `docs/reuse-source-map.md`, including exact source existence, canonical versus generated source, intended Sift destination, dependency cost, and license/ownership posture;
 - the implementation plan's critical path, dependencies, and ability to deliver both winning hero demos before lower-priority platform work;
 - the WebMCP submission as a judge would: essential/non-trivial WebMCP leverage, shared human-agent control, working right-pane execution, impact, creativity, and an immediately legible under-three-minute story;
 - the Agents for Humans submission as a judge would: genuine causal Strands use, complete end-to-end work, quiet human benefit, coherent design, originality, AgentCore proof when available, and a clear five-minute story;
@@ -100,16 +100,16 @@ The release implementation must truthfully exercise:
 - Context Injector with current case projection;
 - GoalLoop with a callable recommendation validator and `maxAttempts: 2`;
 - structured output validation;
-- streaming/hook normalization into Pax activity events;
+- streaming/hook normalization into Sift activity events;
 - sessions and snapshots, including deterministic restart and restore;
 - AgentCore-compatible `/ping` and `/invocations` routes.
-- native Strands OpenTelemetry tracing and TypeScript lifecycle hooks feeding the Pax Runtime Inspector.
+- native Strands OpenTelemetry tracing and TypeScript lifecycle hooks feeding the Sift Runtime Inspector.
 - a separate real `pack-authoring` AgentSkill with bounded catalog/scaffold/validate/test/diff/publish tools, human-only publication, and public-deployment disablement.
 
 ## Persistence and observability integrity
 
-- Use migrated SQLite through `better-sqlite3` and Drizzle as the canonical Pax store.
-- Store the database at `.pax-data/pax.sqlite` locally and `/data/pax.sqlite` on Railway.
+- Use migrated SQLite through `better-sqlite3` and Drizzle as the canonical Sift store.
+- Store the database at `.sift-data/sift.sqlite` locally and `/data/sift.sqlite` on Railway.
 - Use WAL, foreign keys, transactional event+snapshot writes, unique event sequences/idempotency keys, and one writable Railway replica.
 - Persist a replayable sanitized public activity stream and detailed runtime events separately from canonical case events. Activity/telemetry cannot mutate case state.
 - Implement the complete Runtime Inspector in `docs/specs/debugging-and-observability.md`, including hooks, OTEL spans, correlations, state diffs, filters, Graph/Swarm visualization, tokens/latency, errors, export, and activity-to-trace navigation.
@@ -162,17 +162,17 @@ Before completion, inspect all release screenshots as a set and verify that the 
 
 ## Source-project reuse
 
-Pax is standalone. `docs/reuse-source-map.md` is the canonical and exhaustive source-to-destination map; do not maintain a second partial list here. Reuse only small, understandable pieces after inspecting their dependencies and licenses. Update the map when the audit discovers a better source or decides not to reuse an entry.
+Sift is standalone. `docs/reuse-source-map.md` is the canonical and exhaustive source-to-destination map; do not maintain a second partial list here. Reuse only small, understandable pieces after inspecting their dependencies and licenses. Update the map when the audit discovers a better source or decides not to reuse an entry.
 
-Do not import either reference repository by filesystem path. Copy only code that is worth owning here, simplify it, attribute it in `docs/reuse-attribution.md`, and cover it with Pax tests. Prefer implementing the smaller Pax contract when copied code brings unnecessary dependencies.
+Do not import either reference repository by filesystem path. Copy only code that is worth owning here, simplify it, attribute it in `docs/reuse-attribution.md`, and cover it with Sift tests. Prefer implementing the smaller Sift contract when copied code brings unnecessary dependencies.
 
 ## Deployment behavior
 
 - The complete local and fixture-backed build is mandatory.
 - Create a Docker image that serves the built web app and API as one Railway service.
-- Support `PAX_EXECUTION_TARGET=local|agentcore`.
+- Support `SIFT_EXECUTION_TARGET=local|agentcore`.
 - Railway CLI authentication is available. Creating a new Railway project/service and deploying it is mandatory, not optional.
-- Verify with `railway whoami`, then use the current authenticated CLI workflow to create a fresh project named `pax-hackathon` (use a deterministic short suffix only if unavailable), such as `railway up --new --name pax-hackathon --json -y --detach` (`-y --detach` are required for a genuinely non-interactive autonomous run; without them the command can block on a prompt or attach to a live log stream indefinitely). Attach `/data` with `railway volume add --service pax --mount-path /data --json` (pass `--service` explicitly rather than relying on single-service inference), set non-secret configuration with `railway variable set KEY=value`, redeploy, generate a domain with `railway domain --port 8080`, run migrations, and execute `pnpm test:deployed`. Check each command's current help before use and capture JSON output where supported.
+- Verify with `railway whoami`, then use the current authenticated CLI workflow to create a fresh project named `pax-hackathon` (use a deterministic short suffix only if unavailable), such as `railway up --new --name pax-hackathon --json -y --detach` (`-y --detach` are required for a genuinely non-interactive autonomous run; without them the command can block on a prompt or attach to a live log stream indefinitely). Attach `/data` with `railway volume add --service sift --mount-path /data --json` (pass `--service` explicitly rather than relying on single-service inference), set non-secret configuration with `railway variable set KEY=value`, redeploy, generate a domain with `railway domain --port 8080`, run migrations, and execute `pnpm test:deployed`. Check each command's current help before use and capture JSON output where supported.
 - Record Railway project, service, environment, deployment, volume, and public-domain identifiers in the completion report. Do not link or mutate an unrelated existing Railway project.
 - Prove SQLite case and Runtime Inspector persistence across a service restart or redeploy.
 - If AWS credentials exist, deploy the Strands runtime to Bedrock AgentCore and test `/ping` plus one invocation for each hero pack.

@@ -1,4 +1,4 @@
-# Agents for Humans Hackathon — Pax Submission Details
+# Agents for Humans Hackathon — Sift Submission Details
 
 Status: local preparation packet; nothing has been sent to Devpost.  
 Official data source: authenticated Devpost MCP responses fetched 2026-08-27 UTC.  
@@ -46,11 +46,11 @@ Required deliverables:
 - An AWS Builder ID.
 - A truthful Built With section that clearly names Strands Agents SDK.
 
-A live demo and AgentCore deployment are not required, but the official judging description says either strengthens the Technological Implementation score. Pax should provide both Railway live access and AgentCore deployment/correlation when credentials allow.
+A live demo and AgentCore deployment are not required, but the official judging description says either strengthens the Technological Implementation score. Sift should provide both Railway live access and AgentCore deployment/correlation when credentials allow.
 
 ## Current official form fields
 
-| ID | Field | Required | Pax answer/status |
+| ID | Field | Required | Sift answer/status |
 | --- | --- | --- | --- |
 | `27729` | Submitter Type | Yes | Participant must select Individual, Team of Individuals, or Organization. |
 | `27730` | Country of Residence | Yes | Participant supplies the truthful country. |
@@ -67,7 +67,7 @@ Global Devpost project fields also require a title, tagline, description, built-
 
 ## Official judging criteria
 
-| Criterion | Official description | Pax proof to foreground |
+| Criterion | Official description | Sift proof to foreground |
 | --- | --- | --- |
 | Technological Implementation | How thoroughly and skillfully does the project use Strands Agents? Does the code reflect genuine effort and a working, non-trivial implementation? A live demo and/or Amazon Bedrock AgentCore deployment will strengthen this score. | Real AgentSkills, bounded Swarm handoffs, interventions, Context Injector, GoalLoop, sessions/snapshots, OpenTelemetry, scripted deterministic tests, and AgentCore when available. |
 | Design | Does the project deliver a complete, coherent product experience and not just a technical proof of concept? | Calm right-pane UI, truthful real-time activity, reviewable evidence, explicit waiting/blocked states, and human confirmation rather than a terminal trace. |
@@ -90,15 +90,15 @@ Official total prize pool: $40,000 USD.
 
 The Grand Prize also lists an AWS social feature and a meeting with AWS technical experts. Track prizes list an AWS social feature.
 
-## Recommended Pax positioning
+## Recommended Sift positioning
 
 ### Title
 
-Pax
+Sift
 
 ### One-line summary
 
-Pax is a supervised adaptive agent system that investigates repetitive household decisions in the background, changes skills and specialists when evidence stalls, and interrupts the person only when judgment or authority is genuinely required.
+Sift is a supervised adaptive agent system that investigates repetitive household decisions in the background, changes skills and specialists when evidence stalls, and interrupts the person only when judgment or authority is genuinely required.
 
 ### Problem
 
@@ -106,7 +106,7 @@ Households repeatedly notice a surprising bill, search one likely cause, and eit
 
 ### Solution
 
-Home Energy Guardian watches a deterministic bill feed and creates a case only when usage is materially abnormal. A Strands Swarm investigates rate, weather, usage, and household changes. Pax measures evidence progress around the Swarm. It can reject a plausible recommendation, steer a stalled agent, switch skills and specialists, inject new case state, challenge sources, persist through a confirmation pause, and surface one bounded proposal for human review.
+Home Energy Guardian watches a deterministic bill feed and creates a case only when usage is materially abnormal. A Strands Swarm investigates rate, weather, usage, and household changes. Sift measures evidence progress around the Swarm. It can reject a plausible recommendation, steer a stalled agent, switch skills and specialists, inject new case state, challenge sources, persist through a confirmation pause, and surface one bounded proposal for human review.
 
 ### Why Strands is essential
 
@@ -121,7 +121,7 @@ Home Energy Guardian watches a deterministic bill feed and creates a case only w
 
 ### Distinguishing claim
 
-Most agents are optimized to finish. Pax is optimized to know when the agent has not earned the right to answer yet.
+Most agents are optimized to finish. Sift is optimized to know when the agent has not earned the right to answer yet.
 
 ## Required hero demonstration
 
@@ -171,7 +171,7 @@ The submitted export must visibly distinguish:
 
 - ChatGPT and WebMCP browser interaction;
 - Railway web/API gateway and persistent SQLite volume;
-- deterministic Pax evidence/readiness/authority engine;
+- deterministic Sift evidence/readiness/authority engine;
 - compiled Decision Pack and case/run plan;
 - Strands AgentSkills, Graph/Swarm, interventions, Context Injector, GoalLoop, sessions, and hooks;
 - local versus AgentCore execution target;

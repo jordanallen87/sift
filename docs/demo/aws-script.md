@@ -45,7 +45,7 @@ directly from the specs and must not be altered.
 
 ## Beat 1 — 0:00–0:20 — Product and problem
 
-**On screen:** The live, working Pax product — the demo launcher or an idle
+**On screen:** The live, working Sift product — the demo launcher or an idle
 Home Energy Guardian workspace, before any anomaly has fired. If shown as
 text/notes, the literal initial instruction is visible on screen:
 
@@ -54,7 +54,7 @@ text/notes, the literal initial instruction is visible on screen:
 
 **Presenter says:**
 
-> "This is Pax's Home Energy Guardian. I told it to watch my bills quietly
+> "This is Sift's Home Energy Guardian. I told it to watch my bills quietly
 > and only interrupt me when something is actually worth a decision — not to
 > make me babysit another dashboard myself."
 
@@ -83,7 +83,7 @@ from active to satisfied.
 
 **Presenter says:**
 
-> "No one asked it to. Pax's deterministic watcher caught a bill forty-two
+> "No one asked it to. Sift's deterministic watcher caught a bill forty-two
 > percent above normal, opened a case on its own, and ran the anomaly check
 > straight through to a verified result — without a single question to me."
 
@@ -96,7 +96,7 @@ from active to satisfied.
   deterministic baseline calculation, matching its required evidence level in
   `packs-and-routing.md`'s obligation table (required sequence step 3: "The
   anomaly check reaches E3 through deterministic baseline calculation").
-- Pax routes to Home Energy Guardian without requiring a human choice
+- Sift routes to Home Energy Guardian without requiring a human choice
   (required sequence step 2).
 
 **Caption:**
@@ -127,7 +127,7 @@ counts update live as each obligation moves between groups.
 > of forty-two percent — nineteen points remain unexplained. Notice each
 > skill only loads its full technique once it's actually activated — that's
 > Strands AgentSkills progressive disclosure, not one giant prompt — and on
-> every turn, Pax's Context Injector hands the model current evidence and
+> every turn, Sift's Context Injector hands the model current evidence and
 > remaining budget, not the whole conversation history."
 
 **Must genuinely be happening:**
@@ -162,7 +162,7 @@ Recommendation region:
 ```
 Draft withheld
 This answer is plausible, but 3 required questions are still unresolved.
-Pax is continuing the investigation before asking you to decide.
+Sift is continuing the investigation before asking you to decide.
 ```
 
 One of the three listed unresolved questions is visibly
@@ -172,10 +172,10 @@ change consumption?`.
 **Presenter says:**
 
 > "At this point a lot of assistants would just answer: monitor it for
-> another cycle. Pax's decision-synthesizer actually proposes exactly that —
+> another cycle. Sift's decision-synthesizer actually proposes exactly that —
 > and its own GoalLoop validator rejects it. The activity feed shows it
 > plainly: draft withheld, three required questions still unresolved,
-> including whether anything changed in the house itself. Pax keeps
+> including whether anything changed in the house itself. Sift keeps
 > investigating instead of guessing."
 
 **Must genuinely be happening:**
@@ -214,7 +214,7 @@ three attempts. Immediately after, a Swarm handoff animates in the
 **Presenter says:**
 
 > "Weather digs in again — same technique, same result, no new evidence.
-> That's three calls with nothing new, and Pax's RetrySteering catches it.
+> That's three calls with nothing new, and Sift's RetrySteering catches it.
 > You'll see it in the feed as 'Agent redirected.' Strands hands off — for
 > real, not scripted — from the weather analyst to the home-systems analyst,
 > and home-event-correlation activates as its new skill. This is an actual
@@ -226,7 +226,7 @@ three attempts. Immediately after, a Swarm handoff animates in the
   `weather-analyst` calls producing no new source or claim — and does so
   strictly before the Strands `Swarm`'s own `repetitiveHandoffDetectionWindow`
   safety net would (`strands-runtime.md` § "Retry steering rules" and
-  "Energy Swarm": "Pax's own `RetrySteering` no-progress detector... must
+  "Energy Swarm": "Sift's own `RetrySteering` no-progress detector... must
   trip strictly before the Swarm's own repetitive-handoff window").
 - This emits a real `intervention.guide` event with `handler: 'RetrySteering'`
   (`strands-runtime.md` § "Interventions and steering"), rendered in the UI
@@ -274,7 +274,7 @@ reduction." The **Recommendation and approval** region's top card flips to
 > degrees cold since the furnace's last service call, quietly forcing the
 > system to overheat the house. Source-challenger corroborates it before it
 > counts. Now I make the one call that's actually mine — I weight long-term
-> waste reduction over the cheapest immediate fix — and Pax's recommendation
+> waste reduction over the cheapest immediate fix — and Sift's recommendation
 > flips, this time passing GoalLoop validation."
 
 **Must genuinely be happening:**
@@ -318,11 +318,11 @@ scheduled.
 
 **Presenter says:**
 
-> "Before Pax can even propose the inspection, its ConsequenceGuard pauses and
+> "Before Sift can even propose the inspection, its ConsequenceGuard pauses and
 > asks for my confirmation — and it saves a snapshot first. Watch: I restart
 > the runtime completely. It comes back, restores from that snapshot, and
 > nothing is lost or duplicated. Only then, with my approval right here in
-> the page, does the inspection proposal get created. Pax never schedules
+> the page, does the inspection proposal get created. Sift never schedules
 > anything."
 
 **Must genuinely be happening:**
@@ -442,7 +442,7 @@ proposal state.
 
 **Presenter says:**
 
-> "Most agents are optimized to finish. Pax is optimized to know when the
+> "Most agents are optimized to finish. Sift is optimized to know when the
 > agent has not earned the right to answer yet."
 
 **Must genuinely be happening:** nothing new — the video ends on the real,
@@ -458,7 +458,7 @@ live product state.
    window, and the beat text in `submission-details.md` doesn't mention the
    criteria reweight at all.** `demos-and-submission.md`'s Home Energy
    required sequence lists these as separate steps: (8) thermostat evidence
-   creates a supported hypothesis and `source-challenger` checks it; (9) Pax
+   creates a supported hypothesis and `source-challenger` checks it; (9) Sift
    surfaces one human decision with three bounded options and stated
    remaining uncertainty; (10) the user or ChatGPT reweights the criterion
    from lowest immediate cost to long-term waste reduction; (11) the
@@ -473,7 +473,7 @@ live product state.
    dropped from the shot list. I made a judgment call on **how** it happens
    on screen: through the visible right-pane criteria control, not through
    ChatGPT/WebMCP — the AWS video's entire beat spine never mentions ChatGPT
-   or WebMCP, and the AWS "Recommended Pax positioning" leads with "quiet
+   or WebMCP, and the AWS "Recommended Sift positioning" leads with "quiet
    background investigation... Strands skills," not shared browser control.
    (The WebMCP-flavored version of this same reweight action does appear
    separately, in `demos-and-submission.md`'s "WebMCP demo moments" §

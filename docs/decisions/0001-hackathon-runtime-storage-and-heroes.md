@@ -5,7 +5,7 @@ Date: 2026-08-26
 
 ## Context
 
-Pax must be completed quickly, work inside ChatGPT's narrow browser pane, produce two differentiated hackathon stories, persist on Railway, and provide enough evidence to debug adaptive Strands behavior. The original repair-versus-replace demo was not compelling to the project owner. Railway CLI authentication is available.
+Sift must be completed quickly, work inside ChatGPT's narrow browser pane, produce two differentiated hackathon stories, persist on Railway, and provide enough evidence to debug adaptive Strands behavior. The original repair-versus-replace demo was not compelling to the project owner. Railway CLI authentication is available.
 
 ## Decisions
 
@@ -13,9 +13,9 @@ Pax must be completed quickly, work inside ChatGPT's narrow browser pane, produc
 2. **AWS hero:** Retain **Home Energy Guardian** as the background adaptive Strands Swarm demo.
 3. **Canonical storage:** Use SQLite with `better-sqlite3` and Drizzle migrations. Persist canonical case events/snapshots, replayable sanitized public activity, runs, idempotency records, and sanitized runtime events. Use JSONL only for exported verification bundles.
 4. **Railway:** The autonomous build must create and deploy a new project/service through the authenticated CLI, attach `/data`, create a public domain, and verify SQLite persistence across restart.
-5. **Observability:** Build a first-class right-pane Runtime Inspector from native Strands hooks and OpenTelemetry plus Pax domain events. Keep it detailed, correlated, filterable, and exportable while redacting secrets, private notes, and private reasoning.
+5. **Observability:** Build a first-class right-pane Runtime Inspector from native Strands hooks and OpenTelemetry plus Sift domain events. Keep it detailed, correlated, filterable, and exportable while redacting secrets, private notes, and private reasoning.
 6. **Scale boundary:** Run one writable Railway application replica for the hackathon. If horizontal write scaling becomes necessary, replace the storage adapter with PostgreSQL rather than introducing PGlite.
-7. **Extension unit:** Call each vertical a **Pax Decision Pack**. Cases pin pack ID, semantic version, and compiled hash. Models generate and revise bounded case-specific run plans; they do not rewrite installed packs during execution.
+7. **Extension unit:** Call each vertical a **Sift Decision Pack**. Cases pin pack ID, semantic version, and compiled hash. Models generate and revise bounded case-specific run plans; they do not rewrite installed packs during execution.
 8. **Adaptable data:** Keep Zod at every trust boundary, but model domain data through a typed attribute-value protocol plus pack-defined and case-defined definitions. Users may add `custom.*` criteria, attributes, and evidence questions without changing required obligations, capabilities, or authority policies.
 9. **Pack authoring:** Include a real developer-mode `pack-authoring` Strands skill and compiler/conformance workflow. It produces non-executable declarative drafts and requires explicit human publication. Keep it disabled in the unauthenticated public deployment.
 10. **Real-time UX:** Treat ordered command-correlated SSE activity, replay/reconnect, resync, and polling equivalence as foundational architecture. The page may display progress only when a real persisted or normalized event supports it.

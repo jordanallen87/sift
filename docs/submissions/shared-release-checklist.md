@@ -1,8 +1,8 @@
-# Pax Shared Hackathon Release Checklist
+# Sift Shared Hackathon Release Checklist
 
 Status: no submission has been sent. Every unchecked item is an open release gate unless it is explicitly labeled optional.
 
-Use this checklist once for the shared Pax release, then complete the competition-specific checklist for each Devpost submission:
+Use this checklist once for the shared Sift release, then complete the competition-specific checklist for each Devpost submission:
 
 - [The WebMCP Challenge requirements](./webmcp/requirements-checklist.md)
 - [Agents for Humans requirements](./agents-for-humans/requirements-checklist.md)

@@ -1,18 +1,18 @@
-# Pax Hackathon Specification Set
+# Sift Hackathon Specification Set
 
 Status: approved implementation baseline  
 Date: 2026-08-26  
 Target events: OpenAI WebMCP Challenge and AWS Agents for Humans Hackathon
 
-Pax is a supervised adaptive decision workspace. A person and an agent work in the same browser-visible case, while a bounded Strands runtime investigates unresolved obligations, changes techniques when evidence warrants it, and pauses whenever human authority is required.
+Sift is a supervised adaptive decision workspace. A person and an agent work in the same browser-visible case, while a bounded Strands runtime investigates unresolved obligations, changes techniques when evidence warrants it, and pauses whenever human authority is required.
 
 This directory is the canonical product and engineering specification for the hackathon build. Implementers must read this file and every linked specification before changing product code.
 
 Accepted cross-cutting rationale is recorded in [ADR 0001](../decisions/0001-hackathon-runtime-storage-and-heroes.md), [ADR 0002](../decisions/0002-answer-first-workspace-layout.md), and [ADR 0003](../decisions/0003-vehicle-catalog-and-normal-case-creation.md).
 
-Every planned Praetor, Strata19, and Think OS adaptation is tracked in the [source reuse map](../reuse-source-map.md), including canonical source, intended Pax destination, reuse posture, and attribution requirements.
+Every planned Praetor, Strata19, and Think OS adaptation is tracked in the [source reuse map](../reuse-source-map.md), including canonical source, intended Sift destination, reuse posture, and attribution requirements.
 
-Current competition requirements and Pax-specific draft material live in [the submission packet index](../submissions/README.md). These packets are preparation artifacts only and must be refreshed against Devpost before final submission.
+Current competition requirements and Sift-specific draft material live in [the submission packet index](../submissions/README.md). These packets are preparation artifacts only and must be refreshed against Devpost before final submission.
 
 ## Specification map
 
@@ -24,7 +24,7 @@ Current competition requirements and Pax-specific draft material live in [the su
 6. [Debugging and observability](./debugging-and-observability.md) — Runtime Inspector, Strands/OpenTelemetry correlation, redaction, retention, and trace export.
 7. [Testing and self-healing](./testing.md) — automated verification, scenario DSL, trace assertions, release gates, and Claude repair protocol.
 8. [Demos and submission](./demos-and-submission.md) — fixture-backed demo scripts, video beats, and submission readiness.
-9. [Why Pax instead of a direct model answer](./value-proposition.md) — product moat, limits of one-shot model use, and the observable proof required in each demo.
+9. [Why Sift instead of a direct model answer](./value-proposition.md) — product moat, limits of one-shot model use, and the observable proof required in each demo.
 10. [Decision Pack authoring and adaptability](./pack-authoring.md) — canonical vocabulary, extensible case data, the pack compiler, authoring skill, and conformance contract.
 
 ## Binding product decisions
@@ -35,13 +35,13 @@ Current competition requirements and Pax-specific draft material live in [the su
 - One generic deterministic engine manages obligations and readiness. Strands supplies adaptive reasoning and execution inside the engine's boundaries.
 - The two supported demos are **Choose Our Next Car** and **Home Energy Guardian**.
 - Choose Our Next Car is the WebMCP-first submission demo. Home Energy Guardian is the AWS/Strands-first submission demo. They share one engine but have different hero moments and video narratives.
-- SQLite is the canonical Pax data store. JSONL is an exported verification format, not primary persistence.
+- SQLite is the canonical Sift data store. JSONL is an exported verification format, not primary persistence.
 - A first-class Runtime Inspector exposes correlated, sanitized agent and domain telemetry inside the application.
 - Automatic multi-pack composition, runtime self-modifying packs, authentication, billing, collaboration, a graphical Pack Studio, and a general-purpose entity editor are excluded from the hackathon build. A bounded local `pack-authoring` skill and CLI are included so people can draft, validate, test, and explicitly publish their own declarative packs.
 - Pack schemas provide common defaults without closing the case data model. Users can add typed case-specific criteria, attributes, and questions; the engine preserves their origin, evidence expectations, and invalidation effects.
 - The UI is event-driven from the first implementation milestone. Accepted commands return run correlation immediately, and truthful case/runtime events update the visible right-pane experience throughout execution.
 - The website is the primary product. ChatGPT is the conversational collaborator through its WebMCP-capable in-app browser.
-- Final consequential decisions are made through an explicit human action in the Pax UI. Agents may investigate, guide, and propose; they may not approve their own proposals.
+- Final consequential decisions are made through an explicit human action in the Sift UI. Agents may investigate, guide, and propose; they may not approve their own proposals.
 - Every demo beat must be represented by an automated scenario assertion. A passing unit suite alone is not release evidence.
 
 ## Requirement identifiers
@@ -92,4 +92,4 @@ The design intentionally draws from:
 - The WebMCP browser API under `document.modelContext` and its human-in-the-loop design goals.
 - Strands TypeScript skills, agents-as-tools, Graph orchestration, hooks, OpenTelemetry, interventions, snapshots, sessions, and AgentCore deployment contract.
 
-No source project is a runtime dependency. Reused code must be copied deliberately, reduced to its required contract, attributed in the repository, and covered by Pax tests.
+No source project is a runtime dependency. Reused code must be copied deliberately, reduced to its required contract, attributed in the repository, and covered by Sift tests.

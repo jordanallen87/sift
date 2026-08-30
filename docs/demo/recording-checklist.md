@@ -91,7 +91,7 @@ demo video," `docs/submissions/agents-for-humans/requirements-checklist.md`
 § "Shared presentation assets":
 
 - [ ] Both videos contain **clear spoken audio** — not text-only or music-only.
-- [ ] The WebMCP video includes audio **explicitly explaining Pax and its use
+- [ ] The WebMCP video includes audio **explicitly explaining Sift and its use
       of WebMCP** (not just narrating clicks).
 - [ ] The AWS video's audio **states the problem, the intended audience, and
       why the problem matters**, in addition to narrating the flow.
@@ -130,11 +130,11 @@ video," mapped to the beat that covers it in `webmcp-script.md`:
 
 - [ ] Published publicly on YouTube. *(post-production)*
 - [ ] Strictly under three minutes. *(post-production)*
-- [ ] Clear spoken audio explaining Pax and its use of WebMCP. *(all beats)*
+- [ ] Clear spoken audio explaining Sift and its use of WebMCP. *(all beats)*
 - [ ] Working deployed product within the first 15 seconds. *(Beat 1)*
 - [ ] Live WebMCP-driven interaction, not only direct UI clicks. *(Beats 2–5)*
 - [ ] No setup/loading/dead time/irrelevant architecture detail. *(edit pass)*
-- [ ] Selected vehicle shared with ChatGPT. *(Beat 2 — `pax_get_case_context`)*
+- [ ] Selected vehicle shared with ChatGPT. *(Beat 2 — `sift_get_case_context`)*
 - [ ] A previously unspecified household concern added or reweighted through
       WebMCP. *(Beat 3 — both sub-beats: comfort reweight and dog-crate
       attribute)*

@@ -39,7 +39,7 @@ claim) is copied directly from the specs and must not be altered.
 ## Beat 1 — 0:00–0:15 — Working product immediately
 
 **On screen:** ChatGPT's in-app browser, right pane already open on the live
-Pax URL. The **Case header** shows "Choose Our Next Car," a Decision Pack
+Sift URL. The **Case header** shows "Choose Our Next Car," a Decision Pack
 badge reading `Decision Pack: car-purchase@1.0.0 #<compiledHash>`, and a green
 live-connection indicator. The **Current focus** region shows an active
 investigation in progress (e.g., `car.safety_reliability` active, specialist
@@ -50,8 +50,8 @@ and current favored-option badge.
 
 **Presenter says:**
 
-> "This is Pax, running live in ChatGPT's right pane. We're choosing our next
-> family car, and right now the RAV4 is the favorite — but Pax is still
+> "This is Sift, running live in ChatGPT's right pane. We're choosing our next
+> family car, and right now the RAV4 is the favorite — but Sift is still
 > actively working the case."
 
 **Must genuinely be happening:**
@@ -66,7 +66,7 @@ and current favored-option badge.
   sequence step 4).
 
 **Caption:** none needed — the product itself is the proof. Optional small
-lower-third: "Pax — live in ChatGPT's right pane."
+lower-third: "Sift — live in ChatGPT's right pane."
 
 ---
 
@@ -75,9 +75,9 @@ lower-third: "Pax — live in ChatGPT's right pane."
 **On screen:** Presenter taps/confirms the RAV4 selection (or it is already
 selected from Beat 1). In the ChatGPT composer, the presenter types or speaks
 the exact scripted line. A WebMCP tool-call chip appears in the ChatGPT
-transcript: `pax_get_case_context` → response chip showing
+transcript: `sift_get_case_context` → response chip showing
 `selectedOptionId: candidate-rav4`. Immediately after, a second chip appears:
-`pax_request_investigation`. On the page, the Activity ledger appends a new
+`sift_request_investigation`. On the page, the Activity ledger appends a new
 queued/active entry with a `runId` correlation tag, and Current focus updates
 to reflect deal/fit obligations being revisited.
 
@@ -88,28 +88,28 @@ to reflect deal/fit obligations being revisited.
 
 **Presenter voiceover (brief, over the tool-call chips):**
 
-> "ChatGPT reads Pax's live case context — the exact candidate I selected —
-> and asks Pax to dig into its deal and fit questions."
+> "ChatGPT reads Sift's live case context — the exact candidate I selected —
+> and asks Sift to dig into its deal and fit questions."
 
 **Must genuinely be happening:**
-- `pax_get_case_context` is called with an empty input object and returns the
+- `sift_get_case_context` is called with an empty input object and returns the
   active case summary including `selectedOptionId` matching the page's actual
-  selection (`webmcp.md` § `pax_get_case_context`; required final assertion
+  selection (`webmcp.md` § `sift_get_case_context`; required final assertion
   "the selected candidate in WebMCP context matches the page selection").
-- `pax_request_investigation` is called immediately after, per the required
-  sequence step 6 ("ChatGPT calls `pax_get_case_context` ... then requests
+- `sift_request_investigation` is called immediately after, per the required
+  sequence step 6 ("ChatGPT calls `sift_get_case_context` ... then requests
   focused deal investigation") and "WebMCP demo moments" step 3 (ChatGPT
-  "calls `pax_request_investigation` for its deal/fit obligations"). This call
+  "calls `sift_request_investigation` for its deal/fit obligations"). This call
   must be visible on screen even though the submission-details.md beat text
-  only names `pax_get_case_context` — see the reconciliation note at the
+  only names `sift_get_case_context` — see the reconciliation note at the
   bottom of this file.
 - The tool result envelope includes a real `commandId`/`runId`/`caseId`, and
   the page's Activity ledger reflects that same `runId` (`webmcp.md` "Tool
   result envelope").
 
 **Caption:** small overlay of the two call names as they fire:
-`WebMCP: pax_get_case_context → selectedOptionId: candidate-rav4`
-`WebMCP: pax_request_investigation → runId issued`
+`WebMCP: sift_get_case_context → selectedOptionId: candidate-rav4`
+`WebMCP: sift_request_investigation → runId issued`
 
 ---
 
@@ -122,7 +122,7 @@ the 30-second window rather than one atomic moment (see reconciliation note).
 ### Sub-beat 3a — 0:35–0:50 (comfort reweight)
 
 **On screen:** The **Evidence and comparison** region's criteria list is
-visible. A `pax_update_criteria` chip fires with a `reweight` operation. The
+visible. A `sift_update_criteria` chip fires with a `reweight` operation. The
 criteria list animates: "Driving comfort" weight rises, "Fuel economy"
 weight falls. The `car.household_fit` "Question to resolve" card, previously
 satisfied, reopens with a status change visible in the Readiness region.
@@ -133,12 +133,12 @@ satisfied, reopens with a status change visible in the Readiness region.
 
 **Presenter voiceover:**
 
-> "Pax reweights that live and immediately reopens the household-fit
+> "Sift reweights that live and immediately reopens the household-fit
 > question — it won't guess at comfort."
 
 **Must genuinely be happening:**
-- `pax_update_criteria` is called with an `{ op: 'reweight', criterionId, weight }`
-  operation (`webmcp.md` § `pax_update_criteria`).
+- `sift_update_criteria` is called with an `{ op: 'reweight', criterionId, weight }`
+  operation (`webmcp.md` § `sift_update_criteria`).
 - The update durably invalidates the comparison and recommendation and the
   engine is asked to recompute (`webmcp.md` "Effect: durable update plus
   deterministic invalidation").
@@ -160,16 +160,16 @@ string is **unchanged** before and after this addition.
 
 **Presenter voiceover:**
 
-> "That field doesn't exist in this pack. ChatGPT defines it live — Pax adds
+> "That field doesn't exist in this pack. ChatGPT defines it live — Sift adds
 > the concern, opens a question for it, and the pack hash stays identical."
 
 **Must genuinely be happening:**
-- `pax_define_case_attribute` is called with
+- `sift_define_case_attribute` is called with
   `definition.id: "custom.dog_crate_fit"`, a `valueType`, `evidenceExpectation`,
-  `comparison`, and `reason` (`webmcp.md` § `pax_define_case_attribute`); origin
+  `comparison`, and `reason` (`webmcp.md` § `sift_define_case_attribute`); origin
   is `user` because it was made in direct response to the user's explicit
   request.
-- A subsequent `pax_update_criteria` `add` operation ties a criterion to that
+- A subsequent `sift_update_criteria` `add` operation ties a criterion to that
   attribute.
 - The core derives a case-specific obligation from the pack's
   `car.user_concern` template (`packs-and-routing.md` § Extensions), which
@@ -200,7 +200,7 @@ converging on source-challenger).
 
 **Presenter says:**
 
-> "Watch the investigation team react in real time. Pax reopens deal and fit
+> "Watch the investigation team react in real time. Sift reopens deal and fit
 > work, activates its household-fit skill, and its source challenger catches
 > something: the dealer's advertised teaser price doesn't match its own
 > mandatory add-ons and loan terms. The old recommendation is now marked
@@ -243,7 +243,7 @@ $30,150 / normalized out-the-door $32,400).
 
 **Presenter says:**
 
-> "Pax pulls real cargo dimensions from the spec sheet, but it won't invent
+> "Sift pulls real cargo dimensions from the spec sheet, but it won't invent
 > whether the crates or the seats actually feel right — those become explicit
 > test-drive questions instead. Once the real out-the-door prices are
 > normalized and comfort is weighted higher, the CR-V takes the lead."
@@ -275,13 +275,13 @@ $30,150 / normalized out-the-door $32,400).
 shortlist: CR-V, RAV4 — conditions that could change this: test-drive
 comfort, actual crate fit," with visible **Approve / Revise / Reject**
 controls (stable `data-testid`s). Presenter briefly shows ChatGPT's available
-tools (or narrates) that no approval tool exists — only `pax_request_revision`
+tools (or narrates) that no approval tool exists — only `sift_request_revision`
 is available to it. Presenter then taps **Approve shortlist** directly on the
 page.
 
 **Presenter says:**
 
-> "ChatGPT can ask Pax to revise this — but it has no tool to approve it.
+> "ChatGPT can ask Sift to revise this — but it has no tool to approve it.
 > There isn't one. Only I can advance this shortlist, right here in the
 > page."
 
@@ -290,14 +290,14 @@ page.
 **Must genuinely be happening:**
 - No WebMCP tool in the registered catalog can approve or bypass the
   shortlist decision — the only human-directed revision tool is
-  `pax_request_revision`, which "cannot approve or reject the decision"
-  (`webmcp.md` § `pax_request_revision`; required final assertion: "no
+  `sift_request_revision`, which "cannot approve or reject the decision"
+  (`webmcp.md` § `sift_request_revision`; required final assertion: "no
   `decision.approved` event has actor `agent`").
 - The approval click is a genuine human UI action producing a
   `decision.approved` (or equivalent) event with `actor: human`/`user`
   (`product.md` region 6, "Recommendation and approval").
 - This follows Choose Our Next Car's required sequence steps 12–13
-  ("Pax proposes advancing the CR-V and one close alternative... The agent
+  ("Sift proposes advancing the CR-V and one close alternative... The agent
   cannot advance a candidate itself. The user approves the shortlist through
   the visible UI.").
 
@@ -352,7 +352,7 @@ channel... and end on the working case").
 
 **Presenter says:**
 
-> "Most WebMCP examples let an agent operate a website. Pax lets a website
+> "Most WebMCP examples let an agent operate a website. Sift lets a website
 > mediate collaboration among a human, ChatGPT, and a separate supervised
 > agent team."
 
@@ -366,14 +366,14 @@ the video ends on the real, live product state, not a static asset.
 ## Reconciliation notes for the orchestrator
 
 1. **Beat 2 undersells a required tool call.** `docs/submissions/webmcp/submission-details.md`'s
-   own beat text for 0:15–0:35 says only "show `pax_get_case_context` read
+   own beat text for 0:15–0:35 says only "show `sift_get_case_context` read
    the exact selection." But `docs/specs/demos-and-submission.md`'s required
    sequence (step 6) and its "WebMCP demo moments" section (car-buying moment,
-   step 3) both specify that ChatGPT calls `pax_get_case_context` and then
-   **immediately** calls `pax_request_investigation` for the deal/fit
+   step 3) both specify that ChatGPT calls `sift_get_case_context` and then
+   **immediately** calls `sift_request_investigation` for the deal/fit
    obligations in the same turn — and Beat 4 ("cross-agent steering")
    presumes an investigation is already actively running. I folded
-   `pax_request_investigation` into Beat 2 so the causal chain into Beat 4 is
+   `sift_request_investigation` into Beat 2 so the causal chain into Beat 4 is
    unbroken. Implementation should ensure both calls are visibly chip-able in
    the ChatGPT transcript within that 20-second window, not just the first.
 
@@ -381,8 +381,8 @@ the video ends on the real, live product state, not a static asset.
    `submission-details.md` describes Beat 3 as one moment ("Say that driving
    comfort is now non-negotiable and two dog crates must fit"), but
    `demos-and-submission.md`'s required sequence treats the comfort reweight
-   (step 8, a `pax_update_criteria` call) and the dog-crate concern (step 9,
-   a `pax_define_case_attribute` + `pax_update_criteria` pair) as two
+   (step 8, a `sift_update_criteria` call) and the dog-crate concern (step 9,
+   a `sift_define_case_attribute` + `sift_update_criteria` pair) as two
    distinct, separately-asserted steps, each with its own tool-call sequence
    and its own UI update. I split Beat 3 into two ~15-second sub-beats so
    neither WebMCP call sequence is compressed into an unverifiable blur.

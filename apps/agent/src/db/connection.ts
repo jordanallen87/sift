@@ -11,7 +11,7 @@
  */
 import Database from 'better-sqlite3';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as schema from './schema.js';
@@ -60,8 +60,57 @@ function configurePragmas(sqlite: Database.Database): void {
  * directory (e.g. a fresh checkout, or a fresh Railway volume) is created
  * rather than crashing.
  */
+/**
+ * The pre-rename database filename. Sift was called Pax until 2026-08-30,
+ * and the deployed Railway service holds a real, populated database at
+ * `/data/pax.sqlite` on a persistent volume. Renaming `SQLITE_FILE_NAME`
+ * without this adoption step would silently open a fresh, empty database
+ * beside the old one — the deployment would appear to have lost every case
+ * rather than failing loudly.
+ */
+export const LEGACY_SQLITE_FILE_NAME = 'pax.sqlite';
+
+/**
+ * One-time, idempotent adoption of a pre-rename `pax.sqlite`.
+ *
+ * Runs only when there is no `sift.sqlite` yet AND a legacy file exists, so
+ * it is a no-op on every fresh checkout and on every boot after the first.
+ * An existing `sift.sqlite` always wins; a stale legacy file beside it is
+ * left on disk untouched rather than deleted, since destroying data on the
+ * basis of a filename guess is not this function's call to make.
+ *
+ * The WAL checkpoint before the rename is load-bearing, not defensive
+ * boilerplate: the database is opened in WAL mode, so recently committed
+ * pages can still live in a `pax.sqlite-wal` sidecar. Renaming the main file
+ * alone would strand them under a filename SQLite will never look for again,
+ * silently losing the most recent writes. `wal_checkpoint(TRUNCATE)` folds
+ * the WAL back into the main file first, after which the sidecars carry no
+ * unique data and can be removed.
+ */
+function adoptLegacyDatabaseFile(dataDir: string): void {
+  const currentPath = join(dataDir, SQLITE_FILE_NAME);
+  if (existsSync(currentPath)) return;
+
+  const legacyPath = join(dataDir, LEGACY_SQLITE_FILE_NAME);
+  if (!existsSync(legacyPath)) return;
+
+  const legacy = new Database(legacyPath);
+  try {
+    legacy.pragma('journal_mode = WAL');
+    legacy.pragma('wal_checkpoint(TRUNCATE)');
+  } finally {
+    legacy.close();
+  }
+
+  renameSync(legacyPath, currentPath);
+  for (const suffix of ['-wal', '-shm']) {
+    rmSync(`${legacyPath}${suffix}`, { force: true });
+  }
+}
+
 export function openDatabase(dataDir: string): SiftDatabase {
   mkdirSync(dataDir, { recursive: true });
+  adoptLegacyDatabaseFile(dataDir);
   const filePath = join(dataDir, SQLITE_FILE_NAME);
   const sqlite = new Database(filePath);
   configurePragmas(sqlite);

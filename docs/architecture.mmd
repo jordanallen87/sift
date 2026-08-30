@@ -1,4 +1,4 @@
-%% Pax Architecture Diagram
+%% Sift Architecture Diagram
 %% ---------------------------------------------------------------------------
 %% Canonical source. Do not hand-edit docs/architecture.png -- edit this file
 %% and regenerate with `pnpm docs:diagram` (scripts/generate-diagram.ts calls
@@ -9,7 +9,7 @@
 %% visually distinguish:
 %%   1. ChatGPT / WebMCP browser interaction
 %%   2. Railway web/API services and persistent SQLite storage
-%%   3. Deterministic Pax evidence / readiness / budget / authority governance
+%%   3. Deterministic Sift evidence / readiness / budget / authority governance
 %%   4. The compiled Decision Pack vs. the mutable case / run plan
 %%   5. Strands AgentSkills, Graph/Swarm, interventions, Context Injector,
 %%      GoalLoop, sessions, hooks
@@ -34,7 +34,7 @@ flowchart TD
     CHATGPT["ChatGPT conversation frame<br/>hosts the 390-480px right pane"]
     WEBMCP["WebMCP tool calls<br/>functions registered with ChatGPT"]
     UI["React/Vite UI controls<br/>renders canonical CaseState"]
-    CMDCLIENT["Shared PaxCommands client<br/>one command implementation for<br/>UI controls and WebMCP callbacks"]
+    CMDCLIENT["Shared SiftCommands client<br/>one command implementation for<br/>UI controls and WebMCP callbacks"]
     CHATGPT --> UI
     CHATGPT --> WEBMCP
     UI --> CMDCLIENT
@@ -50,7 +50,7 @@ flowchart TD
     PINGINV --> CMDHANDLER
   end
 
-  subgraph CORE["Deterministic Pax Core (pure functions: no model, no I/O)"]
+  subgraph CORE["Deterministic Sift Core (pure functions: no model, no I/O)"]
     direction TB
     ROUTE["routePack / instantiateCase"]
     OBLIG["deriveObligations /<br/>selectNextObligation"]
@@ -68,7 +68,7 @@ flowchart TD
     PACK -->|"adapter compiles a bounded<br/>run plan; never rewrites the pack"| CASEPLAN
   end
 
-  subgraph TARGETS["Execution Targets (PAX_EXECUTION_TARGET)"]
+  subgraph TARGETS["Execution Targets (SIFT_EXECUTION_TARGET)"]
     direction TB
     LOCALEXEC["local: in-process Strands adapter"]
     AGENTCOREEXEC["agentcore: Bedrock AgentCore runtime<br/>port 8080, /ping + /invocations"]
@@ -111,7 +111,7 @@ flowchart TD
     direction TB
     NORM["TelemetryNormalizer"]
     REDACT["Redactor<br/>strips secrets, headers, raw reasoning"]
-    INSPECTOR["Runtime Inspector SSE<br/>PAX_DEBUG_ENABLED"]
+    INSPECTOR["Runtime Inspector SSE<br/>SIFT_DEBUG_ENABLED"]
     BUNDLE["Sanitized JSON run bundle export"]
     OTLP["Optional OTLP exporter"]
     NORM --> REDACT --> RUNTIME
@@ -152,7 +152,7 @@ flowchart TD
 
   HOOKS -.->|"Strands hooks"| NORM
   GRAPHSWARM -.->|"Strands OTEL spans +<br/>Graph/Swarm events"| NORM
-  CMDHANDLER -.->|"Pax domain events"| NORM
+  CMDHANDLER -.->|"Sift domain events"| NORM
   HTTP -.->|"HTTP/SSE/storage events"| NORM
   INTERVENE -.->|"intervention/plugin events"| NORM
   SESS -.->|"session/snapshot events"| NORM

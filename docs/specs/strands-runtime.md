@@ -98,7 +98,7 @@ The car-buying demo uses this orchestrator and a deterministic Strands Graph bec
 
 Skills use Strands `AgentSkills` progressive disclosure. The agent initially receives name and description metadata. Full instructions load only when the skill is activated.
 
-Skill `allowed-tools` metadata is not treated as enforcement. Pax intersects:
+Skill `allowed-tools` metadata is not treated as enforcement. Sift intersects:
 
 ```text
 compiled-pack-declared tools
@@ -129,9 +129,9 @@ The Energy investigation team contains `anomaly-investigator`, `rate-analyst`, `
 
 The Swarm sets `maxSteps`, execution timeout, node timeout, and repetitive-handoff detection. A handoff emits `swarm.handoff`; start, completion, timeout, and cycle detection emit corresponding normalized runtime events. A scripted model drives the real Strands Swarm machinery in deterministic tests.
 
-The Strands `Swarm`'s own `repetitiveHandoffDetectionWindow`/`repetitiveHandoffMinUniqueAgents` configuration returns a `FAILED` multi-agent result when tripped; it does not redirect gracefully. Pax's own `RetrySteering` no-progress detector (three consecutive calls with no evidence delta) must trip strictly before the Swarm's own repetitive-handoff window would, so the required "repeated weather work → `Guide` → handoff to `home-systems-analyst`" trajectory always resolves through Pax's soft redirect rather than risking the Swarm's hard failure path. Configure `repetitiveHandoffDetectionWindow`/`repetitiveHandoffMinUniqueAgents` generously (wider than Pax's three-call threshold) so it functions only as an outer safety net.
+The Strands `Swarm`'s own `repetitiveHandoffDetectionWindow`/`repetitiveHandoffMinUniqueAgents` configuration returns a `FAILED` multi-agent result when tripped; it does not redirect gracefully. Sift's own `RetrySteering` no-progress detector (three consecutive calls with no evidence delta) must trip strictly before the Swarm's own repetitive-handoff window would, so the required "repeated weather work → `Guide` → handoff to `home-systems-analyst`" trajectory always resolves through Sift's soft redirect rather than risking the Swarm's hard failure path. Configure `repetitiveHandoffDetectionWindow`/`repetitiveHandoffMinUniqueAgents` generously (wider than Sift's three-call threshold) so it functions only as an outer safety net.
 
-Handoffs use the Swarm's built-in structured-output routing: each node agent receives an automatically constructed Zod schema with an optional `agentId`, a `message`, and an optional `context` field, and the Swarm hands off to `agentId` when present or treats `message` as the final response otherwise. Pax's evidence delta, obligation ID, and limitations travel inside the serialized JSON `context` field of that handoff schema; the event normalizer reads `context` to emit `swarm.handoff` with `from`, `to`, `reason`, and `evidenceDelta`.
+Handoffs use the Swarm's built-in structured-output routing: each node agent receives an automatically constructed Zod schema with an optional `agentId`, a `message`, and an optional `context` field, and the Swarm hands off to `agentId` when present or treats `message` as the final response otherwise. Sift's evidence delta, obligation ID, and limitations travel inside the serialized JSON `context` field of that handoff schema; the event normalizer reads `context` to emit `swarm.handoff` with `from`, `to`, `reason`, and `evidenceDelta`.
 
 The Swarm does not decide that the case is ready. It returns candidate evidence and a proposed artifact to the core readiness gate.
 
@@ -193,7 +193,7 @@ A Strands `GoalLoop` plugin attaches to one `Agent` instance and validates that 
 
 ## Interventions and steering
 
-Pax registers ordered TypeScript intervention handlers:
+Sift registers ordered TypeScript intervention handlers:
 
 1. `ScopeAuthorization` — denies an undeclared tool or case scope.
 2. `ConsequenceGuard` — confirms a consequential proposal and denies forbidden effects.
@@ -267,19 +267,19 @@ The core validates that sources exist, confidence is within zero and one, eviden
 
 Each case uses one Strands orchestrator session. Only the orchestrator receives a session manager; nested graph agents do not create independent session managers.
 
-- Local: `SessionManager` with `LocalFileStorage` imported from `@strands-agents/sdk/storage` (not the deprecated root-level `FileStorage` export) under `.pax-data/sessions`.
+- Local: `SessionManager` with `LocalFileStorage` imported from `@strands-agents/sdk/storage` (not the deprecated root-level `FileStorage` export) under `.sift-data/sessions`.
 - AgentCore: `SessionManager` with `S3Storage` and a case-scoped prefix.
 - Save multi-agent state after each node.
 - Create an immutable snapshot before a human confirmation and after a recommendation proposal.
 - The Energy deterministic scenario must restart the adapter after the confirmation snapshot, restore it, and continue from the same handoff/session position.
 
-Canonical Pax events remain separate from Strands session snapshots. Restoring a Strands snapshot cannot roll back a human decision or delete evidence.
+Canonical Sift events remain separate from Strands session snapshots. Restoring a Strands snapshot cannot roll back a human decision or delete evidence.
 
 ## Pack authoring agent and skill
 
 Pack authoring is a separate developer-mode Strands session. A `pack-author` agent activates the real `pack-authoring` AgentSkill and receives only the bounded authoring tools defined in `pack-authoring.md`.
 
-It may interview an author, inspect the installed capability catalog, draft declarative files, run compiler/conformance checks, and explain failures. It cannot execute arbitrary authored code, access normal case sources, publish without a human confirmation event, or modify an installed pack version. `PAX_AUTHORING_ENABLED=false` prevents construction of this agent and its routes in the public hackathon deployment.
+It may interview an author, inspect the installed capability catalog, draft declarative files, run compiler/conformance checks, and explain failures. It cannot execute arbitrary authored code, access normal case sources, publish without a human confirmation event, or modify an installed pack version. `SIFT_AUTHORING_ENABLED=false` prevents construction of this agent and its routes in the public hackathon deployment.
 
 Every authoring action emits the same normalized skill, tool, intervention, validation, and human-confirmation events as decision runs, using `authoringSessionId` in addition to normal trace correlation.
 
@@ -287,7 +287,7 @@ Every authoring action emits the same normalized skill, tool, intervention, vali
 
 - Default runtime provider: Amazon Bedrock.
 - Default model: `global.anthropic.claude-sonnet-4-6`.
-- Override: `PAX_MODEL_ID`.
+- Override: `SIFT_MODEL_ID`.
 - Region: `AWS_REGION`, default `us-east-1`.
 - Deterministic tests use a scripted `ModelProvider` test double and never call Bedrock.
 - Live tests use low temperature, bounded tokens, and invariant assertions rather than exact prose matching.

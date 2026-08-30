@@ -19,8 +19,8 @@ Deadline: September 3, 2026 at 1:00 p.m. PT / 4:00 p.m. ET (`2026-09-03T20:00:00
 
 ## Application qualification
 
-- [ ] Pax is submitted as `New` only if the final repository history supports that answer.
-- [ ] If Pax is submitted as `Existing`, the form precisely describes meaningful WebMCP work completed during the official submission period beginning August 25, 2026 at 12:00 p.m. PT.
+- [ ] Sift is submitted as `New` only if the final repository history supports that answer.
+- [ ] If Sift is submitted as `Existing`, the form precisely describes meaningful WebMCP work completed during the official submission period beginning August 25, 2026 at 12:00 p.m. PT.
 - [ ] The submitted implementation is a working web application, not a concept, mockup, or video-only prototype.
 - [ ] The use case demonstrates people and agents interacting, collaborating, or creating together through the live web application.
 - [ ] The public implementation contains a real `document.modelContext.registerTool(...)` integration.
@@ -49,7 +49,7 @@ Deadline: September 3, 2026 at 1:00 p.m. PT / 4:00 p.m. ET (`2026-09-03T20:00:00
 
 ## Required text description
 
-- [ ] The description states what Pax does and who it serves.
+- [ ] The description states what Sift does and who it serves.
 - [ ] The description explains why the car-purchase use case fits WebMCP.
 - [ ] The description explains how WebMCP improves the experience compared with ordinary chat or visual browser automation.
 - [ ] The description explains what the person and agent can do together that was difficult before.
@@ -61,7 +61,7 @@ Deadline: September 3, 2026 at 1:00 p.m. PT / 4:00 p.m. ET (`2026-09-03T20:00:00
 
 - [ ] The video is published publicly on YouTube.
 - [ ] The final runtime is strictly under three minutes.
-- [ ] The video includes clear spoken audio explaining Pax and its use of WebMCP.
+- [ ] The video includes clear spoken audio explaining Sift and its use of WebMCP.
 - [ ] The working deployed product appears within the first 15 seconds.
 - [ ] The video shows live WebMCP-driven interaction rather than only direct UI clicks.
 - [ ] The video removes setup, loading, dead time, and irrelevant architecture detail.
@@ -96,9 +96,9 @@ Deadline: September 3, 2026 at 1:00 p.m. PT / 4:00 p.m. ET (`2026-09-03T20:00:00
 
 ## WebMCP functionality proof
 
-- [ ] `pax_get_case_context` returns the exact current page selection and case identity.
+- [ ] `sift_get_case_context` returns the exact current page selection and case identity.
 - [ ] Criteria and custom concerns can be added through typed WebMCP commands without changing the immutable pack hash.
-- [ ] `pax_request_investigation` creates or redirects bounded work and returns a correlated receipt.
+- [ ] `sift_request_investigation` creates or redirects bounded work and returns a correlated receipt.
 - [ ] Duplicate, stale, unauthorized, and malformed WebMCP commands are rejected deterministically.
 - [ ] A WebMCP command can steer an already-active backend run and the causal transition is visible in real time.
 - [ ] Page UI actions and WebMCP commands converge on the same command/state model.
@@ -129,7 +129,7 @@ Deadline: September 3, 2026 at 1:00 p.m. PT / 4:00 p.m. ET (`2026-09-03T20:00:00
 
 ### Creativity and Ambition
 
-- [ ] The submission clearly distinguishes Pax from CRUD tool wrappers and browser macros.
+- [ ] The submission clearly distinguishes Sift from CRUD tool wrappers and browser macros.
 - [ ] The demo proves that WebMCP is a live steering channel into a supervised multi-agent system.
 - [ ] The human, ChatGPT, page, and Strands runtime each have a distinct, necessary role.
 

@@ -1,4 +1,4 @@
-# Pax Reuse Attribution
+# Sift Reuse Attribution
 
 This file records every fragment adapted from a source-project reference
 per `docs/reuse-source-map.md` and `CLAUDE.md`'s "Source-project reuse"
@@ -6,7 +6,7 @@ rules: what was inspected, what was adapted, what was deliberately left
 out, and the license/ownership conclusion. Both source repositories
 (`/Users/jordanallen/IdeaProjects/praetor` and
 `/Users/jordanallen/IdeaProjects/think-os`) are private sibling projects on
-this machine's filesystem, not published open-source packages. Pax does
+this machine's filesystem, not published open-source packages. Sift does
 not import either repository by filesystem path; entries below are
 value-level or concept-level adaptations only.
 
@@ -25,7 +25,7 @@ found for `think-os/packages/shared-design`. Per `docs/reuse-source-map.md`
 concept and record that no source code was copied"), **no source code was
 copied.** Only four numeric scales' *values* (spacing steps, radius steps,
 shadow philosophy, motion durations/easing curves) were re-typed by hand
-as new CSS custom properties in Pax's own file, with several values
+as new CSS custom properties in Sift's own file, with several values
 changed. This is the "translate selected values into CSS variables; do
 not import the package" instruction that `docs/reuse-source-map.md`
 assigns to this exact source/destination pair.
@@ -35,42 +35,42 @@ assigns to this exact source/destination pair.
 **What was adapted, and how it changed:**
 
 - `spacing` (think-os `tokens.ts`, the 4px-grid object keyed `0`–`24`) →
-  `--space-0` through `--space-20` in Pax. Taken essentially as-is up
+  `--space-0` through `--space-20` in Sift. Taken essentially as-is up
   through `--space-16` (64px); think-os's `20` (80px) and `24` (96px)
   steps were reduced to a single `--space-20` (80px) "desktop-only gutter"
-  step, since Pax's canonical viewport is a 390-480px pane where a 96px
+  step, since Sift's canonical viewport is a 390-480px pane where a 96px
   gap never applies.
 - `borderRadius` (think-os `xs` 4px – `3xl` 28px, plus `pill`/`full`) →
-  `--radius-xs` through `--radius-xl` in Pax. The `xs`–`lg` steps (4/8→6/
+  `--radius-xs` through `--radius-xl` in Sift. The `xs`–`lg` steps (4/8→6/
   12→10/16→14px, renumbered slightly) were kept in spirit; think-os's
   `xl`/`2xl`/`3xl` (20/24/28px) were collapsed to a single `--radius-xl`
   (18px) and the larger steps dropped entirely — a deliberate divergence
-  so Pax's "case dossier" surfaces read closer to a document than a
+  so Sift's "case dossier" surfaces read closer to a document than a
   bubbly consumer app. `pill`/`full` were kept for status badges and
   avatars/dots respectively.
 - `shadows` (think-os: exactly two values, `soft` and `card`, both
   `0 8px 24px rgba(31, 33, 35, 0.10)`, documented as "reserved for
   floating overlays... default cards/buttons/inputs use fill contrast
-  instead of a shadow") → `--shadow-soft` and `--shadow-elevated` in Pax.
-  The **restraint philosophy was adopted directly** (Pax's tokens.css
+  instead of a shadow") → `--shadow-soft` and `--shadow-elevated` in Sift.
+  The **restraint philosophy was adopted directly** (Sift's tokens.css
   repeats the same "no shadow on ordinary cards" rule). The concrete
   values were changed: two distinct blur/spread pairs instead of one
-  repeated value, and the color was rebased onto Pax's own ink color
+  repeated value, and the color was rebased onto Sift's own ink color
   (`rgba(27, 29, 27, ...)`) instead of think-os's `rgba(31, 33, 35, ...)`.
 - `themeMotion` (think-os: `instant`/`fast`/`normal`/`slow` = 90/140/220/
   360ms, plus `standard`/`exit`/`enter` cubic-bezier easings and a spring
   config) → `--duration-instant` through `--duration-slow` and
-  `--ease-standard`/`--ease-exit`/`--ease-enter` in Pax, **kept
+  `--ease-standard`/`--ease-exit`/`--ease-enter` in Sift, **kept
   numerically identical** (this is a well-formed, product-agnostic
   utilitarian scale with no branding baked in). think-os's `spring`
   physics config (damping/stiffness/mass, intended for a
-  React-Native-style animation library) was **not** adapted — Pax is a
-  CSS/DOM web app and has no use for a spring-physics tuple. Pax adds a
+  React-Native-style animation library) was **not** adapted — Sift is a
+  CSS/DOM web app and has no use for a spring-physics tuple. Sift adds a
   concrete `@media (prefers-reduced-motion: reduce)` override zeroing all
   four durations at `:root`, which think-os's file documents as an intent
   in a code comment but does not itself implement.
 - `typography` (think-os's `hero`/`title1`/`title2`/`body`/`bodySmall`/
-  `label`/`meta` scale) was **inspected and not adapted.** Pax uses its
+  `label`/`meta` scale) was **inspected and not adapted.** Sift uses its
   own type scale (`docs/design-system.md`, Typography section) sized for
   a 390-480px reading column with different families entirely (Newsreader
   / Public Sans / IBM Plex Mono vs. think-os's Inter/JetBrains Mono), so
@@ -81,10 +81,10 @@ assigns to this exact source/destination pair.
 (the Murmur violet/teal palette and light/dark semantic color maps) and
 `fonts.ts` (Inter + JetBrains Mono) were read for direction only, per
 `docs/reuse-source-map.md`'s instruction to "select only values that
-support Pax's calm narrow-pane identity." None of their hex values or
-font family names were reused — Pax's palette (`--color-paper`,
+support Sift's calm narrow-pane identity." None of their hex values or
+font family names were reused — Sift's palette (`--color-paper`,
 `--color-brand`, the nine status tokens) and font choices (Newsreader,
-Public Sans, IBM Plex Mono) are new selections made for Pax's own "case
+Public Sans, IBM Plex Mono) are new selections made for Sift's own "case
 dossier" identity and validated against WCAG contrast independently. See
 `docs/design-system.md` for the full palette/typography rationale.
 
@@ -111,8 +111,8 @@ on this machine, not a published open-source package; no explicit
 open-source license file governs these components. Per
 `docs/reuse-source-map.md`'s rule ("If an applicable open-source license
 is not explicit, reimplement the concept and record that no source code
-was copied"), **no source code was copied.** Every Pax file below was
-written from scratch against Pax's own `@pax/contracts` types, Tailwind
+was copied"), **no source code was copied.** Every Sift file below was
+written from scratch against Sift's own `@sift/contracts` types, Tailwind
 token classes, and `data-testid` conventions; only small structural/
 information-architecture ideas were adapted, each recorded individually.
 
@@ -131,7 +131,7 @@ information-architecture ideas were adapted, each recorded individually.
   rule that a zero-obligation `ready: true` case must render "This case
   has no required questions to resolve yet." rather than a bare "Ready" —
   the same underlying principle (never let an absence of measurement look
-  like silent success) applied to Pax's different domain (obligations, not
+  like silent success) applied to Sift's different domain (obligations, not
   spec-completeness checks). No code was copied; Praetor's file has no
   bucket concept at all (it renders one ready/not-ready fact plus a check
   fraction), so `ReadinessPanel.tsx`'s five-bucket layout, `blockers`
@@ -142,9 +142,9 @@ information-architecture ideas were adapted, each recorded individually.
   Not one line was reused: Praetor's version fetches its own data
   (`getReadinessData(projectId)`), uses shadcn `Badge`/`Progress`
   components and Tailwind color-scale classes (`bg-emerald-500` etc.) that
-  do not exist in Pax's token system, and models percentage-based
-  "required/recommended/optional" scoring, none of which matches Pax's
-  five-bucket `ObligationStatus` model. Pax's `ReadinessPanel.tsx` is
+  do not exist in Sift's token system, and models percentage-based
+  "required/recommended/optional" scoring, none of which matches Sift's
+  five-bucket `ObligationStatus` model. Sift's `ReadinessPanel.tsx` is
   props-driven (never fetches), uses only `apps/web/src/styles/tokens.css`
   CSS variables, and groups by the real `satisfied`/`active`/`blocked`/
   `accepted_uncertainty`/`open` statuses instead.
@@ -176,20 +176,20 @@ information-architecture ideas were adapted, each recorded individually.
   copy even if intended: it depends on Strata19's `CollectionRow`/
   `CollectionSurface`/`EntityDetailProvider` primitives, a `fetchActivity`
   data client, and `KIND_GROUPS`-based server refetching, none of which
-  exist in or apply to Pax.
+  exist in or apply to Sift.
 - **`activity-labels.ts` (Strata19's `execute/activity-labels.ts`) — the
   label-registry pattern itself**, per `docs/reuse-source-map.md`'s literal
   instruction: "Adapt the label-registry pattern so user-visible activity
-  never falls back to raw internal event names." Pax's
+  never falls back to raw internal event names." Sift's
   `apps/web/src/components/activity-labels.ts` reuses only that idea: one
   exhaustive table (here, `PublicActivityEventType` → `{ label, tone }`,
   enforced exhaustive at compile time via `satisfies Record<...>`) plus a
   safe fallback for anything unrecognized. No code, types, or the dotted-
   kind-humanization logic from the Strata19 file were copied — that file
   is built around Strata19's own `kind` taxonomy (`work_item.created` etc.)
-  and a separate `enum-humanizer.ts` table-merging system that has no Pax
-  equivalent; Pax's table is instead grounded directly in the real,
-  closed `PUBLIC_ACTIVITY_EVENT_TYPES` union from `@pax/contracts` and
+  and a separate `enum-humanizer.ts` table-merging system that has no Sift
+  equivalent; Sift's table is instead grounded directly in the real,
+  closed `PUBLIC_ACTIVITY_EVENT_TYPES` union from `@sift/contracts` and
   product.md's own terminology table (`Obligation` → "Question to
   resolve", `Guide` → "Agent redirected", `Confirm` → "Your approval
   needed") plus value-proposition.md's exact "Draft withheld" copy.
@@ -200,7 +200,7 @@ shadcn component library, its Tailwind color-scale utility classes, its
 `InlineCardShell` primitives, its data-fetching hooks
 (`getReadinessData`, `fetchActivity`), and its own domain types
 (`ReadinessBreakdown`, `ActivityEvent`, `InlineRendererPropsV1`) were read
-for structure only and none were imported, copied, or renamed into Pax.
+for structure only and none were imported, copied, or renamed into Sift.
 
 **Test owner:** `apps/web/src/components/ReadinessPanel.test.tsx`,
 `ApprovalCard.test.tsx`, `ActivityTimeline.test.tsx`, and
@@ -212,14 +212,14 @@ checks and a 390px narrow-viewport overflow check.
 
 **Source:** the npm-published `@fontsource/newsreader@5.3.0`,
 `@fontsource/public-sans@5.3.0`, and `@fontsource/ibm-plex-mono@5.3.0`
-packages (`https://fontsource.org`), installed as ordinary `@pax/web`
+packages (`https://fontsource.org`), installed as ordinary `@sift/web`
 `dependencies` in `apps/web/package.json` and therefore pinned exactly by
 `pnpm-lock.yaml`. These packages are unmodified, static-file
 redistributions of the same Google Fonts family sources named in
 `docs/design-system.md`'s Typography section; `@fontsource` does no
 subsetting or hinting changes beyond Google Fonts' own build, only
 packaging (per-weight/style file layout plus a generated CSS file, which
-Pax does not use — Pax writes its own `@font-face` rules in
+Sift does not use — Sift writes its own `@font-face` rules in
 `apps/web/src/styles/global.css`).
 
 **Ownership/license conclusion:** All three families are SIL Open Font
@@ -251,10 +251,10 @@ re-encoding was performed; byte-for-byte copies of the packages' own
 | `apps/web/public/fonts/ibm-plex-mono/ibm-plex-mono-500.woff2` | `ibm-plex-mono-latin-500-normal.woff2` |
 
 Only the Latin subset, `normal` (upright) style, and the four/two weights
-Pax's type scale actually uses were copied (`docs/design-system.md`
+Sift's type scale actually uses were copied (`docs/design-system.md`
 "Typography": Newsreader 400/500/600 + 400 italic, Public Sans 400/500/
 600/700, IBM Plex Mono 400/500) — none of the other weights, styles, or
-non-Latin subsets each `@fontsource` package ships were copied, since Pax
+non-Latin subsets each `@fontsource` package ships were copied, since Sift
 has no use for them and copying them would add unused bytes to the
 repository.
 
@@ -276,12 +276,12 @@ and commit them" instruction.
 **What was explicitly not adapted:** `@fontsource`'s own generated
 `index.css`/`<weight>.css` files (which declare `@font-face` rules
 pointing at package-relative `./files/...woff2` paths) were not used —
-Pax's `apps/web/src/styles/global.css` declares its own `@font-face`
+Sift's `apps/web/src/styles/global.css` declares its own `@font-face`
 rules pointing at the root-relative `/fonts/...` paths Vite serves from
-`apps/web/public/`, so the two files' filenames could be renamed to Pax's
+`apps/web/public/`, so the two files' filenames could be renamed to Sift's
 own short naming convention (`newsreader-400.woff2` instead of
 `newsreader-latin-400-normal.woff2`) instead of carrying the subset/style
-suffix Pax doesn't need to disambiguate (only the Latin/normal files were
+suffix Sift doesn't need to disambiguate (only the Latin/normal files were
 ever copied).
 
 **Verification:** each of the 10 destination files was confirmed to start
@@ -312,7 +312,7 @@ redistribution restriction applies. This is a materially different
 posture from the `think-os`/Praetor private-sibling-repository entries
 above (which required a "no explicit license → do not copy source"
 judgment call): here, the *entire raw dataset* could be redistributed
-verbatim with no legal obligation at all. Pax nonetheless (a) transforms
+verbatim with no legal obligation at all. Sift nonetheless (a) transforms
 rather than redistributes the raw file, and (b) attributes it here as
 accurate sourcing practice, not because either is legally required.
 
@@ -358,11 +358,11 @@ and produces the checked-in `packages/catalog/data/vehicle-catalog.json`
   dataset's own row id — every other EPA column (36 of the original 47:
   city/highway MPG breakdowns, CO2/greenhouse-gas scores, alternative-fuel
   range fields, engine descriptor codes, etc.) was dropped as unnecessary
-  for Pax's comparison use case;
-- normalizing free-text EPA values into Pax's own vocabulary (e.g. EPA's
-  `VClass` "Small Sport Utility Vehicle 4WD" → Pax's `bodyStyle`
-  "Compact SUV"; EPA's `drive` "All-Wheel Drive" → Pax's `drivetrain`
-  "AWD"; EPA's `fuelType1`/`atvType` combination → Pax's single `fuelType`
+  for Sift's comparison use case;
+- normalizing free-text EPA values into Sift's own vocabulary (e.g. EPA's
+  `VClass` "Small Sport Utility Vehicle 4WD" → Sift's `bodyStyle`
+  "Compact SUV"; EPA's `drive` "All-Wheel Drive" → Sift's `drivetrain`
+  "AWD"; EPA's `fuelType1`/`atvType` combination → Sift's single `fuelType`
   string) via explicit, reviewable lookup tables in the transform script,
   not inference or guessing — every mapping is a literal table entry, and
   any EPA value with no table entry is left as its raw string rather than
