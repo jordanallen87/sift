@@ -1,6 +1,6 @@
 # Implementation plan — Generic Decision Workspace (Sift)
 
-Status: **active**
+Status: **complete** (2026-08-30) — see `docs/completion-report-2026-08-30.md`
 Date opened: 2026-08-30
 Requirements: `docs/change-sets/2026-08-30-generic-decision-workspace.md` (approved, authoritative input)
 Audit: `docs/audits/2026-08-30-generic-decision-workspace-audit.md`
@@ -74,7 +74,7 @@ B1–B2 first.
       `CaseHeader`'s label map. Delete the orphaned `EvidenceList.tsx` and its 9 tests.
       *Done when:* no code path can produce a removed status; no component renders from a field
       nothing writes; suite green.
-- [ ] **A2. Empty regions stop rendering.** All eleven from audit §2. Empty states become compact
+- [x] **A2. Empty regions stop rendering.** All eleven from audit §2. Empty states become compact
       and attached to the region that owns them.
       *Done when:* a test asserts each region is absent (not merely empty) when it has no content.
 - [x] **A3. Merge the answer and the next action into one hero.** Resolves the
@@ -121,7 +121,7 @@ B1–B2 first.
       block reports command status, not investigation status, and must be labelled as such; it
       should also not appear at all when the only completed command was fixture seeding the user
       never issued.
-- [ ] **A8. Tighten the visual gate.** `maxDiffPixelRatio: 0.01` was permissive enough that a whole
+- [x] **A8. Tighten the visual gate.** `maxDiffPixelRatio: 0.01` was permissive enough that a whole
       product rename passed with stale baselines. Lower it, or add a text-content assertion
       alongside the pixel check, so a copy change cannot pass silently.
 
@@ -130,7 +130,7 @@ B1–B2 first.
 - [x] **B1. `WorkspaceViewState` contract** in `packages/contracts` per ADR 0005: mode, focused
       option, visible/pinned attributes, visible options, sort, filters, board columns, Quick Pick
       queue position.
-- [ ] **B2. Persist via `SelectionPatch`/`updateSelection()`** — extend the existing patch type and
+- [x] **B2. Persist via `SelectionPatch`/`updateSelection()`** — extend the existing patch type and
       both store implementations, plus the shared store-contract conformance test.
       *Done when:* a test proves a view change persists across reload AND does not advance
       `eventSequence` AND does not invalidate a ready recommendation.
@@ -161,8 +161,8 @@ B1–B2 first.
 
 ## Phase D — Decision Profile
 
-- [ ] **D1. Projection** from existing criteria/attributes/extensions — no competing source of truth.
-- [ ] **D2. Editing** with simplified priority language; exact weights behind advanced.
+- [x] **D1. Projection** from existing criteria/attributes/extensions — no competing source of truth.
+- [x] **D2. Editing** with simplified priority language; exact weights behind advanced.
 - [~] **D1/D2/D3 (partial). Decision Profile projection and view — BUILT BUT NOT MOUNTED.**
       Found 2026-08-30 by the spec audit and confirmed directly: `DecisionProfileView` appears
       nowhere in `App.tsx` and is not even exported from `apps/web/src/index.ts`. About 43 passing
@@ -286,7 +286,7 @@ The WebMCP tools that expose all three remain open below.
       descriptions and `webmcp.md` say so explicitly — an overclaiming description would be worse
       than a missing tool, because ChatGPT would act on a page state that isn't real. Needs a
       command wired to the existing persistence path.
-- [ ] **E6. `sift_set_option_attribute`.** ADR 0006 decision 4. `upsertOption` replaces an entity's
+- [x] **E6. `sift_set_option_attribute`.** *(Shipped; see the Phase E summary above.)* ADR 0006 decision 4. `upsertOption` replaces an entity's
       whole attributes map, so it cannot stand in for a scoped single-attribute write.
 - [x] **E7. `sift_get_decision_guide`** — shipped as a READ tool returning `{packId, packVersion,
       guide}` as typed fields, resolved against the active case's pinned pack, with an honest
@@ -319,7 +319,7 @@ The audit found this pipeline incomplete end-to-end; each item below closes a sp
       *Verified 2026-08-30:* `upsertOption` (`command-service.ts:505`) and `reviewCaseExtension`
       (`:749`) both invalidate, and `upsertOption` narrows to definitions a criterion depends on
       rather than invalidating on every write.
-- [ ] **F5. Honest uncertainty.** Specification research may support "likely"; it may not assert
+- [x] **F5. Honest uncertainty.** Specification research may support "likely"; it may not assert
       "verified". Human observation can strengthen or replace it.
       **Marked complete in error on 2026-08-30 and reopened the same day.** The orchestrator checked
       F1–F4 against the code and then assumed F5 from their pattern instead of verifying it. The
@@ -330,6 +330,14 @@ The audit found this pipeline incomplete end-to-end; each item below closes a sp
       undermines the product's central claim that the deterministic core, not the model, owns
       evidence validity. Reassigned with the enforcement placed in `createAttributeRecord`, the one
       domain chokepoint both `upsertOption` and `setOptionAttribute` already call.
+      *Closed 2026-08-30.* `createAttributeRecord` now rejects `status: 'verified'` unless
+      `origin === 'user'`. Both `agent_proposed` (a model's own inference) and `pack` (pre-authored
+      reference data) are barred, because neither is a live human attestation — §26's "human
+      observation can strengthen or replace it" is exactly the distinction. The rejection is loud,
+      not a silent downgrade, and names both what was refused and what would have been acceptable:
+      *"only origin \"user\" (a human attestation) may claim \"verified\" — specification research
+      or pack-authored data may claim at most \"supported\"."* A silent downgrade would have been
+      its own dishonesty: the caller would believe it recorded something it did not.
 
 ## Phase G — research and notes
 
@@ -356,16 +364,16 @@ The audit found this pipeline incomplete end-to-end; each item below closes a sp
       One detail nobody asked for and it was right: the public activity summary is asserted **not**
       to echo the raw note body. A note is user-entered free text and does not belong in the
       sanitized activity stream.
-- [ ] **G3. WebMCP write capability** for research and notes, with descriptions that distinguish
+- [x] **G3. WebMCP write capability** for research and notes, with descriptions that distinguish
       source vs note vs criterion vs comparison field (§29).
 
 ## Phase H — model-controlled presentation
 
-- [ ] **H1. Presentation tools** — set view, focus option, focus question, configure comparison.
+- [x] **H1. Presentation tools** — set view, focus option, focus question, configure comparison.
       Narrow typed operations, never one arbitrary UI-mutation object.
-- [ ] **H2. Shared focus both directions** — page selection visible to ChatGPT; ChatGPT focus
+- [x] **H2. Shared focus both directions** — page selection visible to ChatGPT; ChatGPT focus
       visible on the page, in all four views.
-- [ ] **H3. Prove the boundary.** A test that a presentation tool changes the view and provably
+- [x] **H3. Prove the boundary.** A test that a presentation tool changes the view and provably
       does not alter criteria or invalidate a recommendation.
 
 ## Phase I — developer view integration
@@ -412,8 +420,8 @@ The audit found this pipeline incomplete end-to-end; each item below closes a sp
 
 ## Phase J — end-to-end, docs, release
 
-- [ ] **J1. Playwright journey** per §61, at all four viewports, no horizontal overflow.
-- [ ] **J2. Spec updates** per §65 — product, architecture, packs/routing, pack authoring, WebMCP,
+- [x] **J1. Playwright journey** per §61, at all four viewports, no horizontal overflow.
+- [x] **J2. Spec updates** per §65 — product, architecture, packs/routing, pack authoring, WebMCP,
       testing, demos/submission, value proposition, debugging/observability, README, demo scripts.
 - [x] **J3. Fix the `agentcore.test.ts` conflict probe.** ~~Root cause: it probes sequence-conflict
       behavior using `selectPack`, which is policy-gated.~~ **That root cause was wrong, and the
@@ -446,7 +454,14 @@ The audit found this pipeline incomplete end-to-end; each item below closes a sp
       assertion runs unchanged with a bound matching the file's existing convention. Purely
       additive: the exact `data-testid` is still required to appear, and the shared helper the
       error-path spec uses is untouched.
-- [ ] **J4. Full `pnpm verify` green**, deployed check, completion report per §70.
+- [x] **J4. Full `pnpm verify` green**, deployed check, completion report per §70.
+      *Done 2026-08-30.* `pnpm verify` PASSED 10/10 (`2026-08-30T19-58-54-918Z-bf0c4e84`); coverage
+      97.77% lines / 94.58% branches; mutation score 92.31 against a break threshold of 80;
+      `test:deployed` 11 passed / 1 honest skip against a genuinely redeployed service; report at
+      `docs/completion-report-2026-08-30.md`.
+      **`verify:release` fails exactly one check, correctly:** `release-metadata-public-urls`
+      requires the two demo-video URLs, which are human-recorded deliverables. No URL was fabricated
+      to turn the gate green — the gate is doing its job by refusing.
 
 ## Verification strategy
 

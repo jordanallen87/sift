@@ -40,7 +40,23 @@ function parseSseBuffer(buffer: string): { events: ParsedSseEvent[]; remainder: 
   return { events, remainder };
 }
 
-function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
+/**
+ * Polls `predicate` on a real signal until it holds, or fails loudly.
+ *
+ * The bound was 3000ms and exceeded once during a full `pnpm verify`
+ * ("skips delivering a live activity event to an already-closed SSE
+ * writer", `timed out waiting for condition`), while passing 6/6 standalone
+ * afterwards. That is contention, not a logic defect: `verify` runs the
+ * whole suite in parallel, and SSE delivery here is genuinely asynchronous,
+ * so 3s is simply too tight a budget on a loaded machine.
+ *
+ * Raised rather than removed, and deliberately NOT replaced with a fixed
+ * sleep or an assertion that tolerates either outcome. The predicate is
+ * still required to become true and the test still fails if it never does;
+ * only the patience changed. Same reasoning as the `submitCustomConcern`
+ * banner wait in `tests/e2e/pages/sift-page.ts`.
+ */
+function waitFor(predicate: () => boolean, timeoutMs = 15_000): Promise<void> {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const check = (): void => {

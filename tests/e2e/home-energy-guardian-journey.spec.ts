@@ -68,7 +68,7 @@ import {
   disableAnimations,
   expectNamedScreenshot,
 } from './helpers/layout-assertions.js';
-import { dynamicScreenshotMasks } from './helpers/visual-masks.js';
+import { dynamicScreenshotMasks, withVolatileRegionsHidden } from './helpers/visual-masks.js';
 import {
   getCaseState,
   HOME_ENERGY_CRITERION_IDS,
@@ -86,16 +86,25 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     await disableAnimations(page);
     const guard = installConsoleGuard(page);
     const sift = new SiftPage(page);
-    // A plain `mask` (timestamp rows) is sufficient for every screenshot
-    // below -- unlike `car-purchase-journey.spec.ts` (see that spec's own
-    // header comment for the full causal chain, plus `visual-masks.ts`'s),
-    // Home Energy Guardian's Swarm hands off between specialists strictly
-    // sequentially (`HOME_ENERGY_SEQUENTIAL_SPECIALIST_IDS`), so the
-    // underlying activity event order and `LiveRunStatus`'s
-    // phase-breadcrumb length are both genuinely deterministic here --
-    // confirmed empirically by multiple clean, zero-diff repeated runs of
-    // this exact spec. This journey therefore needs no `withVolatileRegionsHidden`
-    // equivalent at all.
+    // Every post-run capture below wraps in `withVolatileRegionsHidden`,
+    // exactly as `car-purchase-journey.spec.ts` does.
+    //
+    // This spec previously claimed the opposite, on the grounds that Home
+    // Energy Guardian's Swarm hands off strictly sequentially
+    // (`HOME_ENERGY_SEQUENTIAL_SPECIALIST_IDS`) and that a plain timestamp
+    // `mask` therefore sufficed -- "confirmed empirically by multiple clean,
+    // zero-diff repeated runs". That claim was **falsified by an actual
+    // failure** during a full `pnpm verify`: `recommendation-ready.png` at
+    // `right-pane-390` expected 390x5726 and received 390x5901, a 175px
+    // HEIGHT difference (0.02 of all pixels). A height delta is content
+    // reflow, not antialiasing -- `LiveRunStatus`'s phase breadcrumb varies
+    // in line COUNT, and a `mask` paints over a box without changing its
+    // size, so masking can never absorb it.
+    //
+    // Sequential handoff makes the specialist ORDER deterministic; it does
+    // not make the breadcrumb's rendered height deterministic. Raising
+    // `maxDiffPixelRatio` would have hidden this rather than fixed it, and
+    // would have blunted the gate for every other diff too.
     const masks = dynamicScreenshotMasks(page);
 
     // --- Launch ---
@@ -297,13 +306,15 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
       (round1State['recommendation'] as { favoredOptionId: string } | null)?.favoredOptionId,
     ).toBe('monitor-one-cycle');
 
-    await expectNamedScreenshot(
-      page,
-      page.getByTestId('case-workspace'),
-      'recommendation-ready.png',
-      { testId: 'recommendation-card-status', text: 'Ready for review' },
-      { mask: masks, maxDiffPixelRatio: 0.01 },
-    );
+    await withVolatileRegionsHidden(page, async () => {
+      await expectNamedScreenshot(
+        page,
+        page.getByTestId('case-workspace'),
+        'recommendation-ready.png',
+        { testId: 'recommendation-card-status', text: 'Ready for review' },
+        { mask: masks, maxDiffPixelRatio: 0.01 },
+      );
+    });
 
     // --- Criteria reweight: the real command route, no click, no reload ---
     const beforeReweight = await getCaseState(page.request, caseId);
@@ -328,13 +339,15 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     // A stable, fully-settled pause point (nothing is in flight -- round 2
     // has not been requested yet) -- see this file's header comment for why
     // this replaces a genuinely racy "mid-round-2" capture.
-    await expectNamedScreenshot(
-      page,
-      page.getByTestId('case-workspace'),
-      'recommendation-stale.png',
-      { testId: 'recommendation-card-status', text: 'Stale' },
-      { mask: masks, maxDiffPixelRatio: 0.01 },
-    );
+    await withVolatileRegionsHidden(page, async () => {
+      await expectNamedScreenshot(
+        page,
+        page.getByTestId('case-workspace'),
+        'recommendation-stale.png',
+        { testId: 'recommendation-card-status', text: 'Stale' },
+        { mask: masks, maxDiffPixelRatio: 0.01 },
+      );
+    });
 
     // --- Round 2: no visible control can reach this obligation any more (see header comment) ---
     const afterReweight = await getCaseState(page.request, caseId);
@@ -383,23 +396,27 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
       'option-editor-save',
       `option-editor-edit-${HOME_ENERGY_RESPONSE_OPTION_IDS[0]}`,
     ]);
-    await expectNamedScreenshot(
-      page,
-      page.getByTestId('case-workspace'),
-      'awaiting-approval.png',
-      { testId: 'approval-card-pending', text: 'Your approval needed' },
-      { mask: masks, maxDiffPixelRatio: 0.01 },
-    );
+    await withVolatileRegionsHidden(page, async () => {
+      await expectNamedScreenshot(
+        page,
+        page.getByTestId('case-workspace'),
+        'awaiting-approval.png',
+        { testId: 'approval-card-pending', text: 'Your approval needed' },
+        { mask: masks, maxDiffPixelRatio: 0.01 },
+      );
+    });
 
     await sift.approveProposal();
     await expect(page.getByTestId('approval-card-settled')).toBeVisible();
-    await expectNamedScreenshot(
-      page,
-      page.getByTestId('case-workspace'),
-      'decided.png',
-      { testId: 'approval-card-stamp', text: 'Approved' },
-      { mask: masks, maxDiffPixelRatio: 0.01 },
-    );
+    await withVolatileRegionsHidden(page, async () => {
+      await expectNamedScreenshot(
+        page,
+        page.getByTestId('case-workspace'),
+        'decided.png',
+        { testId: 'approval-card-stamp', text: 'Approved' },
+        { mask: masks, maxDiffPixelRatio: 0.01 },
+      );
+    });
 
     const finalState = await getCaseState(page.request, caseId);
     expect(finalState['status']).toBe('decided');
