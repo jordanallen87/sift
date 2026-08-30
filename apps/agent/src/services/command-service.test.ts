@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { CaseState, CommandReceipt, EntityRecord } from '@sift/contracts';
 import { compilePack, PackRegistry } from '@sift/packs';
+import { evaluateReadiness } from '@sift/core';
 import {
   createRegistryWithSyntheticPack,
   createSequentialIdGenerator,
@@ -303,6 +304,97 @@ describe('CommandService', () => {
     });
   });
 
+  // I1 (docs/superpowers/plans/2026-08-30-generic-decision-workspace.md
+  // "Phase I"; ADR 0006 decision 8): `commandOrigin` is a trailing optional
+  // parameter on the command envelope, threaded straight through to
+  // `emitActivity` -- never a branch that changes what the command does.
+  describe('commandOrigin (I1: WebMCP call provenance)', () => {
+    it('records safeDetails.origin on the activity trail when "webmcp" is supplied', () => {
+      const snapshot = startDemo();
+      const result = service.selectPack(
+        'cmd-webmcp',
+        { caseId: snapshot.id, packId: 'car-purchase', expectedSequence: snapshot.eventSequence },
+        'webmcp',
+      );
+      requireOk(result);
+
+      const recorded = activityStore
+        .replayFrom(snapshot.id, 0)
+        .find((event) => event.commandId === 'cmd-webmcp');
+      expect(recorded?.safeDetails).toEqual({ origin: 'webmcp' });
+    });
+
+    it('records nothing extra when commandOrigin is omitted (default, pre-existing behavior)', () => {
+      const snapshot = startDemo();
+      const result = service.selectPack('cmd-plain', {
+        caseId: snapshot.id,
+        packId: 'car-purchase',
+        expectedSequence: snapshot.eventSequence,
+      });
+      requireOk(result);
+
+      const recorded = activityStore
+        .replayFrom(snapshot.id, 0)
+        .find((event) => event.commandId === 'cmd-plain');
+      expect(recorded?.safeDetails).toBeUndefined();
+    });
+
+    it('never changes case state or the eventSequence advance: two independent services given the same command, with and without the marker, converge on identical results', () => {
+      // Two wholly separate CommandService instances (own store, own id
+      // generator, own registry) so the marker is the ONLY variable between
+      // them -- proving it is genuinely a recording-only field, not a
+      // branch, the same way `routes/commands.test.ts`'s HTTP-level twin
+      // of this test uses two harnesses.
+      const storeA = new MemoryCaseStore();
+      const activityA = new InMemoryActivityStore();
+      const serviceA = new CommandService({
+        caseStore: storeA,
+        activityStore: activityA,
+        registry: createRegistryWithSyntheticPack(),
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+      const storeB = new MemoryCaseStore();
+      const activityB = new InMemoryActivityStore();
+      const serviceB = new CommandService({
+        caseStore: storeB,
+        activityStore: activityB,
+        registry: createRegistryWithSyntheticPack(),
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const startResultA = serviceA.startDemo('cmd-start', { demoId: 'car-purchase' });
+      const startResultB = serviceB.startDemo('cmd-start', { demoId: 'car-purchase' });
+      requireOk(startResultA);
+      requireOk(startResultB);
+      const snapshotA = requireSnapshot(startResultA.value);
+      const snapshotB = requireSnapshot(startResultB.value);
+      expect(snapshotB).toEqual(snapshotA);
+
+      const resultA = serviceA.selectPack('cmd-select', {
+        caseId: snapshotA.id,
+        packId: 'car-purchase',
+        expectedSequence: snapshotA.eventSequence,
+      });
+      const resultB = serviceB.selectPack(
+        'cmd-select',
+        {
+          caseId: snapshotB.id,
+          packId: 'car-purchase',
+          expectedSequence: snapshotB.eventSequence,
+        },
+        'webmcp',
+      );
+      requireOk(resultA);
+      requireOk(resultB);
+
+      expect(resultB.value.acceptedSequence).toBe(resultA.value.acceptedSequence);
+      expect(requireSnapshot(resultB.value)).toEqual(requireSnapshot(resultA.value));
+      expect(storeB.load(snapshotB.id)).toEqual(storeA.load(snapshotA.id));
+    });
+  });
+
   describe('upsertOption', () => {
     it('adds a new option with typed attribute records (success)', () => {
       const snapshot = startDemo();
@@ -563,6 +655,445 @@ describe('CommandService', () => {
     });
   });
 
+  describe('setOptionAttribute', () => {
+    function withOption(): { snapshot: CaseState; optionId: string } {
+      const snapshot = startDemo();
+      const result = service.upsertOption('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: {
+          label: 'Honda Civic',
+          kind: 'car',
+          attributes: [
+            { definitionId: 'car.price', value: { type: 'money', amount: 24000, currency: 'USD' } },
+          ],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      const optionId = updated.entities[0]?.id;
+      if (optionId === undefined) throw new Error('expected option id');
+      return { snapshot: updated, optionId };
+    }
+
+    function withCustomDefinition(snapshot: CaseState, id = 'custom.dog_crate_fit'): CaseState {
+      const result = service.defineCaseAttribute('cmd-def', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        definition: {
+          id,
+          label: 'Dog crate fit',
+          valueType: 'string',
+          appliesTo: ['car'],
+          evidenceExpectation: 'assertion',
+          comparison: 'none',
+          reason: 'The household has a dog that needs to fit in the trunk.',
+        },
+      });
+      requireOk(result);
+      return requireSnapshot(result.value);
+    }
+
+    function withReadyRecommendation(snapshot: CaseState): CaseState {
+      const appended = caseStore.append(
+        snapshot.id,
+        [
+          {
+            eventId: 'ev-rec-attr',
+            caseId: snapshot.id,
+            sequence: snapshot.eventSequence + 1,
+            timestamp: FIXED_NOW,
+            type: 'recommendation.ready',
+            payload: {
+              recommendation: {
+                id: 'rec-attr-1',
+                status: 'ready',
+                favoredOptionId: null,
+                rationale: 'because',
+                facts: [],
+                hypotheses: [],
+                confidence: 0.5,
+                limitations: [],
+                sourceIds: [],
+                resolvedObligationIds: [],
+                acceptedUncertaintyObligationIds: [],
+                generatedAt: FIXED_NOW,
+              },
+            },
+          },
+        ],
+        snapshot.eventSequence,
+      );
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+      return appended.snapshot;
+    }
+
+    it('sets a new custom attribute while preserving the sibling pack-defined attribute already on the option (merge, not replace)', () => {
+      const { snapshot, optionId } = withOption();
+      const withDefinition = withCustomDefinition(snapshot);
+      const result = service.setOptionAttribute('cmd-3', {
+        caseId: withDefinition.id,
+        optionId,
+        expectedSequence: withDefinition.eventSequence,
+        attribute: {
+          definitionId: 'custom.dog_crate_fit',
+          value: { type: 'string', value: 'Fits with seats down.' },
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      const attrs = updated.entities.find((entity) => entity.id === optionId)?.attributes;
+      expect(attrs?.['custom.dog_crate_fit']?.value).toEqual({
+        type: 'string',
+        value: 'Fits with seats down.',
+      });
+      expect(attrs?.['car.price']?.value).toEqual({ type: 'money', amount: 24000, currency: 'USD' });
+    });
+
+    it('accepts an explicit "unknown" status with no value (§24 explicit unknowns)', () => {
+      const { snapshot, optionId } = withOption();
+      const withDefinition = withCustomDefinition(snapshot);
+      const result = service.setOptionAttribute('cmd-3', {
+        caseId: withDefinition.id,
+        optionId,
+        expectedSequence: withDefinition.eventSequence,
+        attribute: { definitionId: 'custom.dog_crate_fit', status: 'unknown' },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      const record = updated.entities.find((entity) => entity.id === optionId)?.attributes[
+        'custom.dog_crate_fit'
+      ];
+      expect(record?.status).toBe('unknown');
+      expect(record).not.toHaveProperty('value');
+    });
+
+    it('rejects a status/value mismatch from the real domain invariant (status "verified" with no value)', () => {
+      const { snapshot, optionId } = withOption();
+      const withDefinition = withCustomDefinition(snapshot);
+      const result = service.setOptionAttribute('cmd-3', {
+        caseId: withDefinition.id,
+        optionId,
+        expectedSequence: withDefinition.eventSequence,
+        attribute: { definitionId: 'custom.dog_crate_fit', status: 'verified' },
+      });
+      expect(result.status).toBe('validation');
+    });
+
+    it('rejects an unknown optionId as a clean validation error, never a silent no-op', () => {
+      const snapshot = startDemo();
+      const withDefinition = withCustomDefinition(snapshot);
+      const result = service.setOptionAttribute('cmd-3', {
+        caseId: withDefinition.id,
+        optionId: 'does-not-exist',
+        expectedSequence: withDefinition.eventSequence,
+        attribute: { definitionId: 'custom.dog_crate_fit', value: { type: 'string', value: 'x' } },
+      });
+      expect(result.status).toBe('validation');
+    });
+
+    it('rejects a definitionId not declared anywhere on the case (neither pack-defined nor a case extension) as a clean validation error, never a silent no-op', () => {
+      const { snapshot, optionId } = withOption();
+      const result = service.setOptionAttribute('cmd-3', {
+        caseId: snapshot.id,
+        optionId,
+        expectedSequence: snapshot.eventSequence,
+        attribute: { definitionId: 'custom.never_defined', value: { type: 'string', value: 'x' } },
+      });
+      expect(result.status).toBe('validation');
+    });
+
+    it('rejects invalid input (validation)', () => {
+      const result = service.setOptionAttribute('cmd-3', {
+        caseId: '',
+        optionId: '',
+        expectedSequence: -1,
+      });
+      expect(result.status).toBe('validation');
+    });
+
+    it('returns not_found for a missing case', () => {
+      const result = service.setOptionAttribute('cmd-3', {
+        caseId: 'missing',
+        optionId: 'x',
+        expectedSequence: 0,
+        attribute: { definitionId: 'car.price', value: { type: 'money', amount: 1, currency: 'USD' } },
+      });
+      expect(result.status).toBe('not_found');
+    });
+
+    it('returns conflict for a stale expectedSequence', () => {
+      const { snapshot, optionId } = withOption();
+      const result = service.setOptionAttribute('cmd-3', {
+        caseId: snapshot.id,
+        optionId,
+        expectedSequence: snapshot.eventSequence + 5,
+        attribute: { definitionId: 'car.price', value: { type: 'money', amount: 1, currency: 'USD' } },
+      });
+      expect(result.status).toBe('conflict');
+    });
+
+    it('is idempotent: retrying the same commandId returns the original result', () => {
+      const { snapshot, optionId } = withOption();
+      const input = {
+        caseId: snapshot.id,
+        optionId,
+        expectedSequence: snapshot.eventSequence,
+        attribute: {
+          definitionId: 'car.price',
+          value: { type: 'money' as const, amount: 25000, currency: 'USD' },
+        },
+      };
+      const first = service.setOptionAttribute('cmd-4', input);
+      requireOk(first);
+      const second = service.setOptionAttribute('cmd-4', input);
+      requireOk(second);
+      expect(second.value.caseId).toBe(first.value.caseId);
+    });
+
+    it('invalidates a ready recommendation when the changed attribute is one an active criterion depends on (item 4, matching upsertOption\'s rule) -- the synthetic pack\'s "price" criterion has appliesToAttribute: "car.price"', () => {
+      const { snapshot, optionId } = withOption();
+      const withRecommendation = withReadyRecommendation(snapshot);
+      const result = service.setOptionAttribute('cmd-5', {
+        caseId: withRecommendation.id,
+        optionId,
+        expectedSequence: withRecommendation.eventSequence,
+        attribute: {
+          definitionId: 'car.price',
+          value: { type: 'money', amount: 26000, currency: 'USD' },
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.recommendation?.status).toBe('stale');
+      const activity = activityStore.replayFrom(withRecommendation.id, 0);
+      expect(activity.some((event) => event.type === 'recommendation.invalidated')).toBe(true);
+    });
+
+    it('does NOT invalidate a ready recommendation when the changed attribute is not referenced by any active criterion (precision)', () => {
+      const { snapshot, optionId } = withOption();
+      const withDefinition = withCustomDefinition(snapshot);
+      const withRecommendation = withReadyRecommendation(withDefinition);
+      const result = service.setOptionAttribute('cmd-5', {
+        caseId: withRecommendation.id,
+        optionId,
+        expectedSequence: withRecommendation.eventSequence,
+        attribute: {
+          definitionId: 'custom.dog_crate_fit',
+          value: { type: 'string', value: 'ok' },
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.recommendation?.status).toBe('ready');
+    });
+  });
+
+  describe('addNote', () => {
+    function withOption(): { snapshot: CaseState; optionId: string } {
+      const snapshot = startDemo();
+      const result = service.upsertOption('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: {
+          label: 'Honda Civic',
+          kind: 'car',
+          attributes: [
+            { definitionId: 'car.price', value: { type: 'money', amount: 24000, currency: 'USD' } },
+          ],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      const optionId = updated.entities[0]?.id;
+      if (optionId === undefined) throw new Error('expected option id');
+      return { snapshot: updated, optionId };
+    }
+
+    function withReadyRecommendation(snapshot: CaseState): CaseState {
+      const appended = caseStore.append(
+        snapshot.id,
+        [
+          {
+            eventId: 'ev-rec-note',
+            caseId: snapshot.id,
+            sequence: snapshot.eventSequence + 1,
+            timestamp: FIXED_NOW,
+            type: 'recommendation.ready',
+            payload: {
+              recommendation: {
+                id: 'rec-note-1',
+                status: 'ready',
+                favoredOptionId: null,
+                rationale: 'because',
+                facts: [],
+                hypotheses: [],
+                confidence: 0.5,
+                limitations: [],
+                sourceIds: [],
+                resolvedObligationIds: [],
+                acceptedUncertaintyObligationIds: [],
+                generatedAt: FIXED_NOW,
+              },
+            },
+          },
+        ],
+        snapshot.eventSequence,
+      );
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+      return appended.snapshot;
+    }
+
+    it('adds a minimal note (success)', () => {
+      const snapshot = startDemo();
+      const result = service.addNote('cmd-note-1', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        note: { body: 'The seat position felt wrong on the test drive.' },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.notes).toHaveLength(1);
+      expect(updated.notes?.[0]?.body).toBe('The seat position felt wrong on the test drive.');
+      // Defaults applied by the command handler, not left unset.
+      expect(updated.notes?.[0]?.kind).toBe('observation');
+      expect(updated.notes?.[0]?.origin).toBe('user');
+      expect(updated.notes?.[0]?.authoredBy).toBe('user');
+      expect(updated.notes?.[0]?.optionIds).toEqual([]);
+      expect(updated.notes?.[0]?.sourceIds).toEqual([]);
+
+      const activity = activityStore.replayFrom(snapshot.id, 0);
+      expect(activity.at(-1)?.type).toBe('command.accepted');
+      // The public activity summary must never echo the raw note body
+      // verbatim (a note is user-entered free text; keep it out of the
+      // sanitized activity stream's plain-English summary).
+      expect(activity.at(-1)?.summary).not.toContain('seat position');
+    });
+
+    it('adds an agent-authored note with an explicit kind, linked options, an obligation link, and cited sources', () => {
+      const { snapshot, optionId } = withOption();
+      const result = service.addNote('cmd-note-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        origin: 'agent_proposed',
+        note: {
+          body: 'Two listings disagree on the advertised price.',
+          kind: 'research',
+          optionIds: [optionId],
+          obligationId: 'hard-constraints',
+          sourceIds: [],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      const note = updated.notes?.[0];
+      expect(note?.kind).toBe('research');
+      expect(note?.origin).toBe('agent_proposed');
+      expect(note?.authoredBy).toBe('model');
+      expect(note?.optionIds).toEqual([optionId]);
+      expect(note?.obligationId).toBe('hard-constraints');
+    });
+
+    it('rejects a note referencing an unknown optionId as a clean validation error', () => {
+      const snapshot = startDemo();
+      const result = service.addNote('cmd-note-3', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        note: { body: 'x', optionIds: ['does-not-exist'] },
+      });
+      expect(result.status).toBe('validation');
+    });
+
+    it('rejects a note referencing an unknown obligationId as a clean validation error', () => {
+      const snapshot = startDemo();
+      const result = service.addNote('cmd-note-4', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        note: { body: 'x', obligationId: 'does-not-exist' },
+      });
+      expect(result.status).toBe('validation');
+    });
+
+    it('rejects invalid input (validation)', () => {
+      const result = service.addNote('cmd-note-5', {
+        caseId: '',
+        expectedSequence: -1,
+        note: {},
+      });
+      expect(result.status).toBe('validation');
+    });
+
+    it('returns not_found for a missing case', () => {
+      const result = service.addNote('cmd-note-6', {
+        caseId: 'missing',
+        expectedSequence: 0,
+        note: { body: 'x' },
+      });
+      expect(result.status).toBe('not_found');
+    });
+
+    it('returns conflict for a stale expectedSequence', () => {
+      const snapshot = startDemo();
+      const result = service.addNote('cmd-note-7', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence + 5,
+        note: { body: 'x' },
+      });
+      expect(result.status).toBe('conflict');
+    });
+
+    it('is idempotent: retrying the same commandId returns the original result, not a second note', () => {
+      const snapshot = startDemo();
+      const input = {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        note: { body: 'x' },
+      };
+      const first = service.addNote('cmd-note-8', input);
+      requireOk(first);
+      const second = service.addNote('cmd-note-8', input);
+      requireOk(second);
+      expect(second.value.caseId).toBe(first.value.caseId);
+      expect(requireSnapshot(second.value).notes).toHaveLength(1);
+    });
+
+    // The central rule of this concept (CLAUDE.md "The deterministic core,
+    // not an LLM, owns case state, evidence validity, readiness, and human
+    // authority"): a note is an observation that has not earned evidence
+    // status. Adding one to a case that already has a ready recommendation
+    // AND a required, still-open obligation must leave every one of those
+    // untouched -- obligations, readiness, and the recommendation itself.
+    it('never touches obligations, readiness, or a ready recommendation (notes never auto-promote to evidence)', () => {
+      const snapshot = startDemo();
+      const withRecommendation = withReadyRecommendation(snapshot);
+      // The synthetic pack's one seeded obligation ("hard-constraints") is
+      // `required: true` and starts `open` -- exactly the "open obligations"
+      // precondition this test needs, with no extra setup.
+      expect(withRecommendation.obligations).toHaveLength(1);
+      expect(withRecommendation.obligations[0]?.status).toBe('open');
+      const readinessBefore = evaluateReadiness(withRecommendation);
+      expect(readinessBefore.ready).toBe(false);
+
+      const result = service.addNote('cmd-note-9', {
+        caseId: withRecommendation.id,
+        expectedSequence: withRecommendation.eventSequence,
+        note: { body: 'Dealer said they may waive the package.' },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+
+      expect(updated.notes).toHaveLength(1);
+      expect(updated.obligations).toEqual(withRecommendation.obligations);
+      expect(updated.recommendation).toEqual(withRecommendation.recommendation);
+      expect(evaluateReadiness(updated)).toEqual(readinessBefore);
+
+      // No recommendation.invalidated (or any other) activity beyond the
+      // plain command.accepted for the note itself.
+      const activity = activityStore.replayFrom(withRecommendation.id, 0);
+      expect(activity.some((event) => event.type === 'recommendation.invalidated')).toBe(false);
+    });
+  });
+
   describe('focusOption', () => {
     function withOption(): { snapshot: CaseState; optionId: string } {
       const snapshot = startDemo();
@@ -660,6 +1191,131 @@ describe('CommandService', () => {
         caseId: snapshot.id,
         optionId,
         expectedSequence: snapshot.eventSequence,
+      });
+      expect(result.status).toBe('conflict');
+    });
+  });
+
+  describe('setView', () => {
+    function withReadyRecommendation(snapshot: CaseState): CaseState {
+      const appended = caseStore.append(
+        snapshot.id,
+        [
+          {
+            eventId: 'ev-rec-view',
+            caseId: snapshot.id,
+            sequence: snapshot.eventSequence + 1,
+            timestamp: FIXED_NOW,
+            type: 'recommendation.ready',
+            payload: {
+              recommendation: {
+                id: 'rec-view-1',
+                status: 'ready',
+                favoredOptionId: null,
+                rationale: 'because',
+                facts: [],
+                hypotheses: [],
+                confidence: 0.5,
+                limitations: [],
+                sourceIds: [],
+                resolvedObligationIds: [],
+                acceptedUncertaintyObligationIds: [],
+                generatedAt: FIXED_NOW,
+              },
+            },
+          },
+        ],
+        snapshot.eventSequence,
+      );
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+      return appended.snapshot;
+    }
+
+    it('persists the view through updateSelection(): eventSequence and a ready recommendation stay EXACTLY unchanged, and a subsequent load() returns the persisted view (§54 "presentation is not decision mutation" -- the critical structural proof)', () => {
+      const withRecommendation = withReadyRecommendation(startDemo());
+      const view = { mode: 'compare' as const, compare: { optionIds: [] } };
+
+      const result = service.setView('cmd-view-1', {
+        caseId: withRecommendation.id,
+        expectedSequence: withRecommendation.eventSequence,
+        view,
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+
+      expect(updated.view).toEqual(view);
+      expect(updated.eventSequence).toBe(withRecommendation.eventSequence);
+      expect(updated.recommendation).toEqual(withRecommendation.recommendation);
+
+      const reloaded = caseStore.load(withRecommendation.id);
+      expect(reloaded?.view).toEqual(view);
+      expect(reloaded?.eventSequence).toBe(withRecommendation.eventSequence);
+      expect(reloaded?.recommendation).toEqual(withRecommendation.recommendation);
+    });
+
+    it('rejects invalid input (validation)', () => {
+      const result = service.setView('cmd-view-2', {
+        caseId: '',
+        expectedSequence: -1,
+        view: { mode: 'list' },
+      });
+      expect(result.status).toBe('validation');
+    });
+
+    it('returns not_found for a missing case', () => {
+      const result = service.setView('cmd-view-3', {
+        caseId: 'missing',
+        expectedSequence: 0,
+        view: { mode: 'list' },
+      });
+      expect(result.status).toBe('not_found');
+    });
+
+    it('returns conflict for a stale expectedSequence', () => {
+      const snapshot = startDemo();
+      const result = service.setView('cmd-view-4', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence + 1,
+        view: { mode: 'list' },
+      });
+      expect(result.status).toBe('conflict');
+    });
+
+    it('is idempotent: retrying the same commandId returns the original result', () => {
+      const snapshot = startDemo();
+      const input = {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        view: { mode: 'list' as const },
+      };
+      const first = service.setView('cmd-view-5', input);
+      requireOk(first);
+      const second = service.setView('cmd-view-5', input);
+      requireOk(second);
+      expect(second.value.caseId).toBe(first.value.caseId);
+    });
+
+    it("returns a 409-shaped conflict when the underlying updateSelection() call itself detects the case has advanced (a genuine append()/updateSelection() race, not loadForMutation's own pre-check)", () => {
+      const snapshot = startDemo();
+      const advanced = service.upsertOption('cmd-real', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: { label: 'Toyota Corolla', kind: 'car', attributes: [] },
+      });
+      requireOk(advanced);
+
+      const staleReadService = new CommandService({
+        caseStore: staleReadCaseStore(caseStore, snapshot),
+        activityStore,
+        registry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = staleReadService.setView('cmd-race', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        view: { mode: 'list' },
       });
       expect(result.status).toBe('conflict');
     });

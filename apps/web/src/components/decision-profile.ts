@@ -97,20 +97,75 @@
  * caller/test can assert on the real signal rather than string-matching
  * prose.
  *
- * ## Deliberately NOT implemented here
+ * ## `suggestedQuestions` (§16), sourced honestly (task D4)
  *
- * §16's example payload also shows a `suggestedQuestions` array. This
- * module does not produce one. There is no existing state this task's
- * brief authorizes deriving that from honestly -- generating "useful
- * discovery questions" would mean writing plausible-sounding car-buying
- * questions ourselves, which is exactly the fabrication the brief forbids
- * ("Do NOT invent a hardcoded list of questions... that would be
- * fabricated"). A real `suggestedQuestions` needs a pack-level Decision
- * Guide (§47) that does not exist in `CaseState` yet; when it does, it is a
- * genuinely different, pack-authored input, not something this pure
- * `CaseState` projection can honestly manufacture on its own.
+ * §16's example payload also shows a `suggestedQuestions` array. This was
+ * deliberately left unimplemented until now: generating "useful discovery
+ * questions" from nothing would mean writing plausible-sounding domain
+ * questions ourselves, exactly the fabrication this product exists to
+ * prevent. It was blocked on a pack-level Decision Guide (§47) existing as
+ * a real, pack-authored input `deriveDecisionProfile` could honestly draw
+ * from -- `packages/contracts/src/packs.ts`'s `DecisionGuideSchema` now
+ * provides that (task E7), so `deriveDecisionProfile` takes it as an
+ * optional second parameter (the pack a case is pinned to is not itself
+ * part of `CaseState` -- only `CaseState.pack`'s id/version/hash pin is;
+ * resolving that pin to a compiled pack's guide is a caller concern, not
+ * this pure projection's).
+ *
+ * Every `DecisionProfileSuggestedQuestion` traces to exactly one of three
+ * real signals, and reuses that signal's OWN already-declared question
+ * text verbatim -- this module never composes new question wording from a
+ * label, a fact, or anything else:
+ *
+ *   1. `pack_guide` -- an entry in `guide.suggestedQuestions`, verbatim. The
+ *      pack author wrote this as a question; that authorship is exactly
+ *      what makes it non-fabricated here (§47: "declarative data a pack
+ *      manifest declares").
+ *   2. `unmet_obligation` -- `ObligationState.question` (already a real,
+ *      pack-authored question -- see `ObligationTemplateSchema`) for any
+ *      obligation not yet `satisfied` or `accepted_uncertainty` (i.e. still
+ *      genuinely open work, matching webmcp.md's `unresolvedQuestions`
+ *      convention: "obligations not yet satisfied/accepted_uncertainty,
+ *      ... highest pack-declared priority first"). This is also the
+ *      mechanism that honestly surfaces "an extension awaiting
+ *      confirmation" when one applies: a case-extension's derived
+ *      obligation (`ObligationState.origin === 'case_extension'`) is an
+ *      ordinary member of `caseState.obligations` and flows through this
+ *      exact same path -- no separate, weaker-grounded extension-specific
+ *      branch is needed or added.
+ *   3. `missing_criterion` -- for a criterion already flagged in `missing`
+ *      above (`no_target`/`no_measurement`) that ALSO carries its own
+ *      `Criterion.question` (the same real field `toConcern` already
+ *      surfaces). A missing criterion with no declared `question` of its
+ *      own contributes nothing here -- the gap is still visible via
+ *      `missing`, and an empty contribution here is the honest answer
+ *      rather than an invented one.
+ *
+ * A pending case extension with no matching real obligation question and
+ * no matching guide entry therefore contributes nothing to
+ * `suggestedQuestions` (while still appearing in `missing`) -- this is not
+ * an omission, it is the deliberate boundary: every brief-named source
+ * (guide-declared question, unmet obligation, criterion with no target, hard
+ * constraint with no target, extension awaiting confirmation) is honored,
+ * but only through text that already, genuinely exists.
+ *
+ * Sources are concatenated in this fixed, deliberate order -- pack-level
+ * guidance first (authored for the whole class of decision), then this
+ * case's own open obligations (ordered by descending pack-declared
+ * `priority`, ties keeping `CaseState.obligations`'s original order, since
+ * `Array.prototype.sort` is stable), then criterion-declared questions (in
+ * `missing`'s own derivation order) -- and de-duplicated by exact text,
+ * keeping the first (highest-priority-source) occurrence, so the same real
+ * question surfaced by two signals at once is never shown twice.
  */
-import type { CaseExtension, CaseState, Criterion, CriterionOrigin } from '@sift/contracts';
+import type {
+  CaseExtension,
+  CaseState,
+  Criterion,
+  CriterionOrigin,
+  DecisionGuide,
+  ObligationState,
+} from '@sift/contracts';
 import { formatAttributeValue } from './attribute-value-format.js';
 
 export const PRIORITY_BANDS = ['very_important', 'important', 'somewhat_important'] as const;
@@ -164,6 +219,23 @@ export interface DecisionProfileMissingItem {
   relatedId: string;
 }
 
+/** See the module header, "`suggestedQuestions` (§16), sourced honestly," for what each source means and why no other source exists. */
+export const SUGGESTED_QUESTION_SOURCES = [
+  'pack_guide',
+  'unmet_obligation',
+  'missing_criterion',
+] as const;
+export type SuggestedQuestionSource = (typeof SUGGESTED_QUESTION_SOURCES)[number];
+
+export interface DecisionProfileSuggestedQuestion {
+  id: string;
+  /** Verbatim text from the real signal named by `source` -- never composed or paraphrased by this module. */
+  text: string;
+  source: SuggestedQuestionSource;
+  /** The `ObligationState.id` or `Criterion.id` this question traces back to. Absent for `pack_guide`, which is pack-level guidance, not tied to any one case entity. */
+  relatedId?: string;
+}
+
 export interface DecisionProfile {
   mustHave: DecisionProfileConcern[];
   important: DecisionProfileConcern[];
@@ -171,6 +243,7 @@ export interface DecisionProfile {
   context: DecisionProfileConcern[];
   personalConcerns: DecisionProfilePersonalConcern[];
   missing: DecisionProfileMissingItem[];
+  suggestedQuestions: DecisionProfileSuggestedQuestion[];
 }
 
 function toConcern(criterion: Criterion): DecisionProfileConcern {
@@ -237,7 +310,102 @@ function deriveMissingFromExtensions(
     }));
 }
 
-export function deriveDecisionProfile(caseState: CaseState): DecisionProfile {
+/** An obligation still represents genuinely open work -- neither resolved nor an accepted, settled uncertainty. */
+const UNMET_OBLIGATION_STATUSES: ReadonlySet<ObligationState['status']> = new Set([
+  'open',
+  'active',
+  'blocked',
+]);
+
+/** Source 1 (see module header): pack-authored questions, verbatim, in the guide's own declared order. */
+function suggestedQuestionsFromGuide(guide: DecisionGuide | undefined): DecisionProfileSuggestedQuestion[] {
+  if (guide === undefined) return [];
+  return guide.suggestedQuestions.map((text, index) => ({
+    id: `guide:${index}`,
+    text,
+    source: 'pack_guide' as const,
+  }));
+}
+
+/** Source 2 (see module header): every still-unmet obligation's own question, highest pack-declared priority first. */
+function suggestedQuestionsFromObligations(
+  obligations: readonly ObligationState[],
+): DecisionProfileSuggestedQuestion[] {
+  return obligations
+    .filter((obligation) => UNMET_OBLIGATION_STATUSES.has(obligation.status))
+    .slice()
+    .sort((a, b) => b.priority - a.priority)
+    .map((obligation) => ({
+      id: `obligation:${obligation.id}`,
+      text: obligation.question,
+      source: 'unmet_obligation' as const,
+      relatedId: obligation.id,
+    }));
+}
+
+/**
+ * Source 3 (see module header): a `missing` criterion (`no_target`/
+ * `no_measurement`) that also declares its own `Criterion.question`. A
+ * missing criterion with no declared question contributes nothing -- never
+ * synthesized from its label.
+ */
+function suggestedQuestionsFromMissingCriteria(
+  missing: readonly DecisionProfileMissingItem[],
+  criteriaById: ReadonlyMap<string, Criterion>,
+): DecisionProfileSuggestedQuestion[] {
+  const questions: DecisionProfileSuggestedQuestion[] = [];
+  for (const item of missing) {
+    if (item.reasonKind !== 'no_target' && item.reasonKind !== 'no_measurement') continue;
+    const criterion = criteriaById.get(item.relatedId);
+    if (criterion?.question === undefined) continue;
+    questions.push({
+      id: `criterion:${criterion.id}`,
+      text: criterion.question,
+      source: 'missing_criterion',
+      relatedId: criterion.id,
+    });
+  }
+  return questions;
+}
+
+/** Concatenates every source in priority order, dropping an exact-text repeat and keeping the first (highest-priority-source) occurrence. */
+function deriveSuggestedQuestions(
+  caseState: CaseState,
+  activeCriteria: Criterion[],
+  missing: DecisionProfileMissingItem[],
+  guide: DecisionGuide | undefined,
+): DecisionProfileSuggestedQuestion[] {
+  const criteriaById = new Map(activeCriteria.map((criterion) => [criterion.id, criterion]));
+  const candidates = [
+    ...suggestedQuestionsFromGuide(guide),
+    ...suggestedQuestionsFromObligations(caseState.obligations),
+    ...suggestedQuestionsFromMissingCriteria(missing, criteriaById),
+  ];
+
+  const seenText = new Set<string>();
+  const deduplicated: DecisionProfileSuggestedQuestion[] = [];
+  for (const candidate of candidates) {
+    if (seenText.has(candidate.text)) continue;
+    seenText.add(candidate.text);
+    deduplicated.push(candidate);
+  }
+  return deduplicated;
+}
+
+/**
+ * `guide` is the compiled pack's `DecisionGuide` (`packages/contracts/src/
+ * packs.ts`, §46/§47), when the pack a case is pinned to (`CaseState.pack`)
+ * declares one -- omit it (or pass `undefined`) for a guideless pack, or
+ * when the caller has not yet resolved `CaseState.pack.id`/`version` to its
+ * compiled manifest. Optional and separate from `CaseState` on purpose: the
+ * pack itself is not part of case state (only the id/version/hash pin is,
+ * per `CasePackPinSchema`), and this stays a pure function of its two
+ * explicit inputs rather than reaching out to a pack registry itself.
+ */
+export function deriveDecisionProfile(
+  caseState: CaseState,
+  guide?: DecisionGuide,
+): DecisionProfile {
   const activeCriteria = caseState.criteria.filter((criterion) => criterion.status === 'active');
 
   const mustHave = activeCriteria
@@ -279,5 +447,7 @@ export function deriveDecisionProfile(caseState: CaseState): DecisionProfile {
     ...deriveMissingFromExtensions(caseState.caseExtensions),
   ];
 
-  return { mustHave, important, niceToHave, context, personalConcerns, missing };
+  const suggestedQuestions = deriveSuggestedQuestions(caseState, activeCriteria, missing, guide);
+
+  return { mustHave, important, niceToHave, context, personalConcerns, missing, suggestedQuestions };
 }

@@ -361,6 +361,40 @@ export function attributeValueStatusInvariantError(
   return value === undefined ? `value is required when status is "${status}"` : null;
 }
 
+/**
+ * Enforces the honesty boundary CLAUDE.md's central claim depends on: "The
+ * deterministic core, not an LLM, owns case state, evidence validity,
+ * readiness, and human authority." (plan task F5 / change-set §25-§26:
+ * "Specification research may support 'likely'; it may not assert
+ * 'verified'. Human observation can strengthen or replace it." /
+ * packs-and-routing.md: "research-supported 'likely' is not the same claim
+ * as human-attested 'verified comfortable'".)
+ *
+ * `status: 'verified'` is this protocol's strongest claim: it tells the user
+ * a fact has been confirmed, not merely inferred or defaulted. Only a
+ * literal human action -- `origin: 'user'` -- can honestly make that claim.
+ * `origin: 'agent_proposed'` is a model's own inference (at best
+ * specification-research-supported, i.e. `'supported'`); `origin: 'pack'` is
+ * pre-authored reference data baked into the Decision Pack at compile time,
+ * not a live attestation about this case's evidence either. Neither may
+ * claim `'verified'`.
+ *
+ * Returns `null` when valid, or a human-readable reason naming both what was
+ * rejected and what would have been accepted -- a rejection here must be
+ * loud (a validation error the caller sees and must act on), never a silent
+ * downgrade to a weaker status the caller didn't ask for and wouldn't know
+ * happened.
+ */
+export function attributeStatusOriginError(
+  status: AttributeStatus,
+  origin: AttributeRecord['origin'],
+): string | null {
+  if (status === 'verified' && origin !== 'user') {
+    return `status "verified" was rejected for origin "${origin}": only origin "user" (a human attestation) may claim "verified" -- specification research or pack-authored data may claim at most "supported"`;
+  }
+  return null;
+}
+
 export interface CreateAttributeRecordInput {
   readonly definitionId: string;
   readonly label: string;
@@ -386,6 +420,11 @@ export function createAttributeRecord(
   const invariantError = attributeValueStatusInvariantError(input.status, input.value);
   if (invariantError !== null) {
     return fail(invariantError);
+  }
+
+  const originError = attributeStatusOriginError(input.status, input.origin);
+  if (originError !== null) {
+    return fail(originError);
   }
 
   const candidate: AttributeRecord = {

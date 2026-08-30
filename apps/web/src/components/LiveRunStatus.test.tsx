@@ -38,6 +38,20 @@ describe('LiveRunStatus', () => {
     expect(screen.getByTestId('live-run-status-phase')).toHaveTextContent(/queued/i);
   });
 
+  // Task A9: this block reports the status of the last COMMAND, not
+  // specifically an investigation -- a genuinely real (non-seed) commandId-
+  // only receipt can reach this component for a command that was never an
+  // investigation run at all (e.g. a real, distinct manual action taken
+  // before any investigation), and "Investigation status" would misdescribe
+  // that just as it did the fixture-seed case ADR 0004 caught live. The
+  // heading must say what this block actually is: a command status report.
+  it('labels the heading as command status, never "investigation status"', () => {
+    render(<LiveRunStatus receipt={{ commandId: 'cmd-1' }} events={[]} />);
+    const heading = screen.getByTestId('live-run-status').querySelector('h3');
+    expect(heading).toHaveTextContent(/command/i);
+    expect(heading).not.toHaveTextContent(/investigation/i);
+  });
+
   // ADR 0004 decision item 3: `commandId`/`runId` move to the
   // developer/inspect projection and are never rendered as raw text on the
   // consumer surface anymore (change-set §4's terminology table:

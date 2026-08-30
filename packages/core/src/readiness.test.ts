@@ -156,6 +156,78 @@ describe('evaluateReadiness', () => {
     expect(result.blockers[0]).toMatch(/is blocked/);
   });
 
+  // Change-set §33 (DoD item 33): "Questions"/"Things to Check" replace
+  // obligation jargon in consumer UI, and `ReadinessPanel.tsx` renders
+  // `readiness.blockers` verbatim under "Why this case isn't ready yet" --
+  // so these strings must already be consumer-safe plain language at the
+  // source, not engine vocabulary a presentation layer has to translate.
+  // "Obligation" is engine vocabulary (the `ObligationState` type name); so
+  // is the raw `requiredEvidenceLevel` code (e.g. "E2") described as a
+  // "required evidence level" -- a person was never asked to think in
+  // evidence-level tiers.
+  describe('describeBlocker consumer language (change-set §33)', () => {
+    it.each(['open', 'active', 'blocked'] as const)(
+      'never uses the word "obligation" in a %s blocker message',
+      (status) => {
+        const result = evaluateReadiness(
+          caseState({
+            obligations: [obligation({ status, attemptsUsed: 1, maxAttempts: 2 })],
+          }),
+        );
+        expect(result.blockers[0]).not.toMatch(/obligation/i);
+      },
+    );
+
+    it.each(['open', 'active'] as const)(
+      'never surfaces the raw "evidence level" phrase or an E-tier code in a %s blocker message',
+      (status) => {
+        const result = evaluateReadiness(
+          caseState({
+            obligations: [obligation({ status, requiredEvidenceLevel: 'E2' })],
+          }),
+        );
+        expect(result.blockers[0]).not.toMatch(/evidence level/i);
+        expect(result.blockers[0]).not.toMatch(/\bE[1-3]\b/);
+      },
+    );
+
+    it('still explains why an open obligation blocks readiness, in plain language', () => {
+      const result = evaluateReadiness(
+        caseState({ obligations: [obligation({ status: 'open', label: 'Confirm dealer fees' })] }),
+      );
+      expect(result.blockers[0]).toBe('"Confirm dealer fees" hasn\'t been checked yet.');
+    });
+
+    it('still explains why an active obligation blocks readiness, in plain language', () => {
+      const result = evaluateReadiness(
+        caseState({
+          obligations: [obligation({ status: 'active', label: 'Confirm dealer fees' })],
+        }),
+      );
+      expect(result.blockers[0]).toBe(
+        '"Confirm dealer fees" is still being investigated and doesn\'t have enough supporting evidence yet.',
+      );
+    });
+
+    it('still explains why a blocked obligation blocks readiness, in plain language', () => {
+      const result = evaluateReadiness(
+        caseState({
+          obligations: [
+            obligation({
+              status: 'blocked',
+              label: 'Verify dealer inventory',
+              attemptsUsed: 3,
+              maxAttempts: 3,
+            }),
+          ],
+        }),
+      );
+      expect(result.blockers[0]).toBe(
+        '"Verify dealer inventory" is blocked: 3 of 3 attempts used and accepted uncertainty is not allowed for this question.',
+      );
+    });
+  });
+
   it('never lets an unresolved non-required obligation affect readiness', () => {
     const result = evaluateReadiness(
       caseState({ obligations: [obligation({ status: 'open', required: false })] }),

@@ -270,11 +270,14 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
 
       expect(result.ok).toBe(true);
       expect(result.ui.focusTarget).toBe('option-2');
-      expect(commands.focusOption).toHaveBeenCalledWith({
-        caseId: 'case-catalog-1',
-        optionId: 'option-2',
-        expectedSequence: 5,
-      });
+      expect(commands.focusOption).toHaveBeenCalledWith(
+        {
+          caseId: 'case-catalog-1',
+          optionId: 'option-2',
+          expectedSequence: 5,
+        },
+        { origin: 'webmcp' },
+      );
     });
   });
 
@@ -305,7 +308,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
 
       expect(result.ok).toBe(true);
       expect(result.ui.changed).toBe(true);
-      expect(commands.upsertOption).toHaveBeenCalledWith(input);
+      expect(commands.upsertOption).toHaveBeenCalledWith(input, { origin: 'webmcp' });
     });
   });
 
@@ -327,7 +330,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
 
       expect(result.ok).toBe(true);
       expect(result.ui.changed).toBe(true);
-      expect(commands.updateCriteria).toHaveBeenCalledWith(input);
+      expect(commands.updateCriteria).toHaveBeenCalledWith(input, { origin: 'webmcp' });
     });
   });
 
@@ -357,7 +360,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
 
       expect(result.ok).toBe(true);
       expect(result.ui.changed).toBe(true);
-      expect(commands.defineCaseAttribute).toHaveBeenCalledWith(input);
+      expect(commands.defineCaseAttribute).toHaveBeenCalledWith(input, { origin: 'webmcp' });
     });
   });
 
@@ -379,7 +382,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
       expect(result.ok).toBe(true);
       expect(result.runId).toBe('run-catalog-1');
       expect(result.ui.changed).toBe(true);
-      expect(commands.requestInvestigation).toHaveBeenCalledWith(input);
+      expect(commands.requestInvestigation).toHaveBeenCalledWith(input, { origin: 'webmcp' });
       expect(commands.requestInvestigation).toHaveBeenCalledTimes(1);
     });
   });

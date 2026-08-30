@@ -7,7 +7,7 @@
  */
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CommandReceipt, HttpErrorBody } from '@sift/contracts';
+import type { CommandReceipt, HttpConflictResponse, HttpErrorBody } from '@sift/contracts';
 import { COMMAND_NAMES } from './commands.js';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
@@ -154,6 +154,31 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
       expect(response.status).toBe(400);
     });
 
+    // Probes the conflict with `selectPack`, deliberately, not an
+    // arbitrarily-chosen command: on the case `startDemo()` just seeded,
+    // `CommandService.selectPack` (`services/command-service.ts`) has
+    // exactly one failure branch reachable before its `loadForMutation`
+    // sequence check ever runs -- `SelectPackInputSchema` parse failure --
+    // and *zero* `policyFailure(...)` call anywhere in its body (confirmed
+    // by reading the method: unlike `updateCriteria`, which does gate on
+    // `pack.criteria.allowUserDefined`/`protectedCriterionIds`, `selectPack`
+    // never calls `policyFailure` or throws `PolicyViolationError`). A
+    // stale `expectedSequence` is therefore the *only* thing that can make
+    // this specific request fail, and it always fails the same way: a real
+    // sequence mismatch inside `loadForMutation`, which is checked before
+    // pack resolution, so a valid `packId` never even gets a chance to
+    // matter. `routes/commands.test.ts`'s own "returns 409 with the latest
+    // snapshot for a stale expectedSequence (conflict)" test already
+    // establishes this exact same `selectPack`-on-a-seeded-demo-case
+    // pattern as this codebase's own idiom for isolating conflict behavior
+    // -- and reserves a *separate* command (`updateCriteria`, removing a
+    // protected criterion) for its "returns 403 for a policy violation"
+    // test, right next to it. So the response asserted below is not merely
+    // "usually" 409; it is structurally the single reachable outcome for
+    // this request, verified by reading the handler rather than assumed --
+    // asserting the full `HttpConflictResponseSchema` envelope (not just
+    // the status code) below makes that guarantee visible in the test
+    // itself, not just in this comment.
     it('returns a 409 conflict envelope with the latest snapshot for a stale expectedSequence', async () => {
       harness = createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
@@ -168,6 +193,12 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
         });
 
       expect(response.status).toBe(409);
+      const body = asJson<HttpConflictResponse>(response.body);
+      expect(body.error.code).toBe('CONFLICT');
+      expect(body.error.expectedSequence).toBe(expectedSequence + 5);
+      expect(body.error.actualSequence).toBe(expectedSequence);
+      expect(body.snapshot.id).toBe(caseId);
+      expect(body.snapshot.eventSequence).toBe(expectedSequence);
     });
 
     it('is idempotent over HTTP: retrying the same Idempotency-Key returns the same accepted sequence', async () => {

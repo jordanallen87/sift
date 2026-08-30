@@ -51,18 +51,38 @@ export type {
   WorkspaceStatusInput,
 } from './components/workspace-status.js';
 export { formatAttributeValue } from './components/attribute-value-format.js';
+export { meetsEvidenceExpectation } from './lib/evidence-expectation.js';
 export { DynamicAttributeField } from './components/DynamicAttributeField.js';
 export type { DynamicAttributeFieldProps } from './components/DynamicAttributeField.js';
 export { OptionEditor } from './components/OptionEditor.js';
 export type { OptionEditorProps } from './components/OptionEditor.js';
-export { OptionComparison } from './components/OptionComparison.js';
-export type { OptionComparisonProps } from './components/OptionComparison.js';
 export { WorkspaceViewSwitcher } from './components/WorkspaceViewSwitcher.js';
 export type { WorkspaceViewSwitcherProps } from './components/WorkspaceViewSwitcher.js';
+export { DecisionProfileView } from './components/DecisionProfileView.js';
+export type { DecisionProfileViewProps } from './components/DecisionProfileView.js';
+export {
+  deriveDecisionProfile,
+  bandWeight,
+  PRIORITY_BANDS,
+  MISSING_REASON_KINDS,
+  SUGGESTED_QUESTION_SOURCES,
+} from './components/decision-profile.js';
+export type {
+  DecisionProfile,
+  DecisionProfileConcern,
+  DecisionProfilePersonalConcern,
+  DecisionProfileMissingItem,
+  DecisionProfileSuggestedQuestion,
+  PriorityBand,
+  MissingReasonKind,
+  SuggestedQuestionSource,
+} from './components/decision-profile.js';
 export { CustomConcernForm } from './components/CustomConcernForm.js';
 export type { CustomConcernFormProps } from './components/CustomConcernForm.js';
 export { CaseExtensionReviewCard } from './components/CaseExtensionReviewCard.js';
 export type { CaseExtensionReviewCardProps } from './components/CaseExtensionReviewCard.js';
+export { CaseNotes } from './components/CaseNotes.js';
+export type { CaseNotesProps } from './components/CaseNotes.js';
 export { LiveRunStatus } from './components/LiveRunStatus.js';
 export type { LiveRunStatusProps, LiveRunStatusReceipt } from './components/LiveRunStatus.js';
 export { WebMcpStatus } from './components/WebMcpStatus.js';
@@ -78,3 +98,5 @@ export type {
   UseCaseEventsOptions,
   UseCaseEventsResult,
 } from './hooks/use-case-events.js';
+export { useWidthMode, NARROW_MAX_WIDTH_PX } from './hooks/use-width-mode.js';
+export type { WidthMode, UseWidthModeOptions } from './hooks/use-width-mode.js';

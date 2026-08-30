@@ -19,9 +19,31 @@
  * task's minimum-viable (Overview + Timeline only) Inspector actually
  * supports: any item carrying a `runId` renders a small "Inspect run"
  * button that calls back with it, letting `App.tsx` open the real Inspector
- * for that run -- event-level jump-to-exact-debug-event stays out of scope
- * for this pass (a later task, once the Inspector's own Timeline gains
- * per-event deep linking).
+ * for that run.
+ *
+ * `onInspectEvent` is the exact-event-level half (plan Task I2b, "a
+ * consumer event opens its exact runtime event"): any item that ALSO
+ * carries a `debugEventId` (the synthetic id of the precise correlated
+ * `runtime_events` row this activity event was derived from -- populated
+ * producer-side by `car-purchase-engine.ts`/`home-energy-engine.ts`, see
+ * `event-normalizer.ts`) renders a second "Inspect event" button that calls
+ * back with both its `runId` and `debugEventId`, letting `App.tsx` open the
+ * real Inspector already scrolled to and marking that exact item
+ * (`RuntimeInspector`'s `focusEventId` prop). Deliberately gated on
+ * `debugEventId` being present, not merely on `onInspectEvent` being
+ * provided (global constraint 4, "never render what cannot be true"): an
+ * activity event with no correlated runtime event has nothing to jump to,
+ * so the button is absent for it entirely rather than present-but-inert.
+ *
+ * As of Task A5, this component's own real mount point is the developer
+ * view (`RuntimeInspector`'s "Activity" tab) rather than the normal
+ * consumer workspace -- ADR 0004 item 3/4 moves the raw chronological
+ * ledger to developer content; `App.tsx` no longer renders it directly.
+ * This component itself is unchanged by that move (it has never known
+ * where it is mounted), and `onInspectEvent` is exactly as useful from
+ * inside the Inspector's own Activity tab (jumping from one run's activity
+ * item to a *different* run's exact Timeline event) as it would be from the
+ * old consumer-surface ledger.
  *
  * Adapted from `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/hq/ActivityView.tsx`'s
  * chronological grouping/label/detail-disclosure information architecture
@@ -44,6 +66,8 @@ export interface ActivityTimelineProps {
   error?: string | null;
   /** When provided, any item carrying a `runId` renders an "Inspect run" button that calls back with it -- the run-level half of "jump from a user-facing activity item to its debug event" this task's Overview + Timeline Inspector supports. Omitted entirely (no button) when absent. */
   onInspectRun?: (runId: string) => void;
+  /** When provided, any item carrying BOTH a `runId` and a `debugEventId` renders an "Inspect event" button that calls back with both -- the exact-event-level half of the same navigation (Task I2b). Omitted entirely (no button) when the event has no correlated runtime event to jump to. */
+  onInspectEvent?: (runId: string, debugEventId: string) => void;
 }
 
 const PHASE_LABEL: Record<PublicActivityEvent['phase'], string> = {
@@ -72,9 +96,11 @@ function formatTimestamp(timestamp: string): string {
 function ActivityItem({
   event,
   onInspectRun,
+  onInspectEvent,
 }: {
   event: PublicActivityEvent;
   onInspectRun?: (runId: string) => void;
+  onInspectEvent?: (runId: string, debugEventId: string) => void;
 }) {
   const { label, tone } = getActivityLabel(event.type);
   const meta = STATUS_TONE_META[tone];
@@ -122,6 +148,21 @@ function ActivityItem({
             Inspect run
           </Button>
         ) : null}
+        {onInspectEvent !== undefined &&
+        event.runId !== undefined &&
+        event.debugEventId !== undefined ? (
+          <Button
+            type="button"
+            data-testid={`activity-item-inspect-event-${event.eventId}`}
+            aria-label={`Inspect exact runtime event for "${event.summary}"`}
+            onClick={() => onInspectEvent(event.runId!, event.debugEventId!)}
+            variant="secondary"
+            size="xs"
+            className="min-h-[var(--size-touch-target-min)]"
+          >
+            Inspect event
+          </Button>
+        ) : null}
       </div>
 
       {detailEntries.length > 0 ? (
@@ -146,6 +187,7 @@ export function ActivityTimeline({
   loading = false,
   error = null,
   onInspectRun,
+  onInspectEvent,
 }: ActivityTimelineProps) {
   const ordered = events === null ? null : [...events].sort((a, b) => a.sequence - b.sequence);
 
@@ -197,6 +239,7 @@ export function ActivityTimeline({
               key={event.eventId}
               event={event}
               {...(onInspectRun !== undefined ? { onInspectRun } : {})}
+              {...(onInspectEvent !== undefined ? { onInspectEvent } : {})}
             />
           ))}
         </ol>

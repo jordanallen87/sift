@@ -113,8 +113,10 @@ import { MemoryRunStore, RunService } from '../services/run-service.js';
 import {
   buildExecutionRequestFor,
   ensureSourcesExist,
+  entityLabelsById,
   extractCitedSourceIds,
   foldExecutionResult,
+  humanizeDecisionText,
   loadSnapshotOrThrow,
 } from './car-purchase-scenario.js';
 import { homeEnergyCapabilityCatalog } from './home-energy-engine.js';
@@ -158,9 +160,15 @@ export interface HomeEnergyGuardianScenarioResult {
  * constant is intentionally private to its module) as the *corrected*
  * second turn of this scenario's genuinely-triggered GoalLoop
  * reject-then-recover cycle (see module header).
+ *
+ * Cites `monitor-one-cycle`/`source-...` literally, the same citation format
+ * `extractCitedSourceIds` parses `sourceIds` out of -- `humanizeDecisionText`
+ * (`car-purchase-scenario.ts`, reused here for §34) renders this into
+ * consumer-safe prose before it is ever stored as `Recommendation.rationale`,
+ * so the raw ids below never reach `RecommendationCard.tsx`.
  */
 const ROUND1_CORRECTED_RECOMMENDATION_TEXT =
-  'Recommend monitoring for one more billing cycle (monitor-one-cycle) before taking further action, per source-current-bill-household-demo-energy-01 and source-household-event-event-thermostat-failure-2026-07. No inspection is proposed at this weighting.';
+  'Recommend monitor-one-cycle before taking further action, per source-current-bill-household-demo-energy-01 and source-household-event-event-thermostat-failure-2026-07. No inspection is proposed at this weighting.';
 
 const ROUND1_FAVORED_OPTION_ID = 'monitor-one-cycle';
 
@@ -380,6 +388,12 @@ export async function runHomeEnergyGuardianScenario(
   captureNewEvents(caseStore, caseId, 0, trajectory);
   trajectory.packSelections.push({ packId: snapshot.pack.id, reasons: snapshot.pack.reasons });
 
+  // Every response option's real label (§34: `Recommendation.rationale` must
+  // read "Monitor for one more billing cycle", never the raw
+  // "monitor-one-cycle" id) -- built once from the demo-seeded entities,
+  // mirroring `car-purchase-scenario.ts`'s own `candidateLabels`.
+  const optionLabels = entityLabelsById(snapshot.entities);
+
   // --- 3-9. Round 1: the real six-node Swarm, starting at anomaly-investigator, at the pack's own default 50/50 cost/conservation weighting ---
   const providers = buildHomeEnergySwarmScriptedProviders();
   setScenarioBeat(providers, 'round1');
@@ -492,7 +506,7 @@ export async function runHomeEnergyGuardianScenario(
         id: deps.idGenerator.next('rec'),
         status: 'ready',
         favoredOptionId: ROUND1_FAVORED_OPTION_ID,
-        rationale: round1Result.decisionSynthesizerText,
+        rationale: humanizeDecisionText(round1Result.decisionSynthesizerText, optionLabels),
         facts: [],
         hypotheses: [],
         confidence: 0.75,
@@ -612,7 +626,7 @@ export async function runHomeEnergyGuardianScenario(
         id: deps.idGenerator.next('rec'),
         status: 'ready',
         favoredOptionId: favoredRound2,
-        rationale: round2Result.decisionSynthesizerText,
+        rationale: humanizeDecisionText(round2Result.decisionSynthesizerText, optionLabels),
         facts: [],
         hypotheses: [],
         confidence: 0.85,

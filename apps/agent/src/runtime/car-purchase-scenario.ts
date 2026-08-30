@@ -662,6 +662,12 @@ export async function runCarPurchaseScenario(
   const caseId = seed.caseState.id;
   let snapshot = seedResult.snapshot;
 
+  // Every candidate's real label (§34: `Recommendation.rationale`/
+  // `limitations` must read "2022 Toyota RAV4 XLE Hybrid AWD", never the
+  // raw "candidate-rav4" id) -- built once, since seeding is the only place
+  // these entities' labels are ever set.
+  const candidateLabels = entityLabelsById(snapshot.entities);
+
   // --- 2/3/4. Round 1: the real six-node Graph, initially favoring candidate-rav4 ---
   const providers = buildCarPurchaseScriptedProviders();
   setScenarioBeat(providers, 'round1');
@@ -734,11 +740,16 @@ export async function runCarPurchaseScenario(
         id: recommendation1Id,
         status: 'ready',
         favoredOptionId: round1Result.proposedRecommendation.candidateIds[0] ?? null,
-        rationale: round1Result.decisionSynthesizerText,
+        rationale: humanizeDecisionText(round1Result.decisionSynthesizerText, candidateLabels),
         facts: [],
         hypotheses: [],
         confidence: 0.75,
-        limitations: ["candidate-rav4's deal terms are still under review."],
+        limitations: [
+          humanizeDecisionText(
+            "candidate-rav4's deal terms are still under review.",
+            candidateLabels,
+          ),
+        ],
         sourceIds: extractCitedSourceIds(round1Result.decisionSynthesizerText),
         resolvedObligationIds: [],
         acceptedUncertaintyObligationIds: [],
@@ -1122,7 +1133,7 @@ export async function runCarPurchaseScenario(
         id: deps.idGenerator.next('rec'),
         status: 'ready',
         favoredOptionId: round2Result.proposedRecommendation.candidateIds[0] ?? null,
-        rationale: round2Result.decisionSynthesizerText,
+        rationale: humanizeDecisionText(round2Result.decisionSynthesizerText, candidateLabels),
         facts: [],
         hypotheses: [],
         confidence: 0.85,
@@ -1200,4 +1211,50 @@ export async function runCarPurchaseScenario(
 export function extractCitedSourceIds(text: string): string[] {
   const matches = text.match(/\bsource-[a-z0-9-]+\b/gi) ?? [];
   return [...new Set(matches.map((match) => match.toLowerCase()))];
+}
+
+// --- Consumer-safe rendering of decision-synthesizer text (§34, DoD item 34) ---
+//
+// `RecommendationCard.tsx` renders `Recommendation.rationale`/`limitations`
+// verbatim to the consumer. A decision-synthesizer's raw text cites option
+// and source ids literally (e.g. "candidate-rav4",
+// "source-national-crash-safety-consortium") -- the same citation format
+// `extractCitedSourceIds` above parses `sourceIds` out of -- so those ids
+// must never reach the consumer directly. `humanizeDecisionText` below
+// substitutes each cited id with the real label its own case record already
+// carries, never a second hardcoded copy that could drift from it.
+
+/** Maps every entity's own id to its own real `label` (e.g. `buildCarPurchaseCandidateEntities`'s `"${modelYear} ${make} ${model} ${trim}"`, or a `response_option`'s fixture-declared label), for `humanizeDecisionText` below. */
+export function entityLabelsById(
+  entities: readonly { readonly id: string; readonly label: string }[],
+): ReadonlyMap<string, string> {
+  return new Map(entities.map((entity) => [entity.id, entity.label]));
+}
+
+/**
+ * Renders a decision-synthesizer's raw text into consumer-safe prose: every
+ * cited `source-...` id is replaced by the real publisher name
+ * `publisherFor` (and `ensureSourcesExist`, which uses the same function to
+ * build the actual `Source.publisher` field) already resolves it to, and
+ * every id in `labels` (typically from `entityLabelsById`) is replaced by
+ * its own real label. Must run AFTER `extractCitedSourceIds` on the original
+ * text -- humanizing removes the very tokens that function looks for.
+ *
+ * Source ids are substituted first and as whole tokens (the same greedy
+ * `source-[a-z0-9-]+` match `extractCitedSourceIds` uses), so a source id
+ * that embeds a candidate/option id as a substring (e.g.
+ * "source-dealer-offer-candidate-rav4") is fully consumed before the bare
+ * candidate-id substitution pass runs -- otherwise that pass would corrupt
+ * the source id into a mangled fragment instead of the id being cleanly
+ * replaced as one citation.
+ */
+export function humanizeDecisionText(text: string, labels: ReadonlyMap<string, string>): string {
+  const withSourcesHumanized = text.replace(/\bsource-[a-z0-9-]+\b/gi, (match) =>
+    publisherFor(match.toLowerCase()),
+  );
+  let result = withSourcesHumanized;
+  for (const [id, label] of labels) {
+    result = result.split(id).join(label);
+  }
+  return result;
 }

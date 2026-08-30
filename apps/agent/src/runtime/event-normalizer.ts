@@ -35,7 +35,12 @@ import type {
   BeforeModelCallEvent,
   BeforeToolCallEvent,
 } from '@strands-agents/sdk';
-import type { Redaction, RuntimeCorrelation, RuntimeDebugEvent } from '@sift/contracts';
+import type {
+  JsonPatchOperation,
+  Redaction,
+  RuntimeCorrelation,
+  RuntimeDebugEvent,
+} from '@sift/contracts';
 import type { InterventionEvent } from './interventions.js';
 
 /** The single normalized event shape `strands-adapter.ts`'s `execute()` yields alongside `ExecutionResult`. See module header. */
@@ -417,4 +422,128 @@ export function normalizeSessionEvent(
       ...(params.restored !== undefined ? { restored: params.restored } : {}),
     },
   });
+}
+
+// --- Case-state diff (RuntimeDebugEvent.stateDiff's one genuine producer) ---
+
+const MAX_DIFF_DEPTH = 10;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function escapePointerSegment(segment: string): string {
+  return segment.replace(/~/g, '~0').replace(/\//g, '~1');
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((entry, index) => deepEqual(entry, b[index]))
+    );
+  }
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    return (
+      keysA.length === keysB.length &&
+      keysA.every(
+        (key) => Object.prototype.hasOwnProperty.call(b, key) && deepEqual(a[key], b[key]),
+      )
+    );
+  }
+  return false;
+}
+
+function diffAt(
+  before: unknown,
+  after: unknown,
+  path: string,
+  depth: number,
+  ops: JsonPatchOperation[],
+): void {
+  if (depth < MAX_DIFF_DEPTH && isPlainObject(before) && isPlainObject(after)) {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const key of keys) {
+      const childPath = `${path}/${escapePointerSegment(key)}`;
+      const hasBefore = Object.prototype.hasOwnProperty.call(before, key);
+      const hasAfter = Object.prototype.hasOwnProperty.call(after, key);
+      if (hasBefore && !hasAfter) {
+        ops.push({ op: 'remove', path: childPath });
+      } else if (!hasBefore && hasAfter) {
+        ops.push({ op: 'add', path: childPath, value: after[key] });
+      } else {
+        diffAt(before[key], after[key], childPath, depth + 1, ops);
+      }
+    }
+    return;
+  }
+  if (!deepEqual(before, after)) {
+    ops.push({ op: 'replace', path, value: after });
+  }
+}
+
+/**
+ * A bounded, honest RFC 6902-shaped diff between two real, already-observed
+ * plain-JSON values -- built for exactly one caller, `normalizeCaseStateChange`
+ * below, diffing a real `CaseState` snapshot taken before a Strands run
+ * against the real snapshot taken after it completed. Never a reconstructed
+ * guess: every emitted operation, applied to `before`, reproduces `after`
+ * exactly.
+ *
+ * Recurses into plain objects key-by-key (reporting `add`/`remove` for keys
+ * whose presence changed, and recursing further for a key present on both
+ * sides); arrays and primitives are compared by full deep equality and, when
+ * different, replaced wholesale at their own path -- deliberately never
+ * diffed element-by-element. RFC 6902 array-index operations shift on every
+ * insertion/removal; getting that shifting wrong would silently produce a
+ * patch that does not actually reproduce `after` when applied to `before`,
+ * which is worse than a coarser but always-correct whole-array replace.
+ */
+export function diffJsonValues(before: unknown, after: unknown): JsonPatchOperation[] {
+  const ops: JsonPatchOperation[] = [];
+  diffAt(before, after, '', 0, ops);
+  return ops;
+}
+
+/**
+ * Normalizes one real before/after `CaseState` diff into a `category: 'case'`
+ * `RuntimeDebugEvent` -- `RuntimeDebugEvent.stateDiff`'s one genuine producer
+ * in this codebase (debugging-and-observability.md "Domain and persistence":
+ * "canonical case events and JSON Patch-compatible before/after state
+ * diff"). `car-purchase-engine.ts`/`home-energy-engine.ts` each call this
+ * once per completed live run, diffing the real `CaseState` snapshot loaded
+ * at the start of `runOneInvestigation` against the real snapshot returned
+ * by `foldRound1`/`foldRound2` (or their Home Energy Guardian equivalents)
+ * at the end -- a whole-run diff, not a per-`CaseEvent` one.
+ *
+ * This is deliberately narrower than "every canonical `CaseEvent` gets a
+ * state diff": that fully general producer belongs in `command-service.ts`
+ * (which already loads a before-snapshot and produces an after-snapshot for
+ * *every* command, run-triggered or not), a file this task does not own --
+ * see the dated `docs/build-log.md` entry for this task and this task's own
+ * report. What this function *does* cover is real and non-fabricated for
+ * every completed hero-pack run, which is the trajectory
+ * debugging-and-observability.md's acceptance requirements actually name.
+ */
+export function normalizeCaseStateChange(
+  params: { stateDiff: JsonPatchOperation[] },
+  ctx: NormalizerContext,
+  sequence: number,
+): RuntimeDebugEvent {
+  return {
+    ...buildEvent(ctx, sequence, {
+      category: 'case',
+      name: 'case.state_changed',
+      phase: 'finish',
+      level: 'info',
+      summary: `Case state changed (${params.stateDiff.length} field${params.stateDiff.length === 1 ? '' : 's'}).`,
+      attributes: { fieldCount: params.stateDiff.length },
+    }),
+    stateDiff: params.stateDiff,
+  };
 }

@@ -39,12 +39,24 @@
  * state, since a plain `Criterion` carries no per-item confirmation field)
  * also appears as a small badge on any weighted concern that did not come
  * from the pack itself.
+ *
+ * "Worth asking about" (§16 `suggestedQuestions`, task D4): a plain,
+ * read-only list of `profile.suggestedQuestions[].text` -- every entry is
+ * already-real question text `decision-profile.ts` sourced from a pack
+ * guide, an unmet obligation, or a criterion's own declared question (see
+ * that module's header for the full non-fabrication argument), so this
+ * component adds no wording of its own beyond the section heading. Renders
+ * nothing when the list is empty (§5), and an otherwise-empty profile with
+ * only suggested questions still counts as non-empty -- a fresh case whose
+ * pack declares guide questions has something real to show even before any
+ * criterion or personal concern exists.
  */
 import type {
   DecisionProfile,
   DecisionProfileConcern,
   DecisionProfileMissingItem,
   DecisionProfilePersonalConcern,
+  DecisionProfileSuggestedQuestion,
   PriorityBand,
 } from './decision-profile.js';
 import { DisclosureSection } from './DisclosureSection.js';
@@ -236,6 +248,31 @@ function PersonalConcernRow({ concern, onConfirm, onReject }: PersonalConcernRow
   );
 }
 
+/** Renders nothing when `questions` is empty (§5, and decision-profile.ts's own "an empty list is the honest answer" rule) -- no card announces a Decision Guide/obligation/question that does not exist. */
+function SuggestedQuestionsSection({ questions }: { questions: DecisionProfileSuggestedQuestion[] }) {
+  if (questions.length === 0) return null;
+
+  return (
+    <div
+      data-testid="decision-profile-view-section-suggested-questions"
+      className="flex flex-col gap-[var(--space-2)]"
+    >
+      <h3 className="label-caps text-[var(--color-ink-secondary)]">Worth asking about</h3>
+      <ul className="flex flex-col gap-[var(--space-1)]">
+        {questions.map((question) => (
+          <li
+            key={question.id}
+            data-testid={`decision-profile-view-suggested-question-${question.id}`}
+            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+          >
+            {question.text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function MissingSection({ items }: { items: DecisionProfileMissingItem[] }) {
   if (items.length === 0) return null;
 
@@ -274,7 +311,8 @@ export function DecisionProfileView({
   const isEmpty =
     weightedConcerns.length === 0 &&
     profile.personalConcerns.length === 0 &&
-    profile.missing.length === 0;
+    profile.missing.length === 0 &&
+    profile.suggestedQuestions.length === 0;
 
   return (
     <section
@@ -339,6 +377,7 @@ export function DecisionProfileView({
           ) : null}
 
           <MissingSection items={profile.missing} />
+          <SuggestedQuestionsSection questions={profile.suggestedQuestions} />
 
           {weightedConcerns.length > 0 ? (
             <DisclosureSection testId="decision-profile-weights" title="Exact priority weights">

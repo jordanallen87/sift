@@ -452,6 +452,34 @@ describe('evaluation (negative case required)', () => {
   });
 });
 
+describe('decisionGuide (§46/§47 pack-level Decision Guide)', () => {
+  // See car-purchase.test.ts's identical suite for the full rationale.
+  it('declares a Decision Guide with real, non-empty content in every field', () => {
+    const guide = HOME_ENERGY_GUARDIAN_MANIFEST.decisionGuide;
+    expect(guide).toBeDefined();
+    expect(guide?.domainPurpose.length).toBeGreaterThan(0);
+    expect(guide?.discoveryStrategy.length).toBeGreaterThan(0);
+    expect(guide?.researchGuidance.length).toBeGreaterThan(0);
+    expect(guide?.customFieldGuidance.length).toBeGreaterThan(0);
+    expect(guide?.presentationGuidance.length).toBeGreaterThan(0);
+    expect(guide?.suggestedQuestions.length).toBeGreaterThan(0);
+    expect(guide?.importantUnknowns.length).toBeGreaterThan(0);
+  });
+
+  it('suggests questions that actually read as questions, not asserted facts', () => {
+    const guide = HOME_ENERGY_GUARDIAN_MANIFEST.decisionGuide;
+    for (const question of guide?.suggestedQuestions ?? []) {
+      expect(question.trim().endsWith('?')).toBe(true);
+    }
+  });
+
+  it('names the emergency-risk exclusion in importantUnknowns or customFieldGuidance, not just cost', () => {
+    const guide = HOME_ENERGY_GUARDIAN_MANIFEST.decisionGuide;
+    const joined = `${guide?.importantUnknowns.join(' ')} ${guide?.customFieldGuidance}`.toLowerCase();
+    expect(joined).toMatch(/emergency|risk|safety/);
+  });
+});
+
 describe('full manifest fidelity', () => {
   // See car-purchase.test.ts's identical suite for the full rationale:
   // structural suites above don't pin individual field values, so mutation

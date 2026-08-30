@@ -27,8 +27,10 @@ import {
   dogCrateObligationTemplate,
   drainGraph,
   ensureSourcesExist,
+  entityLabelsById,
   extractCitedSourceIds,
   foldExecutionResult,
+  humanizeDecisionText,
   loadSnapshotOrThrow,
   publisherFor,
   type CarPurchaseScenarioDeps,
@@ -164,6 +166,57 @@ describe('extractCitedSourceIds', () => {
 
   it('returns an empty array when no source id is cited', () => {
     expect(extractCitedSourceIds('No citations here.')).toEqual([]);
+  });
+});
+
+// §34 (DoD item 34): "Current recommendation" text must use user-friendly
+// language, never raw internal ids. `candidate-rav4`/`source-*` are internal
+// identifiers, not something a consumer should read; `RecommendationCard.tsx`
+// renders `Recommendation.rationale`/`limitations` verbatim, so this
+// humanization must happen before that text is stored as either field.
+describe('entityLabelsById', () => {
+  it('maps each entity id to its own real label, not a second hardcoded copy', () => {
+    const labels = entityLabelsById([
+      { id: 'candidate-rav4', label: '2022 Toyota RAV4 XLE Hybrid AWD' },
+      { id: 'candidate-crv', label: '2022 Honda CR-V EX-L AWD' },
+    ]);
+    expect(labels.get('candidate-rav4')).toBe('2022 Toyota RAV4 XLE Hybrid AWD');
+    expect(labels.get('candidate-crv')).toBe('2022 Honda CR-V EX-L AWD');
+    expect(labels.get('candidate-cx5')).toBeUndefined();
+  });
+});
+
+describe('humanizeDecisionText', () => {
+  const labels = entityLabelsById([
+    { id: 'candidate-rav4', label: '2022 Toyota RAV4 XLE Hybrid AWD' },
+    { id: 'candidate-crv', label: '2022 Honda CR-V EX-L AWD' },
+  ]);
+
+  it('replaces a cited source id with the same real publisher name `publisherFor` (and `ensureSourcesExist`) already use -- never a second copy', () => {
+    expect(
+      humanizeDecisionText('Recommend per source-national-crash-safety-consortium.', labels),
+    ).toBe(`Recommend per ${publisherFor('source-national-crash-safety-consortium')}.`);
+  });
+
+  it('replaces every cited candidate id with its real option label', () => {
+    const result = humanizeDecisionText(
+      'candidate-rav4 is disqualified; candidate-crv is the new pick.',
+      labels,
+    );
+    expect(result).not.toMatch(/candidate-rav4|candidate-crv/);
+    expect(result).toBe(
+      '2022 Toyota RAV4 XLE Hybrid AWD is disqualified; 2022 Honda CR-V EX-L AWD is the new pick.',
+    );
+  });
+
+  it('resolves a source id embedding a candidate id as a whole token, so the candidate id inside it never leaks raw', () => {
+    const result = humanizeDecisionText('per source-dealer-offer-candidate-rav4', labels);
+    expect(result).not.toMatch(/candidate-rav4/);
+    expect(result).toBe(`per ${publisherFor('source-dealer-offer-candidate-rav4')}`);
+  });
+
+  it('leaves prose with no cited ids unchanged', () => {
+    expect(humanizeDecisionText('No citations here.', labels)).toBe('No citations here.');
   });
 });
 

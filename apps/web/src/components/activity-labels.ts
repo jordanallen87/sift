@@ -39,6 +39,57 @@
  * re-checking" -- not that new keys were added; `obligation.updated`
  * already satisfied the "Obligation -> Question to resolve" mapping and is
  * unchanged.
+ *
+ * Task A6 pass (extends the above, still no new keys): re-words every
+ * remaining entry that still leaned on engine-internal vocabulary
+ * ("Command," "Specialist," "Skill," "Tool call," "Case") toward
+ * `docs/specs/product.md`'s "User-facing terminology" table (product.md
+ * §168, which names this exact file as "the canonical mapping
+ * implementation") and change-set §4/§48. Concretely:
+ *
+ *   - `evidence.conflicted` -> "Research disagrees", the literal §48
+ *     example pairing ("Research disagrees" <-> `evidence.conflicted`).
+ *   - `recommendation.ready`/`.invalidated` re-worded toward product.md's
+ *     "Recommendation -> Current recommendation" row and the "ready for
+ *     decision" phrase `ReadinessPanel.tsx` already uses for the same
+ *     underlying convergence concept (product.md "Convergence -> Ready for
+ *     decision"), so the same real-world event reads consistently across
+ *     both components.
+ *   - `command.accepted` -> "Update accepted" (a `commandId` is
+ *     "developer view only," product.md row 186 -- but the WORD "command"
+ *     itself is also engine vocabulary a consumer never needs; "update"
+ *     names what the person's action actually did).
+ *   - `specialist.*`/`skill.activated`/`tool.*` -> plain "a step in the
+ *     investigation" / "a new capability" / "looking something up"
+ *     language. None of these four have their own product.md row (only the
+ *     coarser "Agent graph -> Investigation team, developer view only" and
+ *     "commandId, runId, tool/skill/specialist IDs -> developer view only"
+ *     rows exist), so this applies the guiding rule directly (change-set
+ *     §4: "explain what something means for the decision, not how Sift
+ *     implemented it") rather than copying a table row verbatim. The
+ *     specific actor/tool name (e.g. "Deal analyst," `listing_reader`)
+ *     already reaches the reader through the real `event.summary` text
+ *     these coarse category labels sit beside (`ActivityTimeline.tsx`), so
+ *     nothing is lost by not repeating "specialist"/"skill"/"tool" here.
+ *   - `case.snapshot` -> "Comparison updated" (product.md "Case ->
+ *     Comparison / Decision").
+ *
+ * §4/§48 rows this file structurally cannot cover, and why (documented
+ * rather than silently skipped): "Decision Pack," "E1/E2/E3," `commandId`/
+ * `runId`, "compiled hash," and "Graph/Swarm" are FIELD/IDENTIFIER names,
+ * not `PublicActivityEventType` union members -- there is no event-type key
+ * for this table to attach them to (the exact same reasoning the paragraph
+ * above already establishes for "not that new keys were added"). Their
+ * consumer-invisibility is real and enforced elsewhere: `CaseHeader.tsx`
+ * never renders pack id/version/hash (ADR 0004 item 1), and no
+ * `PublicActivityEvent`/`safeDetails` payload this file's own producers
+ * emit carries a raw `commandId`/`runId`/compiled hash as visible text --
+ * proven by this file's own `no raw internal id leaks` test below, and by
+ * `ActivityTimeline.tsx` never rendering `event.eventId`/`event.commandId`/
+ * `event.runId` as prose (only as `data-*` attributes for the Runtime
+ * Inspector's own correlation navigation, Task I2b). "Need to verify" (§48)
+ * similarly concerns `ObligationState.status`/`requiredEvidenceLevel`, a
+ * field pairing owned by `ReadinessPanel.tsx`, not an event type.
  */
 import type { PublicActivityEventType } from '@sift/contracts';
 import { PUBLIC_ACTIVITY_EVENT_TYPES } from '@sift/contracts';
@@ -147,34 +198,57 @@ export interface ActivityLabelEntry {
  * `pnpm --filter @sift/web typecheck`, not just a runtime fallback.
  */
 const ACTIVITY_LABELS = {
-  'command.accepted': { label: 'Command accepted', tone: 'neutral' },
+  // Task A6: "command" is engine vocabulary describing how the action
+  // reached Sift, not what the person's action did (change-set §4's
+  // guiding rule); a `commandId` itself is "developer view only" (product.md
+  // row 186) regardless.
+  'command.accepted': { label: 'Update accepted', tone: 'neutral' },
   'run.queued': { label: 'Investigation queued', tone: 'open' },
   'run.started': { label: 'Investigation started', tone: 'active' },
   'run.completed': { label: 'Investigation completed', tone: 'satisfied' },
   'run.failed': { label: 'Investigation failed', tone: 'error' },
-  'specialist.started': { label: 'Specialist started working', tone: 'active' },
-  'specialist.completed': { label: 'Specialist finished', tone: 'satisfied' },
-  'skill.activated': { label: 'Skill activated', tone: 'active' },
-  'tool.started': { label: 'Tool call started', tone: 'active' },
-  'tool.completed': { label: 'Tool call completed', tone: 'satisfied' },
-  'tool.failed': { label: 'Tool call failed', tone: 'error' },
+  // Task A6: no product.md row names "specialist"/"skill"/"tool" directly
+  // (only the coarser "Agent graph -> Investigation team, developer view
+  // only" and "tool/skill/specialist IDs -> developer view only" rows) --
+  // this file's header comment records the reasoning. "A step in the
+  // investigation," not "a specialist": the specific actor's name (e.g.
+  // "Deal analyst") already reaches the reader through `event.summary`.
+  'specialist.started': { label: 'A step in the investigation started', tone: 'active' },
+  'specialist.completed': { label: 'A step in the investigation finished', tone: 'satisfied' },
+  'skill.activated': { label: 'A new capability activated', tone: 'active' },
+  'tool.started': { label: 'Looking something up', tone: 'active' },
+  'tool.completed': { label: 'Finished looking something up', tone: 'satisfied' },
+  'tool.failed': { label: "Couldn't complete that lookup", tone: 'error' },
   // `Guide` -> "Agent redirected" (product.md terminology table, verbatim).
   'intervention.guided': { label: 'Agent redirected', tone: 'active' },
   // `Confirm` -> "Your approval needed" (product.md terminology table, verbatim).
   'intervention.confirmation_required': { label: 'Your approval needed', tone: 'ready' },
   // `Evidence` -> "Research/Source/Fact" (change-set §4 terminology table).
   'evidence.accepted': { label: 'Finding accepted', tone: 'satisfied' },
-  'evidence.conflicted': { label: 'Conflicting findings found', tone: 'blocked' },
+  // Task A6: the literal change-set §48 example pair -- "Research
+  // disagrees" <-> `evidence.conflicted`.
+  'evidence.conflicted': { label: 'Research disagrees', tone: 'blocked' },
   // `Obligation` -> "Question to resolve" (product.md terminology table, verbatim).
   'obligation.updated': { label: 'Question to resolve updated', tone: 'open' },
   // `Stale evidence` -> "Needs re-checking" (change-set §4 terminology
   // table) -- "invalidated" is engine vocabulary describing how Sift
-  // implemented the change, not what it means for the decision.
-  'recommendation.invalidated': { label: 'Recommendation needs another look', tone: 'stale' },
-  'recommendation.ready': { label: 'Recommendation ready for review', tone: 'ready' },
+  // implemented the change, not what it means for the decision. Task A6:
+  // "Recommendation" -> "Current recommendation" (product.md terminology
+  // table), so both entries below now say "Current recommendation," not
+  // the bare noun.
+  'recommendation.invalidated': {
+    label: 'Current recommendation needs another look',
+    tone: 'stale',
+  },
+  // Task A6: aligned with `ReadinessPanel.tsx`'s own "ready for decision"
+  // copy for the identical underlying convergence concept (product.md
+  // "Convergence -> Ready for decision"), so the same real event reads
+  // consistently wherever it appears.
+  'recommendation.ready': { label: 'Current recommendation ready for decision', tone: 'ready' },
   // Exact required copy (docs/specs/value-proposition.md "Required visible copy").
   'draft.withheld': { label: 'Draft withheld', tone: 'blocked' },
-  'case.snapshot': { label: 'Case snapshot updated', tone: 'neutral' },
+  // Task A6: `Case` -> "Comparison / Decision" (product.md terminology table).
+  'case.snapshot': { label: 'Comparison updated', tone: 'neutral' },
 } satisfies Record<PublicActivityEventType, ActivityLabelEntry>;
 
 /** Defensive fallback for a `type` value this table has never seen -- e.g. a schema-valid future event a client build predates. Never the raw string itself. */

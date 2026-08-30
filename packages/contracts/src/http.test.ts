@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { HttpConflictResponseSchema, HttpErrorBodySchema } from './http.js';
+import {
+  COMMAND_ORIGINS,
+  CommandOriginSchema,
+  HttpConflictResponseSchema,
+  HttpErrorBodySchema,
+} from './http.js';
 
 describe('HttpErrorBodySchema', () => {
   it('parses a valid error body for every WebMCP-consistent error code', () => {
@@ -118,5 +123,24 @@ describe('HttpConflictResponseSchema', () => {
         snapshot: { ...validSnapshot(), status: 'archived' },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('CommandOriginSchema', () => {
+  it('accepts every declared COMMAND_ORIGINS member', () => {
+    for (const origin of COMMAND_ORIGINS) {
+      expect(CommandOriginSchema.safeParse(origin).success).toBe(true);
+    }
+  });
+
+  it('is a closed enum: rejects free text, casing variants, and unrelated values', () => {
+    for (const value of ['WebMCP', 'webmcp ', 'ui', 'agentcore', 'human', '']) {
+      expect(CommandOriginSchema.safeParse(value).success, value).toBe(false);
+    }
+  });
+
+  it('rejects a non-string value', () => {
+    expect(CommandOriginSchema.safeParse({ origin: 'webmcp' }).success).toBe(false);
+    expect(CommandOriginSchema.safeParse(null).success).toBe(false);
   });
 });

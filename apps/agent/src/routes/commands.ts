@@ -13,12 +13,25 @@
  * transport onto the same real engine, per docs/specs/strands-runtime.md
  * "AgentCore contract"), not a re-implemented or duplicated switch that
  * could drift from this one.
+ *
+ * `dispatchCommand`'s optional trailing `commandOrigin` parameter (I1:
+ * WebMCP call provenance -- ADR 0006 decision 8) is a field on this same
+ * envelope, not a second path: every case in the switch below still calls
+ * the identical `CommandService` method it always called, just forwarding
+ * one extra value that only changes what gets *recorded*, never what the
+ * command *does* (see `command-service.ts`'s own header comment and
+ * `packages/contracts/src/http.ts`'s `CommandOrigin` doc comment). Adding
+ * the parameter as optional-with-no-default keeps `routes/agentcore.ts`'s
+ * existing 4-argument call (`dispatchCommand(service, commandName,
+ * commandId, input)`) unaffected -- AgentCore invocations are a different
+ * transport from the browser-based WebMCP tool calls this marker tags, and
+ * are deliberately left untagged here.
  */
 import { Router } from 'express';
-import type { CommandReceipt } from '@sift/contracts';
+import type { CommandOrigin, CommandReceipt } from '@sift/contracts';
 import type { CommandService } from '../services/command-service.js';
 import type { ServiceResult } from '../services/service-result.js';
-import { readCommandId, respondWithServiceResult, sendError } from './http-support.js';
+import { readCommandId, readCommandOrigin, respondWithServiceResult, sendError } from './http-support.js';
 
 export interface CommandsRouterDeps {
   readonly commandService: CommandService;
@@ -27,7 +40,10 @@ export interface CommandsRouterDeps {
 export const COMMAND_NAMES = [
   'selectPack',
   'upsertOption',
+  'setOptionAttribute',
+  'addNote',
   'focusOption',
+  'setView',
   'defineCaseAttribute',
   'reviewCaseExtension',
   'focusEvidence',
@@ -48,30 +64,37 @@ export function dispatchCommand(
   commandName: CommandName,
   commandId: string,
   input: unknown,
+  commandOrigin?: CommandOrigin,
 ): ServiceResult<CommandReceipt> {
   switch (commandName) {
     case 'selectPack':
-      return service.selectPack(commandId, input);
+      return service.selectPack(commandId, input, commandOrigin);
     case 'upsertOption':
-      return service.upsertOption(commandId, input);
+      return service.upsertOption(commandId, input, commandOrigin);
+    case 'setOptionAttribute':
+      return service.setOptionAttribute(commandId, input, commandOrigin);
+    case 'addNote':
+      return service.addNote(commandId, input, commandOrigin);
     case 'focusOption':
-      return service.focusOption(commandId, input);
+      return service.focusOption(commandId, input, commandOrigin);
+    case 'setView':
+      return service.setView(commandId, input, commandOrigin);
     case 'defineCaseAttribute':
-      return service.defineCaseAttribute(commandId, input);
+      return service.defineCaseAttribute(commandId, input, undefined, commandOrigin);
     case 'reviewCaseExtension':
-      return service.reviewCaseExtension(commandId, input);
+      return service.reviewCaseExtension(commandId, input, commandOrigin);
     case 'focusEvidence':
-      return service.focusEvidence(commandId, input);
+      return service.focusEvidence(commandId, input, commandOrigin);
     case 'updateCriteria':
-      return service.updateCriteria(commandId, input);
+      return service.updateCriteria(commandId, input, commandOrigin);
     case 'submitSource':
-      return service.submitSource(commandId, input);
+      return service.submitSource(commandId, input, commandOrigin);
     case 'setEvidenceDisposition':
-      return service.setEvidenceDisposition(commandId, input);
+      return service.setEvidenceDisposition(commandId, input, commandOrigin);
     case 'requestRevision':
-      return service.requestRevision(commandId, input);
+      return service.requestRevision(commandId, input, commandOrigin);
     case 'reviewProposal':
-      return service.reviewProposal(commandId, input);
+      return service.reviewProposal(commandId, input, commandOrigin);
   }
 }
 
@@ -81,6 +104,9 @@ export function createCommandsRouter(deps: CommandsRouterDeps): Router {
   router.post('/api/cases/:caseId/commands/:commandName', (req, res) => {
     const commandId = readCommandId(req, res);
     if (commandId === undefined) return;
+
+    const originResult = readCommandOrigin(req, res);
+    if (!originResult.ok) return;
 
     const { caseId, commandName } = req.params;
     if (!isCommandName(commandName)) {
@@ -103,10 +129,13 @@ export function createCommandsRouter(deps: CommandsRouterDeps): Router {
       return;
     }
 
-    const result = dispatchCommand(deps.commandService, commandName, commandId, {
-      ...rawBody,
-      caseId,
-    });
+    const result = dispatchCommand(
+      deps.commandService,
+      commandName,
+      commandId,
+      { ...rawBody, caseId },
+      originResult.origin,
+    );
     respondWithServiceResult(res, result);
   });
 

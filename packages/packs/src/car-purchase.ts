@@ -989,6 +989,38 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
     ],
     requiresNegativeCase: true,
   },
+
+  // docs/change-sets/2026-08-30-generic-decision-workspace.md §46/§47
+  // pack-level Decision Guide, ADR 0006 decision 6, docs/specs/webmcp.md
+  // "Decision Guide". Declarative data consumed as a `sift_get_decision_guide`
+  // tool result and Decision Profile UI content -- never concatenated into a
+  // model's own system prompt (see `DecisionGuideSchema`'s header comment in
+  // packages/contracts/src/packs.ts for the full structural argument).
+  // Every claim below is grounded in this same manifest's own obligations,
+  // criteria, and attribute definitions above -- nothing here asserts a car-
+  // buying fact this pack does not already investigate.
+  decisionGuide: {
+    domainPurpose:
+      'Deciding which shortlisted vehicle candidate a household should advance to a test drive, by weighing hard budget and feature constraints against comparable deal terms, five-year ownership cost, safety and reliability, and household-specific fit.',
+    discoveryStrategy:
+      "Establish the household's hard constraints -- budget ceiling versus target, and which features are truly non-negotiable -- before comparing candidates. Deal value, ownership cost, safety/reliability, and household fit can then be investigated in parallel, since each draws on independent sources and none depends on the others' results.",
+    suggestedQuestions: [
+      'Is the stated budget a hard ceiling, or a target the household would stretch for the right car?',
+      'Which features, if any, are truly non-negotiable rather than merely preferred?',
+      'How many people and how much cargo does the vehicle need to carry regularly?',
+      'Does anyone in the household have a physical fit need -- car seats, mobility equipment, travel crates -- that only a measurement or test drive can confirm?',
+    ],
+    importantUnknowns: [
+      'Whether cargo, rear-seat, or equipment fit is adequate usually cannot be confirmed from published specifications alone, and may require a physical measurement or test drive.',
+      "Advertised price rarely matches the true out-the-door price once fees, mandatory add-ons, and financing terms are included.",
+    ],
+    researchGuidance:
+      "Prefer independent published crash-safety, driver-assistance, and reliability sources over a single dealer or manufacturer claim, and treat one source's rating as provisional until a second source corroborates or contradicts it.",
+    customFieldGuidance:
+      'Prefer a typed custom field over noting an important comparison factor only in prose -- for example, a specific cargo item or accessibility need this pack did not anticipate. Do not infer a subjective fit or comfort judgment without supporting evidence or a household member\'s own observation.',
+    presentationGuidance:
+      'Deal terms and five-year ownership cost are usually worth comparing together, since a lower advertised price can still mean a higher total cost. Safety and reliability ratings are usually compared as a group rather than one attribute at a time.',
+  },
 };
 
 /** Convenience wrapper: `compilePack(CAR_PURCHASE_MANIFEST, catalog, clock)`. */

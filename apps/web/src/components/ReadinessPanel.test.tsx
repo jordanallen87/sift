@@ -116,9 +116,7 @@ describe('ReadinessPanel', () => {
       ready: false,
       satisfied: [buildObligation({ id: 'ob-1', status: 'satisfied' })],
       open: [buildObligation({ id: 'ob-2', status: 'open', label: 'Confirm dealer fees' })],
-      blockers: [
-        '"Confirm dealer fees" is open: it has not yet reached its required E2 evidence level.',
-      ],
+      blockers: ['"Confirm dealer fees" hasn\'t been checked yet.'],
     });
     render(<ReadinessPanel readiness={readiness} />);
 
@@ -143,7 +141,7 @@ describe('ReadinessPanel', () => {
         }),
       ],
       blockers: [
-        '"Verify dealer inventory" is blocked: 3 of 3 attempts used and accepted uncertainty is not allowed for this obligation.',
+        '"Verify dealer inventory" is blocked: 3 of 3 attempts used and accepted uncertainty is not allowed for this question.',
       ],
     });
     render(<ReadinessPanel readiness={readiness} />);

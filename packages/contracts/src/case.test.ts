@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ActiveFocusSchema,
+  CaseNoteSchema,
   CaseStateSchema,
   ClaimSchema,
   DecisionProposalSchema,
@@ -266,6 +267,74 @@ describe('WorkspaceViewStateSchema', () => {
   it('rejects an unrecognized top-level key', () => {
     expect(WorkspaceViewStateSchema.safeParse({ mode: 'list', extra: true }).success).toBe(false);
   });
+
+  it('parses a view state carrying a focusedQuestionId (plan task E8: lets ChatGPT point the human at a specific unresolved question)', () => {
+    const result = WorkspaceViewStateSchema.safeParse({
+      mode: 'list',
+      focusedQuestionId: 'case.custom.dog_crate_fit',
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('treats focusedQuestionId as optional (a view state with no focused question is still valid)', () => {
+    const result = WorkspaceViewStateSchema.safeParse({ mode: 'quick_pick' });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.focusedQuestionId).toBeUndefined();
+  });
+});
+
+function validCaseNote() {
+  return {
+    id: 'note-1',
+    body: 'The seat position felt wrong on the test drive.',
+    kind: 'observation' as const,
+    origin: 'user' as const,
+    authoredBy: 'user',
+    optionIds: ['candidate-rav4'],
+    sourceIds: [],
+    createdAt: '2026-08-27T00:00:00.000Z',
+  };
+}
+
+describe('CaseNoteSchema', () => {
+  it('parses a minimal user-authored note', () => {
+    const result = CaseNoteSchema.safeParse(validCaseNote());
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('parses an agent-proposed note carrying an obligationId link (the "question" it concerns)', () => {
+    const result = CaseNoteSchema.safeParse({
+      ...validCaseNote(),
+      origin: 'agent_proposed',
+      authoredBy: 'deal-analyst',
+      obligationId: 'car.deal_normalization',
+      sourceIds: ['src-1'],
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('parses a note with no option or obligation link at all (both are optional)', () => {
+    const result = CaseNoteSchema.safeParse({ ...validCaseNote(), optionIds: [] });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('rejects an origin outside the reused user/agent_proposed vocabulary (e.g. "pack" -- a pack never writes a note)', () => {
+    expect(CaseNoteSchema.safeParse({ ...validCaseNote(), origin: 'pack' }).success).toBe(false);
+  });
+
+  it('rejects an unlisted kind', () => {
+    expect(CaseNoteSchema.safeParse({ ...validCaseNote(), kind: 'rant' }).success).toBe(false);
+  });
+
+  it('rejects a note body containing HTML/executable content', () => {
+    expect(
+      CaseNoteSchema.safeParse({ ...validCaseNote(), body: '<script>alert(1)</script>' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an unrecognized top-level key', () => {
+    expect(CaseNoteSchema.safeParse({ ...validCaseNote(), extra: true }).success).toBe(false);
+  });
 });
 
 describe('RecommendationSchema', () => {
@@ -405,6 +474,23 @@ describe('CaseStateSchema', () => {
       },
     });
     expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('parses a pre-existing persisted snapshot that has no notes key at all (backward compatibility)', () => {
+    const legacySnapshot = validCaseState();
+    expect('notes' in legacySnapshot).toBe(false);
+    const result = CaseStateSchema.safeParse(legacySnapshot);
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+    // Absent, not defaulted to an empty array -- see CaseNoteSchema's own
+    // module comment for why `notes` is optional (not `.default([])`)
+    // exactly like `view`, rather than required.
+    expect(result.success && result.data.notes).toBeUndefined();
+  });
+
+  it('parses a case carrying populated notes', () => {
+    const result = CaseStateSchema.safeParse({ ...validCaseState(), notes: [validCaseNote()] });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+    expect(result.success && result.data.notes).toEqual([validCaseNote()]);
   });
 
   it('round-trips a case carrying a case-extension obligation, criterion, and recommendation', () => {

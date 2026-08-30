@@ -174,6 +174,21 @@ export function applyCaseEvent(caseState: CaseState | null, event: CaseEvent): C
       };
     }
 
+    // §28/§29 (docs/change-sets/2026-08-30-generic-decision-workspace.md):
+    // strictly additive -- appends onto `notes` (defaulting an
+    // as-yet-untouched `undefined` to `[]`, the same optional-field pattern
+    // `CaseState.notes` itself uses; see that field's own doc comment,
+    // case.ts) and touches nothing else. This is the literal mechanism
+    // behind "notes never auto-promote to evidence": there is no code path
+    // here that reads or writes `obligations`, `recommendation`,
+    // `evidenceLinks`, or `caseExtensions`.
+    case 'note.added':
+      return {
+        ...caseState,
+        ...base,
+        notes: [...(caseState.notes ?? []), event.payload.note],
+      };
+
     case 'recommendation.invalidated':
       if (caseState.recommendation?.id !== event.payload.recommendationId) {
         // Already stale, already gone, or already superseded -- applying an

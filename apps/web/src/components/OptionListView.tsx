@@ -35,8 +35,11 @@
  * in some pack-specific sense (CLAUDE.md: "the deterministic core, not an LLM, owns ... evidence
  * validity"). What it *can* know honestly is how well-evidenced a value is, by comparing
  * `AttributeRecord.status` against the definition's declared `evidenceExpectation`
- * (`meetsEvidenceExpectation`, copied verbatim from `QuickPickView.tsx`'s function of the same
- * name). List view's three-way split just carries that one signal one step further than Quick
+ * (`meetsEvidenceExpectation`, imported from `../lib/evidence-expectation.js` -- Task C6 extracted
+ * this out of what used to be two byte-for-byte-identical copies, one here and one in
+ * `QuickPickView.tsx`, into the one shared, separately-tested module both views now import, so the
+ * single judgment that decides "well supported" versus "needs checking" cannot drift between
+ * views). List view's three-way split just carries that one signal one step further than Quick
  * Pick's two-way "why it fits" / "watch out" split, because §10 names three distinct things to
  * show, and collapsing "conflicting/under-evidenced" and "genuinely missing" into one bucket would
  * blur "what do I still need to find out" (unresolved -- no value at all) from "what should I be
@@ -77,15 +80,10 @@
  * columns.
  */
 import { useMemo } from 'react';
-import type {
-  AttributeDefinition,
-  AttributeStatus,
-  EntityRecord,
-  EvidenceExpectation,
-  PresentationDefinition,
-} from '@sift/contracts';
+import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
 import { formatAttributeValue } from './attribute-value-format.js';
 import { Badge } from '@/components/ui/badge';
+import { meetsEvidenceExpectation } from '../lib/evidence-expectation.js';
 
 export interface OptionListViewProps {
   options: EntityRecord[];
@@ -156,19 +154,6 @@ function pickProminentDefinitions(
   );
   const fallbackSource = comparisonRelevant.length > 0 ? comparisonRelevant : applicableDefinitions;
   return fallbackSource.slice(0, MAX_PROMINENT_ATTRIBUTES);
-}
-
-/** Copied verbatim from `QuickPickView.tsx` -- see that file's header comment for the full rationale on why this is the one honest, pack-agnostic signal available here. */
-function meetsEvidenceExpectation(
-  status: AttributeStatus,
-  expectation: EvidenceExpectation,
-): boolean {
-  if (status === 'unknown' || status === 'conflicted') return false;
-  if (expectation === 'verification') return status === 'verified';
-  if (expectation === 'source' || expectation === 'corroborated') {
-    return status === 'supported' || status === 'verified';
-  }
-  return true; // 'assertion' -- any resolved, non-conflicted value clears a mere-assertion bar.
 }
 
 interface CardFact {

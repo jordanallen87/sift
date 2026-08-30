@@ -64,6 +64,28 @@ function criteriaUpdatedEvent(caseId: string, sequence: number): CaseEvent {
   };
 }
 
+function noteAddedEvent(caseId: string, sequence: number, noteId = 'note-1'): CaseEvent {
+  return {
+    eventId: `${caseId}-ev-${sequence}`,
+    caseId,
+    sequence,
+    timestamp: now,
+    type: 'note.added',
+    payload: {
+      note: {
+        id: noteId,
+        body: 'The seat position felt wrong on the test drive.',
+        kind: 'observation',
+        origin: 'user',
+        authoredBy: 'user',
+        optionIds: [],
+        sourceIds: [],
+        createdAt: now,
+      },
+    },
+  };
+}
+
 function recommendationReadyEvent(caseId: string, sequence: number): CaseEvent {
   return {
     eventId: `${caseId}-ev-${sequence}`,
@@ -491,6 +513,38 @@ export function runCaseStoreContractTests(createStore: () => CaseStore): void {
       const store = createStore();
       const subscription = store.subscribe('missing');
       expect(subscription.replay).toEqual([]);
+    });
+
+    it('append() folds a note.added event, round-tripping the CaseNote through the snapshot and a fresh load() (both store implementations must agree)', () => {
+      const store = createStore();
+      store.append('case-1', [caseCreatedEvent('case-1')], 0);
+      const result = store.append('case-1', [noteAddedEvent('case-1', 2)], 1);
+
+      expect(result.status).toBe('applied');
+      if (result.status !== 'applied') throw new Error('expected applied');
+      expect(result.snapshot.notes).toHaveLength(1);
+      expect(result.snapshot.notes?.[0]?.id).toBe('note-1');
+      expect(result.snapshot.notes?.[0]?.body).toBe(
+        'The seat position felt wrong on the test drive.',
+      );
+
+      // A fresh load() (SQLite: re-parses the persisted JSON snapshot;
+      // memory: returns a structuredClone) must see the exact same note --
+      // proves the note genuinely round-trips through durable storage, not
+      // just through the in-memory `AppendResult` returned by append() itself.
+      const reloaded = store.load('case-1');
+      expect(reloaded?.notes).toEqual(result.snapshot.notes);
+    });
+
+    it('append() accumulates multiple note.added events onto the notes array in order, across two separate append() calls', () => {
+      const store = createStore();
+      store.append('case-1', [caseCreatedEvent('case-1')], 0);
+      store.append('case-1', [noteAddedEvent('case-1', 2, 'note-1')], 1);
+      const result = store.append('case-1', [noteAddedEvent('case-1', 3, 'note-2')], 2);
+
+      expect(result.status).toBe('applied');
+      if (result.status !== 'applied') throw new Error('expected applied');
+      expect(result.snapshot.notes?.map((note) => note.id)).toEqual(['note-1', 'note-2']);
     });
 
     it('subscribe().onEvent() registers a second listener for a case that already has one, and delivers a subsequent append to both', () => {

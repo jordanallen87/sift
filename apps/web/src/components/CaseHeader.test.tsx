@@ -9,6 +9,7 @@ function buildProps(overrides: Partial<CaseHeaderProps> = {}): CaseHeaderProps {
     title: 'Choose Our Next Car',
     connectionState: 'live',
     onResetDemo: vi.fn(),
+    onOpenDeveloperView: vi.fn(),
     ...overrides,
   };
 }
@@ -68,6 +69,26 @@ describe('CaseHeader', () => {
     resetButton.click();
 
     expect(onResetDemo).toHaveBeenCalledTimes(1);
+  });
+
+  // Task A5: an explicit, discoverable developer-mode entry point -- before
+  // this task there was no way to reach the Runtime Inspector without a run
+  // already having happened this session.
+  it('renders a discoverable developer-view control with an accessible name and correct role', () => {
+    render(<CaseHeader {...buildProps()} />);
+    const control = screen.getByRole('button', { name: 'Developer view' });
+    expect(control).toBeInTheDocument();
+    expect(control).toHaveAccessibleName('Developer view');
+  });
+
+  it('calls onOpenDeveloperView when the developer-view control is activated', () => {
+    const onOpenDeveloperView = vi.fn();
+    render(<CaseHeader {...buildProps({ onOpenDeveloperView })} />);
+
+    const control = screen.getByTestId('case-header-developer-view');
+    control.click();
+
+    expect(onOpenDeveloperView).toHaveBeenCalledTimes(1);
   });
 
   it('disables and relabels the reset button while a reset is pending', () => {

@@ -90,14 +90,29 @@ function countsTowardReadiness(obligation: ObligationState, caseState: CaseState
   return extension?.definition.confirmation === 'confirmed';
 }
 
+/**
+ * Change-set §33 (DoD item 33): "Questions"/"Things to Check" replace
+ * obligation jargon in consumer UI. `ReadinessPanel.tsx` renders every
+ * string this function returns verbatim to the consumer under "Why this
+ * case isn't ready yet" -- it is the only real consumer of `blockers`
+ * (`App.tsx` reads only `blockers.length`, never the text; nothing in
+ * `RuntimeInspector.tsx`'s developer surface reads it either), so this text
+ * must already be plain language at the source rather than relying on a
+ * presentation-layer translation step. "Obligation" is engine vocabulary
+ * (the `ObligationState` type name) and so is a raw `requiredEvidenceLevel`
+ * code (e.g. "E2") described as a "required evidence level" -- a person was
+ * never asked to think in evidence-level tiers. This still says WHY the
+ * question blocks readiness (never merely that it does), just without
+ * either term.
+ */
 function describeBlocker(obligation: ObligationState): string {
   if (obligation.status === 'blocked') {
-    return `"${obligation.label}" is blocked: ${obligation.attemptsUsed} of ${obligation.maxAttempts} attempts used and accepted uncertainty is not allowed for this obligation.`;
+    return `"${obligation.label}" is blocked: ${obligation.attemptsUsed} of ${obligation.maxAttempts} attempts used and accepted uncertainty is not allowed for this question.`;
   }
   if (obligation.status === 'active') {
-    return `"${obligation.label}" is still being investigated and has not yet reached its required ${obligation.requiredEvidenceLevel} evidence level.`;
+    return `"${obligation.label}" is still being investigated and doesn't have enough supporting evidence yet.`;
   }
-  return `"${obligation.label}" is open: it has not yet reached its required ${obligation.requiredEvidenceLevel} evidence level.`;
+  return `"${obligation.label}" hasn't been checked yet.`;
 }
 
 /**

@@ -47,6 +47,9 @@ export function createFakeSiftCommands(overrides: Partial<SiftCommands> = {}): S
     reviewProposal: vi.fn().mockResolvedValue(defaultReceipt),
     setEvidenceDisposition: vi.fn().mockResolvedValue(defaultReceipt),
     requestRevision: vi.fn().mockResolvedValue(defaultReceipt),
+    setView: vi.fn().mockResolvedValue(defaultReceipt),
+    setOptionAttribute: vi.fn().mockResolvedValue(defaultReceipt),
+    addNote: vi.fn().mockResolvedValue(defaultReceipt),
     ...overrides,
   };
 }

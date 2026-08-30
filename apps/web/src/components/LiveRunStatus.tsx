@@ -28,17 +28,31 @@
  *    (the caller still needs it to enable/target the "Inspect run"
  *    control, which opens the real `RuntimeInspector` developer view -- see
  *    `RecommendationHero.tsx`) -- it is simply never rendered as visible
- *    text on the consumer surface anymore. The heading also drops "Latest
- *    command" (engine vocabulary -- "command" describes how Sift
- *    implemented this, not what it means for the decision) for
- *    "Investigation status," matching change-set §4's guiding rule:
- *    "Consumer UI should explain what something means for the decision,
- *    not how Pax implemented it."
+ *    text on the consumer surface anymore.
  *
  * Every state after the instant-"Queued" moment comes only from a real
  * `PublicActivityEvent` correlated to this receipt by `runId` (preferred)
  * or `commandId` (fallback, for the brief window before a run-starting
  * command has an established `runId` on its own events).
+ *
+ * **Heading text (Task A9, `docs/superpowers/plans/
+ * 2026-08-30-generic-decision-workspace.md` Phase A).** A prior revision of
+ * this component renamed the heading from "Latest command" to
+ * "Investigation status," reasoning that "command" was engine vocabulary.
+ * Live inspection at 430px found the real cost of that framing directly:
+ * the hero could render "Nothing's been looked into yet." immediately above
+ * a heading reading "Investigation status -- Completed" describing
+ * `Added option "2022 Subaru Outback Premium AWD"` -- individually true,
+ * contradictory together, because this block can correctly show the status
+ * of a completed *command* that was never an investigation at all (fixture/
+ * demo seeding, or -- once `App.tsx`'s `deriveReceiptFromEvents` stops
+ * suppressing seed-only receipts entirely -- any other real, distinct,
+ * non-investigation command). "Investigation status" over-claimed what this
+ * block actually reports. It reports the status of the last *command*, so
+ * it is labeled "Latest command," matching what it has always actually
+ * derived its content from (`LiveRunStatusReceipt.commandId`/`runId` and
+ * their correlated `PublicActivityEvent`s) rather than a broader claim about
+ * investigation the underlying data cannot support.
  */
 import { getActivityLabel, STATUS_TONE_META } from './activity-labels.js';
 import type { PublicActivityEvent, PublicActivityPhase } from '@sift/contracts';
@@ -133,7 +147,7 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
       className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-muted p-[var(--space-3)]"
     >
       <h3 id="live-run-status-heading" className="label-caps text-[var(--color-ink-secondary)]">
-        Investigation status
+        Latest command
       </h3>
 
       <Badge

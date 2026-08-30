@@ -437,6 +437,91 @@ describe('applyCaseEvent: existing-case dispatch', () => {
     expect(next.status).toBe('draft'); // proposal.proposed never advances case status by itself.
   });
 
+  it('note.added appends a CaseNote onto an initially-absent notes array and preserves prior notes on a second append', () => {
+    const note1 = {
+      id: 'note-1',
+      body: 'The seat position felt wrong on the test drive.',
+      kind: 'observation' as const,
+      origin: 'user' as const,
+      authoredBy: 'user',
+      optionIds: ['candidate-rav4'],
+      sourceIds: [],
+      createdAt: '2026-08-27T00:00:00.000Z',
+    };
+    const withFirstNote = applyCaseEvent(
+      freshCase(),
+      baseEvent('note.added', { sequence: 1, payload: { note: note1 } }) as CaseEvent,
+    );
+    expect(withFirstNote.notes).toEqual([note1]);
+
+    const note2 = { ...note1, id: 'note-2', body: 'Dealer said timing belt done at 90k.' };
+    const withBothNotes = applyCaseEvent(
+      withFirstNote,
+      baseEvent('note.added', { sequence: 2, payload: { note: note2 } }) as CaseEvent,
+    );
+    expect(withBothNotes.notes).toEqual([note1, note2]);
+  });
+
+  it('note.added never touches obligations, criteria, or recommendation (notes never auto-promote to evidence)', () => {
+    const withReadyState = applyCaseEvent(
+      applyCaseEvent(
+        applyCaseEvent(
+          freshCase(),
+          baseEvent('criteria.updated', {
+            sequence: 1,
+            payload: { criteria: [criterion()] },
+          }) as CaseEvent,
+        ),
+        baseEvent('obligation.updated', {
+          sequence: 2,
+          payload: { obligation: obligation() },
+        }) as CaseEvent,
+      ),
+      baseEvent('recommendation.ready', {
+        sequence: 3,
+        payload: {
+          recommendation: {
+            id: 'rec1',
+            status: 'ready' as const,
+            favoredOptionId: 'candidate-rav4',
+            rationale: 'Best fit given current evidence.',
+            facts: [],
+            hypotheses: [],
+            confidence: 0.8,
+            limitations: [],
+            sourceIds: [],
+            resolvedObligationIds: [],
+            acceptedUncertaintyObligationIds: [],
+            generatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        },
+      }) as CaseEvent,
+    );
+
+    const withNote = applyCaseEvent(
+      withReadyState,
+      baseEvent('note.added', {
+        sequence: 4,
+        payload: {
+          note: {
+            id: 'note-1',
+            body: 'Just a thought.',
+            kind: 'observation' as const,
+            origin: 'user' as const,
+            authoredBy: 'user',
+            optionIds: [],
+            sourceIds: [],
+            createdAt: '2026-08-27T00:00:00.000Z',
+          },
+        },
+      }) as CaseEvent,
+    );
+
+    expect(withNote.obligations).toEqual(withReadyState.obligations);
+    expect(withNote.criteria).toEqual(withReadyState.criteria);
+    expect(withNote.recommendation).toEqual(withReadyState.recommendation);
+  });
+
   it('proposal.reviewed sets status to decided only on an approved proposal', () => {
     const approved = applyCaseEvent(
       freshCase(),

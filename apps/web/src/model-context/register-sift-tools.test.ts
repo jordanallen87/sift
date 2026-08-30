@@ -86,9 +86,9 @@ describe('registerSiftTools: registration lifecycle', () => {
     expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_SIFT_TOOL_NAMES].sort());
   });
 
-  it('registers the fifteen case-scoped tools once an active case is set', async () => {
+  it('registers the twenty case-scoped tools once an active case is set', async () => {
     const { adapter } = await setUpWithActiveCase('case-1');
-    expect(adapter.registeredToolNames).toHaveLength(17);
+    expect(adapter.registeredToolNames).toHaveLength(22);
     expect(adapter.registeredToolNames).toContain('sift_select_pack');
     expect(adapter.registeredToolNames).toContain('sift_request_revision');
     expect(adapter.registeredToolNames).toContain('sift_get_option_details');
@@ -96,6 +96,11 @@ describe('registerSiftTools: registration lifecycle', () => {
     expect(adapter.registeredToolNames).toContain('sift_search_catalog');
     expect(adapter.registeredToolNames).toContain('sift_set_view');
     expect(adapter.registeredToolNames).toContain('sift_configure_comparison');
+    expect(adapter.registeredToolNames).toContain('sift_get_decision_guide');
+    expect(adapter.registeredToolNames).toContain('sift_focus_question');
+    expect(adapter.registeredToolNames).toContain('sift_set_option_attribute');
+    expect(adapter.registeredToolNames).toContain('sift_list_notes');
+    expect(adapter.registeredToolNames).toContain('sift_add_note');
   });
 
   it('aborts the previous case-scoped generation when the active case changes', async () => {
@@ -139,7 +144,7 @@ describe('registerSiftTools: registration lifecycle', () => {
     });
 
     await handle.setActiveCase('case-1');
-    expect(adapter.registeredToolNames).toHaveLength(17);
+    expect(adapter.registeredToolNames).toHaveLength(22);
 
     await handle.setActiveCase(null);
     expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_SIFT_TOOL_NAMES].sort());
@@ -295,6 +300,31 @@ const CASE_TOOL_FIXTURES: CaseToolFixture[] = [
     }),
     expectedFocusTarget: (input) => input['proposalId'] as string,
   },
+  {
+    toolName: 'sift_set_option_attribute',
+    commandMethod: 'setOptionAttribute',
+    buildInput: (caseId) => ({
+      caseId,
+      optionId: 'opt-1',
+      expectedSequence: 1,
+      attribute: {
+        definitionId: 'price',
+        value: { type: 'money', amount: 25_000, currency: 'USD' },
+        status: 'asserted',
+        origin: 'user',
+      },
+    }),
+    expectedFocusTarget: (input) => input['optionId'] as string,
+  },
+  {
+    toolName: 'sift_add_note',
+    commandMethod: 'addNote',
+    buildInput: (caseId) => ({
+      caseId,
+      expectedSequence: 1,
+      note: { body: 'The seat position felt wrong on the test drive.' },
+    }),
+  },
 ];
 
 describe.each(CASE_TOOL_FIXTURES)(
@@ -313,7 +343,7 @@ describe.each(CASE_TOOL_FIXTURES)(
       const input = buildInput('case-1');
       const result = await invokeTool(adapter, toolName, input);
 
-      expect(commands[commandMethod]).toHaveBeenCalledWith(input);
+      expect(commands[commandMethod]).toHaveBeenCalledWith(input, { origin: 'webmcp' });
       expect(commandMock).toHaveBeenCalledTimes(1);
       expect(result.ok).toBe(true);
       expect(result.commandId).toBe(receipt.commandId);
@@ -385,7 +415,7 @@ describe('sift_upsert_option: optionId-dependent ui.focusTarget', () => {
     expect(result.ok).toBe(true);
     expect(result.ui.changed).toBe(true);
     expect(result.ui.focusTarget).toBeUndefined();
-    expect(commandMock).toHaveBeenCalledWith(input);
+    expect(commandMock).toHaveBeenCalledWith(input, { origin: 'webmcp' });
   });
 });
 
@@ -884,7 +914,7 @@ describe('callback-vs-envelope equivalence', () => {
 });
 
 describe('no tool can approve or reject a decision proposal', () => {
-  it('never calls commands.reviewProposal from any of the seventeen registered tools', async () => {
+  it('never calls commands.reviewProposal from any of the twenty-two registered tools', async () => {
     const reviewProposal = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
     const { adapter, commands } = await setUpWithActiveCase('case-1', { reviewProposal });
 
@@ -893,17 +923,31 @@ describe('no tool can approve or reject a decision proposal', () => {
     }
     await invokeTool(adapter, 'sift_get_case_context', {});
     await invokeTool(adapter, 'sift_list_packs', {});
-    // The five tools this task adds (docs/decisions/0006-webmcp-two-way-
-    // collaboration-contract.md): three reads with no `SiftCommands`
-    // dependency at all, plus the two presentation tools -- empirically
-    // invoked here too rather than only reasoned about structurally.
+    // The seven tools with no `SiftCommands` dependency at all (four reads
+    // plus sift_get_decision_guide, sift_list_research, sift_list_notes) --
+    // empirically invoked here too rather than only reasoned about
+    // structurally.
     await invokeTool(adapter, 'sift_get_option_details', { caseId: 'case-1', optionId: 'opt-1' });
     await invokeTool(adapter, 'sift_list_research', { caseId: 'case-1' });
+    await invokeTool(adapter, 'sift_list_notes', { caseId: 'case-1' });
     await invokeTool(adapter, 'sift_search_catalog', { caseId: 'case-1' });
-    await invokeTool(adapter, 'sift_set_view', { caseId: 'case-1', mode: 'list' });
+    await invokeTool(adapter, 'sift_get_decision_guide', { caseId: 'case-1' });
+    // The three PRESENTATION tools -- genuinely reach `commands.setView` now
+    // (never `reviewProposal`), so `expectedSequence` is supplied for real.
+    await invokeTool(adapter, 'sift_set_view', {
+      caseId: 'case-1',
+      mode: 'list',
+      expectedSequence: 1,
+    });
     await invokeTool(adapter, 'sift_configure_comparison', {
       caseId: 'case-1',
       visibleAttributeIds: ['price'],
+      expectedSequence: 1,
+    });
+    await invokeTool(adapter, 'sift_focus_question', {
+      caseId: 'case-1',
+      questionId: 'obl-1',
+      expectedSequence: 1,
     });
 
     expect(commands.reviewProposal).not.toHaveBeenCalled();

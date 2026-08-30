@@ -21,6 +21,10 @@ recording. Every non-numeric claim (candidate IDs, tool names, event names,
 UI labels, the two verbatim user lines, the "Draft withheld" copy, the closing
 claim) is copied directly from the specs and must not be altered.
 
+## Note on the current workspace layout
+
+The consumer workspace was restructured after this script was first written (`docs/decisions/0004-consumer-workspace-information-architecture.md`, `0005-workspace-view-state-and-option-views.md`). Concretely: the former separate "Our pick" / "Your decision" cards this script's beats reference are now one merged hero region (`RecommendationHero`, which composes the same approve control this script cites, so `data-testid` references below should still resolve, but "scroll to the Approval card" now means "the approval control inside the hero," not a separately-scrolled card); the raw chronological activity ledger is developer-only content reached through the Runtime Inspector rather than a consumer-surface scroll target; and the primary workspace body is now a Quick Pick/List/Compare/Board view switcher rather than a single always-expanded comparison table — §58/§59's "model reconfigures the comparison table" and "Quick Pick shared focus" showcase moments (see `docs/specs/demos-and-submission.md`) are now buildable against real UI and are worth considering as additions to this script. Re-verify every on-screen position, scroll target, and exact visible copy against the live build immediately before recording rather than trusting the staging directions below verbatim — they were accurate against an earlier layout and have not been re-walked against the current one as of this pass.
+
 ## Recording spine
 
 | Beat | Window | Duration |

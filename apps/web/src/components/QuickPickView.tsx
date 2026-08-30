@@ -46,15 +46,11 @@
  * hard-coding car-shopping judgments like "excellent cargo space."
  */
 import { useEffect, useMemo } from 'react';
-import type {
-  AttributeDefinition,
-  AttributeStatus,
-  EntityRecord,
-  EvidenceExpectation,
-} from '@sift/contracts';
+import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatAttributeValue } from './attribute-value-format.js';
+import { meetsEvidenceExpectation } from '../lib/evidence-expectation.js';
 
 export interface QuickPickViewProps {
   /** The full triage queue, in the caller's order. Only `options[position]` is rendered -- one option dominates the pane (change set §9). */
@@ -77,27 +73,6 @@ export interface QuickPickViewProps {
 // than growing without bound for an option with many attributes.
 const MAX_HIGHLIGHT_ATTRIBUTES = 4;
 const MAX_INSIGHT_ITEMS = 4;
-
-/**
- * Whether `status` satisfies `expectation`'s evidence bar. `conflicted` and
- * `unknown` never satisfy any expectation -- both mean the pane cannot
- * stand behind the value. There is no `AttributeStatus` literally named
- * "corroborated" (`packages/contracts/src/attributes.ts`'s `ATTRIBUTE_STATUSES`
- * has only `asserted | supported | verified | conflicted | unknown`), so an
- * `evidenceExpectation: 'corroborated'` definition is treated the same as
- * `'source'`: satisfied by `supported` or `verified`.
- */
-function meetsEvidenceExpectation(
-  status: AttributeStatus,
-  expectation: EvidenceExpectation,
-): boolean {
-  if (status === 'unknown' || status === 'conflicted') return false;
-  if (expectation === 'verification') return status === 'verified';
-  if (expectation === 'source' || expectation === 'corroborated') {
-    return status === 'supported' || status === 'verified';
-  }
-  return true; // 'assertion' -- any resolved, non-conflicted value clears a mere-assertion bar.
-}
 
 interface AttributeInsight {
   definitionId: string;

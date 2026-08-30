@@ -1,7 +1,7 @@
 /**
  * Shared, pure `AttributeValue` -> display-string formatter used by both
  * `DynamicAttributeField.tsx` (a read-affordance alongside its editable
- * control) and `OptionComparison.tsx` (rendering each option's attribute
+ * control) and `OptionCompareView.tsx` (rendering each option's attribute
  * cells). Kept in one place so the ten `AttributeValue` variants
  * (`packages/contracts/src/attributes.ts`) are described consistently
  * everywhere they are shown, rather than each renderer inventing its own

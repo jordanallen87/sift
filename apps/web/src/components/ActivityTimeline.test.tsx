@@ -59,10 +59,11 @@ describe('ActivityTimeline', () => {
     const item = screen.getByTestId('activity-item-event-1');
     // Label text refined per `docs/decisions/
     // 0004-consumer-workspace-information-architecture.md` decision item 3
-    // (activity-labels.ts extended toward change-set §4's "Evidence ->
-    // Research/Source/Fact" terminology) -- still a safe, non-raw label,
-    // just no longer using "Evidence" verbatim.
-    expect(item).toHaveTextContent('Conflicting findings found');
+    // and Task A6 (activity-labels.ts extended toward the literal
+    // change-set §48 example pairing -- "Research disagrees" <->
+    // `evidence.conflicted`) -- still a safe, non-raw label, just no longer
+    // using "Evidence"/"Conflicting" verbatim.
+    expect(item).toHaveTextContent('Research disagrees');
     expect(item).not.toHaveTextContent('evidence.conflicted');
   });
 
@@ -172,6 +173,53 @@ describe('ActivityTimeline', () => {
     expect(onInspectRun).toHaveBeenCalledWith('run-42');
   });
 
+  // Task I2b: the exact-event-level half of "a consumer event opens its
+  // exact runtime event" -- distinct from "Inspect run" above, which only
+  // jumps to the run's Overview, not a specific correlated event.
+  it('does not render an "Inspect event" button when onInspectEvent is not provided', () => {
+    render(
+      <ActivityTimeline events={[buildEvent({ runId: 'run-1', debugEventId: 'debug-1' })]} />,
+    );
+    expect(screen.queryByTestId('activity-item-inspect-event-event-1')).not.toBeInTheDocument();
+  });
+
+  it('does not render an "Inspect event" button for an event with no debugEventId, even when onInspectEvent is provided (global constraint 4: never render what cannot be true)', () => {
+    render(
+      <ActivityTimeline
+        events={[buildEvent({ runId: 'run-1', debugEventId: undefined })]}
+        onInspectEvent={() => undefined}
+      />,
+    );
+    expect(screen.queryByTestId('activity-item-inspect-event-event-1')).not.toBeInTheDocument();
+  });
+
+  it('does not render an "Inspect event" button for an event with a debugEventId but no runId, even when onInspectEvent is provided', () => {
+    render(
+      <ActivityTimeline
+        events={[buildEvent({ runId: undefined, debugEventId: 'debug-1' })]}
+        onInspectEvent={() => undefined}
+      />,
+    );
+    expect(screen.queryByTestId('activity-item-inspect-event-event-1')).not.toBeInTheDocument();
+  });
+
+  it('renders an "Inspect event" button for a fully correlated event and calls back with its runId and debugEventId', async () => {
+    const onInspectEvent = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ActivityTimeline
+        events={[buildEvent({ runId: 'run-42', debugEventId: 'debug-99' })]}
+        onInspectEvent={onInspectEvent}
+      />,
+    );
+
+    const button = screen.getByTestId('activity-item-inspect-event-event-1');
+    expect(button).toHaveAccessibleName();
+    await user.click(button);
+
+    expect(onInspectEvent).toHaveBeenCalledWith('run-42', 'debug-99');
+  });
+
   it('renders a recoverable error while preserving the last valid events underneath', () => {
     render(
       <ActivityTimeline
@@ -193,6 +241,15 @@ describe('ActivityTimeline', () => {
 
     const { container: populated } = render(<ActivityTimeline events={[buildEvent()]} />);
     expect(await axe(populated)).toHaveNoViolations();
+
+    const { container: withInspectButtons } = render(
+      <ActivityTimeline
+        events={[buildEvent({ runId: 'run-1', debugEventId: 'debug-1' })]}
+        onInspectRun={() => undefined}
+        onInspectEvent={() => undefined}
+      />,
+    );
+    expect(await axe(withInspectButtons)).toHaveNoViolations();
 
     const { container: errored } = render(
       <ActivityTimeline events={[buildEvent()]} error="Lost connection." />,

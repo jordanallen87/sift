@@ -86,6 +86,7 @@
  *    went unlinked and why -- an honest degradation, not a silent drop.
  */
 import {
+  AddNoteInputSchema,
   DefineCaseAttributeInputSchema,
   FocusEvidenceInputSchema,
   FocusOptionInputSchema,
@@ -94,6 +95,8 @@ import {
   RequestRevisionInputSchema,
   SelectPackInputSchema,
   SetEvidenceDispositionInputSchema,
+  SetOptionAttributeInputSchema,
+  SetViewInputSchema,
   StartCaseInputSchema,
   StartDemoInputSchema,
   SubmitSourceInputSchema,
@@ -102,8 +105,10 @@ import {
   type AttributeRecord,
   type CaseEvent,
   type CaseAttributeOrigin,
+  type CaseNote,
   type CaseState,
   type Claim,
+  type CommandOrigin,
   type CommandReceipt,
   type CompiledDecisionPack,
   type Criterion,
@@ -366,7 +371,11 @@ export class CommandService {
     return this.toReceipt(commandId, result);
   }
 
-  selectPack(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+  selectPack(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
     const parsed = SelectPackInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return validationFailure('Invalid selectPack input.', formatZodIssues(parsed.error.issues));
@@ -408,19 +417,26 @@ export class CommandService {
       idempotency: { commandId, commandName: 'selectPack' },
     });
     if (result.status === 'applied') {
-      this.emitActivity({
-        timestamp: now,
-        caseId: input.caseId,
-        commandId,
-        type: 'command.accepted',
-        phase: 'completed',
-        summary: `Selected Decision Pack "${pack.identity.id}".`,
-      });
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: `Selected Decision Pack "${pack.identity.id}".`,
+        },
+        commandOrigin,
+      );
     }
     return this.toReceipt(commandId, result);
   }
 
-  upsertOption(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+  upsertOption(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
     const parsed = UpsertOptionInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return validationFailure('Invalid upsertOption input.', formatZodIssues(parsed.error.issues));
@@ -525,29 +541,319 @@ export class CommandService {
       idempotency: { commandId, commandName: 'upsertOption' },
     });
     if (result.status === 'applied') {
-      this.emitActivity({
-        timestamp: now,
-        caseId: input.caseId,
-        commandId,
-        type: 'command.accepted',
-        phase: 'completed',
-        summary: `${existingEntity !== undefined ? 'Updated' : 'Added'} option "${entity.label}".`,
-      });
-      if (invalidatesRecommendation) {
-        this.emitActivity({
+      this.emitActivity(
+        {
           timestamp: now,
           caseId: input.caseId,
           commandId,
-          type: 'recommendation.invalidated',
+          type: 'command.accepted',
           phase: 'completed',
-          summary: 'Recommendation invalidated: a dependent option attribute changed.',
-        });
+          summary: `${existingEntity !== undefined ? 'Updated' : 'Added'} option "${entity.label}".`,
+        },
+        commandOrigin,
+      );
+      if (invalidatesRecommendation) {
+        this.emitActivity(
+          {
+            timestamp: now,
+            caseId: input.caseId,
+            commandId,
+            type: 'recommendation.invalidated',
+            phase: 'completed',
+            summary: 'Recommendation invalidated: a dependent option attribute changed.',
+          },
+          commandOrigin,
+        );
       }
     }
     return this.toReceipt(commandId, result);
   }
 
-  focusOption(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+  /**
+   * ADR 0006 decision 4: writes exactly one attribute on one EXISTING
+   * option, merging it into the entity's attributes map rather than
+   * replacing the whole map the way `upsertOption` does. This IS decision
+   * mutation (an option's attribute values are decision-relevant state), so
+   * it goes through `append()`, not `updateSelection()` -- unlike
+   * `setView`/`focusOption` immediately above and below it.
+   *
+   * No new `CaseEvent` variant is introduced: the merged attributes map is
+   * emitted as the existing `option.upserted` event, keeping the event
+   * union stable and every existing reducer/readiness/invalidation path
+   * unchanged. `createAttributeRecord` is called exactly the way
+   * `upsertOption` calls it (same defaults: `origin ?? 'user'`,
+   * `status ?? 'asserted'`), enforcing the identical asserted/unknown
+   * cross-field invariant.
+   *
+   * Unlike `upsertOption`, both `optionId` and `attribute.definitionId` are
+   * validated to actually exist on the case before any write is attempted
+   * -- an unknown option or an attribute id declared nowhere on the case
+   * (neither `attributeDefinitions` nor a `caseExtensions` entry) is a clean
+   * validation error, never a silent no-op, per this command's narrower,
+   * more authoritative contract.
+   */
+  setOptionAttribute(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
+    const parsed = SetOptionAttributeInputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return validationFailure(
+        'Invalid setOptionAttribute input.',
+        formatZodIssues(parsed.error.issues),
+      );
+    }
+    const input = parsed.data;
+
+    const duplicate = this.checkIdempotent(commandId);
+    if (duplicate !== undefined) return duplicate;
+
+    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
+    if (loaded.status !== 'ok') return loaded;
+    const snapshot = loaded.value;
+
+    const existingEntity = snapshot.entities.find((entity) => entity.id === input.optionId);
+    if (existingEntity === undefined) {
+      return validationFailure(
+        `Option "${input.optionId}" was not found on case "${input.caseId}".`,
+      );
+    }
+
+    const definitionId = input.attribute.definitionId;
+    const definitionExists =
+      snapshot.attributeDefinitions.some((definition) => definition.id === definitionId) ||
+      snapshot.caseExtensions.some((extension) => extension.definition.id === definitionId);
+    if (!definitionExists) {
+      return validationFailure(
+        `Attribute definition "${definitionId}" was not found on case "${input.caseId}".`,
+      );
+    }
+
+    const now = this.deps.clock.now();
+    const recordResult = createAttributeRecord(
+      {
+        definitionId,
+        label: input.attribute.label ?? definitionId,
+        origin: input.attribute.origin ?? 'user',
+        status: input.attribute.status ?? 'asserted',
+        ...(input.attribute.value !== undefined ? { value: input.attribute.value } : {}),
+        ...(input.attribute.confidence !== undefined
+          ? { confidence: input.attribute.confidence }
+          : {}),
+        ...(input.attribute.sourceIds !== undefined
+          ? { sourceIds: input.attribute.sourceIds }
+          : {}),
+      },
+      this.deps.clock,
+    );
+    if (!recordResult.ok) {
+      return validationFailure('Invalid option attribute.', recordResult.errors);
+    }
+
+    const entity: EntityRecord = {
+      ...existingEntity,
+      attributes: { ...existingEntity.attributes, [definitionId]: recordResult.value },
+      updatedAt: now,
+    };
+
+    const events: CaseEvent[] = [
+      {
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: snapshot.eventSequence + 1,
+        timestamp: now,
+        commandId,
+        type: 'option.upserted',
+        payload: { entity },
+      },
+    ];
+
+    // Same "does a ready recommendation actually depend on this" rule
+    // `upsertOption` uses -- see `criteriaDependOnAttributes`'s own doc
+    // comment.
+    const invalidatesRecommendation =
+      snapshot.recommendation !== null &&
+      snapshot.recommendation.status === 'ready' &&
+      this.criteriaDependOnAttributes(snapshot.criteria, new Set([definitionId]));
+    if (invalidatesRecommendation && snapshot.recommendation !== null) {
+      events.push({
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: snapshot.eventSequence + 2,
+        timestamp: now,
+        commandId,
+        type: 'recommendation.invalidated',
+        payload: {
+          recommendationId: snapshot.recommendation.id,
+          reason: 'A comparison attribute the recommendation depends on changed.',
+        },
+      });
+    }
+
+    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
+      idempotency: { commandId, commandName: 'setOptionAttribute' },
+    });
+    if (result.status === 'applied') {
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: `Set option "${existingEntity.label}" attribute "${definitionId}".`,
+        },
+        commandOrigin,
+      );
+      if (invalidatesRecommendation) {
+        this.emitActivity(
+          {
+            timestamp: now,
+            caseId: input.caseId,
+            commandId,
+            type: 'recommendation.invalidated',
+            phase: 'completed',
+            summary: 'Recommendation invalidated: a dependent option attribute changed.',
+          },
+          commandOrigin,
+        );
+      }
+    }
+    return this.toReceipt(commandId, result);
+  }
+
+  /**
+   * `addNote` (docs/change-sets/2026-08-30-generic-decision-workspace.md §28
+   * "Notes"/§29 "WebMCP should be able to add research and notes"): appends
+   * a `CaseNote` -- a human's or the model's observation attached to a case
+   * that is real, first-class content but deliberately NOT evidence ("Not
+   * every thought belongs as evidence, criterion, or attribute", §28).
+   *
+   * Unlike `submitSource` (which records a `Source` through
+   * `updateSelection()`, since no `CaseEvent` variant touches `sources`), a
+   * note IS event-sourced (`note.added`, events.ts) and flows through
+   * `append()` like every other canonical mutation -- there is no
+   * architectural reason to route it through the non-event `SelectionPatch`
+   * escape hatch the way `sources`/`view`/the selection ids currently must.
+   *
+   * Deliberately touches nothing else: no obligation, no recommendation, no
+   * evidence link, no case extension, and (unlike `upsertOption`/
+   * `setOptionAttribute`/`updateCriteria`/`setEvidenceDisposition`/
+   * `reviewCaseExtension`) never appends a `recommendation.invalidated`
+   * event either. This absence is the concrete mechanism behind "notes
+   * never auto-promote to evidence" (CLAUDE.md's deterministic-core
+   * ownership of evidence validity/readiness/human authority): adding a
+   * note can never satisfy an obligation, invalidate a `ready`
+   * recommendation, or appear as a `Source`, because the command that
+   * creates one has no code path that reads or writes any of those fields.
+   *
+   * `optionIds`/`obligationId` are validated to actually exist on the case
+   * (same "clean validation error, never a silent no-op" contract
+   * `setOptionAttribute` already applies to `optionId`/`attribute.
+   * definitionId`) so a note can never durably reference a dangling id.
+   *
+   * `origin`/`authoredBy` mirror `defineCaseAttribute`'s exact `origin ===
+   * 'user' ? 'user' : 'model'` convention -- see `CaseNoteSchema`'s own doc
+   * comment (`@sift/contracts` case.ts) for why this reuses
+   * `CASE_ATTRIBUTE_ORIGINS` rather than a parallel vocabulary.
+   *
+   * The public activity summary deliberately never echoes `note.body`
+   * verbatim (a note is user-entered free text) -- it states only that a
+   * note was added and, when present, how many options it references,
+   * matching `submitSource`'s own summary, which likewise never echoes
+   * `source.excerpt` or claim statements into the sanitized activity
+   * stream.
+   */
+  addNote(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
+    const parsed = AddNoteInputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return validationFailure('Invalid addNote input.', formatZodIssues(parsed.error.issues));
+    }
+    const input = parsed.data;
+    const origin: CaseAttributeOrigin = input.origin ?? 'user';
+
+    const duplicate = this.checkIdempotent(commandId);
+    if (duplicate !== undefined) return duplicate;
+
+    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
+    if (loaded.status !== 'ok') return loaded;
+    const snapshot = loaded.value;
+
+    const optionIds = input.note.optionIds ?? [];
+    const unknownOptionIds = optionIds.filter(
+      (optionId) => !snapshot.entities.some((entity) => entity.id === optionId),
+    );
+    if (unknownOptionIds.length > 0) {
+      return validationFailure(
+        `Note references option id(s) not found on case "${input.caseId}": ${unknownOptionIds.join(', ')}.`,
+      );
+    }
+    if (
+      input.note.obligationId !== undefined &&
+      !snapshot.obligations.some((obligation) => obligation.id === input.note.obligationId)
+    ) {
+      return validationFailure(
+        `Obligation "${input.note.obligationId}" was not found on case "${input.caseId}".`,
+      );
+    }
+
+    const now = this.deps.clock.now();
+    const note: CaseNote = {
+      id: this.deps.idGenerator.next('note'),
+      body: input.note.body,
+      kind: input.note.kind ?? 'observation',
+      origin,
+      authoredBy: origin === 'user' ? 'user' : 'model',
+      optionIds,
+      ...(input.note.obligationId !== undefined ? { obligationId: input.note.obligationId } : {}),
+      sourceIds: input.note.sourceIds ?? [],
+      createdAt: now,
+    };
+
+    const events: CaseEvent[] = [
+      {
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: snapshot.eventSequence + 1,
+        timestamp: now,
+        commandId,
+        type: 'note.added',
+        payload: { note },
+      },
+    ];
+
+    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
+      idempotency: { commandId, commandName: 'addNote' },
+    });
+    if (result.status === 'applied') {
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary:
+            optionIds.length > 0
+              ? `Added a note about ${optionIds.length} option${optionIds.length === 1 ? '' : 's'}.`
+              : 'Added a note.',
+        },
+        commandOrigin,
+      );
+    }
+    return this.toReceipt(commandId, result);
+  }
+
+  focusOption(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
     const parsed = FocusOptionInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return validationFailure('Invalid focusOption input.', formatZodIssues(parsed.error.issues));
@@ -576,14 +882,69 @@ export class CommandService {
       { commandId, commandName: 'focusOption' },
     );
     if (result.status === 'applied') {
-      this.emitActivity({
-        timestamp: now,
-        caseId: input.caseId,
-        commandId,
-        type: 'command.accepted',
-        phase: 'completed',
-        summary: `Focused option "${input.optionId}".`,
-      });
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: `Focused option "${input.optionId}".`,
+        },
+        commandOrigin,
+      );
+    }
+    return this.toReceipt(commandId, result);
+  }
+
+  /**
+   * docs/decisions/0005-workspace-view-state-and-option-views.md "Decision"
+   * §1: `WorkspaceViewState` is presentation state, not a decision
+   * mutation, so this routes through `CaseStore.updateSelection()` -- NOT
+   * `append()` -- exactly like `focusOption`/`focusEvidence` immediately
+   * above. This is the property that makes §54 ("presentation is not
+   * decision mutation") true by construction rather than by convention: a
+   * view-only patch structurally cannot reach `append()`/`applyCaseEvent`,
+   * so it can never advance `eventSequence` or invalidate a
+   * `recommendation`.
+   */
+  setView(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
+    const parsed = SetViewInputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return validationFailure('Invalid setView input.', formatZodIssues(parsed.error.issues));
+    }
+    const input = parsed.data;
+
+    const duplicate = this.checkIdempotent(commandId);
+    if (duplicate !== undefined) return duplicate;
+
+    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
+    if (loaded.status !== 'ok') return loaded;
+
+    const now = this.deps.clock.now();
+    const result = this.deps.caseStore.updateSelection(
+      input.caseId,
+      { view: input.view },
+      input.expectedSequence,
+      now,
+      { commandId, commandName: 'setView' },
+    );
+    if (result.status === 'applied') {
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: `Set workspace view to "${input.view.mode}".`,
+        },
+        commandOrigin,
+      );
     }
     return this.toReceipt(commandId, result);
   }
@@ -605,11 +966,22 @@ export class CommandService {
    * omits `origin` from the body) keeps its exact current behavior
    * unchanged -- `input.origin` is `undefined` in that case, so the
    * expression falls through to `originParam`.
+   *
+   * `commandOrigin` (4th parameter) is an unrelated concept, added by I1 --
+   * do not confuse it with `originParam`/`origin` above. `originParam`/
+   * `origin` is a *domain* field (`CaseAttributeOrigin`: did a human or the
+   * model define this attribute? -- it changes whether the extension is
+   * auto-confirmed and gates a real branch in this method's own logic).
+   * `commandOrigin` is a *transport* marker (`CommandOrigin`: did this
+   * command arrive over a WebMCP tool call? -- see `emitActivity`'s doc
+   * comment) that only affects what gets recorded on the activity trail
+   * and never participates in any decision this method makes.
    */
   defineCaseAttribute(
     commandId: string,
     rawInput: unknown,
     originParam: CaseAttributeOrigin = 'user',
+    commandOrigin?: CommandOrigin,
   ): ServiceResult<CommandReceipt> {
     const parsed = DefineCaseAttributeInputSchema.safeParse(rawInput);
     if (!parsed.success) {
@@ -683,19 +1055,26 @@ export class CommandService {
       idempotency: { commandId, commandName: 'defineCaseAttribute' },
     });
     if (result.status === 'applied') {
-      this.emitActivity({
-        timestamp: now,
-        caseId: input.caseId,
-        commandId,
-        type: origin === 'user' ? 'command.accepted' : 'intervention.confirmation_required',
-        phase: origin === 'user' ? 'completed' : 'waiting',
-        summary: `${origin === 'user' ? 'Defined' : 'Proposed'} case attribute "${input.definition.id}".`,
-      });
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: origin === 'user' ? 'command.accepted' : 'intervention.confirmation_required',
+          phase: origin === 'user' ? 'completed' : 'waiting',
+          summary: `${origin === 'user' ? 'Defined' : 'Proposed'} case attribute "${input.definition.id}".`,
+        },
+        commandOrigin,
+      );
     }
     return this.toReceipt(commandId, result);
   }
 
-  reviewCaseExtension(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+  reviewCaseExtension(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
     const parsed = ReviewCaseExtensionInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return validationFailure(
@@ -770,29 +1149,39 @@ export class CommandService {
       idempotency: { commandId, commandName: 'reviewCaseExtension' },
     });
     if (result.status === 'applied') {
-      this.emitActivity({
-        timestamp: now,
-        caseId: input.caseId,
-        commandId,
-        type: 'command.accepted',
-        phase: 'completed',
-        summary: `${input.decision === 'confirm' ? 'Confirmed' : 'Rejected'} case extension "${input.extensionId}".`,
-      });
-      if (invalidatesRecommendation) {
-        this.emitActivity({
+      this.emitActivity(
+        {
           timestamp: now,
           caseId: input.caseId,
           commandId,
-          type: 'recommendation.invalidated',
+          type: 'command.accepted',
           phase: 'completed',
-          summary: 'Recommendation invalidated: a confirmed case extension changed.',
-        });
+          summary: `${input.decision === 'confirm' ? 'Confirmed' : 'Rejected'} case extension "${input.extensionId}".`,
+        },
+        commandOrigin,
+      );
+      if (invalidatesRecommendation) {
+        this.emitActivity(
+          {
+            timestamp: now,
+            caseId: input.caseId,
+            commandId,
+            type: 'recommendation.invalidated',
+            phase: 'completed',
+            summary: 'Recommendation invalidated: a confirmed case extension changed.',
+          },
+          commandOrigin,
+        );
       }
     }
     return this.toReceipt(commandId, result);
   }
 
-  focusEvidence(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+  focusEvidence(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
     const parsed = FocusEvidenceInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return validationFailure(
@@ -824,19 +1213,26 @@ export class CommandService {
       { commandId, commandName: 'focusEvidence' },
     );
     if (result.status === 'applied') {
-      this.emitActivity({
-        timestamp: now,
-        caseId: input.caseId,
-        commandId,
-        type: 'command.accepted',
-        phase: 'completed',
-        summary: `Focused evidence "${input.evidenceId}".`,
-      });
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: `Focused evidence "${input.evidenceId}".`,
+        },
+        commandOrigin,
+      );
     }
     return this.toReceipt(commandId, result);
   }
 
-  updateCriteria(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+  updateCriteria(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
     const parsed = UpdateCriteriaInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return validationFailure(
@@ -1010,23 +1406,29 @@ export class CommandService {
       idempotency: { commandId, commandName: 'updateCriteria' },
     });
     if (result.status === 'applied') {
-      this.emitActivity({
-        timestamp: now,
-        caseId: input.caseId,
-        commandId,
-        type: 'command.accepted',
-        phase: 'completed',
-        summary: `Updated criteria (${input.operations.length} change${input.operations.length === 1 ? '' : 's'}).`,
-      });
-      if (invalidatesRecommendation) {
-        this.emitActivity({
+      this.emitActivity(
+        {
           timestamp: now,
           caseId: input.caseId,
           commandId,
-          type: 'recommendation.invalidated',
+          type: 'command.accepted',
           phase: 'completed',
-          summary: 'Recommendation invalidated: criteria changed.',
-        });
+          summary: `Updated criteria (${input.operations.length} change${input.operations.length === 1 ? '' : 's'}).`,
+        },
+        commandOrigin,
+      );
+      if (invalidatesRecommendation) {
+        this.emitActivity(
+          {
+            timestamp: now,
+            caseId: input.caseId,
+            commandId,
+            type: 'recommendation.invalidated',
+            phase: 'completed',
+            summary: 'Recommendation invalidated: criteria changed.',
+          },
+          commandOrigin,
+        );
       }
     }
     return this.toReceipt(commandId, result);
@@ -1076,7 +1478,11 @@ export class CommandService {
    * claim's truth or reliability that nothing in the input actually
    * supports.
    */
-  submitSource(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+  submitSource(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
     const parsed = SubmitSourceInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return validationFailure('Invalid submitSource input.', formatZodIssues(parsed.error.issues));
@@ -1206,19 +1612,26 @@ export class CommandService {
           `${unlinkedClaimCount} claim${unlinkedClaimCount === 1 ? '' : 's'} not linked: no obligationId was supplied.`,
         );
       }
-      this.emitActivity({
-        timestamp: now,
-        caseId: input.caseId,
-        commandId,
-        type: 'command.accepted',
-        phase: 'completed',
-        summary: summaryParts.join(' '),
-      });
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: summaryParts.join(' '),
+        },
+        commandOrigin,
+      );
     }
     return this.toReceipt(commandId, result);
   }
 
-  setEvidenceDisposition(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+  setEvidenceDisposition(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
     const parsed = SetEvidenceDispositionInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return validationFailure(
@@ -1282,19 +1695,26 @@ export class CommandService {
       idempotency: { commandId, commandName: 'setEvidenceDisposition' },
     });
     if (result.status === 'applied') {
-      this.emitActivity({
-        timestamp: now,
-        caseId: input.caseId,
-        commandId,
-        type: 'evidence.accepted',
-        phase: 'completed',
-        summary: `Set evidence "${input.evidenceId}" disposition to "${input.disposition}".`,
-      });
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'evidence.accepted',
+          phase: 'completed',
+          summary: `Set evidence "${input.evidenceId}" disposition to "${input.disposition}".`,
+        },
+        commandOrigin,
+      );
     }
     return this.toReceipt(commandId, result);
   }
 
-  requestRevision(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+  requestRevision(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
     const parsed = RequestRevisionInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return validationFailure(
@@ -1315,10 +1735,15 @@ export class CommandService {
         expectedSequence: input.expectedSequence,
       },
       'requestRevision',
+      commandOrigin,
     );
   }
 
-  reviewProposal(commandId: string, rawInput: unknown): ServiceResult<CommandReceipt> {
+  reviewProposal(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
     const parsed = ReviewProposalInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return validationFailure(
@@ -1326,13 +1751,14 @@ export class CommandService {
         formatZodIssues(parsed.error.issues),
       );
     }
-    return this.applyProposalReview(commandId, parsed.data, 'reviewProposal');
+    return this.applyProposalReview(commandId, parsed.data, 'reviewProposal', commandOrigin);
   }
 
   private applyProposalReview(
     commandId: string,
     input: ReviewProposalInput,
     commandName: string,
+    commandOrigin?: CommandOrigin,
   ): ServiceResult<CommandReceipt> {
     const duplicate = this.checkIdempotent(commandId);
     if (duplicate !== undefined) return duplicate;
@@ -1389,14 +1815,17 @@ export class CommandService {
           : input.decision === 'reject'
             ? 'Proposal rejected.'
             : 'Revision requested.';
-      this.emitActivity({
-        timestamp: now,
-        caseId: input.caseId,
-        commandId,
-        type: 'command.accepted',
-        phase: 'completed',
-        summary,
-      });
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary,
+        },
+        commandOrigin,
+      );
     }
     return this.toReceipt(commandId, result);
   }
@@ -1639,9 +2068,31 @@ export class CommandService {
     }
   }
 
+  /**
+   * `commandOrigin` (I1: WebMCP call provenance -- ADR 0006 decision 8,
+   * docs/specs/debugging-and-observability.md "WebMCP tool calls") is
+   * folded into `safeDetails.origin` here, in this one place, rather than
+   * at each of the ~14 call sites below -- `PublicActivityEventSchema`
+   * (`@sift/contracts` events.ts, not owned by this task) already declares
+   * `safeDetails: z.record(z.string(), JsonValueSchema).optional()`, so
+   * recording the marker needs no schema change, no new column, and no
+   * second activity-event shape. When `commandOrigin` is `undefined` (the
+   * overwhelming majority of calls: every direct UI action, and every
+   * caller written before this marker existed), `event` passes through
+   * completely unchanged -- byte-identical to this method's pre-existing
+   * behavior, which is the whole point: this field changes what gets
+   * *recorded*, never what a command *does* (see this file's header
+   * comment and `packages/contracts/src/http.ts`'s `CommandOrigin` doc
+   * comment for why it is never trusted for an authorization decision).
+   */
   private emitActivity(
     event: Omit<PublicActivityEvent, 'sequence' | 'eventId' | 'schemaVersion'>,
+    commandOrigin?: CommandOrigin,
   ): void {
-    this.deps.activityStore.append(event);
+    this.deps.activityStore.append(
+      commandOrigin === undefined
+        ? event
+        : { ...event, safeDetails: { ...event.safeDetails, origin: commandOrigin } },
+    );
   }
 }

@@ -171,6 +171,30 @@ describe('CaseEventSchema', () => {
     expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
   });
 
+  it('parses a note.added event carrying a CaseNote', () => {
+    const result = CaseEventSchema.safeParse({
+      type: 'note.added',
+      eventId: 'evt-note-1',
+      caseId: 'case-1',
+      sequence: 3,
+      timestamp: '2026-08-27T00:00:00.000Z',
+      commandId: 'cmd-1',
+      payload: {
+        note: {
+          id: 'note-1',
+          body: 'The seat position felt wrong on the test drive.',
+          kind: 'observation',
+          origin: 'user',
+          authoredBy: 'user',
+          optionIds: ['candidate-rav4'],
+          sourceIds: [],
+          createdAt: '2026-08-27T00:00:00.000Z',
+        },
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
   it('parses a proposal.reviewed event', () => {
     const result = CaseEventSchema.safeParse({
       type: 'proposal.reviewed',

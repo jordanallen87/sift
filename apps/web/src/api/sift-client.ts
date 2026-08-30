@@ -47,6 +47,7 @@
  * `.strict()`).
  */
 import {
+  AddNoteInputSchema,
   CommandReceiptSchema,
   DefineCaseAttributeInputSchema,
   FocusEvidenceInputSchema,
@@ -60,12 +61,16 @@ import {
   RunReceiptSchema,
   SelectPackInputSchema,
   SetEvidenceDispositionInputSchema,
+  SetOptionAttributeInputSchema,
+  SetViewInputSchema,
   StartCaseInputSchema,
   StartDemoInputSchema,
   SubmitSourceInputSchema,
   UpdateCriteriaInputSchema,
   UpsertOptionInputSchema,
+  type AddNoteInput,
   type CaseState,
+  type CommandOrigin,
   type CommandReceipt,
   type DefineCaseAttributeInput,
   type FocusEvidenceInput,
@@ -77,6 +82,8 @@ import {
   type RunReceipt,
   type SelectPackInput,
   type SetEvidenceDispositionInput,
+  type SetOptionAttributeInput,
+  type SetViewInput,
   type StartCaseInput,
   type StartDemoInput,
   type SubmitSourceInput,
@@ -102,6 +109,20 @@ export interface CommandCallOptions {
   signal?: AbortSignal;
   /** Overrides the client-generated `commandId`/idempotency key (sent as both `X-Sift-Command-Id` and `Idempotency-Key`). A WebMCP tool callback should derive this from the browser's own tool-call id so a retried call is recognized as the same command rather than double-applied. */
   commandId?: string;
+  /**
+   * Self-reported provenance, sent as `X-Sift-Command-Origin` and recorded
+   * onto the activity trail's `safeDetails.origin` (plan task I1, change-set
+   * §34: WebMCP tool calls must be visible in the developer view). A WebMCP
+   * tool callback passes `'webmcp'`; a visible page control omits this
+   * entirely, and omitting it is byte-identical to the prior behavior.
+   *
+   * This is observability, never authorization. Nothing downstream reads it
+   * for a policy decision — human-only verbs are unreachable from WebMCP
+   * because the tool catalog never exposes them, not because this field says
+   * so. A client could set it to anything; that would falsify a log line and
+   * nothing more.
+   */
+  origin?: CommandOrigin;
 }
 
 /**
@@ -164,6 +185,33 @@ export interface SiftCommands {
     input: RequestRevisionInput,
     options?: CommandCallOptions,
   ) => Promise<CommandReceipt>;
+  /**
+   * Presentation state, not decision mutation (change-set §54). The backend
+   * `setView` handler routes through `CaseStore.updateSelection()`, which
+   * appends no `case_events` row, never advances `eventSequence`, and
+   * therefore structurally cannot invalidate a recommendation -- see
+   * `apps/agent/src/store/case-store.ts`'s `SelectionPatch` module comment.
+   * It is listed here beside the decision commands because it is a real
+   * durable write over the same transport, not because it carries the same
+   * authority.
+   */
+  setView: (input: SetViewInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
+  /**
+   * A scoped single-attribute write that MERGES into an option's existing
+   * attribute map. Distinct from `upsertOption`, which replaces the map
+   * wholesale -- a caller using `upsertOption` to change one attribute must
+   * resend every other one, and destroys any it omits.
+   */
+  setOptionAttribute: (
+    input: SetOptionAttributeInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  /**
+   * Notes never auto-promote to evidence (change-set §28): adding one cannot
+   * satisfy an obligation, move readiness, or invalidate a recommendation.
+   * Enforced by the command handler, not by this client.
+   */
+  addNote: (input: AddNoteInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
 }
 
 export interface SiftClientErrorOptions {
@@ -311,6 +359,7 @@ async function postJson(
         'Content-Type': 'application/json',
         'X-Sift-Command-Id': commandId,
         'Idempotency-Key': commandId,
+        ...(options.origin !== undefined ? { 'X-Sift-Command-Origin': options.origin } : {}),
       },
       body: JSON.stringify(body),
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
@@ -456,6 +505,21 @@ export function createSiftClient(options: CreateSiftClientOptions = {}): SiftCom
     setEvidenceDisposition: genericCommand<SetEvidenceDispositionInput, CommandReceipt>(
       'setEvidenceDisposition',
       SetEvidenceDispositionInputSchema,
+      CommandReceiptSchema,
+    ),
+    setView: genericCommand<SetViewInput, CommandReceipt>(
+      'setView',
+      SetViewInputSchema,
+      CommandReceiptSchema,
+    ),
+    setOptionAttribute: genericCommand<SetOptionAttributeInput, CommandReceipt>(
+      'setOptionAttribute',
+      SetOptionAttributeInputSchema,
+      CommandReceiptSchema,
+    ),
+    addNote: genericCommand<AddNoteInput, CommandReceipt>(
+      'addNote',
+      AddNoteInputSchema,
       CommandReceiptSchema,
     ),
     requestRevision: genericCommand<RequestRevisionInput, CommandReceipt>(

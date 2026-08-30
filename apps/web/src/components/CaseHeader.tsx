@@ -30,8 +30,23 @@
  * component's contract entirely, not merely unrendered -- there is no
  * lingering unused prop a caller could pass and wonder why it does
  * nothing.
+ *
+ * Task A5, "a real developer-mode entry point": before this task there was
+ * no explicit, discoverable way for a person to reach the Runtime Inspector
+ * at all -- the only existing trigger ("Inspect run" on `RecommendationHero`
+ * /`LiveRunStatus`) only appears once a run has actually happened this
+ * session. `onOpenDeveloperView` is that entry point: one small, clearly
+ * secondary icon control alongside the existing Help/Reset controls, so it
+ * never competes with the primary action or adds height that could push
+ * the recommendation hero below the fold (the above-the-fold invariant this
+ * task's brief gates on `assertRecommendationHeroAboveTheFold`). It opens
+ * the SAME `RuntimeInspector` every other trigger opens (§34: "reuse the
+ * existing Runtime Inspector wherever possible... do not build a redundant
+ * separate debug system") -- `App.tsx` owns what exactly it opens to
+ * (developer view generally, vs. a specific run/event).
  */
 import type { CaseState } from '@sift/contracts';
+import { TerminalIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { HelpButton } from './HelpButton.js';
@@ -44,6 +59,8 @@ export interface CaseHeaderProps {
   onResetDemo: () => void;
   /** True while a reset-demo command is in flight; disables and relabels the reset control. */
   resetPending?: boolean;
+  /** Opens the developer/inspect view (Task A5; change-set §36 "Provide an intentional developer/inspect entry point"). Always available once a case is open -- unlike the run-scoped "Inspect run" control, this needs no prior activity to be reachable. */
+  onOpenDeveloperView: () => void;
 }
 
 /**
@@ -91,6 +108,7 @@ export function CaseHeader({
   connectionState,
   onResetDemo,
   resetPending = false,
+  onOpenDeveloperView,
 }: CaseHeaderProps) {
   const connection = CONNECTION_META[connectionState];
 
@@ -109,6 +127,17 @@ export function CaseHeader({
         </h1>
         <div className="flex shrink-0 items-start gap-[var(--space-1)]">
           <HelpButton />
+          <Button
+            type="button"
+            data-testid="case-header-developer-view"
+            aria-label="Developer view"
+            onClick={onOpenDeveloperView}
+            variant="ghost"
+            size="icon"
+            className="min-h-[var(--size-touch-target-min)] min-w-[var(--size-touch-target-min)] shrink-0 text-[var(--color-ink-secondary)] hover:text-foreground"
+          >
+            <TerminalIcon className="size-5" aria-hidden="true" />
+          </Button>
           <Button
             type="button"
             data-testid="case-header-reset-demo"

@@ -413,12 +413,48 @@ export class SiftPage {
     await form.getByTestId('custom-concern-form-submit').click();
   }
 
-  /** The visible-control equivalent of `sift_define_case_attribute` (`CustomConcernForm.tsx`). A `user`-origin submission is auto-confirmed server-side (`packages/core/src/extensions.ts`), so no separate confirmation step is required afterward. */
+  /**
+   * The visible-control equivalent of `sift_define_case_attribute`
+   * (`CustomConcernForm.tsx`). A `user`-origin submission is auto-confirmed
+   * server-side (`packages/core/src/extensions.ts`), so no separate
+   * confirmation step is required afterward.
+   *
+   * Two real, ordered waits, not one -- observed once flaking under
+   * full-suite 8-worker parallelism (`vehicle-catalog-journey` at
+   * `right-pane-390`, standalone and full-suite re-runs both green
+   * afterward: genuine contention, not a logic race). `CustomConcernForm`'s
+   * `success` state (read from `custom-concern-form-success`) is set only
+   * inside `commands.defineCaseAttribute(...).then(...)`, i.e. strictly
+   * after `POST /api/cases/:caseId/commands/defineCaseAttribute`
+   * (`api/sift-client.ts`) resolves -- and, once set, stays visible (no
+   * auto-hide/timeout clears it; confirmed by reading the component) until
+   * a later submission. So the real risk under contention is not the
+   * banner disappearing before Playwright observes it -- it is the whole
+   * request-to-render chain (server round trip + React commit) taking
+   * longer than a short default assertion timeout. `responsePromise` is
+   * armed *before* `fillAndSubmitCustomConcern` performs the click (so it
+   * cannot miss a response that lands before it would otherwise start
+   * listening) and awaited first: a real, bounded wait on the literal
+   * network completion of the command this banner depends on, giving a
+   * precise "the server never answered in time" failure instead of a
+   * generic "the banner never appeared" one when the server side is what is
+   * actually slow under load. The banner visibility check itself keeps its
+   * full assertion (exact `data-testid`, still required to appear) with a
+   * longer bound to match -- neither wait replaces or weakens the other.
+   */
   async submitCustomConcern(input: CustomConcernInput): Promise<void> {
+    const responsePromise = this.page.waitForResponse(
+      (response) =>
+        response.url().includes('/commands/defineCaseAttribute') &&
+        response.request().method() === 'POST' &&
+        response.ok(),
+      { timeout: 30_000 },
+    );
     await this.fillAndSubmitCustomConcern(input);
+    await responsePromise;
     await expect(
       this.page.getByTestId('custom-concern-form').getByTestId('custom-concern-form-success'),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 30_000 });
   }
 
   async approveProposal(): Promise<void> {

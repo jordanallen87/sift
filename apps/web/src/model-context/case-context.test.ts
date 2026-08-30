@@ -8,10 +8,12 @@
  * conflicted signals, and the workspace view.
  */
 import { describe, expect, it } from 'vitest';
-import type { CaseExtension, Claim, EntityRecord, Source } from '@sift/contracts';
+import type { CaseExtension, CaseNote, Claim, EntityRecord, Source } from '@sift/contracts';
 import { buildFixtureCaseState, buildFixtureObligation } from '../test/fixtures.js';
 import {
   buildCaseContextSummary,
+  buildNoteSummary,
+  buildNotesSummary,
   buildOptionDetails,
   buildResearchSummary,
 } from './case-context.js';
@@ -64,6 +66,20 @@ function buildClaim(overrides: Partial<Claim> = {}): Claim {
     confidence: 0.6,
     sourceIds: ['src-1'],
     stale: false,
+    createdAt: FIXED_TIMESTAMP,
+    ...overrides,
+  };
+}
+
+function buildNote(overrides: Partial<CaseNote> = {}): CaseNote {
+  return {
+    id: 'note-1',
+    body: 'The seat position felt wrong on the test drive.',
+    kind: 'observation',
+    origin: 'user',
+    authoredBy: 'user',
+    optionIds: [],
+    sourceIds: [],
     createdAt: FIXED_TIMESTAMP,
     ...overrides,
   };
@@ -309,5 +325,78 @@ describe('buildResearchSummary', () => {
     const research = buildResearchSummary(caseState);
     expect(research.sources.items).toHaveLength(1);
     expect(research.claims.items).toHaveLength(1);
+  });
+});
+
+// --- sift_list_notes projection (change-set §28/§29): a note is a real,
+// first-class record, deliberately NOT evidence -- these tests only prove
+// the read-side projection is honest and bounded; `apps/agent`'s own
+// command-service.test.ts already proves adding a note never touches
+// obligations/readiness/recommendation at the reducer layer.
+
+describe('buildNoteSummary', () => {
+  it('projects every CaseNote field, including who wrote it and what it references', () => {
+    const note = buildNote({
+      id: 'note-1',
+      body: 'Dealer said the timing belt was done at 90k.',
+      kind: 'research',
+      origin: 'agent_proposed',
+      authoredBy: 'model',
+      optionIds: ['opt-1'],
+      obligationId: 'obl-1',
+      sourceIds: ['src-1'],
+    });
+    expect(buildNoteSummary(note)).toEqual({
+      id: 'note-1',
+      body: 'Dealer said the timing belt was done at 90k.',
+      kind: 'research',
+      origin: 'agent_proposed',
+      authoredBy: 'model',
+      optionIds: ['opt-1'],
+      obligationId: 'obl-1',
+      sourceIds: ['src-1'],
+      createdAt: FIXED_TIMESTAMP,
+    });
+  });
+
+  it('omits obligationId entirely (not undefined) when the note names none, matching every other optional-linkage summary in this module', () => {
+    const summary = buildNoteSummary(buildNote({ obligationId: undefined }));
+    expect(summary).not.toHaveProperty('obligationId');
+  });
+
+  it('truncates a long body to a bounded preview, matching how buildClaimSummary bounds long free text', () => {
+    const summary = buildNoteSummary(buildNote({ body: 'x'.repeat(1000) }));
+    expect(summary.body.length).toBeLessThan(1000);
+    expect(summary.body.endsWith('…')).toBe(true);
+  });
+});
+
+describe('buildNotesSummary', () => {
+  it('is empty when the case has no notes field at all (a snapshot persisted before CaseNote existed)', () => {
+    const caseState = buildFixtureCaseState();
+    expect(caseState.notes).toBeUndefined();
+    const summary = buildNotesSummary(caseState);
+    expect(summary.notes.items).toEqual([]);
+    expect(summary.notes.total).toBe(0);
+  });
+
+  it('orders notes most-recently-added first within the bound', () => {
+    const caseState = buildFixtureCaseState({
+      notes: [
+        buildNote({ id: 'note-1', body: 'First.' }),
+        buildNote({ id: 'note-2', body: 'Second.' }),
+      ],
+    });
+    const summary = buildNotesSummary(caseState);
+    expect(summary.notes.items.map((n) => n.id)).toEqual(['note-2', 'note-1']);
+    expect(summary.notes.total).toBe(2);
+  });
+
+  it('bounds notes and reports the true total when there are more than the cap', () => {
+    const many = Array.from({ length: 60 }, (_, i) => buildNote({ id: `note-${i}` }));
+    const caseState = buildFixtureCaseState({ notes: many });
+    const summary = buildNotesSummary(caseState);
+    expect(summary.notes.total).toBe(60);
+    expect(summary.notes.items.length).toBeLessThan(60);
   });
 });

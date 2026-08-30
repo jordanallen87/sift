@@ -1,26 +1,44 @@
 /**
- * Behavioral tests for the five WebMCP tools this task adds
+ * Behavioral tests for seven WebMCP tools defined outside `@sift/contracts`
  * (`sift_get_option_details`, `sift_list_research`, `sift_search_catalog`,
- * `sift_set_view`, `sift_configure_comparison`;
- * docs/decisions/0006-webmcp-two-way-collaboration-contract.md). A new file
- * rather than an addition to the already-large `register-sift-tools.test.ts`
- * (~900 lines before this task), matching that file's own sibling
- * `register-sift-tools-catalog-case.test.ts` precedent for the identical
- * reason stated in that file's header comment: avoid merge-conflict risk
- * with concurrent work on the larger file.
+ * `sift_set_view`, `sift_configure_comparison`, `sift_get_decision_guide`,
+ * `sift_focus_question`; docs/decisions/0006-webmcp-two-way-collaboration-
+ * contract.md). A new file rather than an addition to the already-large
+ * `register-sift-tools.test.ts` (~900 lines before the first of these tasks),
+ * matching that file's own sibling `register-sift-tools-catalog-case.test.ts`
+ * precedent for the identical reason stated in that file's header comment:
+ * avoid merge-conflict risk with concurrent work on the larger file. The
+ * later two tools (`sift_get_decision_guide`, `sift_focus_question`) are
+ * appended to this same file rather than a further sibling file, per this
+ * task's own brief: extend existing infrastructure/tests instead of writing
+ * a parallel version.
  *
  * The critical correctness proof this file exists to carry (ADR 0006
  * decision 3, change-set §53/§54): "Show only safety and cargo" must never
- * mean "safety and cargo are the only things I care about." A PRESENTATION
- * tool call must never call any `SiftCommands` method and must leave
- * `criteria`/`recommendation` byte-for-byte unchanged -- see the `CRITICAL`
- * test inside the `sift_configure_comparison` describe block below.
+ * mean "safety and cargo are the only things I care about." Now that
+ * `sift_set_view`/`sift_configure_comparison`/`sift_focus_question` genuinely
+ * persist through `commands.setView`, this is proven differently than when
+ * they were session-only in-memory state: a PRESENTATION tool call must reach
+ * `commands.setView` and ONLY `commands.setView` -- never `updateCriteria`,
+ * never `reviewProposal`, never any other `SiftCommands` method -- and must
+ * leave `criteria`/`recommendation` byte-for-byte unchanged. See the
+ * `CRITICAL` test inside the `sift_configure_comparison` describe block
+ * below, extended to also cover `sift_focus_question`, and this file's own
+ * `expectOnlyCommandCalled` helper.
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { CaseState, Claim, EntityRecord, Recommendation, Source } from '@sift/contracts';
+import type {
+  CaseState,
+  Claim,
+  CompiledDecisionPack,
+  DecisionGuide,
+  EntityRecord,
+  Recommendation,
+  Source,
+} from '@sift/contracts';
 import type { SiftCommands } from '../api/sift-client.js';
-import { createFakeSiftCommands } from '../test/fake-sift-commands.js';
-import { buildFixtureCaseState } from '../test/fixtures.js';
+import { buildFakeCommandReceipt, createFakeSiftCommands } from '../test/fake-sift-commands.js';
+import { buildFixtureCaseState, buildFixtureCompiledPack } from '../test/fixtures.js';
 import { InMemoryModelContextAdapter } from './adapter.js';
 import { registerSiftTools } from './register-sift-tools.js';
 import type { CatalogAdapter } from './catalog-search-adapter.js';
@@ -91,6 +109,7 @@ interface SetUpOptions {
   getActiveCase?: () => CaseState | null;
   commandsOverrides?: Partial<SiftCommands>;
   catalogAdapters?: Record<string, CatalogAdapter>;
+  listPacks?: () => CompiledDecisionPack[] | Promise<CompiledDecisionPack[]>;
 }
 
 async function setUpWithActiveCase(
@@ -103,18 +122,11 @@ async function setUpWithActiveCase(
     adapter,
     commands,
     getActiveCase: options.getActiveCase ?? (() => null),
-    listPacks: () => [],
+    listPacks: options.listPacks ?? (() => []),
     ...(options.catalogAdapters !== undefined ? { catalogAdapters: options.catalogAdapters } : {}),
   });
   await handle.setActiveCase(caseId);
   return { adapter, commands };
-}
-
-/** Asserts every `SiftCommands` method on the fake client was never invoked -- the empirical half of "a presentation/read tool never mutates decision state." */
-function expectNoCommandsCalled(commands: SiftCommands): void {
-  for (const fn of Object.values(commands)) {
-    expect(fn).not.toHaveBeenCalled();
-  }
 }
 
 describe('sift_get_option_details', () => {
@@ -301,106 +313,179 @@ describe('sift_search_catalog', () => {
   });
 });
 
+/**
+ * Asserts exactly one `SiftCommands` method (`only`) was invoked, and every
+ * other method was never invoked -- the empirical half of "a presentation
+ * tool reaches `commands.setView` and nothing else" (in particular, never
+ * `updateCriteria`/`reviewProposal`), now that `sift_set_view`/
+ * `sift_configure_comparison`/`sift_focus_question` are real command-backed
+ * writes rather than in-memory-only state.
+ */
+function expectOnlyCommandCalled(commands: SiftCommands, only: keyof SiftCommands): void {
+  for (const [name, fn] of Object.entries(commands)) {
+    if (name === only) {
+      expect(fn).toHaveBeenCalled();
+    } else {
+      expect(fn).not.toHaveBeenCalled();
+    }
+  }
+}
+
 describe('sift_set_view (PRESENTATION)', () => {
-  it('sets the view, echoes it back, and never calls any SiftCommands method', async () => {
-    const caseState = buildFixtureCaseState({ eventSequence: 7 });
+  it('merges its patch onto the active case’s current view and calls commands.setView with the full result, tagged origin: webmcp', async () => {
+    const caseState = buildFixtureCaseState({
+      eventSequence: 7,
+      view: { mode: 'list', compare: { optionIds: ['opt-9'] } },
+    });
+    const receipt = buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 8 });
+    const setView = vi.fn().mockResolvedValue(receipt);
     const { adapter, commands } = await setUpWithActiveCase('case-1', {
       getActiveCase: () => caseState,
+      commandsOverrides: { setView },
     });
 
-    const result = await invokeTool<{ mode: string; focusedOptionId?: string }>(
-      adapter,
-      'sift_set_view',
-      { caseId: 'case-1', mode: 'list', focusedOptionId: 'opt-1' },
-    );
+    const result = await invokeTool(adapter, 'sift_set_view', {
+      caseId: 'case-1',
+      expectedSequence: 7,
+      mode: 'board',
+      focusedOptionId: 'opt-1',
+    });
 
     expect(result.ok).toBe(true);
+    expect(result.commandId).toBe(receipt.commandId);
+    expect(result.sequence).toBe(8);
     expect(result.ui.changed).toBe(true);
-    expect(result.data).toEqual({ mode: 'list', focusedOptionId: 'opt-1' });
-    expect(result.sequence).toBe(7);
-    // No CommandReceipt was ever produced -- this tool never reached
-    // SiftCommands at all, so there is no commandId to report.
-    expect(result.commandId).toBeUndefined();
-    expectNoCommandsCalled(commands);
-  });
-
-  it('a later sift_get_case_context call reflects the view set this session', async () => {
-    const caseState = buildFixtureCaseState();
-    const { adapter } = await setUpWithActiveCase('case-1', { getActiveCase: () => caseState });
-
-    await invokeTool(adapter, 'sift_set_view', { caseId: 'case-1', mode: 'board' });
-    const result = await invokeTool<{ view: { mode: string } | null }>(
-      adapter,
-      'sift_get_case_context',
-      {},
+    expect(result.ui.focusTarget).toBe('opt-1');
+    expect(commands.setView).toHaveBeenCalledWith(
+      {
+        caseId: 'case-1',
+        expectedSequence: 7,
+        // `compare` carried over from the case's existing view -- a
+        // partial patch merges onto the current view, it does not replace
+        // it wholesale.
+        view: { mode: 'board', compare: { optionIds: ['opt-9'] }, focusedOptionId: 'opt-1' },
+      },
+      { origin: 'webmcp' },
     );
-
-    expect(result.data?.view).toEqual({ mode: 'board' });
+    expectOnlyCommandCalled(commands, 'setView');
   });
 
-  it('resets to no session view (falls back to CaseState.view) once the active case changes', async () => {
-    const caseState = buildFixtureCaseState();
+  it('reflects a view set through sift_set_view once the caller applies the resulting state (state sync itself is a later task)', async () => {
+    let caseState = buildFixtureCaseState({ view: null });
     const adapter = new InMemoryModelContextAdapter();
-    const commands = createFakeSiftCommands();
     const handle = await registerSiftTools({
       adapter,
-      commands,
+      commands: createFakeSiftCommands({
+        setView: vi.fn().mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1' })),
+      }),
       getActiveCase: () => caseState,
       listPacks: () => [],
     });
     await handle.setActiveCase('case-1');
-    await invokeTool(adapter, 'sift_set_view', { caseId: 'case-1', mode: 'board' });
 
-    await handle.setActiveCase('case-2');
-    const result = await invokeTool<{ view: unknown }>(adapter, 'sift_get_case_context', {});
+    const setResult = await invokeTool(adapter, 'sift_set_view', {
+      caseId: 'case-1',
+      expectedSequence: 1,
+      mode: 'board',
+    });
+    expect(setResult.ok).toBe(true);
 
-    expect(result.data?.view).toBeNull();
+    // Same pattern as `register-sift-tools.test.ts`'s own
+    // `sift_focus_evidence` "reflects a selection" test: this registration
+    // layer calls `SiftCommands` and reports an honest envelope, but does
+    // not itself own live case-state sync (a later event-stream task's
+    // responsibility) -- the test applies the resulting change the way a
+    // real SSE-driven cache would.
+    caseState = { ...caseState, view: { mode: 'board' } };
+
+    const contextResult = await invokeTool<{ view: { mode: string } | null }>(
+      adapter,
+      'sift_get_case_context',
+      {},
+    );
+    expect(contextResult.data?.view).toEqual({ mode: 'board' });
   });
 
-  it('rejects a caseId that is not the active case', async () => {
-    const { adapter } = await setUpWithActiveCase('case-1');
+  it('rejects a caseId that is not the active case, without calling SiftCommands', async () => {
+    const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+    const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
     const result = await invokeTool(adapter, 'sift_set_view', {
       caseId: 'some-other-case',
+      expectedSequence: 1,
       mode: 'list',
     });
     expect(result.error).toEqual({ code: 'NOT_FOUND', retryable: false });
+    expect(setView).not.toHaveBeenCalled();
   });
 
-  it('returns VALIDATION when mode is missing', async () => {
-    const { adapter } = await setUpWithActiveCase('case-1');
-    const result = await invokeTool(adapter, 'sift_set_view', { caseId: 'case-1' });
+  it('returns VALIDATION and never calls SiftCommands when mode is missing', async () => {
+    const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+    const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
+    const result = await invokeTool(adapter, 'sift_set_view', {
+      caseId: 'case-1',
+      expectedSequence: 1,
+    });
     expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+    expect(setView).not.toHaveBeenCalled();
+  });
+
+  it('returns VALIDATION and never calls SiftCommands when expectedSequence is missing', async () => {
+    const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+    const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
+    const result = await invokeTool(adapter, 'sift_set_view', {
+      caseId: 'case-1',
+      mode: 'list',
+    });
+    expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+    expect(setView).not.toHaveBeenCalled();
   });
 });
 
 describe('sift_configure_comparison (PRESENTATION)', () => {
-  it('configures compare fields and switches the view mode to compare', async () => {
-    const caseState = buildFixtureCaseState();
-    const { adapter } = await setUpWithActiveCase('case-1', { getActiveCase: () => caseState });
+  it('configures compare fields, switches the view mode to compare, and calls commands.setView', async () => {
+    const caseState = buildFixtureCaseState({ view: null });
+    const receipt = buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 3 });
+    const setView = vi.fn().mockResolvedValue(receipt);
+    const { adapter, commands } = await setUpWithActiveCase('case-1', {
+      getActiveCase: () => caseState,
+      commandsOverrides: { setView },
+    });
 
-    const result = await invokeTool<{
-      mode: string;
-      compare?: { optionIds: string[] };
-      visibleAttributeIds?: string[];
-    }>(adapter, 'sift_configure_comparison', {
+    const result = await invokeTool(adapter, 'sift_configure_comparison', {
       caseId: 'case-1',
+      expectedSequence: 4,
       optionIds: ['opt-1', 'opt-2'],
       visibleAttributeIds: ['price', 'safety'],
     });
 
     expect(result.ok).toBe(true);
-    expect(result.data?.mode).toBe('compare');
-    expect(result.data?.compare).toEqual({ optionIds: ['opt-1', 'opt-2'] });
-    expect(result.data?.visibleAttributeIds).toEqual(['price', 'safety']);
+    expect(result.ui.changed).toBe(true);
+    expect(commands.setView).toHaveBeenCalledWith(
+      {
+        caseId: 'case-1',
+        expectedSequence: 4,
+        view: {
+          mode: 'compare',
+          compare: { optionIds: ['opt-1', 'opt-2'] },
+          visibleAttributeIds: ['price', 'safety'],
+        },
+      },
+      { origin: 'webmcp' },
+    );
   });
 
-  it('returns VALIDATION when no configurable field is provided (a no-op call is rejected, not silently accepted)', async () => {
-    const { adapter } = await setUpWithActiveCase('case-1');
-    const result = await invokeTool(adapter, 'sift_configure_comparison', { caseId: 'case-1' });
+  it('returns VALIDATION and never calls SiftCommands when no configurable field is provided (a no-op call is rejected, not silently accepted)', async () => {
+    const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+    const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
+    const result = await invokeTool(adapter, 'sift_configure_comparison', {
+      caseId: 'case-1',
+      expectedSequence: 1,
+    });
     expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+    expect(setView).not.toHaveBeenCalled();
   });
 
-  it('CRITICAL (change-set §53/§54): "Show only safety and cargo" changes presentation only -- criteria and the recommendation stay byte-for-byte unchanged, and no SiftCommands method is ever called', async () => {
+  it('CRITICAL (change-set §53/§54): "Show only safety and cargo" changes presentation only -- criteria and the recommendation stay byte-for-byte unchanged, and only commands.setView is ever called, never updateCriteria/reviewProposal/any other command', async () => {
     const readyRecommendation: Recommendation = {
       id: 'rec-1',
       status: 'ready',
@@ -435,53 +520,330 @@ describe('sift_configure_comparison (PRESENTATION)', () => {
         status: 'active' as const,
       },
     ];
-    const caseState = buildFixtureCaseState({
+    let caseState = buildFixtureCaseState({
       criteria: originalCriteria,
       recommendation: readyRecommendation,
+      view: null,
     });
-    const { adapter, commands } = await setUpWithActiveCase('case-1', {
+    const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1' }));
+    // `commands` is the exact object passed to `registerSiftTools` below --
+    // `expectOnlyCommandCalled` later reads its methods directly, not a
+    // second, freshly-created fake with its own unrelated `vi.fn()`s.
+    const commands = createFakeSiftCommands({ setView });
+    const adapter = new InMemoryModelContextAdapter();
+    const handle = await registerSiftTools({
+      adapter,
+      commands,
       getActiveCase: () => caseState,
+      listPacks: () => [],
     });
+    await handle.setActiveCase('case-1');
 
     // "Show only safety and cargo." -- a presentation request, per change-set
     // §54, never "safety and cargo are the only things I care about."
     const result = await invokeTool(adapter, 'sift_configure_comparison', {
       caseId: 'case-1',
+      expectedSequence: 1,
       visibleAttributeIds: ['pref.safety', 'car.cargo_volume'],
     });
 
     expect(result.ok).toBe(true);
-    expect(result.data).toMatchObject({
-      visibleAttributeIds: ['pref.safety', 'car.cargo_volume'],
-    });
+    expect(setView).toHaveBeenCalledWith(
+      {
+        caseId: 'case-1',
+        expectedSequence: 1,
+        view: { mode: 'compare', visibleAttributeIds: ['pref.safety', 'car.cargo_volume'] },
+      },
+      { origin: 'webmcp' },
+    );
 
     // The underlying case object -- the only source of truth this tool was
-    // ever given -- was never mutated.
+    // ever given -- was never mutated by the tool itself (the fake command
+    // mock does not mutate it either).
     expect(caseState.criteria).toEqual(originalCriteria);
     expect(caseState.recommendation).toEqual(readyRecommendation);
 
-    // No SiftCommands method (in particular updateCriteria, the one method
-    // that actually changes criteria) was ever reached.
-    expectNoCommandsCalled(commands);
+    // Only `setView` was ever reached -- in particular, `updateCriteria`
+    // (the one method that actually changes criteria) and `reviewProposal`
+    // were not.
+    expect(setView).toHaveBeenCalledTimes(1);
 
-    // A subsequent read confirms criteria/recommendation are unchanged while
-    // the view genuinely did change.
+    // The caller applies the resulting state the way a real SSE-driven cache
+    // would (same pattern as `sift_focus_evidence`'s own reflects-test), then
+    // confirms criteria/recommendation are unchanged while the view genuinely
+    // did change.
+    caseState = {
+      ...caseState,
+      view: { mode: 'compare', visibleAttributeIds: ['pref.safety', 'car.cargo_volume'] },
+    };
     const context = await invokeTool<{
       criteria: unknown;
       recommendation: unknown;
-      view: { visibleAttributeIds?: string[] } | null;
+      view: { visibleAttributeIds?: string[]; focusedQuestionId?: string } | null;
     }>(adapter, 'sift_get_case_context', {});
     expect(context.data?.criteria).toEqual(originalCriteria);
     expect(context.data?.recommendation).toEqual(readyRecommendation);
     expect(context.data?.view?.visibleAttributeIds).toEqual(['pref.safety', 'car.cargo_volume']);
+
+    // Extending this same CRITICAL proof (rather than a second parallel
+    // test) to `sift_focus_question`: pointing at an unresolved question is
+    // presentation too, and must leave the same guarantees intact while
+    // composing cleanly onto the compare configuration set moments ago.
+    const focusResult = await invokeTool(adapter, 'sift_focus_question', {
+      caseId: 'case-1',
+      expectedSequence: 1,
+      questionId: 'obl-1',
+    });
+    expect(focusResult.ok).toBe(true);
+    expect(setView).toHaveBeenCalledWith(
+      {
+        caseId: 'case-1',
+        expectedSequence: 1,
+        view: {
+          mode: 'compare',
+          visibleAttributeIds: ['pref.safety', 'car.cargo_volume'],
+          focusedQuestionId: 'obl-1',
+        },
+      },
+      { origin: 'webmcp' },
+    );
+
+    expect(caseState.criteria).toEqual(originalCriteria);
+    expect(caseState.recommendation).toEqual(readyRecommendation);
+    expectOnlyCommandCalled(commands, 'setView');
+
+    caseState = {
+      ...caseState,
+      view: {
+        mode: 'compare',
+        visibleAttributeIds: ['pref.safety', 'car.cargo_volume'],
+        focusedQuestionId: 'obl-1',
+      },
+    };
+    const contextAfterFocus = await invokeTool<{
+      criteria: unknown;
+      recommendation: unknown;
+      view: { visibleAttributeIds?: string[]; focusedQuestionId?: string } | null;
+    }>(adapter, 'sift_get_case_context', {});
+    expect(contextAfterFocus.data?.criteria).toEqual(originalCriteria);
+    expect(contextAfterFocus.data?.recommendation).toEqual(readyRecommendation);
+    expect(contextAfterFocus.data?.view?.focusedQuestionId).toBe('obl-1');
+    // The earlier configure-comparison field survives in the merged view --
+    // `mergeWorkspaceView` composes onto the case's current view rather than
+    // replacing it wholesale.
+    expect(contextAfterFocus.data?.view?.visibleAttributeIds).toEqual([
+      'pref.safety',
+      'car.cargo_volume',
+    ]);
+  });
+
+  it('rejects a caseId that is not the active case, without calling SiftCommands', async () => {
+    const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+    const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
+    const result = await invokeTool(adapter, 'sift_configure_comparison', {
+      caseId: 'some-other-case',
+      expectedSequence: 1,
+      optionIds: ['opt-1'],
+    });
+    expect(result.error).toEqual({ code: 'NOT_FOUND', retryable: false });
+    expect(setView).not.toHaveBeenCalled();
+  });
+});
+
+const FIXTURE_DECISION_GUIDE: DecisionGuide = {
+  domainPurpose: 'Help a household choose among a small shortlist of candidate cars.',
+  discoveryStrategy: 'Establish hard constraints first, then gather comparative evidence.',
+  suggestedQuestions: ['What is the total budget, including taxes and fees?'],
+  importantUnknowns: ['Whether the vehicle physically fits the household garage.'],
+  researchGuidance: 'Prefer independent reviews and verified ownership-cost data.',
+  customFieldGuidance: 'Create a custom field only when no pack-defined attribute already covers it.',
+  presentationGuidance: 'Show price and total cost of ownership together.',
+};
+
+describe('sift_get_decision_guide', () => {
+  it("returns the active case's pack Decision Guide as typed fields, resolved from the injected pack catalog", async () => {
+    const caseState = buildFixtureCaseState({
+      pack: {
+        id: 'car-purchase',
+        version: '1.0.0',
+        compiledHash: 'a'.repeat(64),
+        selectedBy: 'user',
+        reasons: [],
+      },
+    });
+    const pack = buildFixtureCompiledPack({ decisionGuide: FIXTURE_DECISION_GUIDE });
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      getActiveCase: () => caseState,
+      listPacks: () => [pack],
+    });
+
+    const result = await invokeTool<{
+      packId: string;
+      packVersion: string;
+      guide: DecisionGuide;
+    }>(adapter, 'sift_get_decision_guide', { caseId: 'case-1' });
+
+    expect(result.ok).toBe(true);
+    expect(result.data?.packId).toBe('car-purchase');
+    expect(result.data?.packVersion).toBe('1.0.0');
+    // Structured typed fields, never one concatenated prose blob -- each
+    // field survives independently in the response.
+    expect(result.data?.guide.domainPurpose).toBe(FIXTURE_DECISION_GUIDE.domainPurpose);
+    expect(result.data?.guide.suggestedQuestions).toEqual(FIXTURE_DECISION_GUIDE.suggestedQuestions);
+    expect(result.data?.guide.presentationGuidance).toBe(
+      FIXTURE_DECISION_GUIDE.presentationGuidance,
+    );
+  });
+
+  it('returns ok:true with no guide, not an error, when the active pack declares none', async () => {
+    const caseState = buildFixtureCaseState();
+    const pack = buildFixtureCompiledPack(); // no decisionGuide override
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      getActiveCase: () => caseState,
+      listPacks: () => [pack],
+    });
+
+    const result = await invokeTool(adapter, 'sift_get_decision_guide', { caseId: 'case-1' });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toBeUndefined();
+    expect(result.error).toBeUndefined();
+  });
+
+  it('returns ok:true with no guide, not an error, when the active pack is absent from the injected pack catalog', async () => {
+    const caseState = buildFixtureCaseState();
+    const { adapter } = await setUpWithActiveCase('case-1', {
+      getActiveCase: () => caseState,
+      listPacks: () => [],
+    });
+
+    const result = await invokeTool(adapter, 'sift_get_decision_guide', { caseId: 'case-1' });
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toBeUndefined();
+  });
+
+  it('reports "No case is currently active" honestly rather than fabricating a guide when getActiveCase() is null', async () => {
+    const { adapter } = await setUpWithActiveCase('case-1', { getActiveCase: () => null });
+    const result = await invokeTool(adapter, 'sift_get_decision_guide', { caseId: 'case-1' });
+    expect(result).toEqual({
+      ok: true,
+      message: 'No case is currently active.',
+      ui: { changed: false },
+    });
   });
 
   it('rejects a caseId that is not the active case', async () => {
     const { adapter } = await setUpWithActiveCase('case-1');
-    const result = await invokeTool(adapter, 'sift_configure_comparison', {
+    const result = await invokeTool(adapter, 'sift_get_decision_guide', {
       caseId: 'some-other-case',
-      optionIds: ['opt-1'],
     });
     expect(result.error).toEqual({ code: 'NOT_FOUND', retryable: false });
+  });
+
+  it('returns VALIDATION for malformed input', async () => {
+    const { adapter } = await setUpWithActiveCase('case-1');
+    const result = await invokeTool(adapter, 'sift_get_decision_guide', {});
+    expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+  });
+});
+
+describe('sift_focus_question (PRESENTATION)', () => {
+  it('merges focusedQuestionId onto the active case’s current view and calls commands.setView, tagged origin: webmcp', async () => {
+    const caseState = buildFixtureCaseState({
+      eventSequence: 9,
+      view: { mode: 'list', visibleOptionIds: ['opt-1'] },
+    });
+    const receipt = buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 10 });
+    const setView = vi.fn().mockResolvedValue(receipt);
+    const { adapter, commands } = await setUpWithActiveCase('case-1', {
+      getActiveCase: () => caseState,
+      commandsOverrides: { setView },
+    });
+
+    const result = await invokeTool(adapter, 'sift_focus_question', {
+      caseId: 'case-1',
+      expectedSequence: 9,
+      questionId: 'obl-1',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.commandId).toBe(receipt.commandId);
+    expect(result.sequence).toBe(10);
+    expect(result.ui.changed).toBe(true);
+    expect(result.ui.focusTarget).toBe('obl-1');
+    expect(commands.setView).toHaveBeenCalledWith(
+      {
+        caseId: 'case-1',
+        expectedSequence: 9,
+        view: { mode: 'list', visibleOptionIds: ['opt-1'], focusedQuestionId: 'obl-1' },
+      },
+      { origin: 'webmcp' },
+    );
+    expectOnlyCommandCalled(commands, 'setView');
+  });
+
+  it('reflects a question focused through sift_focus_question once the caller applies the resulting state (state sync itself is a later task)', async () => {
+    let caseState = buildFixtureCaseState({ view: null });
+    const adapter = new InMemoryModelContextAdapter();
+    const handle = await registerSiftTools({
+      adapter,
+      commands: createFakeSiftCommands({
+        setView: vi.fn().mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1' })),
+      }),
+      getActiveCase: () => caseState,
+      listPacks: () => [],
+    });
+    await handle.setActiveCase('case-1');
+
+    const focusResult = await invokeTool(adapter, 'sift_focus_question', {
+      caseId: 'case-1',
+      expectedSequence: 1,
+      questionId: 'obl-2',
+    });
+    expect(focusResult.ok).toBe(true);
+
+    caseState = { ...caseState, view: { mode: 'list', focusedQuestionId: 'obl-2' } };
+
+    const contextResult = await invokeTool<{ view: { focusedQuestionId?: string } | null }>(
+      adapter,
+      'sift_get_case_context',
+      {},
+    );
+    expect(contextResult.data?.view?.focusedQuestionId).toBe('obl-2');
+  });
+
+  it('rejects a caseId that is not the active case, without calling SiftCommands', async () => {
+    const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+    const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
+    const result = await invokeTool(adapter, 'sift_focus_question', {
+      caseId: 'some-other-case',
+      expectedSequence: 1,
+      questionId: 'obl-1',
+    });
+    expect(result.error).toEqual({ code: 'NOT_FOUND', retryable: false });
+    expect(setView).not.toHaveBeenCalled();
+  });
+
+  it('returns VALIDATION and never calls SiftCommands when questionId is missing', async () => {
+    const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+    const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
+    const result = await invokeTool(adapter, 'sift_focus_question', {
+      caseId: 'case-1',
+      expectedSequence: 1,
+    });
+    expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+    expect(setView).not.toHaveBeenCalled();
+  });
+
+  it('returns VALIDATION and never calls SiftCommands when expectedSequence is missing', async () => {
+    const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+    const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
+    const result = await invokeTool(adapter, 'sift_focus_question', {
+      caseId: 'case-1',
+      questionId: 'obl-1',
+    });
+    expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+    expect(setView).not.toHaveBeenCalled();
   });
 });

@@ -16,7 +16,7 @@
  * workspace needs: `caseEventsConfig` (the same `baseUrl`/`fetchImpl`/
  * `createEventSource` overrides `useCaseEvents` itself accepts, plus reused
  * by the plain `GET /api/packs` fetch backing the WebMCP `sift_list_packs`
- * tool and `OptionComparison`'s presentation metadata) and `webMcpAdapter`
+ * tool and `OptionCompareView`'s presentation metadata) and `webMcpAdapter`
  * (defaults to the real `BrowserModelContextAdapter`; tests substitute
  * `InMemoryModelContextAdapter`). Both follow the exact same pattern as
  * `commandsClient` above: a plain optional override prop, not a new kind of

@@ -18,6 +18,7 @@
  */
 import { z } from 'zod';
 import {
+  CaseNoteSchema,
   CasePackPinSchema,
   ClaimSchema,
   DecisionProposalSchema,
@@ -223,6 +224,26 @@ export const ExtensionConfirmedEventSchema = CaseEventBaseSchema.extend({
     .strict(),
 }).strict();
 
+/**
+ * docs/change-sets/2026-08-30-generic-decision-workspace.md §28 "Notes":
+ * "Add a generic `CaseNote` concept ... Not every thought belongs as
+ * evidence, criterion, or attribute." Notes are event-sourced (`append()`,
+ * not `updateSelection()`) like every other canonical case record --
+ * `applyCaseEvent`'s fold for this event (reducer.ts) only ever appends onto
+ * `CaseState.notes`, never touching `obligations`, `recommendation`, or
+ * `evidenceLinks`, which is the concrete mechanism behind "notes never
+ * auto-promote to evidence" (see `CaseNoteSchema`'s own doc comment,
+ * case.ts).
+ */
+export const NoteAddedEventSchema = CaseEventBaseSchema.extend({
+  type: z.literal('note.added'),
+  payload: z
+    .object({
+      note: CaseNoteSchema,
+    })
+    .strict(),
+}).strict();
+
 export const RecommendationInvalidatedEventSchema = CaseEventBaseSchema.extend({
   type: z.literal('recommendation.invalidated'),
   payload: z
@@ -287,6 +308,7 @@ export const CaseEventSchema = z.discriminatedUnion('type', [
   ObligationUpdatedEventSchema,
   ExtensionDefinedEventSchema,
   ExtensionConfirmedEventSchema,
+  NoteAddedEventSchema,
   RecommendationInvalidatedEventSchema,
   RecommendationReadyEventSchema,
   ProposalProposedEventSchema,

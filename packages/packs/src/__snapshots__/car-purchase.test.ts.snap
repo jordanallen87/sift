@@ -507,6 +507,23 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
     ],
     "protectedCriterionIds": [],
   },
+  "decisionGuide": {
+    "customFieldGuidance": "Prefer a typed custom field over noting an important comparison factor only in prose -- for example, a specific cargo item or accessibility need this pack did not anticipate. Do not infer a subjective fit or comfort judgment without supporting evidence or a household member's own observation.",
+    "discoveryStrategy": "Establish the household's hard constraints -- budget ceiling versus target, and which features are truly non-negotiable -- before comparing candidates. Deal value, ownership cost, safety/reliability, and household fit can then be investigated in parallel, since each draws on independent sources and none depends on the others' results.",
+    "domainPurpose": "Deciding which shortlisted vehicle candidate a household should advance to a test drive, by weighing hard budget and feature constraints against comparable deal terms, five-year ownership cost, safety and reliability, and household-specific fit.",
+    "importantUnknowns": [
+      "Whether cargo, rear-seat, or equipment fit is adequate usually cannot be confirmed from published specifications alone, and may require a physical measurement or test drive.",
+      "Advertised price rarely matches the true out-the-door price once fees, mandatory add-ons, and financing terms are included.",
+    ],
+    "presentationGuidance": "Deal terms and five-year ownership cost are usually worth comparing together, since a lower advertised price can still mean a higher total cost. Safety and reliability ratings are usually compared as a group rather than one attribute at a time.",
+    "researchGuidance": "Prefer independent published crash-safety, driver-assistance, and reliability sources over a single dealer or manufacturer claim, and treat one source's rating as provisional until a second source corroborates or contradicts it.",
+    "suggestedQuestions": [
+      "Is the stated budget a hard ceiling, or a target the household would stretch for the right car?",
+      "Which features, if any, are truly non-negotiable rather than merely preferred?",
+      "How many people and how much cargo does the vehicle need to carry regularly?",
+      "Does anyone in the household have a physical fit need -- car seats, mobility equipment, travel crates -- that only a measurement or test drive can confirm?",
+    ],
+  },
   "entities": [
     {
       "attributeIds": [

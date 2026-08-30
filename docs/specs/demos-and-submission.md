@@ -105,9 +105,9 @@ Car-buying moment:
 5. The user says: `Driving comfort matters more than fuel economy.` ChatGPT calls `sift_update_criteria`; Sift creates test-drive questions rather than inventing evidence.
 6. The user adds the two-dog-crate requirement. ChatGPT defines the case attribute, and the page immediately shows the new concern and its unresolved evidence question.
 
-### Additional showcase moments (specified, not yet implemented)
+### Additional showcase moments (capability now exists; not yet proven end-to-end on camera)
 
-Change-set §57 identifies this as a materially stronger WebMCP narrative than "ChatGPT changed a criterion." Two specific moments are named as deliberate showcases; both depend on capabilities recorded as not-yet-implemented in `product.md` ("Workspace views") and `webmcp.md` (PRESENTATION-class tools, `sift_configure_comparison`, `sift_set_view`) — they are recorded here as required demo beats once those land, not as claims about the current build.
+Change-set §57 identifies this as a materially stronger WebMCP narrative than "ChatGPT changed a criterion." Two specific moments are named as deliberate showcases. The underlying capability they depend on is real today: `product.md`'s "Workspace views" (Quick Pick/List/Compare/Board) are implemented and wired into the live page, and PRESENTATION-class WebMCP tools now exist in the catalog (see `webmcp.md` for the exact, current tool list and per-tool "Effect" status — that catalog is under active development, so consult it rather than this paragraph for tool names and persistence guarantees). What has **not** yet happened is recording or rehearsing these two moments as an actual demo take against the current build; they are recorded here as required demo beats to script and verify, not as claims that the video already contains them.
 
 **Model reconfigures the comparison table (§58).** The user says: `Compare the CR-V, Forester, and RAV4, and only show me the things that matter most to us.` ChatGPT changes the view to Compare, limits the visible candidates to those three, and sets the visible rows — including any dynamic custom fields already defined — so the page visibly reconfigures without mouse/click automation. This must be shown alongside proof that the underlying decision criteria did not change: presentation filtering is not criterion mutation (change-set §54).
 

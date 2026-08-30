@@ -137,16 +137,16 @@ ADR 0006 decision 8 specifies closing this gap with an explicit origin marker on
 
 ## Runtime Inspector UI
 
-The case header contains an `Inspect run` control when `SIFT_DEBUG_ENABLED=true`. In the public fixture deployment it is enabled and read-only. The inspector replaces the case body within the right pane and includes a clear return action; it is not a desktop-only modal.
+Server-side debug routes are gated correctly by `SIFT_DEBUG_ENABLED` (`apps/agent/src/routes/debug.ts`; disabled returns `404` for all of them, matching "Acceptance requirements" below). **The client-side entry point is narrower than an env-var-gated persistent control today**: `RecommendationHero`'s `Inspect run` button is the only way to open the inspector, and it renders only while a live/recent run receipt exists — there is no standing "Inspect" / "Developer view" affordance visible at other times (change-set §36 asks for an intentional developer/inspect entry point; this is recorded as a gap, not implemented behavior, and matches `product.md`'s "Workspace layout" item 5). The inspector itself, once opened, replaces the case body within the right pane and includes a clear return action; it is not a desktop-only modal.
 
-Required views:
+Required views, and current status — only two of the six are built:
 
-1. **Overview** — status, trace/run/session IDs, duration, model/tool calls, tokens, estimated cost, errors, active obligation, and runtime target.
-2. **Timeline** — virtualized chronological events with category, agent, level, and free-text filters. Selecting an event opens its structured safe payload. Once the WebMCP origin marker above is implemented, Timeline filtering and event display must also distinguish WebMCP-originated commands from direct UI actions.
-3. **Execution** — compact Graph/Swarm node and handoff view showing the active path, loops, redirects, and duration.
-4. **State** — canonical case-event list and before/after diff for criteria, evidence, obligations, readiness, recommendation, and approval.
-5. **Context** — activated skills, allowed tools, injected context field names/hashes, model parameters, and validator feedback.
-6. **Errors** — grouped failures with fingerprints, stack trace in local development, related span/events, and focused reproduction command when known.
+1. **Overview** — status, trace/run/session IDs, duration, model/tool calls, tokens, estimated cost, errors, active obligation, and runtime target. **Implemented.**
+2. **Timeline** — virtualized chronological events with category, agent, level, and free-text filters. Selecting an event opens its structured safe payload, including its real `redactions` (path/reason, never the withheld value) and, where the underlying event carries one, its `stateDiff`. Once the WebMCP origin marker above is implemented, Timeline filtering and event display must also distinguish WebMCP-originated commands from direct UI actions. **Implemented**, including `focusEventId`-driven "open straight to this event" navigation from a consumer activity item's `debugEventId`.
+3. **Execution** — compact Graph/Swarm node and handoff view showing the active path, loops, redirects, and duration. **Not yet implemented.**
+4. **State** — canonical case-event list and before/after diff for criteria, evidence, obligations, readiness, recommendation, and approval. **Not yet implemented** as a dedicated view; the Timeline's per-event `stateDiff` disclosure (above) is real but is not the same as this dedicated before/after State view.
+5. **Context** — activated skills, allowed tools, injected context field names/hashes, model parameters, and validator feedback. **Not yet implemented.**
+6. **Errors** — grouped failures with fingerprints, stack trace in local development, related span/events, and focused reproduction command when known. **Not yet implemented** as a dedicated view; errors are visible within Overview/Timeline today.
 
 Global inspector actions:
 
@@ -189,7 +189,7 @@ AgentCore execution propagates trace headers and records returned trace/session/
 ## Acceptance requirements
 
 - Every required hero trajectory event is visible in the inspector and trace export.
-- Clicking a visible activity item opens the exact correlated debug event.
+- Clicking a visible activity item opens the exact correlated debug event. **Status: the destination half is real and tested** — `RuntimeInspector` accepts a `focusEventId` (a consumer activity item's `debugEventId`) and opens directly to the matching Timeline entry. **The trigger half does not exist in the live app today**: `ActivityTimeline` — the component that would render a consumer-visible, clickable activity item — is exported from the library but is not mounted anywhere in `App.tsx` (its former consumer-surface role was retired per ADR 0004, and nothing replaced it as a clickable list a user can act on). There is currently no click path anywhere in the shipped page that reaches `focusEventId`. This is a real, open gap, not a documentation lag.
 - Tool arguments/results, state diffs, steering reasons, handoffs, tokens, and timing are truthful and ordered.
 - Secrets and seeded redaction canaries never appear in the database, HTTP response, SSE stream, exported bundle, screenshot, trace console, or test artifact.
 - Restarting Railway preserves the completed run and inspector history.

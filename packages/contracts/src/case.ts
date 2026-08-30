@@ -15,6 +15,7 @@ import { z } from 'zod';
 import {
   AttributeDefinitionSchema,
   AttributeRecordSchema,
+  CASE_ATTRIBUTE_ORIGINS,
   CriterionSchema,
   type Criterion,
 } from './attributes.js';
@@ -372,6 +373,18 @@ export const WorkspaceViewStateSchema = z
   .object({
     mode: z.enum(WORKSPACE_VIEW_MODES),
     focusedOptionId: idString().optional(),
+    // Plan task E8: lets ChatGPT point the human at a specific unresolved
+    // question (an ObligationState id) through WebMCP -- separate from
+    // `activeFocus`, which is system-owned (set by the deterministic core,
+    // e.g. when a specialist run starts investigating an obligation) rather
+    // than model-settable. Plain `.optional()` (not `.nullable()`), matching
+    // every other optional member of this schema: an absent key means "no
+    // question is focused," and there is no persisted-before-this-field
+    // backward-compatibility concern here the way there is for `CaseState
+    // .view` itself (see that field's own comment) -- this is a new member
+    // of an already-optional/nullable schema, not a new top-level `CaseState`
+    // field.
+    focusedQuestionId: idString().optional(),
     visibleOptionIds: z.array(idString()).max(50).optional(),
     visibleAttributeIds: z.array(idString()).max(500).optional(),
     pinnedAttributeIds: z.array(idString()).max(500).optional(),
@@ -383,6 +396,66 @@ export const WorkspaceViewStateSchema = z
   })
   .strict();
 export type WorkspaceViewState = z.infer<typeof WorkspaceViewStateSchema>;
+
+// --- CaseNote (docs/change-sets/2026-08-30-generic-decision-workspace.md §28
+// "Notes") ---
+//
+// A human's or the model's observation attached to a case -- "the seat
+// position felt wrong on the test drive", "dealer said the timing belt was
+// done at 90k". Real, first-class content, event-sourced like every other
+// canonical case record (`note.added`, events.ts), but deliberately outside
+// the evidence pipeline: adding a note never satisfies an obligation, never
+// changes readiness, never invalidates a recommendation, and never appears
+// as a `Source`/`EvidenceLink`. §28: "notes do NOT automatically become
+// evidence." A human may later act on what a note says by submitting real
+// evidence (`submitSource`, a separate, explicit command) -- nothing about
+// `CaseNote` itself can silently become evidence, which is exactly what
+// keeps the deterministic core (not an LLM) the sole owner of evidence
+// validity and readiness (CLAUDE.md "Non-negotiable product truths").
+//
+// `origin`/`authoredBy` reuse `CaseAttributeDefinition`'s exact
+// origin-vocabulary pattern (`CASE_ATTRIBUTE_ORIGINS`, `proposedBy`) rather
+// than inventing a third parallel "who wrote this" enum: `origin` is the
+// coarse `'user'` vs `'agent_proposed'` category (deliberately never
+// `'pack'`, unlike the broader `ATTRIBUTE_ORIGINS` -- a pack never writes a
+// note), `authoredBy` is the free-text identity within that category
+// (`'user'`, or a specific specialist/agent id), matching
+// `command-service.ts`'s existing `origin === 'user' ? 'user' : 'model'`
+// convention already used for `defineCaseAttribute`.
+//
+// `optionIds`/`obligationId` are the "optionally a link to the option or
+// question it concerns": §28's own conceptual shape carries `optionIds:
+// string[]` (a note may reference zero, one, or several options at once,
+// e.g. comparing two candidates in one observation), and independently a
+// note may concern one specific unresolved question -- the same
+// `ObligationState` id `WorkspaceViewState.focusedQuestionId` already calls
+// a "question." `sourceIds` lets a note cite existing `Source` records
+// purely informationally: naming a source id here creates no `EvidenceLink`
+// and does not change that source's `verification` -- only `submitSource`/
+// `setEvidenceDisposition` do that.
+export const CASE_NOTE_KINDS = [
+  'observation',
+  'research',
+  'question',
+  'preference',
+  'reminder',
+] as const;
+export type CaseNoteKind = (typeof CASE_NOTE_KINDS)[number];
+
+export const CaseNoteSchema = z
+  .object({
+    id: idString(),
+    body: safeString(2000),
+    kind: z.enum(CASE_NOTE_KINDS),
+    origin: z.enum(CASE_ATTRIBUTE_ORIGINS),
+    authoredBy: safeString(200),
+    optionIds: z.array(idString()).max(50),
+    obligationId: idString().optional(),
+    sourceIds: z.array(idString()).max(50),
+    createdAt: z.iso.datetime(),
+  })
+  .strict();
+export type CaseNote = z.infer<typeof CaseNoteSchema>;
 
 // --- CaseState (architecture.md "Canonical data model") ---
 
@@ -434,6 +507,20 @@ export const CaseStateSchema = z
     claims: z.array(ClaimSchema).max(1000),
     sources: z.array(SourceSchema).max(500),
     evidenceLinks: z.array(EvidenceLinkSchema).max(1000),
+    // Optional (not required/defaulted), exactly matching `view` immediately
+    // below: `.optional()` lets a snapshot persisted before this field
+    // existed still parse with the key entirely absent, and -- unlike
+    // `.default([])` -- keeps `notes` out of the *required* fields of the
+    // inferred `CaseState` TypeScript type. That distinction matters beyond
+    // parsing: several other modules across this monorepo construct a
+    // literal object typed as `CaseState` (`packages/scenarios`, `apps/web`
+    // fixtures, ...), outside this task's file-ownership boundary. A
+    // required field would force every one of those literals to be edited
+    // just to keep typechecking, which this task must not do. No `.nullable()`
+    // counterpart is needed (unlike `view`, which a command can explicitly
+    // clear back to null): nothing ever un-adds a note, so "absent" and "not
+    // yet populated" are the only two states that exist.
+    notes: z.array(CaseNoteSchema).max(500).optional(),
     recommendation: RecommendationSchema.nullable(),
     proposal: DecisionProposalSchema.nullable(),
     activeFocus: ActiveFocusSchema.nullable(),

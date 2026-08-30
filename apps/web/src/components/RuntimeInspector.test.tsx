@@ -1,10 +1,10 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import type { RuntimeDebugEvent } from '@sift/contracts';
+import type { PublicActivityEvent, RuntimeDebugEvent } from '@sift/contracts';
 import { RuntimeInspector } from './RuntimeInspector.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
@@ -492,6 +492,359 @@ describe('RuntimeInspector', () => {
   // longer sees the sheet markup -- `overflowRisks` is trivially `[]` here.
   // `renderResult.getByTestId` still finds it, since Testing Library binds
   // queries to `document.body` by default, not `container`.
+  it('surfaces a redaction\'s path and reason on a Timeline item that carries one -- never the underlying value, since Redaction never carries one', async () => {
+    server.use(
+      debugHandler(buildOverview(), [
+        buildEvent({
+          redactions: [{ path: 'payload.note', reason: 'matched a configured secret pattern' }],
+        }),
+      ]),
+    );
+    const user = userEvent.setup();
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+
+    const redactions = await screen.findByTestId('runtime-inspector-timeline-item-debug-1-redactions');
+    expect(redactions).toHaveTextContent('payload.note');
+    expect(redactions).toHaveTextContent('matched a configured secret pattern');
+  });
+
+  it('omits the redactions list entirely from a Timeline item that carries none', async () => {
+    server.use(debugHandler(buildOverview(), [buildEvent({ redactions: [] })]));
+    const user = userEvent.setup();
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-1')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId('runtime-inspector-timeline-item-debug-1-redactions'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders a State diff disclosure listing each JSON Patch operation for a Timeline item that carries a real stateDiff', async () => {
+    server.use(
+      debugHandler(buildOverview(), [
+        buildEvent({
+          stateDiff: [{ op: 'replace', path: '/recommendation', value: { favoredOptionId: 'candidate-rav4' } }],
+        }),
+      ]),
+    );
+    const user = userEvent.setup();
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+
+    const disclosure = await screen.findByTestId('runtime-inspector-timeline-item-debug-1-state-diff');
+    await user.click(within(disclosure).getByText(/State diff/));
+    expect(disclosure).toHaveTextContent('replace');
+    expect(disclosure).toHaveTextContent('/recommendation');
+    expect(disclosure).toHaveTextContent('candidate-rav4');
+  });
+
+  it('omits the State diff disclosure entirely from a Timeline item with no stateDiff', async () => {
+    server.use(debugHandler(buildOverview(), [buildEvent()]));
+    const user = userEvent.setup();
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-1')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId('runtime-inspector-timeline-item-debug-1-state-diff'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens directly to the Timeline view, pre-filtered to nothing, when a focusEventId is supplied (I2 activity-to-trace navigation)', async () => {
+    server.use(
+      debugHandler(buildOverview(), [
+        buildEvent({ id: 'debug-1', sequence: 0, summary: 'first' }),
+        buildEvent({ id: 'debug-2', sequence: 1, summary: 'second' }),
+      ]),
+    );
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+        focusEventId="debug-2"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-timeline')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('runtime-inspector-tab-timeline')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('marks the exact focusEventId Timeline item as focused, distinct from every other item', async () => {
+    server.use(
+      debugHandler(buildOverview(), [
+        buildEvent({ id: 'debug-1', sequence: 0, summary: 'first' }),
+        buildEvent({ id: 'debug-2', sequence: 1, summary: 'second' }),
+      ]),
+    );
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+        focusEventId="debug-2"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-2')).toHaveAttribute(
+        'data-focused',
+        'true',
+      );
+    });
+    expect(screen.getByTestId('runtime-inspector-timeline-item-debug-1')).not.toHaveAttribute(
+      'data-focused',
+      'true',
+    );
+  });
+
+  it('has no axe violations on a Timeline item carrying both redactions and a stateDiff', async () => {
+    server.use(
+      debugHandler(buildOverview(), [
+        buildEvent({
+          redactions: [{ path: 'payload.note', reason: 'matched a configured secret pattern' }],
+          stateDiff: [{ op: 'replace', path: '/status', value: 'active' }],
+        }),
+      ]),
+    );
+    const user = userEvent.setup();
+    const { baseElement } = render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-timeline')).toBeInTheDocument(),
+    );
+    expect(await axe(baseElement)).toHaveNoViolations();
+  });
+
+  // Task A5 / I2b: the Runtime Inspector is extended (not duplicated) with
+  // an Activity tab reusing `ActivityTimeline` verbatim, and `runId` can now
+  // be `null` for the new "Developer view" entry point opened with no
+  // specific run in hand.
+  describe('Activity tab (Task A5 / I2b)', () => {
+    function buildActivityEvent(overrides: Partial<PublicActivityEvent> = {}): PublicActivityEvent {
+      return {
+        schemaVersion: '1.0',
+        eventId: 'activity-1',
+        sequence: 1,
+        timestamp: '2026-08-27T00:00:00.000Z',
+        caseId: 'case-1',
+        type: 'tool.started',
+        phase: 'active',
+        summary: 'Looking up dealer inventory.',
+        ...overrides,
+      };
+    }
+
+    it('opens directly to the Activity tab and renders the passed events when runId is null (no run in hand yet)', async () => {
+      render(
+        <RuntimeInspector
+          runId={null}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+          events={[buildActivityEvent({ summary: 'Case created.' })]}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('runtime-inspector-tab-activity')).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByText('Case created.')).toBeInTheDocument();
+      expect(screen.getByTestId('runtime-inspector-run-id')).toHaveTextContent(
+        'No run selected',
+      );
+      // No run was ever selected, so no fetch to /api/debug/runs/:runId
+      // should have happened -- proven negatively: no overview data renders
+      // even after settling.
+      expect(screen.queryByTestId('runtime-inspector-overview')).not.toBeInTheDocument();
+    });
+
+    it('defaults events to an empty list (never crashes) and shows ActivityTimeline\'s own honest empty state', async () => {
+      render(<RuntimeInspector runId={null} onClose={() => undefined} apiConfig={{ baseUrl: BASE_URL }} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('activity-timeline-no-items')).toBeInTheDocument();
+      });
+    });
+
+    it('still defaults to Overview when runId is provided (existing behavior unaffected), with Activity reachable via its own tab', async () => {
+      server.use(debugHandler(buildOverview(), [buildEvent()]));
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+          events={[buildActivityEvent()]}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('runtime-inspector-tab-activity')).toHaveAttribute(
+        'aria-selected',
+        'false',
+      );
+
+      await user.click(screen.getByTestId('runtime-inspector-tab-activity'));
+      expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
+    });
+
+    it('does not render "Inspect event" buttons in the Activity tab when onInspectEvent is not provided', async () => {
+      render(
+        <RuntimeInspector
+          runId={null}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+          events={[buildActivityEvent({ runId: 'run-2', debugEventId: 'debug-7' })]}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByTestId('activity-item-inspect-event-activity-1'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('calls onInspectEvent with the runId and debugEventId when "Inspect event" is clicked in the Activity tab', async () => {
+      const onInspectEvent = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={null}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+          events={[buildActivityEvent({ runId: 'run-2', debugEventId: 'debug-7' })]}
+          onInspectEvent={onInspectEvent}
+        />,
+      );
+
+      const button = await screen.findByTestId('activity-item-inspect-event-activity-1');
+      await user.click(button);
+
+      expect(onInspectEvent).toHaveBeenCalledWith('run-2', 'debug-7');
+    });
+
+    it('reactively switches to Timeline when focusEventId changes on an already-mounted Inspector (the "Inspect event" round trip via controlled props)', async () => {
+      server.use(debugHandler(buildOverview(), [buildEvent({ id: 'debug-2', sequence: 1 })]));
+      const { rerender } = render(
+        <RuntimeInspector
+          runId={null}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+          events={[buildActivityEvent()]}
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
+      });
+
+      // Simulates `App.tsx` receiving the bubbled-up onInspectEvent call and
+      // re-passing new runId/focusEventId props down to this same,
+      // still-mounted Inspector instance.
+      rerender(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+          events={[buildActivityEvent()]}
+          focusEventId="debug-2"
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-tab-timeline')).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-timeline-item-debug-2')).toHaveAttribute(
+          'data-focused',
+          'true',
+        );
+      });
+    });
+
+    it('has no axe violations on the Activity tab, including with Inspect-event buttons rendered', async () => {
+      const { baseElement } = render(
+        <RuntimeInspector
+          runId={null}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+          events={[buildActivityEvent({ runId: 'run-2', debugEventId: 'debug-7' })]}
+          onInspectEvent={() => undefined}
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
+      });
+      expect(await axe(baseElement)).toHaveNoViolations();
+    });
+  });
+
   it('renders at 390px width with no fixed-width overflow risk', async () => {
     server.use(debugHandler(buildOverview(), [buildEvent()]));
     const { overflowRisks, renderResult } = renderAtNarrowWidth(

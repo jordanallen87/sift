@@ -2,6 +2,8 @@
 
 Target: **under 3 minutes**, public audio, published to YouTube. This script hits, in order, the six required beats in `docs/specs/demos-and-submission.md` ("WebMCP video — under three minutes") and every "WebMCP demo moment" (car-buying moment) it names. Every quoted UI label, tool name, and on-screen string below was cross-checked against the actual component source and, where noted "(live-verified …)", against the real deployed product on 2026-08-27 using Playwright against `https://pax-hackathon-production.up.railway.app`. Nothing here is invented or paraphrased from memory.
 
+**This script's "(live-verified …)" claims predate the 2026-08-30 workspace redesign (ADR 0004/0005/0006) and are now stale.** The consumer workspace has since been restructured — the former separate "Our pick"/"Your decision" cards are now one merged hero region, and a primary Quick Pick/List/Compare/Board view switcher now exists where a single always-expanded comparison table stood before. Re-run the live verification against the current deployed build before recording; do not trust the specific on-screen positions and card names below without re-checking them. The required beats themselves (from `docs/specs/demos-and-submission.md`) are unchanged and remain the correct spine — only the exact staging directions need a fresh pass. This is also a good candidate script to extend with the §58/§59 showcase moments (model reconfigures the comparison table; Quick Pick shared focus), which are now buildable against real UI and were not previously part of this recorded take.
+
 **Total runtime budget: 3:00.** Beats sum to exactly 180 seconds below; treat that as a ceiling, not a target — a take that lands at 2:40 is safer than one that lands at 2:58.
 
 ---

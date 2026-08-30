@@ -9,13 +9,16 @@ import {
   ToolResultBlock,
 } from '@strands-agents/sdk';
 import { describe, expect, it } from 'vitest';
+import type { JsonPatchOperation } from '@sift/contracts';
 import {
   createSequenceCounter,
+  diffJsonValues,
   hashContent,
   normalizeAfterModelCall,
   normalizeAfterToolCall,
   normalizeBeforeModelCall,
   normalizeBeforeToolCall,
+  normalizeCaseStateChange,
   normalizeContextInjection,
   normalizeGoalValidation,
   normalizeIntervention,
@@ -405,6 +408,80 @@ describe('normalizeRunError', () => {
     expect(debugEvent.name).toBe('run.failed');
     expect(debugEvent.level).toBe('error');
     expect(debugEvent.summary).toBe('agent invocation failed: boom');
+  });
+});
+
+describe('diffJsonValues', () => {
+  it('returns no operations for identical plain objects', () => {
+    expect(diffJsonValues({ a: 1, b: 'x' }, { a: 1, b: 'x' })).toEqual([]);
+  });
+
+  it('reports a "replace" for a changed primitive field', () => {
+    const ops = diffJsonValues({ status: 'draft' }, { status: 'active' });
+    expect(ops).toEqual([{ op: 'replace', path: '/status', value: 'active' }]);
+  });
+
+  it('reports an "add" for a key that only exists after', () => {
+    const ops = diffJsonValues({}, { recommendation: { id: 'rec-1' } });
+    expect(ops).toEqual([{ op: 'add', path: '/recommendation', value: { id: 'rec-1' } }]);
+  });
+
+  it('reports a "remove" for a key that only existed before', () => {
+    const ops = diffJsonValues({ proposal: { id: 'p-1' } }, {});
+    expect(ops).toEqual([{ op: 'remove', path: '/proposal' }]);
+  });
+
+  it('treats a key present in both with null before and an object after as a "replace" (key presence never changed, only its value)', () => {
+    const ops = diffJsonValues({ recommendation: null }, { recommendation: { id: 'rec-1' } });
+    expect(ops).toEqual([{ op: 'replace', path: '/recommendation', value: { id: 'rec-1' } }]);
+  });
+
+  it('recurses into nested plain objects, reporting only the sub-field that actually changed', () => {
+    const before = { recommendation: { favoredOptionId: null, rationale: 'r1' } };
+    const after = { recommendation: { favoredOptionId: 'candidate-rav4', rationale: 'r1' } };
+    const ops = diffJsonValues(before, after);
+    expect(ops).toEqual([
+      { op: 'replace', path: '/recommendation/favoredOptionId', value: 'candidate-rav4' },
+    ]);
+  });
+
+  it('replaces an array wholesale when its contents differ, rather than diffing individual elements', () => {
+    const ops = diffJsonValues(
+      { criteria: [{ id: 'a' }] },
+      { criteria: [{ id: 'a' }, { id: 'b' }] },
+    );
+    expect(ops).toEqual([{ op: 'replace', path: '/criteria', value: [{ id: 'a' }, { id: 'b' }] }]);
+  });
+
+  it('reports no diff for a deeply-equal array passed by a different reference', () => {
+    const ops = diffJsonValues({ items: [{ id: 'a' }] }, { items: [{ id: 'a' }] });
+    expect(ops).toEqual([]);
+  });
+
+  it('escapes "~" and "/" in a field name per RFC 6901', () => {
+    const ops = diffJsonValues({ 'a/b~c': 1 }, { 'a/b~c': 2 });
+    expect(ops).toEqual([{ op: 'replace', path: '/a~1b~0c', value: 2 }]);
+  });
+});
+
+describe('normalizeCaseStateChange', () => {
+  it('produces a category "case" event carrying the given stateDiff verbatim', () => {
+    const stateDiff: JsonPatchOperation[] = [{ op: 'replace', path: '/status', value: 'active' }];
+    const debugEvent = normalizeCaseStateChange({ stateDiff }, CTX, 0);
+    expect(debugEvent.category).toBe('case');
+    expect(debugEvent.name).toBe('case.state_changed');
+    expect(debugEvent.phase).toBe('finish');
+    expect(debugEvent.stateDiff).toEqual(stateDiff);
+    expect(debugEvent.summary).toContain('1 field');
+  });
+
+  it('pluralizes the summary for more than one changed field', () => {
+    const stateDiff: JsonPatchOperation[] = [
+      { op: 'replace', path: '/status', value: 'active' },
+      { op: 'add', path: '/proposal', value: { id: 'p-1' } },
+    ];
+    const debugEvent = normalizeCaseStateChange({ stateDiff }, CTX, 0);
+    expect(debugEvent.summary).toContain('2 fields');
   });
 });
 

@@ -245,6 +245,71 @@ export const PackEvaluationDefinitionSchema = z
   .strict();
 export type PackEvaluationDefinition = z.infer<typeof PackEvaluationDefinitionSchema>;
 
+/**
+ * The pack-level **Decision Guide** (docs/change-sets/2026-08-30-generic-
+ * decision-workspace.md §46/§47, ADR 0006 decision 6, docs/specs/webmcp.md
+ * "Decision Guide", docs/specs/packs-and-routing.md "Presentation metadata
+ * and Decision Guide"): teaches ChatGPT how to collaborate with THIS CLASS
+ * of decision -- not this one case. Field list is the exact one those specs
+ * name verbatim: "domain purpose, discovery strategy, suggested questions,
+ * important unknowns, research guidance, custom-field guidance, and
+ * presentation guidance."
+ *
+ * ## Why this schema cannot carry prompt injection (a structural guarantee,
+ * not a style preference -- see the specs above: "This is a hard boundary,
+ * not a style preference")
+ *
+ * 1. **No field is, or could be renamed to be, an instruction channel.**
+ *    There is no `instructions`, `systemPrompt`, or any other free-form
+ *    "say whatever you want to the model" slot -- every field is a
+ *    specific, named, bounded piece of declarative content (a purpose
+ *    statement, a list of questions, a list of unknowns, ...), and the
+ *    schema is `.strict()`: an author cannot add an eighth field under any
+ *    other name and have it survive `DecisionPackManifestSchema.safeParse`
+ *    (proven by the "unrecognized key" test in packs.test.ts).
+ * 2. **Every string field is bounded and content-filtered.** Every field
+ *    reuses this file's own `safeString(maxLength)` helper -- the same
+ *    HTML-tag/`javascript:`/inline-event-handler rejection every other
+ *    manifest text field (descriptions, labels, questions) already goes
+ *    through, extended here to guide content per packs-and-routing.md's
+ *    explicit instruction: "The compiler must reject free-form executable
+ *    or instruction-shaped content in this field the same way it already
+ *    rejects HTML/script content elsewhere in pack manifests." A field
+ *    cannot become an unbounded essay-shaped payload, either.
+ * 3. **The guide is consumed as data, never concatenated into a prompt.**
+ *    Every consumer of this type (once `sift_get_decision_guide` and the
+ *    Decision Profile UI exist) receives it as a typed JSON value inside a
+ *    tool result or a rendered UI section -- both "data returned to a
+ *    caller" channels. Nothing in this codebase's design concatenates pack
+ *    content into a model's own system prompt; the integration mechanism
+ *    is, and remains, tool descriptions and structured tool output.
+ * 4. **The guide can only describe, never decide or execute.** Every field
+ *    is prose or a list of question strings -- there is no field capable of
+ *    expressing a tool call, a command, a conditional, or any other
+ *    executable shape. A pack author can suggest that "budget" is worth
+ *    asking about; they cannot make the guide itself set a value, approve a
+ *    decision, or call anything.
+ */
+export const DecisionGuideSchema = z
+  .object({
+    /** What this class of decision is fundamentally about, for a model orienting itself to a new pack. */
+    domainPurpose: safeString(1000),
+    /** How to approach investigating this class of decision (e.g. "establish hard constraints first, then gather comparative evidence in parallel"). Describes an approach; does not command one. */
+    discoveryStrategy: safeString(2000),
+    /** Pack-authored discovery questions worth asking early for this class of decision (webmcp.md §16's `suggestedQuestions`). Each entry is a single bounded question string, never a compound instruction. */
+    suggestedQuestions: z.array(safeString(300)).max(30),
+    /** Things this class of decision commonly leaves unresolved even with good evidence (e.g. "whether an item physically fits without a measurement"). */
+    importantUnknowns: z.array(safeString(300)).max(30),
+    /** What kinds of sources/research are useful for this class of decision, and how to weigh them. */
+    researchGuidance: safeString(2000),
+    /** When and how a custom field is worth creating for this class of decision, and what should stay a human judgment rather than a model inference. */
+    customFieldGuidance: safeString(2000),
+    /** Which views/comparisons tend to help for this class of decision (e.g. "show deal and ownership cost together"). Declarative preference, not a UI command. */
+    presentationGuidance: safeString(2000),
+  })
+  .strict();
+export type DecisionGuide = z.infer<typeof DecisionGuideSchema>;
+
 export const DecisionPackManifestSchema = z
   .object({
     schemaVersion: z.literal('1.0'),
@@ -279,6 +344,15 @@ export const DecisionPackManifestSchema = z
     policies: z.array(PolicyDefinitionSchema).max(100),
     presentation: PresentationDefinitionSchema,
     evaluation: PackEvaluationDefinitionSchema,
+    // Optional (§46/§47): a pack that declares no Decision Guide must still
+    // compile, pass conformance, and -- critically -- produce the identical
+    // `compiledHash` it always has (case.ts's `CasePackPinSchema` pins
+    // `compiledHash`, so an already-guideless pack's hash must not drift the
+    // moment this field was added). `canonicalizeManifest`
+    // (packages/packs/src/canonicalize.ts) already drops `undefined` object
+    // values before hashing, so an omitted `decisionGuide` and an absent one
+    // serialize identically; proven directly in compiler.test.ts.
+    decisionGuide: DecisionGuideSchema.optional(),
   })
   .strict();
 export type DecisionPackManifest = z.infer<typeof DecisionPackManifestSchema>;

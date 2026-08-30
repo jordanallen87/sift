@@ -927,7 +927,7 @@ describe('App', () => {
       });
     });
 
-    it('resolves the active installed pack (by identity.id) and passes its real optionLabel/presentation down to OptionEditor and OptionComparison', async () => {
+    it('resolves the active installed pack (by identity.id) and passes its real optionLabel/presentation down to OptionEditor and the option views', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
@@ -1201,6 +1201,64 @@ describe('App', () => {
       });
       expect(screen.queryByTestId('live-run-status')).not.toBeInTheDocument();
       expect(screen.queryByTestId('live-run-status-empty')).not.toBeInTheDocument();
+    });
+
+    // Task A9 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`
+    // Phase A; brief w1b-ui-refinement.md): found by live inspection at
+    // 430px -- the hero rendered "Nothing's been looked into yet." directly
+    // above a "Investigation status -- Completed -- Added option ..." block,
+    // even though nothing had actually been investigated. Both statements
+    // were individually true (nothing was investigated; the demo's own
+    // fixture-seeding command *had* completed) but read together they
+    // contradicted, echoing the exact defect ADR 0004 exists to remove.
+    // Reproduces the real cause directly: `startDemo` bundles case creation
+    // AND every seeded entity under ONE `commandId`
+    // (`apps/agent/src/services/command-service.ts`'s `startDemo`), none of
+    // it carrying a `runId` (seeding is not an investigation run) -- exactly
+    // the shape asserted here. The fix must hold both ways: the hero still
+    // honestly says nothing has been investigated, AND no stale "completed
+    // command" status renders beside it for a command the human never
+    // actually issued themselves.
+    it('does not render a contradictory "completed" command status beside "Nothing\'s been looked into yet." for fixture/demo-seeded setup the user never issued', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null, proposal: null });
+      const seedEvents: PublicActivityEvent[] = [
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-seed-1',
+          sequence: 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          caseId: CASE_ID,
+          commandId: 'cmd-start',
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: 'Started "Choose Our Next Car".',
+        },
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-seed-2',
+          sequence: 2,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          caseId: CASE_ID,
+          commandId: 'cmd-start',
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: 'Added option "2022 Subaru Outback Premium AWD".',
+        },
+      ];
+      renderLiveWorkspace(snapshot, seedEvents);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
+          "Nothing's been looked into yet.",
+        );
+      });
+      // The contradiction-proof assertion: no completed-command status
+      // block renders at all while the hero still says nothing has been
+      // looked into, because the only "completed command" in this case's
+      // history is fixture/demo seeding, not something the human asked for.
+      expect(screen.queryByTestId('live-run-status')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Added option/i)).not.toBeInTheDocument();
     });
 
     it('does not send a reset command when the active pack id is not a recognized demo id', async () => {
@@ -1494,6 +1552,122 @@ describe('App', () => {
     });
   });
 
+  // Task A5 ("a real developer-mode entry point") and Task I2b (the
+  // trigger half of I2, "a consumer event opens its exact runtime event").
+  describe('developer view entry point (Task A5 / I2b)', () => {
+    it('opens the Runtime Inspector via the CaseHeader developer-view control with no run in hand, defaulting to the Activity tab', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      const user = await startDemoAndWait();
+
+      // Reachable even though no run has ever happened this session --
+      // unlike the pre-existing run-scoped "Inspect run" control.
+      expect(screen.queryByTestId('open-runtime-inspector')).not.toBeInTheDocument();
+      await user.click(screen.getByTestId('case-header-developer-view'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('runtime-inspector-tab-activity')).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
+      // The case body stays mounted underneath, same as every other
+      // Inspector entry point.
+      expect(screen.getByTestId('recommendation-hero')).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('sheet-close'));
+      await waitFor(() => {
+        expect(screen.queryByTestId('runtime-inspector')).not.toBeInTheDocument();
+      });
+    });
+
+    it('jumps from a consumer activity item to its exact correlated runtime event via "Inspect event" (Task I2b)', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null });
+      const priorRunEvents: PublicActivityEvent[] = [
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-1',
+          sequence: 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          caseId: CASE_ID,
+          runId: 'run-prior-1',
+          debugEventId: 'debug-1',
+          type: 'tool.started',
+          phase: 'active',
+          summary: 'Calling tool "listing_reader".',
+        },
+      ];
+      renderLiveWorkspace(snapshot, priorRunEvents);
+      server.use(debugRunHandler('run-prior-1'));
+      const user = await startDemoAndWait();
+
+      await user.click(screen.getByTestId('case-header-developer-view'));
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
+      });
+
+      const inspectEventButton = screen.getByTestId('activity-item-inspect-event-evt-1');
+      await user.click(inspectEventButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-tab-timeline')).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-timeline-item-debug-1')).toHaveAttribute(
+          'data-focused',
+          'true',
+        );
+      });
+      expect(screen.getByTestId('runtime-inspector-run-id')).toHaveTextContent('run-prior-1');
+    });
+
+    it('does not render an "Inspect event" control for an activity item with no debugEventId (global constraint 4)', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null });
+      const priorRunEvents: PublicActivityEvent[] = [
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-no-debug',
+          sequence: 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          caseId: CASE_ID,
+          commandId: 'cmd-start',
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: 'Started "Choose Our Next Car".',
+        },
+      ];
+      renderLiveWorkspace(snapshot, priorRunEvents);
+      const user = await startDemoAndWait();
+
+      await user.click(screen.getByTestId('case-header-developer-view'));
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByTestId('activity-item-inspect-event-evt-no-debug'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('has no axe violations with the developer view open on the Activity tab', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      const { container } = renderLiveWorkspace(snapshot);
+      const user = await startDemoAndWait();
+
+      await user.click(screen.getByTestId('case-header-developer-view'));
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
+      });
+
+      expect(await axe(container)).toHaveNoViolations();
+    });
+  });
+
   // ADR 0004 "Consumer workspace information architecture": the merged
   // answer-first hero is always visible and precedes every disclosure row
   // -- the machine-checkable form of "answer first" this task's brief asks
@@ -1671,7 +1845,39 @@ describe('App', () => {
       // switcher deliberately carries none, because ADR 0004 item 5 makes
       // it a primary, always-expanded surface, not a closed-by-default row.
       expect(screen.queryByTestId('disclosure-view')).not.toBeInTheDocument();
-      expect(screen.getByTestId('workspace-view-content-compare')).toBeInTheDocument();
+    });
+
+    // Task A10 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`
+    // Phase A): the regenerated 390px baseline measured ~3379px tall, driven
+    // largely by Compare's always-fully-expanded attribute table rendering
+    // as the *default* view on a freshly opened case -- directly against
+    // change-set §64's "reduce apparent complexity." Quick Pick renders
+    // exactly one option at a time, so defaulting there instead cuts the
+    // first-paint height dramatically while every view, including Compare,
+    // remains reachable in exactly one tap on the always-visible tab strip
+    // (nothing becomes unreachable, per this task's own constraint). This
+    // test locks in the default so a future change cannot silently revert
+    // it back to the tall table.
+    it('defaults the workspace view switcher to Quick Pick, not the always-expanded Compare table', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-view-switcher')).toBeInTheDocument();
+      });
+      // Radix `Tabs` keeps every panel mounted in the DOM (hidden via the
+      // native `hidden` attribute rather than unmounted) so it can animate
+      // transitions -- `getByTestId` alone would find an inactive panel
+      // too, so visibility (`toBeVisible`, which respects `hidden`) is the
+      // real assertion of which view is actually showing.
+      expect(screen.getByTestId('workspace-view-content-quick_pick')).toBeVisible();
+      expect(screen.getByTestId('workspace-view-content-compare')).not.toBeVisible();
+
+      // Every view, including Compare, stays reachable in exactly one tap.
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId('workspace-view-tab-compare'));
+      expect(screen.getByTestId('workspace-view-content-compare')).toBeVisible();
     });
 
     it('auto-opens "Add something Sift should check" when an agent-proposed extension is pending', async () => {
@@ -1722,6 +1928,23 @@ describe('App', () => {
       expect(screen.queryByTestId('disclosure-add-concern-meta')).not.toBeInTheDocument();
     });
 
+    // Task A2 audit finding: `CaseExtensionReviewCard` is already correctly
+    // gated at the orchestration level (`pendingExtension !== null ? ... :
+    // null`, per this file's own ADR 0004 item 2 comment) -- audit §2
+    // region 3, "Proposed concern." That gating was never actually proven
+    // by a test asserting the region's own root testid is absent, only by
+    // tests about the surrounding `DisclosureSection`'s open/closed state
+    // and meta text. This closes that gap directly, per plan task A2's own
+    // *done when*: "a test asserts each region is absent (not merely
+    // empty) when it has no content."
+    it('renders no CaseExtensionReviewCard at all (not merely closed) when no agent-proposed extension is pending', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      expect(screen.queryByTestId('case-extension-review-card')).not.toBeInTheDocument();
+    });
+
     it('opens "Still checking" on click and reveals the readiness panel it wraps', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
@@ -1730,6 +1953,219 @@ describe('App', () => {
       await user.click(screen.getByTestId('disclosure-still-checking-summary'));
       expect(screen.getByTestId<HTMLDetailsElement>('disclosure-still-checking').open).toBe(true);
       expect(screen.getByTestId('readiness-panel-status')).toBeInTheDocument();
+    });
+  });
+
+  // Independent spec-audit finding, addressed this task alongside A11:
+  // `DecisionProfileView` was fully built and fully tested but never
+  // mounted anywhere in the shipped product (not in `App.tsx`, not even
+  // exported from `apps/web/src/index.ts`) -- change-set DoD item 15/16,
+  // "Decision Profile is coherent and visible."
+  describe('Decision Profile (spec-audit gap: built but never mounted)', () => {
+    it('renders the Decision Profile for a seeded case with real criteria', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        criteria: [
+          {
+            id: 'crit-budget',
+            label: 'Budget',
+            kind: 'hard_constraint',
+            weight: 20,
+            direction: 'higher_better',
+            origin: 'pack',
+            status: 'active',
+            target: { type: 'money', amount: 40000, currency: 'USD' },
+          },
+        ],
+      });
+      renderLiveWorkspace(snapshot);
+      const user = await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('disclosure-decision-profile')).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId('disclosure-decision-profile-summary'));
+      expect(screen.getByTestId('decision-profile-view')).toBeInTheDocument();
+      expect(screen.getByTestId('decision-profile-view-concern-crit-budget')).toHaveTextContent(
+        'Budget',
+      );
+    });
+
+    it('renders no Decision Profile region at all when the case has no criteria, extensions, or missing/suggested items (global constraint 4)', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, criteria: [], caseExtensions: [] });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      expect(screen.queryByTestId('disclosure-decision-profile')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('decision-profile-view')).not.toBeInTheDocument();
+    });
+  });
+
+  // W3-B: `CaseNotes` (§28/§63) mounted for the first time this task.
+  // Mirrors the Decision Profile block immediately above: the smallest
+  // possible `App.tsx` change is an unconditional mount, since `CaseNotes`
+  // renders `null` itself when there are no notes (global constraint 4).
+  describe('Notes (CaseNotes, §28/§63)', () => {
+    it('renders every note on the active case, most-recently-added first, with who wrote it', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        notes: [
+          {
+            id: 'note-1',
+            body: 'The seat position felt wrong on the test drive.',
+            kind: 'observation',
+            origin: 'user',
+            authoredBy: 'user',
+            optionIds: [],
+            sourceIds: [],
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            id: 'note-2',
+            body: 'Dealer said the timing belt was done at 90k.',
+            kind: 'research',
+            origin: 'agent_proposed',
+            authoredBy: 'model',
+            optionIds: [],
+            sourceIds: [],
+            createdAt: '2026-01-01T00:00:01.000Z',
+          },
+        ],
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('case-notes')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('case-note-body-note-2')).toHaveTextContent(
+        'Dealer said the timing belt was done at 90k.',
+      );
+      expect(screen.getAllByTestId(/^case-note-body-/).map((el) => el.textContent)).toEqual([
+        'Dealer said the timing belt was done at 90k.',
+        'The seat position felt wrong on the test drive.',
+      ]);
+    });
+
+    it('renders no Notes region at all (not merely empty) when the case has no notes', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      expect(screen.queryByTestId('case-notes')).not.toBeInTheDocument();
+    });
+  });
+
+  // Task A11: the rendered workspace view must derive from the persisted
+  // `CaseState.view` when one exists, rather than from an independent local
+  // `useState` -- otherwise a genuinely persisted `sift_set_view` WebMCP
+  // call (or any other writer of `CaseState.view`) can succeed on the
+  // server while the open page silently never moves, which is exactly the
+  // "two sources of truth" global constraint 5 forbids.
+  describe('workspace view state derives from the persisted CaseState.view (Task A11)', () => {
+    it('renders the persisted view on load instead of the local default when CaseState.view is already set', async () => {
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        view: { mode: 'compare' },
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-view-tab-compare')).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+      });
+      // Radix keeps every panel mounted (hidden via the native `hidden`
+      // attribute) -- visibility, not mere presence, is the real proof of
+      // which view actually rendered (same technique the pre-existing
+      // "defaults ... to Quick Pick" test above uses).
+      expect(screen.getByTestId('workspace-view-content-compare')).toBeVisible();
+      expect(screen.getByTestId('workspace-view-content-quick_pick')).not.toBeVisible();
+    });
+
+    it('falls back to the quick_pick default when the case has never set a view (view is absent, not written on load)', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-view-tab-quick_pick')).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+      });
+    });
+
+    it('optimistically reflects a user-initiated view change immediately, ahead of any persisted round trip', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      const user = await startDemoAndWait();
+
+      expect(screen.getByTestId('workspace-view-content-quick_pick')).toBeVisible();
+
+      await user.click(screen.getByTestId('workspace-view-tab-list'));
+
+      expect(screen.getByTestId('workspace-view-tab-list')).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.getByTestId('workspace-view-content-list')).toBeVisible();
+    });
+
+    it('writes a user-initiated view change through the real setView command with the full WorkspaceViewState', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      let capturedBody: unknown;
+      renderLiveWorkspace(snapshot);
+      server.use(
+        commandHandler('setView', buildFakeCommandReceipt({ caseId: CASE_ID }), (body) => {
+          capturedBody = body;
+        }),
+      );
+      const user = await startDemoAndWait();
+
+      await user.click(screen.getByTestId('workspace-view-tab-list'));
+
+      await waitFor(() => {
+        expect(capturedBody).toMatchObject({
+          caseId: CASE_ID,
+          expectedSequence: snapshot.eventSequence,
+          view: { mode: 'list' },
+        });
+      });
+    });
+
+    it('re-derives the rendered view from a newly persisted CaseState.view delivered over the live event stream', async () => {
+      // Proves the read side reacts to a LATER persisted change too, not
+      // just the initial snapshot -- e.g. a real WebMCP `sift_set_view`
+      // call landing while the page is already open.
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+      expect(screen.getByTestId('workspace-view-content-quick_pick')).toBeVisible();
+
+      server.use(
+        pollHandler({ ...snapshot, view: { mode: 'board' }, eventSequence: snapshot.eventSequence + 1 }),
+      );
+      await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+      const source = FakeEventSource.instances.at(-1)!;
+      source.triggerOpen();
+      source.emit({
+        schemaVersion: '1.0',
+        eventId: 'evt-view-1',
+        sequence: snapshot.eventSequence + 1,
+        timestamp: '2026-08-27T00:02:00.000Z',
+        caseId: CASE_ID,
+        commandId: 'cmd-set-view-1',
+        type: 'command.accepted',
+        phase: 'completed',
+        summary: 'Set workspace view to "board".',
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-view-content-board')).toBeVisible();
+      });
     });
   });
 

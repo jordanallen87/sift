@@ -299,6 +299,29 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
     ).toBe(true);
     expect(run1Record.traceId).toBeTruthy();
 
+    // --- I2: a consumer-visible activity event derived from a real Swarm
+    // RuntimeEvent carries a real debugEventId that resolves to its exact
+    // correlated runtime_events row -- never a placeholder or absent field. ---
+    const round1ToolActivity = activityAfterRound1.find(
+      (event) => event.runId === run1Id && event.type === 'tool.started',
+    );
+    expect(round1ToolActivity?.debugEventId).toBeTruthy();
+    const round1CorrelatedDebugEvent = runtimeEventsRound1.find(
+      (event) => event.id === round1ToolActivity?.debugEventId,
+    );
+    expect(round1CorrelatedDebugEvent).toBeDefined();
+    expect(round1CorrelatedDebugEvent?.category).toBe('tool');
+    expect(round1CorrelatedDebugEvent?.phase).toBe('start');
+
+    // --- I3: a real, whole-run before/after case-state diff, never a
+    // reconstructed guess -- computed from the actual CaseState loaded before
+    // the run and the actual CaseState returned after folding completed. ---
+    const round1StateChange = runtimeEventsRound1.find((event) => event.category === 'case');
+    expect(round1StateChange).toBeDefined();
+    expect(round1StateChange?.name).toBe('case.state_changed');
+    expect(round1StateChange?.stateDiff?.length).toBeGreaterThan(0);
+    expect(round1StateChange?.stateDiff?.some((op) => op.path === '/recommendation')).toBe(true);
+
     // --- The household reweights toward long-term waste reduction (real command, no engine involvement) ---
     const criteriaResult = commandService.updateCriteria('cmd-criteria', {
       caseId,
@@ -357,6 +380,21 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
           event.name === 'intervention.confirm' &&
           event.agentId === 'decision-synthesizer',
       ),
+    ).toBe(true);
+
+    // --- Round 2 gets its own real, separately-sequenced case-state diff and
+    // debugEventId correlations, distinct from round 1's. ---
+    const round2StateChange = runtimeEventsRound2.find((event) => event.category === 'case');
+    expect(round2StateChange).toBeDefined();
+    expect(round2StateChange?.stateDiff?.length).toBeGreaterThan(0);
+    expect(round2StateChange?.id).not.toBe(round1StateChange?.id);
+
+    const round2ToolActivity = activityStore
+      .replayFrom(caseId, 0)
+      .find((event) => event.runId === run2Id && event.type === 'tool.started');
+    expect(round2ToolActivity?.debugEventId).toBeTruthy();
+    expect(
+      runtimeEventsRound2.some((event) => event.id === round2ToolActivity?.debugEventId),
     ).toBe(true);
 
     // A human, never the engine, approves the proposal -- proven by the

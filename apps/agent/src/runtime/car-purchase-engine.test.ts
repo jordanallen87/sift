@@ -365,6 +365,17 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
     expect(snapshot.recommendation?.favoredOptionId).toBe('candidate-rav4');
     expect(snapshot.proposal).toBeNull();
 
+    // --- Change-set §34 / DoD item 34: no raw internal id reaches consumer
+    // text. `recommendation.rationale` is rendered verbatim to the user by
+    // `RecommendationCard.tsx`, so a leaked `candidate-*`/`source-*` token
+    // is a defect the user sees, not merely an internal untidiness. The
+    // scenario harness was corrected first; this asserts the *live engine*
+    // path, which is what the deployed product actually runs. ---
+    expect(snapshot.recommendation?.rationale).not.toMatch(/\bcandidate-[a-z0-9-]+/i);
+    expect(snapshot.recommendation?.rationale).not.toMatch(/\bsource-[a-z0-9-]+/i);
+    // Still says something real, rather than having been emptied to pass.
+    expect(snapshot.recommendation?.rationale.length ?? 0).toBeGreaterThan(20);
+
     // --- The real Runtime Inspector persistence path (this task): every
     // normalized RuntimeEvent the real Graph run produced is durably
     // queryable back out of runtime_events, correlated by the exact same
@@ -385,6 +396,29 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
     expect(runtimeEventsRound1.some((event) => event.category === 'tool')).toBe(true);
     expect(runtimeEventsRound1.some((event) => event.category === 'skill')).toBe(true);
     expect(run1Record.traceId).toBeTruthy();
+
+    // --- I2: a consumer-visible activity event derived from a real Graph
+    // RuntimeEvent carries a real debugEventId that resolves to its exact
+    // correlated runtime_events row -- never a placeholder or absent field. ---
+    const round1ToolActivity = activityAfterRound1.find(
+      (event) => event.runId === run1Id && event.type === 'tool.started',
+    );
+    expect(round1ToolActivity?.debugEventId).toBeTruthy();
+    const round1CorrelatedDebugEvent = runtimeEventsRound1.find(
+      (event) => event.id === round1ToolActivity?.debugEventId,
+    );
+    expect(round1CorrelatedDebugEvent).toBeDefined();
+    expect(round1CorrelatedDebugEvent?.category).toBe('tool');
+    expect(round1CorrelatedDebugEvent?.phase).toBe('start');
+
+    // --- I3: a real, whole-run before/after case-state diff, never a
+    // reconstructed guess -- computed from the actual CaseState loaded before
+    // the run and the actual CaseState returned after folding completed. ---
+    const round1StateChange = runtimeEventsRound1.find((event) => event.category === 'case');
+    expect(round1StateChange).toBeDefined();
+    expect(round1StateChange?.name).toBe('case.state_changed');
+    expect(round1StateChange?.stateDiff?.length).toBeGreaterThan(0);
+    expect(round1StateChange?.stateDiff?.some((op) => op.path === '/recommendation')).toBe(true);
 
     // --- The household's WebMCP-driven criteria reweight + two-dog-crate concern (real commands, no engine involvement) ---
     const comfortResult = commandService.updateCriteria('cmd-comfort', {
@@ -526,6 +560,21 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
       runtimeEventsRound2.some(
         (event) => event.category === 'graph' && event.name === 'graph.node_completed',
       ),
+    ).toBe(true);
+
+    // --- Round 2 gets its own real, separately-sequenced case-state diff and
+    // debugEventId correlations, distinct from round 1's. ---
+    const round2StateChange = runtimeEventsRound2.find((event) => event.category === 'case');
+    expect(round2StateChange).toBeDefined();
+    expect(round2StateChange?.stateDiff?.length).toBeGreaterThan(0);
+    expect(round2StateChange?.id).not.toBe(round1StateChange?.id);
+
+    const round2ToolActivity = activityStore
+      .replayFrom(caseId, 0)
+      .find((event) => event.runId === run2Id && event.type === 'tool.started');
+    expect(round2ToolActivity?.debugEventId).toBeTruthy();
+    expect(
+      runtimeEventsRound2.some((event) => event.id === round2ToolActivity?.debugEventId),
     ).toBe(true);
 
     // A human, never the engine, approves the proposal -- proven by the engine

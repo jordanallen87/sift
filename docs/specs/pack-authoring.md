@@ -178,7 +178,7 @@ interface DecisionPackManifest {
 }
 ```
 
-`presentation` is `PresentationDefinition` (defined in `packages/contracts/src/packs.ts`; the field list beyond today's `optionLabel`/`optionLabelPlural`/`attributeGroups` is specified but not yet implemented — see `packs-and-routing.md`'s "Presentation metadata and Decision Guide" for the full target contract, including the pack-level Decision Guide). Every field in both is declarative data validated by the compiler, never executable behavior and never prompt text capable of instructing a model to override host or system-level instructions. This constraint applies to the entire manifest, not only to `presentation`: a pack cannot smuggle an executable adapter or an instruction-shaped string past compilation by putting it in a metadata field the compiler does not yet validate as strictly as `attributes`/`criteria`.
+`presentation` is `PresentationDefinition` (defined in `packages/contracts/src/packs.ts`); the field list beyond today's `optionLabel`/`optionLabelPlural`/`attributeGroups` remains specified but not yet implemented — see `packs-and-routing.md`'s "Presentation metadata and Decision Guide" for the full target contract. The sibling, top-level manifest field `decisionGuide` (`DecisionGuideSchema`) is a separate schema and **is implemented**: both hero packs declare real content for it (see `packs-and-routing.md`). Every field across both is declarative data validated by the compiler, never executable behavior and never prompt text capable of instructing a model to override host or system-level instructions. This constraint applies to the entire manifest, not only to `presentation`/`decisionGuide`: a pack cannot smuggle an executable adapter or an instruction-shaped string past compilation by putting it in a metadata field the compiler does not yet validate as strictly as `attributes`/`criteria`.
 
 A pack bundle contains:
 
@@ -298,7 +298,7 @@ Every pack must prove:
 - every declared attribute and case extension renders in the generic right-pane UI;
 - authoring tools cannot escape the draft directory or publish without confirmation;
 - the public deployment has authoring disabled;
-- presentation metadata and the Decision Guide, once implemented, contain no executable or instruction-shaped content and are rejected by the compiler when they do (`packs-and-routing.md`).
+- the Decision Guide contains no executable or instruction-shaped content, structurally enforced the same way as every other manifest field (`safeString` rejects HTML/script content in each of its seven fields; `.strict()` rejects an added free-form field); expanded presentation metadata, once implemented, must be rejected by the compiler under the identical rule (`packs-and-routing.md`).
 
 ## Hackathon proof
 

@@ -122,7 +122,7 @@ import {
   foldExecutionResult,
   loadSnapshotOrThrow,
 } from './car-purchase-scenario.js';
-import type { RuntimeEvent } from './event-normalizer.js';
+import { diffJsonValues, normalizeCaseStateChange, type RuntimeEvent } from './event-normalizer.js';
 import {
   HOME_ENERGY_SEQUENTIAL_SPECIALIST_IDS,
   executeHomeEnergySwarm,
@@ -212,6 +212,8 @@ function appendActivity(
     runId?: string;
     obligationId?: string;
     agentId?: string;
+    /** The synthetic id of the exact correlated `runtime_events` row this activity event was derived from (I2: "a consumer-visible activity event should open its exact corresponding runtime event"). Omitted for engine-level bookkeeping events (`run.started`/`.completed`/`.failed`) that were never themselves one normalized `RuntimeEvent`. */
+    debugEventId?: string;
     type: PublicActivityEventType;
     phase: PublicActivityPhase;
     summary: string;
@@ -223,6 +225,7 @@ function appendActivity(
     ...(fields.runId !== undefined ? { runId: fields.runId } : {}),
     ...(fields.obligationId !== undefined ? { obligationId: fields.obligationId } : {}),
     ...(fields.agentId !== undefined ? { agentId: fields.agentId } : {}),
+    ...(fields.debugEventId !== undefined ? { debugEventId: fields.debugEventId } : {}),
     type: fields.type,
     phase: fields.phase,
     summary: fields.summary,
@@ -250,9 +253,12 @@ function appendActivityForSwarmEvent(
   ctx: { caseId: string; runId: string },
   activityStore: ActivityStore,
   clock: Clock,
+  /** The synthetic id `runtimeEventStore.append` minted for this exact `event` (I2). Every `appendActivity` call below stamps it, so the resulting `PublicActivityEvent` resolves back to this precise `runtime_events` row. */
+  debugEventId: string,
 ): void {
   const shared = {
     runId: ctx.runId,
+    debugEventId,
     ...(event.obligationId !== undefined ? { obligationId: event.obligationId } : {}),
     ...(event.agentId !== undefined ? { agentId: event.agentId } : {}),
   };
@@ -344,20 +350,47 @@ function appendActivityForSwarmEvent(
  * this engine was `trigger()`ed with) are substituted in before either
  * durable write, exactly like `car-purchase-engine.ts` does.
  */
+interface DrainResult {
+  readonly result: HomeEnergySwarmResult;
+  /**
+   * The highest `sequence` any drained `RuntimeEvent` used, or `-1` if the
+   * Swarm yielded none. `runOneInvestigation` uses `lastSequence + 1` as the
+   * safe next sequence for this run's one additional, real
+   * `case.state_changed` event (I3) -- see `car-purchase-engine.ts`'s
+   * identical `DrainResult` for the full rationale.
+   */
+  readonly lastSequence: number;
+  /**
+   * The real `traceId` every drained `RuntimeEvent` carried (the Swarm's own
+   * internally-minted trace) -- a *different* id than `runOneInvestigation`'s
+   * own local `traceId`, which only ever reaches `runStore.traceId`, never
+   * the Swarm. `undefined` only if the Swarm yielded no events at all.
+   */
+  readonly traceId: string | undefined;
+}
+
 async function drainSwarmToActivity(
   gen: AsyncGenerator<RuntimeEvent, HomeEnergySwarmResult, undefined>,
   ctx: { caseId: string; runId: string },
   activityStore: ActivityStore,
   runtimeEventStore: RuntimeEventStore,
   clock: Clock,
-): Promise<HomeEnergySwarmResult> {
+): Promise<DrainResult> {
   let next = await gen.next();
+  let lastSequence = -1;
+  let traceId: string | undefined;
   while (!next.done) {
-    runtimeEventStore.append({ ...next.value, caseId: ctx.caseId, runId: ctx.runId });
-    appendActivityForSwarmEvent(next.value, ctx, activityStore, clock);
+    const persisted = runtimeEventStore.append({
+      ...next.value,
+      caseId: ctx.caseId,
+      runId: ctx.runId,
+    });
+    appendActivityForSwarmEvent(next.value, ctx, activityStore, clock, persisted.id);
+    lastSequence = persisted.sequence;
+    traceId = persisted.traceId;
     next = await gen.next();
   }
-  return next.value;
+  return { result: next.value, lastSequence, traceId };
 }
 
 function scenarioFoldDeps(deps: HomeEnergyEngineDeps): {
@@ -810,7 +843,11 @@ async function runOneInvestigation(
       round === 'round2' ? 'decision-synthesizer' : undefined,
     );
 
-    const swarmResult = await drainSwarmToActivity(
+    const {
+      result: swarmResult,
+      lastSequence,
+      traceId: swarmTraceId,
+    } = await drainSwarmToActivity(
       executeHomeEnergySwarm(swarmDeps),
       { caseId: params.caseId, runId: params.runId },
       deps.activityStore,
@@ -822,6 +859,31 @@ async function runOneInvestigation(
       round === 'round1'
         ? foldHomeEnergyRound1(deps, params.caseId, swarmResult)
         : foldHomeEnergyRound2(deps, params.caseId, swarmResult);
+
+    // --- I3: one real, whole-run before/after case-state diff (see
+    // event-normalizer.ts's normalizeCaseStateChange doc comment for why
+    // this is a whole-run diff, not a per-CaseEvent one). Skipped only when
+    // the run genuinely changed nothing (never expected for a completed
+    // investigation, but a defensive guard against a vacuous event). ---
+    const stateDiff = diffJsonValues(initialSnapshot, finalSnapshot);
+    if (stateDiff.length > 0) {
+      deps.runtimeEventStore.append(
+        normalizeCaseStateChange(
+          { stateDiff },
+          {
+            // The Swarm's own real trace (see DrainResult.traceId's doc
+            // comment), never the unrelated local `traceId` above -- falls
+            // back to it only in the never-expected case the Swarm yielded
+            // no events at all, so this event still carries a real trace.
+            traceId: swarmTraceId ?? traceId,
+            caseId: params.caseId,
+            runId: params.runId,
+            obligationId: params.obligationId,
+          },
+          lastSequence + 1,
+        ),
+      );
+    }
 
     deps.runStore.updateStatus(params.runId, {
       status: 'completed',

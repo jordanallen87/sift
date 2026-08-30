@@ -81,3 +81,40 @@ export const HttpConflictResponseSchema = z
   })
   .strict();
 export type HttpConflictResponse = z.infer<typeof HttpConflictResponseSchema>;
+
+/**
+ * The command-origin marker (docs/decisions/0006-webmcp-two-way-
+ * collaboration-contract.md decision 8; docs/specs/debugging-and-
+ * observability.md "WebMCP tool calls"). A command sent to `POST
+ * /api/cases/:caseId/commands/:commandName` may optionally carry an
+ * `X-Sift-Command-Origin` request header -- a sibling to the existing
+ * `X-Sift-Command-Id`/`Idempotency-Key` headers (`routes/http-support.ts`)
+ * -- tagging it as issued by a registered WebMCP tool rather than a direct
+ * UI action. Closed enum, not free text: `routes/http-support.ts`'s
+ * `readCommandOrigin` rejects any value outside `COMMAND_ORIGINS` with
+ * `400 VALIDATION`, the same failure contract `readCommandId` already uses
+ * for a malformed `Idempotency-Key`.
+ *
+ * `CommandService`/`routes/commands.ts` thread this marker through as a
+ * plain field on the command envelope -- never a branch in command logic
+ * (CLAUDE.md: "Visible UI controls and WebMCP callbacks use the same
+ * command implementation"). It changes only what gets *recorded* about a
+ * command (the developer/runtime trail), never what the command *does*: a
+ * command with and without this header produces byte-identical case state
+ * and an identical `eventSequence` advance.
+ *
+ * This is self-reported, client-supplied provenance for observability
+ * ONLY. It is never consulted for an authorization decision -- exactly the
+ * hazard `routes/agentcore.ts`'s header comment documents for its own
+ * `actor` field on a neighbouring transport: "nothing upstream ...
+ * authenticates who the caller actually is," so a client claiming an
+ * origin cannot be trusted to police itself. Human-only verbs
+ * (`reviewProposal`, confirming a `reviewCaseExtension`) stay unreachable
+ * from WebMCP by tool-catalog exclusion (`webmcp-contract.test.ts`), a
+ * structural guarantee this header cannot weaken or strengthen -- sending
+ * `X-Sift-Command-Origin: webmcp` grants a caller no capability it did not
+ * already have.
+ */
+export const COMMAND_ORIGINS = ['webmcp'] as const;
+export const CommandOriginSchema = z.enum(COMMAND_ORIGINS);
+export type CommandOrigin = z.infer<typeof CommandOriginSchema>;

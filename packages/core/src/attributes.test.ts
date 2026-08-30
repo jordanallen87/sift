@@ -762,6 +762,113 @@ describe('createAttributeRecord', () => {
       expect(result.value.updatedAt).toBe('2020-01-01T00:00:00.000Z');
     }
   });
+
+  // --- Honesty boundary: a model may not certify its own inference as
+  // "verified" (plan task F5 / change-set §25-§26). CLAUDE.md: "The
+  // deterministic core, not an LLM, owns case state, evidence validity,
+  // readiness, and human authority." `status: 'verified'` is this protocol's
+  // strongest claim -- it asserts a human confirmed the value, not merely
+  // that specification research or a pack default supports it
+  // (packs-and-routing.md: "research-supported 'likely' is not the same
+  // claim as human-attested 'verified comfortable'"). Only `origin: 'user'`
+  // is a literal human action, so only it may claim `'verified'`.
+
+  it('rejects "verified" status from origin "agent_proposed" -- a model may not certify its own inference as verified', () => {
+    const result = createAttributeRecord(
+      {
+        definitionId: 'custom.dog_crate_fit',
+        label: 'Dog crate fit',
+        origin: 'agent_proposed',
+        status: 'verified',
+        value: { type: 'boolean', value: true },
+      },
+      fixedClock(),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      // Loud and actionable: names what was rejected (origin "agent_proposed"
+      // claiming "verified") and what would have been accepted ("user"),
+      // never a silent downgrade to a weaker status the caller didn't ask
+      // for and wouldn't know happened.
+      expect(result.errors.join(' ')).toMatch(/verified/i);
+      expect(result.errors.join(' ')).toMatch(/agent_proposed/);
+      expect(result.errors.join(' ')).toMatch(/user/);
+    }
+  });
+
+  it('rejects "verified" status from origin "pack" -- pre-authored pack reference data is not a human attestation either', () => {
+    const result = createAttributeRecord(
+      {
+        definitionId: 'car.advertised_price',
+        label: 'Advertised price',
+        origin: 'pack',
+        status: 'verified',
+        value: { type: 'number', value: 24999 },
+      },
+      fixedClock(),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join(' ')).toMatch(/verified/i);
+      expect(result.errors.join(' ')).toMatch(/pack/);
+    }
+  });
+
+  it('accepts "verified" status from origin "user" -- human observation may assert the strongest status', () => {
+    const result = createAttributeRecord(
+      {
+        definitionId: 'custom.dog_crate_fit',
+        label: 'Dog crate fit',
+        origin: 'user',
+        status: 'verified',
+        value: { type: 'boolean', value: true },
+      },
+      fixedClock(),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.status).toBe('verified');
+      expect(result.value.origin).toBe('user');
+    }
+  });
+
+  it('does not reject a non-"verified" status for a non-"user" origin -- the rule targets "verified" specifically, not agent/pack writes in general', () => {
+    const result = createAttributeRecord(
+      {
+        definitionId: 'car.advertised_price',
+        label: 'Advertised price',
+        origin: 'agent_proposed',
+        status: 'supported',
+        value: { type: 'number', value: 24999 },
+      },
+      fixedClock(),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('property: "verified" succeeds if and only if origin is "user", for every origin/status combination', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('pack', 'user', 'agent_proposed'),
+        fc.constantFrom('asserted', 'supported', 'verified', 'conflicted'),
+        (origin, status) => {
+          const result = createAttributeRecord(
+            {
+              definitionId: 'car.advertised_price',
+              label: 'Advertised price',
+              origin,
+              status,
+              value: { type: 'number', value: 1 },
+            },
+            fixedClock(),
+          );
+          const expectedOk = status !== 'verified' || origin === 'user';
+          expect(result.ok).toBe(expectedOk);
+        },
+      ),
+      { seed: 4, numRuns: 200 },
+    );
+  });
 });
 
 describe('AttributeValueSchema sanity (imported to keep the round-trip property test honest)', () => {

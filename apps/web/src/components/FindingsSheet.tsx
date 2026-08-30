@@ -236,7 +236,7 @@ export function FindingsSheet({
                 </TabsContent>
 
                 <TabsContent data-testid="findings-sheet-view-kanban" value="kanban">
-                  {/* Horizontal scroll on its own self-contained container, not the page -- matching OptionComparison.tsx's identical `overflow-x-auto` pattern for wide, self-contained content. */}
+                  {/* Horizontal scroll on its own self-contained container, not the page -- matching OptionCompareView.tsx's identical `overflow-x-auto` pattern for wide, self-contained content. */}
                   <div
                     className="overflow-x-auto"
                     tabIndex={0}

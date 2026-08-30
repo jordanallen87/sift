@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import type { AttributeDefinition, CaseExtension, Criterion } from '@sift/contracts';
-import { buildFixtureCaseState } from '../test/fixtures.js';
+import type { AttributeDefinition, CaseExtension, Criterion, DecisionGuide } from '@sift/contracts';
+import { buildFixtureCaseState, buildFixtureObligation } from '../test/fixtures.js';
 import { bandWeight, deriveDecisionProfile } from './decision-profile.js';
+
+function buildGuide(overrides: Partial<DecisionGuide> = {}): DecisionGuide {
+  return {
+    domainPurpose: 'Compare shortlisted vehicles against household needs.',
+    discoveryStrategy: 'Establish hard constraints before comparing candidates.',
+    suggestedQuestions: [],
+    importantUnknowns: [],
+    researchGuidance: 'Prefer independent published sources.',
+    customFieldGuidance: 'Prefer a typed custom field over prose.',
+    presentationGuidance: 'Show deal and ownership cost together.',
+    ...overrides,
+  };
+}
 
 const FIXED_TIMESTAMP = '2026-08-27T00:00:00.000Z';
 
@@ -86,6 +99,7 @@ describe('deriveDecisionProfile', () => {
       context: [],
       personalConcerns: [],
       missing: [],
+      suggestedQuestions: [],
     });
   });
 
@@ -415,6 +429,220 @@ describe('deriveDecisionProfile', () => {
         'no_target',
         'pending_confirmation',
       ]);
+    });
+  });
+
+  describe('suggestedQuestions (§16, sourced honestly per task D4)', () => {
+    it('is empty when no guide is supplied and the case has no unmet obligation or questioned criterion', () => {
+      const caseState = buildFixtureCaseState();
+      const profile = deriveDecisionProfile(caseState);
+      expect(profile.suggestedQuestions).toEqual([]);
+    });
+
+    it('surfaces a guide-declared question verbatim, tagged pack_guide, with no relatedId', () => {
+      const caseState = buildFixtureCaseState();
+      const guide = buildGuide({ suggestedQuestions: ['Do you need AWD?'] });
+      const profile = deriveDecisionProfile(caseState, guide);
+      expect(profile.suggestedQuestions).toEqual([
+        { id: 'guide:0', text: 'Do you need AWD?', source: 'pack_guide' },
+      ]);
+    });
+
+    it('preserves the guide\'s own declared question order', () => {
+      const caseState = buildFixtureCaseState();
+      const guide = buildGuide({
+        suggestedQuestions: ['Do you need AWD?', 'Is $40,000 a hard ceiling or target?'],
+      });
+      const profile = deriveDecisionProfile(caseState, guide);
+      expect(profile.suggestedQuestions.map((q) => q.text)).toEqual([
+        'Do you need AWD?',
+        'Is $40,000 a hard ceiling or target?',
+      ]);
+    });
+
+    it('never fabricates guide questions when no guide is supplied at all', () => {
+      const caseState = buildFixtureCaseState({
+        obligations: [], // no case-side signal either
+      });
+      const profile = deriveDecisionProfile(caseState);
+      expect(profile.suggestedQuestions).toEqual([]);
+    });
+
+    it('surfaces an open obligation\'s own question, tagged unmet_obligation, with its relatedId', () => {
+      const caseState = buildFixtureCaseState({
+        obligations: [
+          buildFixtureObligation({
+            id: 'obl-price',
+            question: 'What is the out-the-door price?',
+            status: 'open',
+          }),
+        ],
+      });
+      const profile = deriveDecisionProfile(caseState);
+      expect(profile.suggestedQuestions).toEqual([
+        { id: 'obligation:obl-price', text: 'What is the out-the-door price?', source: 'unmet_obligation', relatedId: 'obl-price' },
+      ]);
+    });
+
+    it.each(['open', 'active', 'blocked'] as const)(
+      'treats a "%s" obligation as unmet and surfaces its question',
+      (status) => {
+        const caseState = buildFixtureCaseState({
+          obligations: [buildFixtureObligation({ id: 'obl-1', status })],
+        });
+        const profile = deriveDecisionProfile(caseState);
+        expect(profile.suggestedQuestions.map((q) => q.relatedId)).toEqual(['obl-1']);
+      },
+    );
+
+    it.each(['satisfied', 'accepted_uncertainty'] as const)(
+      'does not surface a "%s" obligation -- it is no longer unmet',
+      (status) => {
+        const caseState = buildFixtureCaseState({
+          obligations: [buildFixtureObligation({ id: 'obl-1', status })],
+        });
+        const profile = deriveDecisionProfile(caseState);
+        expect(profile.suggestedQuestions).toEqual([]);
+      },
+    );
+
+    it('orders unmet obligations by descending pack-declared priority', () => {
+      const caseState = buildFixtureCaseState({
+        obligations: [
+          buildFixtureObligation({ id: 'low', question: 'Low priority question?', priority: 1 }),
+          buildFixtureObligation({ id: 'high', question: 'High priority question?', priority: 100 }),
+        ],
+      });
+      const profile = deriveDecisionProfile(caseState);
+      expect(profile.suggestedQuestions.map((q) => q.relatedId)).toEqual(['high', 'low']);
+    });
+
+    it('surfaces a missing criterion\'s own declared question, tagged missing_criterion', () => {
+      const caseState = buildFixtureCaseState({
+        criteria: [
+          buildCriterion({
+            id: 'budget',
+            label: 'Budget',
+            kind: 'hard_constraint',
+            target: undefined,
+            question: 'Is $40,000 a hard ceiling or a target?',
+          }),
+        ],
+      });
+      const profile = deriveDecisionProfile(caseState);
+      expect(profile.suggestedQuestions).toEqual([
+        {
+          id: 'criterion:budget',
+          text: 'Is $40,000 a hard ceiling or a target?',
+          source: 'missing_criterion',
+          relatedId: 'budget',
+        },
+      ]);
+    });
+
+    it('never fabricates a question for a missing criterion that declares no question of its own', () => {
+      const caseState = buildFixtureCaseState({
+        criteria: [
+          buildCriterion({
+            id: 'budget',
+            kind: 'hard_constraint',
+            target: undefined,
+            question: undefined,
+          }),
+        ],
+      });
+      const profile = deriveDecisionProfile(caseState);
+      expect(profile.missing).toHaveLength(1); // the gap is still visible in "missing"...
+      expect(profile.suggestedQuestions).toEqual([]); // ...but never turned into an invented question
+    });
+
+    it('does not surface a resolved criterion\'s question -- it is not in "missing"', () => {
+      const caseState = buildFixtureCaseState({
+        criteria: [
+          buildCriterion({
+            id: 'budget',
+            kind: 'hard_constraint',
+            target: { type: 'money', amount: 40000, currency: 'USD' },
+            question: 'Is $40,000 a hard ceiling or a target?',
+          }),
+        ],
+      });
+      const profile = deriveDecisionProfile(caseState);
+      expect(profile.suggestedQuestions).toEqual([]);
+    });
+
+    it('never fabricates a question for a pending case extension with no backing guide or obligation question', () => {
+      const caseState = buildFixtureCaseState({
+        caseExtensions: [
+          buildExtension({
+            id: 'ext-1',
+            definition: { ...buildExtension().definition, confirmation: 'pending' },
+          }),
+        ],
+      });
+      const profile = deriveDecisionProfile(caseState);
+      expect(profile.missing).toHaveLength(1); // pending_confirmation is still visible in "missing"...
+      expect(profile.suggestedQuestions).toEqual([]); // ...honestly empty rather than invented
+    });
+
+    it('surfaces a pending extension\'s obligation question when one genuinely exists (case_extension-origin obligation)', () => {
+      const caseState = buildFixtureCaseState({
+        caseExtensions: [
+          buildExtension({
+            id: 'ext-1',
+            definition: { ...buildExtension().definition, confirmation: 'pending' },
+          }),
+        ],
+        obligations: [
+          buildFixtureObligation({
+            id: 'case.ext-1',
+            question: 'Should "Laptop work fit" count toward the comparison?',
+            origin: 'case_extension',
+            criterionId: 'crit-ext-1',
+            status: 'open',
+          }),
+        ],
+      });
+      const profile = deriveDecisionProfile(caseState);
+      expect(profile.suggestedQuestions).toContainEqual({
+        id: 'obligation:case.ext-1',
+        text: 'Should "Laptop work fit" count toward the comparison?',
+        source: 'unmet_obligation',
+        relatedId: 'case.ext-1',
+      });
+    });
+
+    it('combines pack_guide, unmet_obligation, and missing_criterion sources together, guide first', () => {
+      const caseState = buildFixtureCaseState({
+        criteria: [
+          buildCriterion({
+            id: 'budget',
+            kind: 'hard_constraint',
+            target: undefined,
+            question: 'Is $40,000 a hard ceiling or a target?',
+          }),
+        ],
+        obligations: [
+          buildFixtureObligation({ id: 'obl-1', question: 'What is the out-the-door price?' }),
+        ],
+      });
+      const guide = buildGuide({ suggestedQuestions: ['Do you need AWD?'] });
+      const profile = deriveDecisionProfile(caseState, guide);
+      expect(profile.suggestedQuestions.map((q) => q.source)).toEqual([
+        'pack_guide',
+        'unmet_obligation',
+        'missing_criterion',
+      ]);
+    });
+
+    it('deduplicates an identical question surfaced by two different real signals, keeping the first', () => {
+      const caseState = buildFixtureCaseState({
+        obligations: [buildFixtureObligation({ id: 'obl-1', question: 'Do you need AWD?' })],
+      });
+      const guide = buildGuide({ suggestedQuestions: ['Do you need AWD?'] });
+      const profile = deriveDecisionProfile(caseState, guide);
+      expect(profile.suggestedQuestions).toHaveLength(1);
+      expect(profile.suggestedQuestions[0]?.source).toBe('pack_guide');
     });
   });
 });

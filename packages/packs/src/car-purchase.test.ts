@@ -364,6 +364,38 @@ describe('evaluation (negative case required)', () => {
   });
 });
 
+describe('decisionGuide (§46/§47 pack-level Decision Guide)', () => {
+  // Task D4/E7: `suggestedQuestions` (decision-profile.ts) is only honest
+  // once a real, pack-authored Decision Guide exists for this pack to draw
+  // from -- these assertions exist so a future edit cannot silently reduce
+  // this pack's guide back down to empty/placeholder content without a
+  // visibly failing test.
+  it('declares a Decision Guide with real, non-empty content in every field', () => {
+    const guide = CAR_PURCHASE_MANIFEST.decisionGuide;
+    expect(guide).toBeDefined();
+    expect(guide?.domainPurpose.length).toBeGreaterThan(0);
+    expect(guide?.discoveryStrategy.length).toBeGreaterThan(0);
+    expect(guide?.researchGuidance.length).toBeGreaterThan(0);
+    expect(guide?.customFieldGuidance.length).toBeGreaterThan(0);
+    expect(guide?.presentationGuidance.length).toBeGreaterThan(0);
+    expect(guide?.suggestedQuestions.length).toBeGreaterThan(0);
+    expect(guide?.importantUnknowns.length).toBeGreaterThan(0);
+  });
+
+  it('suggests questions that actually read as questions, not asserted facts', () => {
+    const guide = CAR_PURCHASE_MANIFEST.decisionGuide;
+    for (const question of guide?.suggestedQuestions ?? []) {
+      expect(question.trim().endsWith('?')).toBe(true);
+    }
+  });
+
+  it('names an actual household fit concern in importantUnknowns rather than generic filler', () => {
+    const guide = CAR_PURCHASE_MANIFEST.decisionGuide;
+    const joined = (guide?.importantUnknowns ?? []).join(' ').toLowerCase();
+    expect(joined).toMatch(/fit|measurement|test drive/);
+  });
+});
+
 describe('full manifest fidelity', () => {
   // The suites above assert structural invariants (counts, ids, required
   // relationships) but do not pin every individual field value -- a label

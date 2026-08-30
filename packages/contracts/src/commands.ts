@@ -29,7 +29,7 @@ import {
   CRITERION_KINDS,
 } from './attributes.js';
 import { CaseAttributeIdSchema } from './attributes.js';
-import { CaseStateSchema } from './case.js';
+import { CASE_NOTE_KINDS, CaseStateSchema, WorkspaceViewStateSchema } from './case.js';
 import { EVIDENCE_DISPOSITIONS } from './case.js';
 import { CaseExtensionReviewDecisionSchema } from './extensions.js';
 
@@ -149,6 +149,91 @@ export type UpsertOptionInput = z.infer<typeof UpsertOptionInputSchema>;
 /** Identical shape to `UpsertOptionInput`. */
 export const SiftUpsertOptionToolInputSchema = UpsertOptionInputSchema;
 
+// --- SetOptionAttributeInput (webmcp.md `sift_set_option_attribute`) ---
+// docs/decisions/0006-webmcp-two-way-collaboration-contract.md decision 4: a
+// narrower alternative to `UpsertOptionInput` for the case §25 describes --
+// `upsertOption` replaces an entity's *entire* attributes map, so a caller
+// that wants to set exactly one attribute must resend every other one, and
+// any it omits are destroyed (unsafe for a scoped write from ChatGPT). This
+// command writes exactly one attribute on one EXISTING option, merging it
+// into the entity's attributes map rather than replacing it.
+//
+// Reuses `OptionAttributeInputSchema` unchanged -- the same single-attribute
+// vocabulary (`value`, `status`, `confidence`, `origin`, `sourceIds`)
+// `upsertOption` already carries is exactly what a scoped write needs; see
+// that schema's own doc comment for why each field exists and why `value`
+// is optional (status "unknown" carries no value).
+//
+// Unlike `UpsertOptionInputSchema`, `optionId` is required, not generated:
+// this command can only write onto an option that already exists on the
+// case. `command-service.ts`'s handler rejects both an unknown `optionId`
+// and an unknown `attribute.definitionId` (not declared anywhere on the
+// case, pack-defined or case-extension) as a clean validation error, never a
+// silent no-op -- a stricter existence rule than `upsertOption`'s own open
+// `Record` attributes map enforces, deliberate for this narrower, more
+// authoritative operation.
+
+export const SetOptionAttributeInputSchema = z
+  .object({
+    caseId: idString(),
+    optionId: idString(),
+    expectedSequence,
+    attribute: OptionAttributeInputSchema,
+  })
+  .strict();
+export type SetOptionAttributeInput = z.infer<typeof SetOptionAttributeInputSchema>;
+
+/** Identical shape to `SetOptionAttributeInput`. */
+export const SiftSetOptionAttributeToolInputSchema = SetOptionAttributeInputSchema;
+
+// --- AddNoteInput (webmcp.md `sift_add_note` -- docs/change-sets/2026-08-30-
+// generic-decision-workspace.md §28 "Notes" / §29 "WebMCP should be able to
+// add research and notes") ---
+//
+// `CaseNote` (case.ts) is a first-class, event-sourced concept distinct from
+// `Source`/`Claim`/`EvidenceLink`: "Not every thought belongs as evidence,
+// criterion, or attribute" (§28). Deliberately does NOT reuse
+// `SubmitSourceInputSchema`'s shape -- a note carries no URL/publisher/
+// retrievedAt provenance and, critically, its command handler never derives
+// an `EvidenceLink` from it. Keeping the input schemas separate (rather than
+// widening `SubmitSourceInput` with an "is this actually a note" flag) is
+// what makes "notes never auto-promote to evidence" true by construction --
+// a caller literally cannot reach the evidence-creating code path through
+// this schema -- rather than by convention.
+//
+// `origin` mirrors `DefineCaseAttributeInputSchema.origin`'s exact channel
+// (optional, defaulting to `'user'` at the command-handler layer): reuses
+// the already-established `CASE_ATTRIBUTE_ORIGINS` ('user'/'agent_proposed')
+// vocabulary rather than inventing a third parallel "who wrote this" enum
+// for notes alone -- see `CaseNoteSchema`'s own doc comment (case.ts) for
+// the full reasoning.
+//
+// `note.optionIds`/`note.obligationId`/`note.sourceIds` are all optional:
+// §28's requirements list only "notes may reference options" as something
+// the concept must support, not something every note must carry.
+const AddNoteDraftSchema = z
+  .object({
+    body: safeString(2000),
+    kind: z.enum(CASE_NOTE_KINDS).optional(),
+    optionIds: z.array(idString()).max(50).optional(),
+    obligationId: idString().optional(),
+    sourceIds: z.array(idString()).max(50).optional(),
+  })
+  .strict();
+
+export const AddNoteInputSchema = z
+  .object({
+    caseId: idString(),
+    expectedSequence,
+    origin: z.enum(CASE_ATTRIBUTE_ORIGINS).optional(),
+    note: AddNoteDraftSchema,
+  })
+  .strict();
+export type AddNoteInput = z.infer<typeof AddNoteInputSchema>;
+
+/** Identical shape to `AddNoteInput`. */
+export const SiftAddNoteToolInputSchema = AddNoteInputSchema;
+
 // --- FocusOptionInput (webmcp.md `sift_focus_option`) ---
 
 export const FocusOptionInputSchema = z
@@ -162,6 +247,37 @@ export type FocusOptionInput = z.infer<typeof FocusOptionInputSchema>;
 
 /** Identical shape to `FocusOptionInput`. */
 export const SiftFocusOptionToolInputSchema = FocusOptionInputSchema;
+
+// --- SetViewInput (webmcp.md `sift_set_view`) ---
+// docs/decisions/0005-workspace-view-state-and-option-views.md "Decision" §1:
+// `WorkspaceViewState` is presentation state, not a decision mutation, and
+// persists exclusively through `CaseStore.updateSelection()` -- the same
+// non-event-sourced path `FocusOptionInput`/`FocusEvidenceInput` already use
+// for `selectedOptionId`/`selectedEvidenceId` -- never through `append()`.
+// Routing a view change through `updateSelection()` makes ADR 0005's central
+// guarantee true by construction: a view-only patch structurally cannot
+// reach `append()`/`applyCaseEvent`, so it can never advance `eventSequence`
+// or invalidate a `recommendation`.
+//
+// `view` carries the FULL `WorkspaceViewState`, not a partial patch: the
+// caller sends the complete view state it wants persisted, matching how
+// `CaseState.view` itself is stored (one nullable/optional field holding the
+// whole object, not something merged field-by-field). `expectedSequence` is
+// still required and checked (optimistic concurrency applies the same way
+// it does to every other command -- see `command-service.ts`'s `setView`),
+// even though a successful apply leaves it unchanged.
+
+export const SetViewInputSchema = z
+  .object({
+    caseId: idString(),
+    expectedSequence,
+    view: WorkspaceViewStateSchema,
+  })
+  .strict();
+export type SetViewInput = z.infer<typeof SetViewInputSchema>;
+
+/** Identical shape to `SetViewInput`. */
+export const SiftSetViewToolInputSchema = SetViewInputSchema;
 
 // --- DefineCaseAttributeInput (webmcp.md `sift_define_case_attribute`) ---
 // Deliberately narrower than `CaseAttributeDefinitionSchema` (attributes.ts):

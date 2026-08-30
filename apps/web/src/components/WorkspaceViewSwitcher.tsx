@@ -38,6 +38,18 @@
  * contract does not assume that: it takes `mode`/`onModeChange` as props so
  * a future caller can swap the source of truth to the real persisted
  * `WorkspaceViewState.mode` without this component changing at all.
+ *
+ * `layout` for `OptionCompareView`, by contrast, IS decided locally here via
+ * `useWidthMode` (Phase B3, `apps/web/src/hooks/use-width-mode.ts`) rather
+ * than threaded through as a prop: it is a real-time viewport fact, not
+ * case/session state anything needs to persist or share with a WebMCP
+ * caller (ADR 0005 Decision 4's "narrow and expanded modes are two
+ * intentional information architectures" is about what a given width
+ * *renders*, not something ChatGPT would ever set on the user's behalf).
+ * This is this hook's first real consumer -- previously `layout="narrow"`
+ * was hard-coded here, which is exactly the gap ADR 0005 Decision 4 named
+ * ("no existing component or hook ... provides a starting point for the
+ * width-detection mechanism itself").
  */
 import { WORKSPACE_VIEW_MODES, type WorkspaceViewMode } from '@sift/contracts';
 import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
@@ -46,6 +58,7 @@ import { QuickPickView } from './QuickPickView.js';
 import { OptionCompareView } from './OptionCompareView.js';
 import { OptionListView } from './OptionListView.js';
 import { OptionBoardView } from './OptionBoardView.js';
+import { useWidthMode } from '../hooks/use-width-mode.js';
 
 export interface WorkspaceViewSwitcherProps {
   mode: WorkspaceViewMode;
@@ -98,6 +111,8 @@ export function WorkspaceViewSwitcher({
   boardPlacement,
   onMoveOption,
 }: WorkspaceViewSwitcherProps) {
+  const widthMode = useWidthMode();
+
   return (
     <section
       data-testid="workspace-view-switcher"
@@ -140,7 +155,7 @@ export function WorkspaceViewSwitcher({
             attributeDefinitions={attributeDefinitions}
             presentation={presentation}
             selectedOptionId={selectedOptionId}
-            layout="narrow"
+            layout={widthMode}
             onFocusOption={onFocusOption}
           />
         </TabsContent>

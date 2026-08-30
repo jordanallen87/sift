@@ -117,6 +117,7 @@ import type { InvestigationEngine, RunStore } from '../services/run-service.js';
 import type { ActivityStore } from '../store/activity-store.js';
 import type { CaseStore } from '../store/case-store.js';
 import type { RuntimeEventStore } from '../store/runtime-event-store.js';
+import { diffJsonValues, normalizeCaseStateChange } from './event-normalizer.js';
 import {
   CAR_PURCHASE_PARALLEL_SPECIALIST_IDS,
   executeCarPurchaseGraph,
@@ -126,8 +127,10 @@ import {
   buildGraphDeps,
   dogCrateObligationTemplate,
   ensureSourcesExist,
+  entityLabelsById,
   extractCitedSourceIds,
   foldExecutionResult,
+  humanizeDecisionText,
   loadSnapshotOrThrow,
   type CarPurchaseScenarioDeps,
 } from './car-purchase-scenario.js';
@@ -237,6 +240,8 @@ function appendActivity(
     runId?: string;
     obligationId?: string;
     agentId?: string;
+    /** The synthetic id of the exact correlated `runtime_events` row this activity event was derived from (I2: "a consumer-visible activity event should open its exact corresponding runtime event"). Omitted for engine-level bookkeeping events (`run.started`/`.completed`/`.failed`) that were never themselves one normalized `RuntimeEvent`. */
+    debugEventId?: string;
     type: PublicActivityEventType;
     phase: PublicActivityPhase;
     summary: string;
@@ -248,6 +253,7 @@ function appendActivity(
     ...(fields.runId !== undefined ? { runId: fields.runId } : {}),
     ...(fields.obligationId !== undefined ? { obligationId: fields.obligationId } : {}),
     ...(fields.agentId !== undefined ? { agentId: fields.agentId } : {}),
+    ...(fields.debugEventId !== undefined ? { debugEventId: fields.debugEventId } : {}),
     type: fields.type,
     phase: fields.phase,
     summary: fields.summary,
@@ -272,9 +278,12 @@ function appendActivityForRuntimeEvent(
   ctx: { caseId: string; runId: string },
   activityStore: ActivityStore,
   clock: Clock,
+  /** The synthetic id `runtimeEventStore.append` minted for this exact `event` (I2). Every `appendActivity` call below stamps it, so the resulting `PublicActivityEvent` resolves back to this precise `runtime_events` row. */
+  debugEventId: string,
 ): void {
   const shared = {
     runId: ctx.runId,
+    debugEventId,
     ...(event.obligationId !== undefined ? { obligationId: event.obligationId } : {}),
     ...(event.agentId !== undefined ? { agentId: event.agentId } : {}),
   };
@@ -374,20 +383,55 @@ function appendActivityForRuntimeEvent(
  * `category`/`name`/`phase`/`level`/`attributes`/`payload`/etc. -- is the
  * real, untouched value the Graph produced; nothing here is fabricated.
  */
+interface DrainResult {
+  readonly result: CarPurchaseGraphResult;
+  /**
+   * The highest `sequence` any drained `RuntimeEvent` used, or `-1` if the
+   * Graph yielded none. `runOneInvestigation` uses `lastSequence + 1` as the
+   * safe next sequence for this run's one additional, real
+   * `case.state_changed` event (I3) -- guaranteed not to collide with any
+   * sequence the Graph itself already used, since `RunAccumulator.sequence`
+   * (`car-purchase-graph.ts`) is monotonic for the run's whole lifetime and
+   * this event is appended only after the drain loop above has fully
+   * finished.
+   */
+  readonly lastSequence: number;
+  /**
+   * The real `traceId` every drained `RuntimeEvent` carried (the Graph's own
+   * internally-minted trace, from `executeCarPurchaseGraph`'s own
+   * `deps.idGenerator.next('trace')` -- a *different* id than
+   * `runOneInvestigation`'s own local `traceId`, which only ever reaches
+   * `runStore.traceId`, never the Graph). `undefined` only if the Graph
+   * yielded no events at all. `runOneInvestigation` reuses this exact value
+   * for the `case.state_changed` event so every runtime_events row for one
+   * run shares one real trace, matching what a real client already expects
+   * ("every event... carries available correlation fields").
+   */
+  readonly traceId: string | undefined;
+}
+
 async function drainGraphToActivity(
   gen: AsyncGenerator<RuntimeEvent, CarPurchaseGraphResult, undefined>,
   ctx: { caseId: string; runId: string },
   activityStore: ActivityStore,
   runtimeEventStore: RuntimeEventStore,
   clock: Clock,
-): Promise<CarPurchaseGraphResult> {
+): Promise<DrainResult> {
   let next = await gen.next();
+  let lastSequence = -1;
+  let traceId: string | undefined;
   while (!next.done) {
-    runtimeEventStore.append({ ...next.value, caseId: ctx.caseId, runId: ctx.runId });
-    appendActivityForRuntimeEvent(next.value, ctx, activityStore, clock);
+    const persisted = runtimeEventStore.append({
+      ...next.value,
+      caseId: ctx.caseId,
+      runId: ctx.runId,
+    });
+    appendActivityForRuntimeEvent(next.value, ctx, activityStore, clock, persisted.id);
+    lastSequence = persisted.sequence;
+    traceId = persisted.traceId;
     next = await gen.next();
   }
-  return next.value;
+  return { result: next.value, lastSequence, traceId };
 }
 
 /** Derives and durably appends `case.custom.dog_crate_fit` if it is not already present. See this file's header comment. */
@@ -514,6 +558,17 @@ export function foldRound1(
   snapshot = loadSnapshotOrThrow(deps.caseStore, caseId);
 
   const favoredOptionId = graphResult.proposedRecommendation.candidateIds[0] ?? null;
+  // Change-set §34 / DoD item 34: `rationale` is rendered verbatim to the
+  // user by `RecommendationCard.tsx`, so every raw `candidate-*`/`source-*`
+  // token in the synthesizer's text has to become the real label or
+  // publisher the case already carries. Ordering is load-bearing and is
+  // documented on `humanizeDecisionText` itself: this must run AFTER
+  // `extractCitedSourceIds` above, because humanizing removes the very
+  // tokens that function matches on.
+  const rationale = humanizeDecisionText(
+    graphResult.decisionSynthesizerText,
+    entityLabelsById(snapshot.entities),
+  );
   const recommendationEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -525,7 +580,7 @@ export function foldRound1(
         id: deps.idGenerator.next('rec'),
         status: 'ready',
         favoredOptionId,
-        rationale: graphResult.decisionSynthesizerText,
+        rationale,
         facts: [],
         hypotheses: [],
         confidence: 0.75,
@@ -752,6 +807,13 @@ export function foldRound2(
   );
 
   const favoredOptionId = graphResult.proposedRecommendation.candidateIds[0] ?? null;
+  // Same §34 consumer-text rule as round 1 above. Round 2's snapshot is the
+  // post-fold one, so `entityLabelsById` resolves against the current
+  // entities rather than a stale pre-run copy.
+  const rationale = humanizeDecisionText(
+    graphResult.decisionSynthesizerText,
+    entityLabelsById(snapshot.entities),
+  );
   const recommendationEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -763,7 +825,7 @@ export function foldRound2(
         id: deps.idGenerator.next('rec'),
         status: 'ready',
         favoredOptionId,
-        rationale: graphResult.decisionSynthesizerText,
+        rationale,
         facts: [],
         hypotheses: [],
         confidence: 0.85,
@@ -893,7 +955,11 @@ async function runOneInvestigation(
     setScenarioBeat(providers, round);
     const graphDeps = buildGraphDeps(initialSnapshot, pack, providers, scenarioDepsFrom(deps));
 
-    const graphResult = await drainGraphToActivity(
+    const {
+      result: graphResult,
+      lastSequence,
+      traceId: graphTraceId,
+    } = await drainGraphToActivity(
       executeCarPurchaseGraph(graphDeps),
       { caseId: params.caseId, runId: params.runId },
       deps.activityStore,
@@ -905,6 +971,31 @@ async function runOneInvestigation(
       round === 'round1'
         ? foldRound1(deps, params.caseId, graphResult)
         : foldRound2(deps, params.caseId, pack, graphResult);
+
+    // --- I3: one real, whole-run before/after case-state diff (see
+    // event-normalizer.ts's normalizeCaseStateChange doc comment for why
+    // this is a whole-run diff, not a per-CaseEvent one). Skipped only when
+    // the run genuinely changed nothing (never expected for a completed
+    // investigation, but a defensive guard against a vacuous event). ---
+    const stateDiff = diffJsonValues(initialSnapshot, finalSnapshot);
+    if (stateDiff.length > 0) {
+      deps.runtimeEventStore.append(
+        normalizeCaseStateChange(
+          { stateDiff },
+          {
+            // The Graph's own real trace (see DrainResult.traceId's doc
+            // comment), never the unrelated local `traceId` above -- falls
+            // back to it only in the never-expected case the Graph yielded
+            // no events at all, so this event still carries a real trace.
+            traceId: graphTraceId ?? traceId,
+            caseId: params.caseId,
+            runId: params.runId,
+            obligationId: params.obligationId,
+          },
+          lastSequence + 1,
+        ),
+      );
+    }
 
     deps.runStore.updateStatus(params.runId, {
       status: 'completed',

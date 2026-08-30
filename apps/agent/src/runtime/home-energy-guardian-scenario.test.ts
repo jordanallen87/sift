@@ -18,9 +18,50 @@ import { emptyScenarioTrajectory } from '@sift/scenarios';
 import type { ExecutionResult } from '@sift/contracts';
 import type { RuntimeEvent } from './event-normalizer.js';
 import type { HomeEnergySwarmResult } from './home-energy-swarm.js';
+import { entityLabelsById, humanizeDecisionText } from './car-purchase-scenario.js';
 import { collectLimitations, drainSwarm } from './home-energy-guardian-scenario.js';
 
 const FIXED_TIMESTAMP = '2026-08-27T00:00:00.000Z';
+
+// §34 (DoD item 34): "Current recommendation" text must read in plain,
+// user-friendly language, never a raw internal id -- `RecommendationCard.tsx`
+// renders `Recommendation.rationale` verbatim. Home Energy Guardian's own
+// decision-synthesizer text cites response-option and source ids literally
+// (e.g. "monitor-one-cycle", "source-current-bill-household-demo-energy-01"),
+// the exact same pattern `car-purchase-scenario.ts`'s `humanizeDecisionText`/
+// `entityLabelsById` already fix for Choose Our Next Car -- reused here
+// (imported, not re-implemented a second time) exactly the way this file
+// already reuses `extractCitedSourceIds`/`ensureSourcesExist`/
+// `foldExecutionResult`/`loadSnapshotOrThrow` from the same module.
+describe('response-option rationale humanization (reuses car-purchase-scenario.ts helpers)', () => {
+  it('replaces every response-option id and cited source id in the real round1 recommendation text with real labels, leaving no raw id behind', () => {
+    const labels = entityLabelsById([
+      { id: 'monitor-one-cycle', label: 'Monitor for one more billing cycle' },
+      { id: 'change-rate-plan', label: 'Switch to a different rate plan' },
+      { id: 'request-energy-audit', label: 'Request a home energy audit' },
+      { id: 'request-hvac-inspection', label: 'Request an HVAC / thermostat inspection' },
+    ]);
+    const result = humanizeDecisionText(
+      'Recommend monitor-one-cycle before taking further action, per source-current-bill-household-demo-energy-01 and source-household-event-event-thermostat-failure-2026-07. No inspection is proposed at this weighting.',
+      labels,
+    );
+    expect(result).not.toMatch(/monitor-one-cycle|request-hvac-inspection|source-[a-z0-9-]+/i);
+    expect(result).toContain('Monitor for one more billing cycle');
+  });
+
+  it('replaces the round2 recommendation text (request-hvac-inspection) the same way', () => {
+    const labels = entityLabelsById([
+      { id: 'monitor-one-cycle', label: 'Monitor for one more billing cycle' },
+      { id: 'request-hvac-inspection', label: 'Request an HVAC / thermostat inspection' },
+    ]);
+    const result = humanizeDecisionText(
+      'Recommend request-hvac-inspection to address the confirmed thermostat sensor-drift root cause, per source-household-event-event-thermostat-failure-2026-07. Under the reweighted conservation-focused criteria this scores highest (0.87) versus monitor-one-cycle (0.20).',
+      labels,
+    );
+    expect(result).not.toMatch(/monitor-one-cycle|request-hvac-inspection|source-[a-z0-9-]+/i);
+    expect(result).toContain('Request an HVAC / thermostat inspection');
+  });
+});
 
 describe('collectLimitations', () => {
   const CONTEXT_WITH_LIMITATIONS: ExecutionResult = {

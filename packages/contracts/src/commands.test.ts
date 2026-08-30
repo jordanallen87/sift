@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AddNoteInputSchema,
   CommandReceiptSchema,
   DefineCaseAttributeInputSchema,
   FocusEvidenceInputSchema,
@@ -14,6 +15,8 @@ import {
   RunReceiptSchema,
   SelectPackInputSchema,
   SetEvidenceDispositionInputSchema,
+  SetOptionAttributeInputSchema,
+  SetViewInputSchema,
   StartCaseInputSchema,
   StartDemoInputSchema,
   SubmitSourceInputSchema,
@@ -225,6 +228,213 @@ describe('UpsertOptionInputSchema', () => {
       },
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('SetViewInputSchema (plan task E5)', () => {
+  it('parses a valid setView input carrying expectedSequence and a full WorkspaceViewState', () => {
+    const result = SetViewInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 4,
+      view: { mode: 'compare', compare: { optionIds: ['car-1', 'car-2'] } },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('parses a minimal view carrying only mode', () => {
+    expect(
+      SetViewInputSchema.safeParse({
+        caseId: 'case-1',
+        expectedSequence: 0,
+        view: { mode: 'quick_pick' },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a missing expectedSequence', () => {
+    expect(
+      SetViewInputSchema.safeParse({ caseId: 'case-1', view: { mode: 'list' } }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a missing view', () => {
+    expect(
+      SetViewInputSchema.safeParse({ caseId: 'case-1', expectedSequence: 0 }).success,
+    ).toBe(false);
+  });
+
+  it('delegates to WorkspaceViewStateSchema, rejecting an unrecognized view mode', () => {
+    expect(
+      SetViewInputSchema.safeParse({
+        caseId: 'case-1',
+        expectedSequence: 0,
+        view: { mode: 'grid' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an unknown top-level field (strict)', () => {
+    expect(
+      SetViewInputSchema.safeParse({
+        caseId: 'case-1',
+        expectedSequence: 0,
+        view: { mode: 'list' },
+        extra: true,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('SetOptionAttributeInputSchema (ADR 0006 decision 4)', () => {
+  it('parses a valid single-attribute write', () => {
+    const result = SetOptionAttributeInputSchema.safeParse({
+      caseId: 'case-1',
+      optionId: 'car-1',
+      expectedSequence: 4,
+      attribute: {
+        definitionId: 'car.price',
+        value: { type: 'money', amount: 24000, currency: 'USD' },
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('accepts status "unknown" with no value, matching OptionAttributeInputSchema', () => {
+    expect(
+      SetOptionAttributeInputSchema.safeParse({
+        caseId: 'case-1',
+        optionId: 'car-1',
+        expectedSequence: 4,
+        attribute: { definitionId: 'custom.dog_crate_fit', status: 'unknown' },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts confidence/origin/sourceIds carried on the single attribute', () => {
+    const result = SetOptionAttributeInputSchema.safeParse({
+      caseId: 'case-1',
+      optionId: 'car-1',
+      expectedSequence: 4,
+      attribute: {
+        definitionId: 'custom.dog_crate_fit',
+        value: { type: 'string', value: 'Fits with seats down.' },
+        status: 'supported',
+        confidence: 0.6,
+        origin: 'agent_proposed',
+        sourceIds: ['source-1'],
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('rejects a missing optionId', () => {
+    expect(
+      SetOptionAttributeInputSchema.safeParse({
+        caseId: 'case-1',
+        expectedSequence: 4,
+        attribute: { definitionId: 'car.price', value: { type: 'money', amount: 1, currency: 'USD' } },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a missing attribute', () => {
+    expect(
+      SetOptionAttributeInputSchema.safeParse({
+        caseId: 'case-1',
+        optionId: 'car-1',
+        expectedSequence: 4,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an unknown top-level field (strict)', () => {
+    expect(
+      SetOptionAttributeInputSchema.safeParse({
+        caseId: 'case-1',
+        optionId: 'car-1',
+        expectedSequence: 4,
+        attribute: { definitionId: 'car.price', value: { type: 'money', amount: 1, currency: 'USD' } },
+        extra: true,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('AddNoteInputSchema (docs/change-sets/2026-08-30-generic-decision-workspace.md §28/§29)', () => {
+  it('parses a minimal note with only body (kind/origin/links/sourceIds all optional on the wire)', () => {
+    const result = AddNoteInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 4,
+      note: { body: 'The seat position felt wrong on the test drive.' },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('parses a fully populated note carrying kind, option links, an obligation link, and cited sources', () => {
+    const result = AddNoteInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 4,
+      origin: 'agent_proposed',
+      note: {
+        body: 'Two listings disagree on the advertised price.',
+        kind: 'research',
+        optionIds: ['candidate-rav4', 'candidate-crv'],
+        obligationId: 'car.deal_normalization',
+        sourceIds: ['source-1', 'source-2'],
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('defaults origin to being absent (undefined) on the wire, matching DefineCaseAttributeInputSchema\'s optional origin channel', () => {
+    const result = AddNoteInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 4,
+      note: { body: 'A plain user note.' },
+    });
+    expect(result.success && result.data.origin).toBeUndefined();
+  });
+
+  it('rejects a missing note body', () => {
+    expect(
+      AddNoteInputSchema.safeParse({
+        caseId: 'case-1',
+        expectedSequence: 4,
+        note: {},
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an unlisted note kind', () => {
+    expect(
+      AddNoteInputSchema.safeParse({
+        caseId: 'case-1',
+        expectedSequence: 4,
+        note: { body: 'x', kind: 'rant' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an origin outside the reused user/agent_proposed vocabulary', () => {
+    expect(
+      AddNoteInputSchema.safeParse({
+        caseId: 'case-1',
+        expectedSequence: 4,
+        origin: 'pack',
+        note: { body: 'x' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an unknown top-level field (strict)', () => {
+    expect(
+      AddNoteInputSchema.safeParse({
+        caseId: 'case-1',
+        expectedSequence: 4,
+        note: { body: 'x' },
+        extra: true,
+      }).success,
+    ).toBe(false);
   });
 });
 

@@ -148,4 +148,38 @@ describe('WorkspaceViewSwitcher', () => {
     const { overflowRisks } = renderAtNarrowWidth(<WorkspaceViewSwitcher {...buildProps()} />);
     expect(overflowRisks).toEqual([]);
   });
+
+  // Task B3 (`useWidthMode`, `apps/web/src/hooks/use-width-mode.ts`): Compare
+  // is its first real consumer -- narrow width renders the two-option
+  // head-to-head layout, wider than the canonical 480px pane renders the
+  // full multi-column table (ADR 0005 Decision 4). jsdom has no
+  // `window.matchMedia` at all, so the "narrow" case below exercises this
+  // hook's own SSR/JSDOM-safe default rather than a stub.
+  it('drives OptionCompareView narrow (head-to-head) layout from the real width, defaulting narrow with no matchMedia present', () => {
+    render(<WorkspaceViewSwitcher {...buildProps({ mode: 'compare' })} />);
+    expect(screen.getByTestId('option-compare-view-table')).toHaveAttribute(
+      'data-layout',
+      'narrow',
+    );
+  });
+
+  it('drives OptionCompareView expanded (multi-column) layout once the viewport reports wider than the canonical narrow pane', () => {
+    const matchMedia = vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    }));
+    vi.stubGlobal('matchMedia', matchMedia);
+
+    render(<WorkspaceViewSwitcher {...buildProps({ mode: 'compare' })} />);
+    expect(screen.getByTestId('option-compare-view-table')).toHaveAttribute(
+      'data-layout',
+      'expanded',
+    );
+
+    vi.unstubAllGlobals();
+  });
 });

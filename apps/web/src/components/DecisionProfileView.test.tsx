@@ -6,6 +6,7 @@ import type {
   DecisionProfile,
   DecisionProfileConcern,
   DecisionProfilePersonalConcern,
+  DecisionProfileSuggestedQuestion,
 } from './decision-profile.js';
 import { DecisionProfileView } from './DecisionProfileView.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
@@ -20,6 +21,17 @@ function buildConcern(overrides: Partial<DecisionProfileConcern> = {}): Decision
     origin: 'pack',
     target: null,
     question: null,
+    ...overrides,
+  };
+}
+
+function buildSuggestedQuestion(
+  overrides: Partial<DecisionProfileSuggestedQuestion> = {},
+): DecisionProfileSuggestedQuestion {
+  return {
+    id: 'guide:0',
+    text: 'Do you need AWD?',
+    source: 'pack_guide',
     ...overrides,
   };
 }
@@ -45,6 +57,7 @@ const EMPTY_PROFILE: DecisionProfile = {
   context: [],
   personalConcerns: [],
   missing: [],
+  suggestedQuestions: [],
 };
 
 const FULL_PROFILE: DecisionProfile = {
@@ -107,6 +120,15 @@ const FULL_PROFILE: DecisionProfile = {
       text: 'The exact limit for "Budget" hasn\'t been set yet.',
     },
   ],
+  suggestedQuestions: [
+    buildSuggestedQuestion({ id: 'guide:0', text: 'Do you need AWD?', source: 'pack_guide' }),
+    buildSuggestedQuestion({
+      id: 'obligation:obl-price',
+      text: 'What is the out-the-door price?',
+      source: 'unmet_obligation',
+      relatedId: 'obl-price',
+    }),
+  ],
 };
 
 describe('DecisionProfileView', () => {
@@ -126,6 +148,9 @@ describe('DecisionProfileView', () => {
       screen.getByTestId('decision-profile-view-section-personal-concerns'),
     ).toBeInTheDocument();
     expect(screen.getByTestId('decision-profile-view-section-missing')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('decision-profile-view-section-suggested-questions'),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId('decision-profile-view-empty')).not.toBeInTheDocument();
   });
 
@@ -145,6 +170,9 @@ describe('DecisionProfileView', () => {
       screen.queryByTestId('decision-profile-view-section-personal-concerns'),
     ).not.toBeInTheDocument();
     expect(screen.queryByTestId('decision-profile-view-section-missing')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('decision-profile-view-section-suggested-questions'),
+    ).not.toBeInTheDocument();
     expect(screen.queryByTestId('decision-profile-view-empty')).not.toBeInTheDocument();
   });
 
@@ -156,6 +184,38 @@ describe('DecisionProfileView', () => {
     expect(text).not.toContain('custom.dog_crate_fit');
     expect(text).not.toContain('crit-safety');
     expect(text).not.toContain('crit-budget');
+    expect(text).not.toContain('obl-price');
+  });
+
+  describe('suggestedQuestions (§16, sourced honestly per task D4)', () => {
+    it('renders each suggested question\'s text', () => {
+      render(<DecisionProfileView profile={FULL_PROFILE} />);
+      expect(
+        screen.getByTestId('decision-profile-view-suggested-question-guide:0'),
+      ).toHaveTextContent('Do you need AWD?');
+      expect(
+        screen.getByTestId('decision-profile-view-suggested-question-obligation:obl-price'),
+      ).toHaveTextContent('What is the out-the-door price?');
+    });
+
+    it('renders nothing for the section when suggestedQuestions is empty -- an honest empty state, not an invented one', () => {
+      render(<DecisionProfileView profile={EMPTY_PROFILE} />);
+      expect(
+        screen.queryByTestId('decision-profile-view-section-suggested-questions'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('treats a guide-only profile (only suggestedQuestions populated) as non-empty', () => {
+      const profile: DecisionProfile = {
+        ...EMPTY_PROFILE,
+        suggestedQuestions: [buildSuggestedQuestion()],
+      };
+      render(<DecisionProfileView profile={profile} />);
+      expect(screen.queryByTestId('decision-profile-view-empty')).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId('decision-profile-view-section-suggested-questions'),
+      ).toBeInTheDocument();
+    });
   });
 
   it('shows "Added by you" for a user-added personal concern', () => {

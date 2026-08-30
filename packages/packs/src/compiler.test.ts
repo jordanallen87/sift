@@ -75,6 +75,26 @@ describe('compilePack: success path', () => {
     expect(compiled.compiledHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  // Task E7 (pack-level Decision Guide, docs/change-sets/2026-08-30-generic-
+  // decision-workspace.md §46/§47): `decisionGuide` is optional on
+  // `DecisionPackManifestSchema`, and `canonicalizeManifest` drops
+  // `undefined` object values (canonicalize.ts), so a manifest that never
+  // declares one must compile to the exact same `compiledHash` it always
+  // has -- cases pin `pack.compiledHash` (packages/contracts/src/case.ts's
+  // `CasePackPinSchema`), so an accidental hash drift for every already-
+  // guideless pack the moment this optional field was added would silently
+  // invalidate every already-pinned case. `toMatchInlineSnapshot()` with no
+  // literal pins whatever value this test captured the first time it ran
+  // (before `decisionGuide` existed in `packs.ts`), so any future change
+  // that perturbs this specific manifest's hash -- adding the field with a
+  // default, forgetting `.optional()`, canonicalizing `undefined`
+  // differently -- fails this test with a visible diff instead of silently
+  // matching a hand-edited "new" value.
+  it('produces the identical compiledHash for a manifest that declares no decisionGuide', () => {
+    const compiled = compilePack(validManifest(), validCatalog(), fixedClock);
+    expect(compiled.compiledHash).toMatchInlineSnapshot(`"958efa0850a8e6082c0f4af05bd7900138a9aef8a87309b7cfd09c6c17bc570a"`);
+  });
+
   it('produces the same compiledHash regardless of compiledAt (clock)', () => {
     const a = compilePack(validManifest(), validCatalog(), fixedClock);
     const b = compilePack(validManifest(), validCatalog(), laterClock);

@@ -1,24 +1,42 @@
 /**
- * Zod input schemas for the five WebMCP tools this task adds
- * (`sift_get_option_details`, `sift_list_research`, `sift_set_view`,
- * `sift_configure_comparison`, `sift_search_catalog`;
+ * Zod input schemas for the eight WebMCP tools defined locally rather than in
+ * `@sift/contracts` (`sift_get_option_details`, `sift_list_research`,
+ * `sift_set_view`, `sift_configure_comparison`, `sift_search_catalog`,
+ * `sift_get_decision_guide`, `sift_focus_question`, `sift_list_notes`;
  * docs/decisions/0006-webmcp-two-way-collaboration-contract.md,
  * docs/specs/webmcp.md "Tool catalog — specified, not yet implemented").
+ * `sift_add_note`, the write counterpart, is NOT here: unlike every read
+ * tool in this file, it has a real `@sift/contracts` command counterpart
+ * (`AddNoteInputSchema`/`SiftAddNoteToolInputSchema`, `commands.ts`) to alias
+ * with an IDENTICAL shape, so it is imported directly from there in
+ * `register-sift-tools.ts` instead of being redefined here.
  *
  * Defined locally rather than in `@sift/contracts`, unlike every other tool
  * in this catalog: `packages/contracts` is out of scope for this task (see
- * this task's own file-ownership boundary), and none of these five tools has
- * a `SiftCommands` counterpart there to alias -- three are pure reads over
- * `CaseState` with no existing command shape, and the two presentation tools
- * write only to in-memory session state (`register-sift-tools.ts`'s own
- * comment explains why: no backend command yet exists to persist
- * `WorkspaceViewState`, so nothing here should pretend otherwise by routing
- * through a contracts-owned schema that implies a real wire command). The id
- * character class/length bound below is copied verbatim from the private
- * `idString` helper every `packages/contracts/src/*.ts` module already
- * defines identically (not exported, so it cannot be imported) -- kept in
- * exact sync so a caseId/optionId this module accepts is always one the rest
- * of the system would accept too.
+ * this task's own file-ownership boundary), and none of these seven tools has
+ * a `SiftCommands` counterpart there to alias with an IDENTICAL shape -- four
+ * are pure reads over `CaseState`/the injected pack catalog with no existing
+ * command shape at all, and the three view-shaped tools
+ * (`sift_set_view`/`sift_configure_comparison`/`sift_focus_question`) are
+ * each a deliberately narrower, more ergonomic PARTIAL patch than the real
+ * `setView` wire command's own input (`SetViewInputSchema` in
+ * `packages/contracts/src/commands.ts` takes a FULL `view:
+ * WorkspaceViewStateSchema`, not a patch). `register-sift-tools.ts` merges
+ * each of these three tools' patch onto the active case's current
+ * `CaseState.view` before calling `commands.setView` (now a real
+ * `SiftCommands` method -- see that module's header comment for the full
+ * history of this gap and its resolution); this module still defines their
+ * *own* narrower input shape, now WITH `expectedSequence`, since a genuine
+ * durable write needs the same optimistic-concurrency field every other
+ * mutating tool in this catalog carries (webmcp.md "Cancellation and
+ * concurrency": "Mutations include `expectedSequence`... This applies to
+ * WRITE and PRESENTATION tools alike"). The id character class/length bound
+ * below is copied verbatim from the private `idString` helper every
+ * `packages/contracts/src/*.ts` module already defines identically (not
+ * exported, so it cannot be imported) -- kept in exact sync so a
+ * caseId/optionId this module accepts is always one the rest of the system
+ * would accept too. `expectedSequence` is copied the same way, from
+ * `commands.ts`'s own private `expectedSequence` helper.
  */
 import { z } from 'zod';
 import { WORKSPACE_VIEW_MODES, WorkspaceViewSortSchema } from '@sift/contracts';
@@ -51,6 +69,10 @@ const idString = (maxLength = 200) =>
     .max(maxLength)
     .regex(/^[A-Za-z0-9._-]+$/, 'id must contain only letters, digits, ".", "_", or "-"');
 
+// Copied verbatim from `packages/contracts/src/commands.ts`'s own private
+// `expectedSequence` helper -- same rationale as `idString` above.
+const expectedSequence = z.number().int().min(0);
+
 // --- sift_get_option_details ---
 
 export const GetOptionDetailsInputSchema = z
@@ -70,17 +92,33 @@ export const ListResearchInputSchema = z
   .strict();
 export type ListResearchInput = z.infer<typeof ListResearchInputSchema>;
 
+// --- sift_list_notes (change-set §28/§29, webmcp.md "Notes tools") ---
+//
+// Same bare `{ caseId }` shape as `sift_list_research` immediately above --
+// notes have no further filter yet either.
+
+export const ListNotesInputSchema = z
+  .object({
+    caseId: idString(),
+  })
+  .strict();
+export type ListNotesInput = z.infer<typeof ListNotesInputSchema>;
+
 // --- sift_set_view (PRESENTATION) ---
 //
 // `mode` is required, not optional: this tool's entire job is switching the
 // active view, so a call that changes nothing would be a no-op worth
 // rejecting rather than silently accepting. `focusedOptionId`/
 // `visibleOptionIds` mirror `WorkspaceViewStateSchema`'s own fields and
-// bounds exactly (`packages/contracts/src/case.ts`).
+// bounds exactly (`packages/contracts/src/case.ts`). `expectedSequence` is
+// required: this is a real durable write via `commands.setView` now (see
+// this module's header comment), so the same optimistic-concurrency field
+// every other mutating tool carries applies here too.
 
 export const SetViewInputSchema = z
   .object({
     caseId: idString(),
+    expectedSequence,
     mode: z.enum(WORKSPACE_VIEW_MODES),
     focusedOptionId: idString().optional(),
     visibleOptionIds: z.array(idString()).max(50).optional(),
@@ -90,14 +128,16 @@ export type SetViewInput = z.infer<typeof SetViewInputSchema>;
 
 // --- sift_configure_comparison (PRESENTATION) ---
 //
-// Every field besides `caseId` is optional, but at least one of them must be
-// present -- a call with none of `optionIds`/`visibleAttributeIds`/
-// `pinnedAttributeIds`/`sort` set would configure nothing and is rejected as
-// a validation failure rather than silently accepted as a no-op.
+// Every field besides `caseId`/`expectedSequence` is optional, but at least
+// one of the four configurable fields must be present -- a call with none of
+// `optionIds`/`visibleAttributeIds`/`pinnedAttributeIds`/`sort` set would
+// configure nothing and is rejected as a validation failure rather than
+// silently accepted as a no-op.
 
 const ConfigureComparisonInputShape = z
   .object({
     caseId: idString(),
+    expectedSequence,
     /** The compare view's visible option set (`WorkspaceCompareState.optionIds`) -- e.g. a head-to-head pair or a multi-column shortlist. */
     optionIds: z.array(idString()).max(50).optional(),
     visibleAttributeIds: z.array(idString()).max(500).optional(),
@@ -158,3 +198,38 @@ export const SearchCatalogInputSchema = z
   })
   .strict();
 export type SearchCatalogInput = z.infer<typeof SearchCatalogInputSchema>;
+
+// --- sift_get_decision_guide (READ) ---
+//
+// Case-scoped (like `sift_get_option_details`/`sift_list_research`/
+// `sift_search_catalog` above) rather than a global tool keyed directly by
+// `packId`: the active case's own `CaseState.pack.id` already names the
+// exact pack to describe, matching every sibling read tool's own "derive the
+// pack from the active case" convention (see `sift_search_catalog`'s
+// `catalogAdapters[caseState.pack.id]` lookup in `register-sift-tools.ts`).
+
+export const GetDecisionGuideInputSchema = z
+  .object({
+    caseId: idString(),
+  })
+  .strict();
+export type GetDecisionGuideInput = z.infer<typeof GetDecisionGuideInputSchema>;
+
+// --- sift_focus_question (PRESENTATION) ---
+//
+// Change-set §52's remaining PRESENTATION-group tool (docs/specs/webmcp.md
+// "Tool catalog — specified, not yet implemented"). `WorkspaceViewStateSchema
+// .focusedQuestionId` (`packages/contracts/src/case.ts`) now exists, so this
+// tool follows the identical merge-then-`commands.setView` pattern
+// `sift_set_view`/`sift_configure_comparison` use above -- see this module's
+// header comment. `expectedSequence` required, matching those two sibling
+// tools now that all three reach a real durable write.
+
+export const FocusQuestionInputSchema = z
+  .object({
+    caseId: idString(),
+    expectedSequence,
+    questionId: idString(),
+  })
+  .strict();
+export type FocusQuestionInput = z.infer<typeof FocusQuestionInputSchema>;

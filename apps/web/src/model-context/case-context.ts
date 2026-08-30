@@ -28,11 +28,15 @@ import {
   type AttributeDefinition,
   type CaseExtension,
   type CaseExtensionSummary,
+  type CaseNote,
+  type CaseNoteKind,
+  type CaseAttributeOrigin,
   type CaseState,
   type Claim,
   type ClaimStance,
   type CompiledDecisionPack,
   type Criterion,
+  type DecisionGuide,
   type EntityRecord,
   type ObligationState,
   type ObligationStatus,
@@ -206,6 +210,62 @@ export function buildResearchSummary(caseState: CaseState): ResearchSummary {
       MAX_RESEARCH_SOURCES,
     ),
     claims: bound(mostRecentFirst(caseState.claims).map(buildClaimSummary), MAX_RESEARCH_CLAIMS),
+  };
+}
+
+// --- sift_list_notes: CaseNote projection (change-set §28/§29) ---
+//
+// A `CaseNote` is real, first-class content -- but deliberately NOT
+// `Source`/`Claim`/`EvidenceLink`: it is not evidence, carries no
+// verification/disposition, and never satisfies an obligation or moves
+// readiness (`CaseNoteSchema`'s own doc comment, `packages/contracts/src/
+// case.ts`). This projection exists purely so a caller can review what has
+// already been noted; it grants a note no new authority in the process.
+//
+// `body` is truncated the same way `buildClaimSummary` truncates
+// `Claim.statement` above -- both are user/model-authored free text capped
+// at 2000 characters by their real schema, and this module's own convention
+// (see `buildContextResearchSummary`/`buildResearchSummary`) is to bound
+// long free text consistently rather than let one long note dominate the
+// tool's output.
+
+const NOTE_BODY_MAX = 500;
+const MAX_NOTES = 50;
+
+export interface NoteSummary {
+  id: string;
+  body: string;
+  kind: CaseNoteKind;
+  origin: CaseAttributeOrigin;
+  authoredBy: string;
+  optionIds: string[];
+  obligationId?: string;
+  sourceIds: string[];
+  createdAt: string;
+}
+
+export function buildNoteSummary(note: CaseNote): NoteSummary {
+  return {
+    id: note.id,
+    body: truncate(note.body, NOTE_BODY_MAX),
+    kind: note.kind,
+    origin: note.origin,
+    authoredBy: note.authoredBy,
+    optionIds: note.optionIds,
+    ...(note.obligationId !== undefined ? { obligationId: note.obligationId } : {}),
+    sourceIds: note.sourceIds,
+    createdAt: note.createdAt,
+  };
+}
+
+export interface NotesSummary {
+  notes: BoundedList<NoteSummary>;
+}
+
+/** `caseState.notes` is `.optional()` (`CaseStateSchema`) so a snapshot persisted before `CaseNote` existed still parses -- `?? []` treats an absent field identically to a present-but-empty array, matching how every other optional collection projection in this module behaves. */
+export function buildNotesSummary(caseState: CaseState): NotesSummary {
+  return {
+    notes: bound(mostRecentFirst(caseState.notes ?? []).map(buildNoteSummary), MAX_NOTES),
   };
 }
 
@@ -403,11 +463,13 @@ export interface CaseContextSummary {
   staleOrConflicted: BoundedList<StaleOrConflictedSignal>;
   /**
    * The current workspace view (mode, focus, visible/pinned comparison
-   * fields, sort). `sessionView` (passed by `register-sift-tools.ts`, backed
-   * today by in-memory, per-browser-session state -- see that module's own
-   * comment for why no durable command exists yet) wins when present;
-   * otherwise this falls back to `CaseState.view` itself, which is `null`
-   * for any case no presentation tool has touched.
+   * fields, sort) -- `CaseState.view` itself, genuinely persisted through
+   * `sift_set_view`/`sift_configure_comparison`/`sift_focus_question`
+   * (`register-sift-tools.ts`, `commands.setView`). `null` for any case no
+   * presentation tool has touched yet. The optional `overrideView` parameter
+   * below remains for a caller that needs to project some OTHER
+   * `WorkspaceViewState` than the one already on `caseState` (e.g. a not-yet
+   * -persisted value); `register-sift-tools.ts` no longer passes one.
    */
   view: WorkspaceViewState | null;
 }
@@ -426,13 +488,17 @@ function countObligationsByStatus(obligations: CaseState['obligations']): Readin
 /**
  * Projects full canonical `CaseState` down to exactly the fields
  * `sift_get_case_context` is specified to return (docs/specs/webmcp.md
- * "Widened case context"). `sessionView` defaults to `null` (no override) so
- * every existing direct call site/test that only cares about the
- * `CaseState`-derived fields keeps working unchanged.
+ * "Widened case context"). `overrideView` defaults to `null` (no override,
+ * i.e. project `caseState.view` itself) so every existing direct call
+ * site/test that only cares about the `CaseState`-derived fields keeps
+ * working unchanged; `register-sift-tools.ts` no longer passes one, now that
+ * `sift_set_view`/`sift_configure_comparison`/`sift_focus_question` persist
+ * through `commands.setView` onto `CaseState.view` directly rather than
+ * tracking a separate in-memory copy.
  */
 export function buildCaseContextSummary(
   caseState: CaseState,
-  sessionView: WorkspaceViewState | null = null,
+  overrideView: WorkspaceViewState | null = null,
 ): CaseContextSummary {
   return {
     caseId: caseState.id,
@@ -461,7 +527,7 @@ export function buildCaseContextSummary(
     research: buildContextResearchSummary(caseState),
     unresolvedQuestions: buildUnresolvedQuestions(caseState.obligations),
     staleOrConflicted: buildStaleOrConflictedSignals(caseState),
-    view: sessionView ?? caseState.view ?? null,
+    view: overrideView ?? caseState.view ?? null,
   };
 }
 
@@ -483,5 +549,49 @@ export function buildPackSummary(pack: CompiledDecisionPack): PackSummary {
     description: pack.identity.description,
     compiledHash: pack.compiledHash,
     activation: pack.activation,
+  };
+}
+
+// --- Decision Guide (sift_get_decision_guide; ADR 0006 decision 6) ---
+//
+// `guide` is returned as the full typed `DecisionGuide` object -- named
+// fields (`domainPurpose`, `discoveryStrategy`, `suggestedQuestions`, ...),
+// never flattened into one prose string. This is the load-bearing half of
+// the "declarative data, not an instruction channel" guarantee described on
+// `DecisionGuideSchema` itself (`packages/contracts/src/packs.ts`): a
+// consumer that received one concatenated blob would have no structural way
+// to tell "the pack author's description of this domain" apart from "an
+// instruction for me to follow," even though the schema itself already keeps
+// every field free of executable/HTML content. Keeping the seven fields
+// separate and named preserves that distinction all the way to the caller.
+
+export interface DecisionGuideSummary {
+  packId: string;
+  packVersion: string;
+  guide: DecisionGuide;
+}
+
+/**
+ * Finds the compiled pack matching `packId` among `packs` (matched by
+ * `identity.id` only -- the same "pack id, not exact pinned hash" lookup
+ * `sift_search_catalog`'s `catalogAdapters[packId]` already uses, since a
+ * Decision Guide describes the class of decision a pack id represents, not
+ * one exact compiled revision of it) and projects its optional
+ * `decisionGuide` field. Returns `null`, never throws, when the pack is not
+ * present in `packs` or declares no guide -- both honest, non-error outcomes
+ * (`packs.ts`: "a pack that declares no Decision Guide must still compile").
+ */
+export function findDecisionGuide(
+  packs: readonly CompiledDecisionPack[],
+  packId: string,
+): DecisionGuideSummary | null {
+  const pack = packs.find((candidate) => candidate.identity.id === packId);
+  if (pack?.decisionGuide === undefined) {
+    return null;
+  }
+  return {
+    packId: pack.identity.id,
+    packVersion: pack.identity.version,
+    guide: pack.decisionGuide,
   };
 }

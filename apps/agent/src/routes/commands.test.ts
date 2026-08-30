@@ -186,6 +186,82 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     expect(JSON.stringify(response.body)).not.toContain('simulated store failure');
   });
 
+  it('dispatches setView through real HTTP, persisting the view without advancing eventSequence (ADR 0005)', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/setView`)
+      .set('Idempotency-Key', 'cmd-set-view')
+      .send({ caseId, expectedSequence, view: { mode: 'list' } });
+
+    expect(response.status).toBe(200);
+    const receipt = asJson<CommandReceipt>(response.body);
+    expect(receipt.snapshot?.view).toEqual({ mode: 'list' });
+    expect(receipt.acceptedSequence).toBe(expectedSequence);
+    expect(harness.caseStore.load(caseId)?.view).toEqual({ mode: 'list' });
+  });
+
+  it('dispatches setOptionAttribute through real HTTP, merging one attribute onto an existing option (ADR 0006 decision 4)', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+
+    const upserted = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/upsertOption`)
+      .set('Idempotency-Key', 'cmd-option')
+      .send({
+        caseId,
+        expectedSequence,
+        option: { label: 'Honda Civic', kind: 'car', attributes: [] },
+      });
+    const optionReceipt = asJson<CommandReceipt>(upserted.body);
+    const optionId = optionReceipt.snapshot?.entities[0]?.id;
+    if (optionId === undefined) throw new Error('expected an option id');
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/setOptionAttribute`)
+      .set('Idempotency-Key', 'cmd-set-attr')
+      .send({
+        caseId,
+        optionId,
+        expectedSequence: optionReceipt.acceptedSequence,
+        attribute: {
+          definitionId: 'car.price',
+          value: { type: 'money', amount: 21000, currency: 'USD' },
+        },
+      });
+
+    expect(response.status).toBe(200);
+    const receipt = asJson<CommandReceipt>(response.body);
+    expect(receipt.snapshot?.entities[0]?.attributes['car.price']?.value).toEqual({
+      type: 'money',
+      amount: 21000,
+      currency: 'USD',
+    });
+  });
+
+  it('dispatches addNote through real HTTP, persisting a first-class CaseNote', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence } = await startDemo();
+
+    const response = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/addNote`)
+      .set('Idempotency-Key', 'cmd-note')
+      .send({
+        caseId,
+        expectedSequence,
+        note: { body: 'The seat position felt wrong on the test drive.' },
+      });
+
+    expect(response.status).toBe(200);
+    const receipt = asJson<CommandReceipt>(response.body);
+    expect(receipt.snapshot?.notes).toHaveLength(1);
+    expect(receipt.snapshot?.notes?.[0]?.body).toBe(
+      'The seat position felt wrong on the test drive.',
+    );
+    expect(harness.caseStore.load(caseId)?.notes).toEqual(receipt.snapshot?.notes);
+  });
+
   it('dispatches every remaining commandName to its CommandService method over real HTTP', async () => {
     harness = createHttpTestHarness();
     const { caseId, expectedSequence: afterDemo } = await startDemo();
@@ -377,5 +453,153 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
       });
     expect(approved.status).toBe(400);
     expect(asJson<HttpErrorBody>(approved.body).error.code).toBe('VALIDATION');
+  });
+
+  // I1 (docs/superpowers/plans/2026-08-30-generic-decision-workspace.md
+  // "Phase I"; ADR 0006 decision 8; debugging-and-observability.md "WebMCP
+  // tool calls"): the `X-Sift-Command-Origin` request header tags a command
+  // as WebMCP-issued for the developer trail, without ever forking the
+  // command implementation.
+  describe('X-Sift-Command-Origin (I1: WebMCP call provenance)', () => {
+    it('returns 400 VALIDATION for an unrecognized origin value, never reaching CommandService', async () => {
+      harness = createHttpTestHarness();
+      const { caseId, expectedSequence } = await startDemo();
+
+      const response = await request(harness.app)
+        .post(`/api/cases/${caseId}/commands/selectPack`)
+        .set('Idempotency-Key', 'cmd-2')
+        .set('X-Sift-Command-Origin', 'ui')
+        .send({ caseId, packId: 'car-purchase', expectedSequence });
+
+      expect(response.status).toBe(400);
+      expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
+      // Proves it never reached CommandService: the case is still at its
+      // pre-command sequence.
+      expect(harness.caseStore.load(caseId)?.eventSequence).toBe(expectedSequence);
+    });
+
+    it('accepts "webmcp" and records it on the activity trail; an omitted header records nothing', async () => {
+      harness = createHttpTestHarness();
+      const { caseId, expectedSequence } = await startDemo();
+
+      const tagged = await request(harness.app)
+        .post(`/api/cases/${caseId}/commands/selectPack`)
+        .set('Idempotency-Key', 'cmd-tagged')
+        .set('X-Sift-Command-Origin', 'webmcp')
+        .send({ caseId, packId: 'car-purchase', expectedSequence });
+      expect(tagged.status).toBe(200);
+
+      const events = harness.activityStore.replayFrom(caseId, 0);
+      const taggedEvent = events.find((event) => event.commandId === 'cmd-tagged');
+      expect(taggedEvent?.safeDetails).toEqual({ origin: 'webmcp' });
+
+      // The demo-start command earlier in the same replay never sent the
+      // header -- default behavior (nothing recorded) is unaffected.
+      const untaggedEvent = events.find((event) => event.commandId === 'cmd-start');
+      expect(untaggedEvent?.safeDetails).toBeUndefined();
+    });
+
+    it('records the marker uniformly for setView, setOptionAttribute, and addNote too', async () => {
+      harness = createHttpTestHarness();
+      const { caseId, expectedSequence } = await startDemo();
+
+      const setViewResponse = await request(harness.app)
+        .post(`/api/cases/${caseId}/commands/setView`)
+        .set('Idempotency-Key', 'cmd-view')
+        .set('X-Sift-Command-Origin', 'webmcp')
+        .send({ caseId, expectedSequence, view: { mode: 'list' } });
+      expect(setViewResponse.status).toBe(200);
+
+      const upserted = await request(harness.app)
+        .post(`/api/cases/${caseId}/commands/upsertOption`)
+        .set('Idempotency-Key', 'cmd-option')
+        .send({
+          caseId,
+          expectedSequence,
+          option: { label: 'Honda Civic', kind: 'car', attributes: [] },
+        });
+      const optionReceipt = asJson<CommandReceipt>(upserted.body);
+      const optionId = optionReceipt.snapshot?.entities[0]?.id;
+      if (optionId === undefined) throw new Error('expected an option id');
+
+      const setAttrResponse = await request(harness.app)
+        .post(`/api/cases/${caseId}/commands/setOptionAttribute`)
+        .set('Idempotency-Key', 'cmd-attr')
+        .set('X-Sift-Command-Origin', 'webmcp')
+        .send({
+          caseId,
+          optionId,
+          expectedSequence: optionReceipt.acceptedSequence,
+          attribute: { definitionId: 'car.price', value: { type: 'money', amount: 1, currency: 'USD' } },
+        });
+      expect(setAttrResponse.status).toBe(200);
+      const afterAttr = asJson<CommandReceipt>(setAttrResponse.body).acceptedSequence;
+
+      const noteResponse = await request(harness.app)
+        .post(`/api/cases/${caseId}/commands/addNote`)
+        .set('Idempotency-Key', 'cmd-note')
+        .set('X-Sift-Command-Origin', 'webmcp')
+        .send({ caseId, expectedSequence: afterAttr, note: { body: 'Noted via WebMCP.' } });
+      expect(noteResponse.status).toBe(200);
+
+      const events = harness.activityStore.replayFrom(caseId, 0);
+      for (const commandId of ['cmd-view', 'cmd-attr', 'cmd-note']) {
+        const event = events.find((entry) => entry.commandId === commandId);
+        expect(event?.safeDetails, `commandId ${commandId}`).toEqual({ origin: 'webmcp' });
+      }
+      // upsertOption sent no header -- unaffected.
+      const optionEvent = events.find((entry) => entry.commandId === 'cmd-option');
+      expect(optionEvent?.safeDetails).toBeUndefined();
+    });
+
+    it('never changes what a command does: identical case state and eventSequence advance with and without the marker', async () => {
+      const harnessA = createHttpTestHarness();
+      const harnessB = createHttpTestHarness();
+      try {
+        const startA = await request(harnessA.app)
+          .post('/api/cases/demo')
+          .set('Idempotency-Key', 'cmd-start')
+          .send({ demoId: 'car-purchase' });
+        const startB = await request(harnessB.app)
+          .post('/api/cases/demo')
+          .set('Idempotency-Key', 'cmd-start')
+          .send({ demoId: 'car-purchase' });
+        const receiptA = asJson<CommandReceipt>(startA.body);
+        const receiptB = asJson<CommandReceipt>(startB.body);
+        expect(receiptB.caseId).toBe(receiptA.caseId);
+
+        const responseA = await request(harnessA.app)
+          .post(`/api/cases/${receiptA.caseId}/commands/selectPack`)
+          .set('Idempotency-Key', 'cmd-select')
+          .send({
+            caseId: receiptA.caseId,
+            packId: 'car-purchase',
+            expectedSequence: receiptA.acceptedSequence,
+          });
+        const responseB = await request(harnessB.app)
+          .post(`/api/cases/${receiptB.caseId}/commands/selectPack`)
+          .set('Idempotency-Key', 'cmd-select')
+          .set('X-Sift-Command-Origin', 'webmcp')
+          .send({
+            caseId: receiptB.caseId,
+            packId: 'car-purchase',
+            expectedSequence: receiptB.acceptedSequence,
+          });
+
+        expect(responseA.status).toBe(200);
+        expect(responseB.status).toBe(200);
+        const bodyA = asJson<CommandReceipt>(responseA.body);
+        const bodyB = asJson<CommandReceipt>(responseB.body);
+
+        expect(bodyB.acceptedSequence).toBe(bodyA.acceptedSequence);
+        expect(bodyB.snapshot).toEqual(bodyA.snapshot);
+        expect(harnessB.caseStore.load(receiptB.caseId)).toEqual(
+          harnessA.caseStore.load(receiptA.caseId),
+        );
+      } finally {
+        harnessA.cleanup();
+        harnessB.cleanup();
+      }
+    });
   });
 });

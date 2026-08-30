@@ -1184,6 +1184,34 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
     ],
     requiresNegativeCase: true,
   },
+
+  // docs/change-sets/2026-08-30-generic-decision-workspace.md §46/§47
+  // pack-level Decision Guide -- see car-purchase.ts's identical field for
+  // the full rationale (declarative data only, never a prompt; see
+  // `DecisionGuideSchema`'s header comment in packages/contracts/src/
+  // packs.ts). Every claim below is grounded in this manifest's own
+  // obligations, criteria, and attribute definitions above.
+  decisionGuide: {
+    domainPurpose:
+      "Investigating why a home energy bill is unusually high by isolating how much of the increase is explained by rate or fee changes, weather-normalized usage, and a household or appliance event, then recommending a response that fits the household's cost and long-term waste-reduction priorities.",
+    discoveryStrategy:
+      'Confirm the bill is genuinely anomalous before attributing it to anything. Rate-change and weather attribution can then be investigated in parallel, since they draw on independent tariff and weather data; a household-event correlation is worth pursuing specifically when weather alone does not explain the full gap.',
+    suggestedQuestions: [
+      'Has anything changed at home recently -- a new appliance, a repair, more people in the household, or a change in routine?',
+      'Is any electrical, gas, fire, or medical-equipment risk present that should be addressed before anything else?',
+      'Would the household rather see the lowest-cost fix or the one that most reduces long-term waste, if those differ?',
+    ],
+    importantUnknowns: [
+      'Whether a correlated household or appliance event actually caused the usage change is a plausibility judgment from timing, not a provable fact.',
+      'Whether a proposed inspection or repair is actually warranted is a judgment this pack can surface but never decide -- it always requires explicit human confirmation.',
+    ],
+    researchGuidance:
+      "Re-derive rate-change and weather attribution from the household's own billing and weather history rather than assuming a typical seasonal pattern; treat a household-event correlation as a plausible explanation to confirm with the household, not a settled cause.",
+    customFieldGuidance:
+      'Prefer a typed custom field over noting an unusual household circumstance only in prose. Never infer that an emergency risk is absent -- that judgment always requires an explicit source or human confirmation, since it gates the household\'s safety, not only cost.',
+    presentationGuidance:
+      'Show the anomaly, rate-change attribution, and weather attribution together, since a response option should address whichever of those actually explains most of the gap rather than the bill total alone.',
+  },
 };
 
 /** Convenience wrapper: `compilePack(HOME_ENERGY_GUARDIAN_MANIFEST, catalog, clock)`. */
