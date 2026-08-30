@@ -127,7 +127,18 @@ B1–B2 first.
 
 - [ ] **D1. Projection** from existing criteria/attributes/extensions — no competing source of truth.
 - [ ] **D2. Editing** with simplified priority language; exact weights behind advanced.
-- [ ] **D3. Missing-information surface** — what Sift still needs to know, and suggested questions.
+- [x] **D1/D2/D3 (partial). Decision Profile projection and view.** Derived purely from existing
+      `CaseState` — criteria, attribute definitions, confirmed extensions — with no new stored
+      state, per §15's prohibition on a competing source of truth. Weight bands replace raw
+      percentages by default (§42) with exact weights behind a closed disclosure. "Missing
+      information" derives from exactly three real signals: a hard constraint with no target, a
+      criterion with no target and no resolvable measuring attribute, and an extension awaiting
+      confirmation.
+- [ ] **D4. `suggestedQuestions` (§16) — deliberately NOT implemented, and blocked.** Generating
+      plausible discovery questions from nothing would be fabricated content, which is the exact
+      failure mode this product exists to avoid. Honestly implementing it requires the pack-level
+      Decision Guide (§47, plan task E4), which does not exist in `CaseState` today. Blocked on E4,
+      not skipped — the omission is documented in `decision-profile.ts`'s own header.
 
 ## Phase E — WebMCP read, context, and guide
 
