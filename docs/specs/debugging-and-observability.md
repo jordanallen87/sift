@@ -6,6 +6,12 @@ Sift must make adaptive agent behavior inspectable enough to debug locally, prov
 
 The normal activity timeline explains behavior to a user. The **Runtime Inspector** exposes engineering detail for the same run. Both are projections of one correlated telemetry stream; neither displays private chain-of-thought.
 
+## Consumer and developer projections
+
+Change-set §33 states the requirement directly: the consumer workspace and the Runtime Inspector must project from the *same* underlying events — "Same underlying event. Two projections. This is important. Avoid creating parallel truth sources." (§35). The consumer surface (`product.md`) answers "what does this mean for my decision"; the Runtime Inspector answers "what exactly did the system do." Content that stays developer-only and never appears on the consumer surface by default: `commandId`, `runId`, the compiled pack hash, specialist ID, skill ID, the raw chronological activity ledger, and the E0–E3 evidence-level vocabulary (change-set §34/§48).
+
+`apps/web/src/components/activity-labels.ts` is the implementation of this split — a single exhaustive label registry mapping internal `PublicActivityEventType` values to consumer copy, with a defensive fallback so an unrecognized internal value can never leak to the consumer surface as a raw dotted token. It is the extension point for new mappings this projection needs (research/evidence-conflict language, Question/obligation language, presentation-vs-criterion distinctions per change-set §54), not a mechanism to be rebuilt in parallel. See `product.md`'s "Consumer and developer projections" for the consumer-facing contract this section's telemetry feeds.
+
 Official references:
 
 - [Strands observability](https://strandsagents.com/docs/user-guide/observability-evaluation/observability/)
@@ -101,6 +107,12 @@ interface RuntimeDebugEvent extends RuntimeCorrelation {
 - Tool Ledger repetition/no-progress calculation;
 - intervention decision that preceded execution.
 
+### WebMCP tool calls
+
+**Status: specified, not yet implemented.** Every case-scoped WebMCP tool's callback invokes the identical `SiftCommands` method the matching UI control calls (see `webmcp.md`, `architecture.md`) — correct under CLAUDE.md's shared-command-implementation rule, but it means today there is only one code path and nothing on it records which caller triggered a given command. `WebMcpToolCallContext` and `CommandCallOptions` carry only an abort signal and an optional `commandId` override; no field marks a call as WebMCP-originated, so neither the activity stream nor the Runtime Inspector can currently distinguish a WebMCP-issued command from a direct UI click.
+
+ADR 0006 decision 8 specifies closing this gap with an explicit origin marker on the command envelope — a sibling to the existing `X-Sift-Command-Id`/`Idempotency-Key` headers (e.g. `X-Sift-Command-Origin: webmcp`), threaded through `CommandCallOptions` and `WebMcpToolCallContext`. This does not create a second command path; it tags the existing one. Once implemented, `runtime_events` and `activity_events` records for a WebMCP-originated command must carry this origin, and the Runtime Inspector's Timeline and Overview views must be able to filter and visually distinguish WebMCP-originated activity — this is an explicit hackathon judging requirement (change-set §34: "WebMCP tool calls; registered tools; tool inputs/results").
+
 ### Adaptive runtime
 
 - available and activated skills;
@@ -130,7 +142,7 @@ The case header contains an `Inspect run` control when `SIFT_DEBUG_ENABLED=true`
 Required views:
 
 1. **Overview** — status, trace/run/session IDs, duration, model/tool calls, tokens, estimated cost, errors, active obligation, and runtime target.
-2. **Timeline** — virtualized chronological events with category, agent, level, and free-text filters. Selecting an event opens its structured safe payload.
+2. **Timeline** — virtualized chronological events with category, agent, level, and free-text filters. Selecting an event opens its structured safe payload. Once the WebMCP origin marker above is implemented, Timeline filtering and event display must also distinguish WebMCP-originated commands from direct UI actions.
 3. **Execution** — compact Graph/Swarm node and handoff view showing the active path, loops, redirects, and duration.
 4. **State** — canonical case-event list and before/after diff for criteria, evidence, obligations, readiness, recommendation, and approval.
 5. **Context** — activated skills, allowed tools, injected context field names/hashes, model parameters, and validator feedback.
@@ -183,3 +195,5 @@ AgentCore execution propagates trace headers and records returned trace/session/
 - Restarting Railway preserves the completed run and inspector history.
 - Disabling debug mode returns `404` for all debug endpoints and hides the inspector control.
 - Real-time acceptance proves ordered queued/running/tool/evidence/steering/completion events, reconnect replay, duplicate suppression, slow-client resync, and snapshot/polling equivalence.
+- Once the WebMCP origin marker (see "WebMCP tool calls" above) is implemented, a command issued through a registered WebMCP tool is visibly distinguishable from an identical command issued through its matching UI control, in both the activity stream and the Runtime Inspector — without introducing a second command path or a divergence from CLAUDE.md's shared-command-implementation rule.
+- The consumer surface and the Runtime Inspector never disagree about the same underlying event (see "Consumer and developer projections" above); a component or contract test asserts that a given `PublicActivityEventType` always maps to the same consumer label through `activity-labels.ts`, with no code path bypassing that mapping to render a raw internal token on the consumer surface.

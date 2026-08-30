@@ -140,7 +140,9 @@ Playwright starts the real web and agent services with deterministic fixtures. T
 - network interruption and recovery;
 - accessibility and keyboard operation;
 - stable screenshots for launcher, active investigation, confirmation, ready, and decided states.
-- opening the Runtime Inspector, filtering events, expanding a steering/tool/handoff event, viewing a state diff, jumping from activity to trace, and downloading a sanitized run bundle.
+- opening the Runtime Inspector, filtering events, expanding a steering/tool/handoff event, viewing a state diff, jumping from activity to trace, and downloading a sanitized run bundle;
+- the answer hero's top edge falls within the first viewport height at `390x844`, `430x900`, and `480x900`, measured against the real production build (`product.md`'s above-the-fold acceptance property, required by ADR 0004 decision 6). This exact property was specified once already under ADR 0002 and silently regressed once because nothing tested it; this assertion exists specifically so a third regression fails the release gate instead of requiring another manual audit to notice;
+- a presentation-only change (workspace view mode, focused option/evidence/question, visible/pinned comparison fields, sort, filters — whether made through the UI or a PRESENTATION-class WebMCP tool) provably does not invalidate the recommendation. Assert this both behaviorally (the recommendation's status and sequence are unchanged after the presentation change) and structurally, where the implementation allows it (the underlying store call reaches `updateSelection()`, never `append()` — see `architecture.md`'s "Two persistence paths" and ADR 0005 decision 1). A test that only checks the end state and never distinguishes "no invalidation happened" from "invalidation happened but produced the same visible result" does not satisfy this requirement.
 
 The primary visual project is `right-pane` with viewports `390x844`, `430x900`, and `480x900`. A secondary desktop project runs at `1440x1000`. Every required state has both semantic assertions and a named screenshot; screenshots alone are insufficient.
 
@@ -154,6 +156,7 @@ Visual tests must:
 - fail on uncaught page errors, unexpected console errors, failed same-origin API requests, or hydration warnings;
 - retain Playwright trace, screenshot, video, console log, request log, and final case snapshot on failure.
 - assert fixture traces show safe model/tool payloads while user-entered cases show hashes/summaries and never raw private notes.
+- treat `maxDiffPixelRatio: 0.01` as a ceiling on layout drift, not as sufficient coverage for copy correctness. A full product rename (Pax → Sift) once passed this exact suite green against stale baselines that still rendered the old name, because the changed text occupies a small fraction of a tall, scrolled workspace screenshot and stayed under the 1% pixel-diff threshold undetected. Any release-relevant copy — the product name, region headings, and the terminology-table labels in `product.md` — must additionally be asserted as literal rendered text (`toHaveText`/`toContainText` or equivalent) at the relevant checkpoints; pixel diffing alone is not an acceptable substitute for a text assertion on copy that changed on purpose.
 
 Golden screenshots may be updated only after the executor opens and inspects the generated image, states why the change is intended, and confirms it against the relevant requirement. Blind `--update-snapshots` repair is prohibited.
 

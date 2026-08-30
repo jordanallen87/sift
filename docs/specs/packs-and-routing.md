@@ -68,6 +68,28 @@ All values cross the shared discriminated `AttributeValue` Zod schema. This pres
 
 Users may add, remove, rename, and reweight non-protected criteria. When a custom criterion needs evidence, the core derives a case obligation from the pack's `userConcern` template. Required pack obligations and protected criteria cannot be removed. Unsupported concerns remain explicit unknowns and may request human evidence; the model cannot invent a tool or value.
 
+## Presentation metadata and Decision Guide
+
+**Status: specified, not yet implemented.** `PresentationDefinition` today declares only `optionLabel`, `optionLabelPlural`, and `attributeGroups` (see `pack-authoring.md`). Change-set §46 specifies expanding it so a pack can declare, as pure data:
+
+- recommended workspace views (which of Quick Pick/List/Compare/Board apply to this pack, and a sensible default; see `product.md`'s "Workspace views");
+- default visible fields and prominent fields for List and Compare;
+- Decision Profile sections and profile discovery questions;
+- catalog capability — whether and how `sift_search_catalog` applies to this pack, and its filter schema (see `webmcp.md`);
+- useful initial filters;
+- which fields are subjective/human-only versus safe for model inference — the distinction change-set §26 requires: research-supported "likely" is not the same claim as human-attested "verified comfortable";
+- recommended Question wording;
+- Board column defaults;
+- Quick Pick summary fields.
+
+None of this is executable behavior. It is declarative metadata the generic renderer reads, the same way `attributeGroups` already is today — never a per-pack React conditional, and never a mechanism that lets a pack branch application logic (change-set §46: "Do NOT put executable behavior into the declarative pack. Compiler/conformance should validate new presentation metadata."). The compiler's existing "generic UI renderability checks" step (`pack-authoring.md`) must validate this expanded metadata the same way it validates today's fields, once implemented.
+
+### Decision Guide
+
+**Status: specified, not yet implemented.** Change-set §47 and ADR 0006 decision 6 specify a declarative, pack-level Decision Guide: domain purpose, discovery strategy, suggested questions, important unknowns, research guidance, custom-field guidance, and presentation guidance for the class of decision the pack represents. It is exposed to ChatGPT through a read tool (`sift_get_decision_guide`, see `webmcp.md`) using progressive disclosure — never dumped whole into every tool response.
+
+**The Decision Guide is data, not instructions, and this is a hard boundary, not a style preference.** It must never be implemented as hidden prompt injection or as content that attempts to override host or system-level instructions (change-set §17/§47: "it must remain data, not executable prompts capable of overriding system authority... do not attempt prompt injection... do not pretend it is a host-level system prompt"). Tool descriptions and structured tool outputs remain the entire integration mechanism — there is no second, hidden channel. A Decision Guide implementation that lets pack content instruct the model to disregard other instructions, impersonate a system prompt, or execute anything is a defect against this specification, not a legitimate reading of it. The compiler must reject free-form executable or instruction-shaped content in this field the same way it already rejects HTML/script content elsewhere in pack manifests (see `pack-authoring.md`'s stable entity envelope).
+
 ## Obligation template
 
 ```ts

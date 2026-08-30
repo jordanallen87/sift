@@ -9,6 +9,7 @@ import {
   ObligationStateSchema,
   RecommendationSchema,
   SourceSchema,
+  WorkspaceViewStateSchema,
 } from './case.js';
 
 function validAttributeRecord() {
@@ -231,6 +232,42 @@ describe('ActiveFocusSchema', () => {
   });
 });
 
+describe('WorkspaceViewStateSchema', () => {
+  it('parses a minimal view state carrying only mode', () => {
+    const result = WorkspaceViewStateSchema.safeParse({ mode: 'quick_pick' });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('parses a fully populated view state across every view mode', () => {
+    const result = WorkspaceViewStateSchema.safeParse({
+      mode: 'compare',
+      focusedOptionId: 'car-1',
+      visibleOptionIds: ['car-1', 'car-2'],
+      visibleAttributeIds: ['car.price', 'custom.dog_crate_fit'],
+      pinnedAttributeIds: ['car.price'],
+      sort: { fieldId: 'car.price', direction: 'asc' },
+      filters: [{ fieldId: 'car.price', operator: 'less_than', value: '30000' }],
+      compare: { optionIds: ['car-1', 'car-2'] },
+      board: {
+        columns: [
+          { id: 'considering', label: 'Considering', optionIds: ['car-1'] },
+          { id: 'top-choices', label: 'Top choices', optionIds: ['car-2'] },
+        ],
+      },
+      quickPick: { queue: ['car-1', 'car-2', 'car-3'], position: 1 },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('rejects an unrecognized mode', () => {
+    expect(WorkspaceViewStateSchema.safeParse({ mode: 'grid' }).success).toBe(false);
+  });
+
+  it('rejects an unrecognized top-level key', () => {
+    expect(WorkspaceViewStateSchema.safeParse({ mode: 'list', extra: true }).success).toBe(false);
+  });
+});
+
 describe('RecommendationSchema', () => {
   it('parses a valid recommendation and rejects an out-of-range confidence', () => {
     const valid = {
@@ -297,7 +334,7 @@ describe('CaseStateSchema', () => {
       schemaVersion: '1.0' as const,
       id: 'case-1',
       title: 'Choose our next family car',
-      status: 'investigating' as const,
+      status: 'draft' as const,
       pack: {
         id: 'car-purchase',
         version: '1.0.0',
@@ -343,6 +380,31 @@ describe('CaseStateSchema', () => {
 
   it('rejects an unrecognized top-level key', () => {
     expect(CaseStateSchema.safeParse({ ...validCaseState(), extra: true }).success).toBe(false);
+  });
+
+  it('parses a pre-existing persisted snapshot that has no view key at all (backward compatibility)', () => {
+    const legacySnapshot = validCaseState();
+    expect('view' in legacySnapshot).toBe(false);
+    const result = CaseStateSchema.safeParse(legacySnapshot);
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('parses a case whose view has been explicitly cleared to null', () => {
+    const result = CaseStateSchema.safeParse({ ...validCaseState(), view: null });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('parses a case carrying a populated workspace view state', () => {
+    const result = CaseStateSchema.safeParse({
+      ...validCaseState(),
+      view: {
+        mode: 'board',
+        board: {
+          columns: [{ id: 'considering', label: 'Considering', optionIds: [] }],
+        },
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
   });
 
   it('round-trips a case carrying a case-extension obligation, criterion, and recommendation', () => {

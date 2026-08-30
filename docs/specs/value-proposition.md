@@ -78,11 +78,17 @@ This is the intended meaning of adaptable: the model can reshape the case-specif
 
 The runtime pauses at a human confirmation, persists the case and Strands snapshot, restarts, restores, and continues without losing evidence or granting itself approval.
 
+### Model-controlled presentation sequence
+
+**Status: specified, not yet implemented** — this sequence depends on `WorkspaceViewState`'s write path and the PRESENTATION-class WebMCP tools specified in `webmcp.md` and ADR 0005/0006, neither of which exist in the repository yet. It is recorded here because it is a materially stronger WebMCP proof than "ChatGPT changed a criterion," per change-set §57: showing only a mutation understates what a genuine two-way, shared-workspace integration can do.
+
+The required narrative, once implemented: ChatGPT pulls real structured case state out of Sift (not only pushing mutations into it); the user selects an option on the page and ChatGPT correctly understands "this one" through shared focus; the user asks ChatGPT to show only the finalists and only what matters most, and the visible view/rows/options reconfigure without click automation, while the underlying decision criteria remain unchanged (`product.md`'s "Workspace views", `webmcp.md`'s PRESENTATION tools); the user introduces a comparison factor the product never anticipated, and ChatGPT creates a typed custom field for it; ChatGPT researches and populates that field across options, while an unsupported subjective value stays honestly unknown rather than becoming a fabricated inference; the research becomes a durable, source-linked part of the case rather than disappearing at the end of the conversation; and the model still cannot approve the final decision. Change-set §58 and §59 name the two strongest individual moments inside this sequence: the model reconfiguring the comparison table, and shared focus surviving a Quick Pick walkthrough.
+
 ## Competition-specific expression
 
 ### WebMCP submission
 
-The car-buying demo proves that the current candidate selection and visible application state are meaningful agent context. ChatGPT invokes structured page tools that reuse the same commands as the human controls, and the right-pane comparison changes in place.
+The car-buying demo proves that the current candidate selection and visible application state are meaningful agent context. ChatGPT invokes structured page tools that reuse the same commands as the human controls, and the right-pane comparison changes in place. Sift is a generic AI-assisted decision workspace; the car-purchase Decision Pack is its first polished shopping/comparison implementation, not a car-specific product (change-set, Purpose). The strongest version of this proof, once "Model-controlled presentation sequence" above is implemented, goes beyond a single mutation: shared selection, model-controlled presentation, dynamic schema extension, and durable research together, still bounded by human-only final approval.
 
 ### AWS submission
 

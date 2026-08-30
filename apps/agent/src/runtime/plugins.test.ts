@@ -61,7 +61,7 @@ function buildExecutionRequest(overrides: Partial<ExecutionRequest> = {}): Execu
     caseSummary: {
       caseId: 'case-1',
       title: 'Choose our next car',
-      status: 'investigating',
+      status: 'draft',
       criteria: [
         {
           id: 'pref.ownership_cost',

@@ -8,7 +8,7 @@ function minimalCaseState(overrides: Partial<CaseState> = {}): CaseState {
     schemaVersion: '1.0',
     id: 'case-1',
     title: 'Choose our next car',
-    status: 'investigating',
+    status: 'draft',
     pack: {
       id: 'car-purchase',
       version: '1.0.0',

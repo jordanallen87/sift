@@ -94,7 +94,7 @@ The UI labels fixture cases as demonstrations. No fixture uses a real person's a
 
 ## WebMCP demo moments
 
-The recorded WebMCP demo must show the page already open in ChatGPT's in-app browser.
+The recorded WebMCP demo must show the page already open in ChatGPT's in-app browser. Sift is a generic AI-assisted decision workspace; the car-purchase Decision Pack is its first polished shopping/comparison implementation (change-set, Purpose), and the demo should read as a case of that generic capability rather than as a car-specific product.
 
 Car-buying moment:
 
@@ -104,6 +104,14 @@ Car-buying moment:
 4. The page visibly challenges the teaser price, shows normalized cost, and updates the ranking.
 5. The user says: `Driving comfort matters more than fuel economy.` ChatGPT calls `sift_update_criteria`; Sift creates test-drive questions rather than inventing evidence.
 6. The user adds the two-dog-crate requirement. ChatGPT defines the case attribute, and the page immediately shows the new concern and its unresolved evidence question.
+
+### Additional showcase moments (specified, not yet implemented)
+
+Change-set §57 identifies this as a materially stronger WebMCP narrative than "ChatGPT changed a criterion." Two specific moments are named as deliberate showcases; both depend on capabilities recorded as not-yet-implemented in `product.md` ("Workspace views") and `webmcp.md` (PRESENTATION-class tools, `sift_configure_comparison`, `sift_set_view`) — they are recorded here as required demo beats once those land, not as claims about the current build.
+
+**Model reconfigures the comparison table (§58).** The user says: `Compare the CR-V, Forester, and RAV4, and only show me the things that matter most to us.` ChatGPT changes the view to Compare, limits the visible candidates to those three, and sets the visible rows — including any dynamic custom fields already defined — so the page visibly reconfigures without mouse/click automation. This must be shown alongside proof that the underlying decision criteria did not change: presentation filtering is not criterion mutation (change-set §54).
+
+**Quick Pick shared focus (§59).** The user says: `Walk me through them.` ChatGPT switches the view to Quick Pick. The Forester appears; ChatGPT explains it from the same case context the page shows. The user swipes or taps Maybe; the next option becomes focused, and ChatGPT's subsequent context reflects the new focused option without the user having to restate which option they mean. This demonstrates genuine shared attention rather than the model working from stale or reconstructed screen text.
 
 Energy moment:
 

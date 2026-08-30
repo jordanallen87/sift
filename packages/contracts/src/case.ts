@@ -285,16 +285,114 @@ export const DecisionProposalSchema = z
   .strict();
 export type DecisionProposal = z.infer<typeof DecisionProposalSchema>;
 
+// --- WorkspaceViewState (docs/decisions/0005-workspace-view-state-and-
+// option-views.md "Decision" §1-2, sketched at docs/change-sets/
+// 2026-08-30-generic-decision-workspace.md §13) ---
+//
+// Presentation state for the four option views (Quick Pick/List/Compare/
+// Board). Deliberately NOT modeled as a `CaseEvent`-driven field: ADR 0005's
+// central decision is that this persists exclusively through
+// `apps/agent/src/store/case-store.ts`'s `SelectionPatch`/`updateSelection()`
+// escape hatch (same non-event path `activeFocus`/`selectedOptionId` already
+// use), so that a presentation change can never advance `eventSequence` or
+// reach recommendation-invalidation logic -- "presentation filtering ≠
+// criterion mutation" (change-set §54) becomes true by construction rather
+// than by convention. See `CaseState.view` below for the nullable+optional
+// field this schema populates.
+
+export const WORKSPACE_VIEW_MODES = ['quick_pick', 'list', 'compare', 'board'] as const;
+export type WorkspaceViewMode = (typeof WORKSPACE_VIEW_MODES)[number];
+
+export const WorkspaceViewSortSchema = z
+  .object({
+    fieldId: idString(),
+    direction: z.enum(['asc', 'desc']),
+  })
+  .strict();
+export type WorkspaceViewSort = z.infer<typeof WorkspaceViewSortSchema>;
+
+// A conservative, self-contained comparison vocabulary for presentation-only
+// filtering -- distinct from `AttributeComparison` (attributes.ts), which
+// describes how an attribute is *scored*, not how a view is *filtered*.
+export const WORKSPACE_FILTER_OPERATORS = [
+  'equals',
+  'not_equals',
+  'contains',
+  'less_than',
+  'less_than_or_equal',
+  'greater_than',
+  'greater_than_or_equal',
+] as const;
+export type WorkspaceFilterOperator = (typeof WORKSPACE_FILTER_OPERATORS)[number];
+
+export const WorkspaceFilterSchema = z
+  .object({
+    fieldId: idString(),
+    operator: z.enum(WORKSPACE_FILTER_OPERATORS),
+    value: safeString(500),
+  })
+  .strict();
+export type WorkspaceFilter = z.infer<typeof WorkspaceFilterSchema>;
+
+// Board column placement lives inside the column itself (`optionIds`), so a
+// column's membership list IS an option's placement -- there is no separate
+// per-option placement map to keep in sync.
+export const BoardColumnDefinitionSchema = z
+  .object({
+    id: idString(),
+    label: safeString(200),
+    optionIds: z.array(idString()).max(50),
+  })
+  .strict();
+export type BoardColumnDefinition = z.infer<typeof BoardColumnDefinitionSchema>;
+
+export const WorkspaceCompareStateSchema = z
+  .object({
+    optionIds: z.array(idString()).max(50),
+  })
+  .strict();
+export type WorkspaceCompareState = z.infer<typeof WorkspaceCompareStateSchema>;
+
+export const WorkspaceBoardStateSchema = z
+  .object({
+    columns: z.array(BoardColumnDefinitionSchema).max(20),
+  })
+  .strict();
+export type WorkspaceBoardState = z.infer<typeof WorkspaceBoardStateSchema>;
+
+export const WorkspaceQuickPickStateSchema = z
+  .object({
+    queue: z.array(idString()).max(50),
+    position: z.number().int().min(0),
+  })
+  .strict();
+export type WorkspaceQuickPickState = z.infer<typeof WorkspaceQuickPickStateSchema>;
+
+export const WorkspaceViewStateSchema = z
+  .object({
+    mode: z.enum(WORKSPACE_VIEW_MODES),
+    focusedOptionId: idString().optional(),
+    visibleOptionIds: z.array(idString()).max(50).optional(),
+    visibleAttributeIds: z.array(idString()).max(500).optional(),
+    pinnedAttributeIds: z.array(idString()).max(500).optional(),
+    sort: WorkspaceViewSortSchema.optional(),
+    filters: z.array(WorkspaceFilterSchema).max(50).optional(),
+    compare: WorkspaceCompareStateSchema.optional(),
+    board: WorkspaceBoardStateSchema.optional(),
+    quickPick: WorkspaceQuickPickStateSchema.optional(),
+  })
+  .strict();
+export type WorkspaceViewState = z.infer<typeof WorkspaceViewStateSchema>;
+
 // --- CaseState (architecture.md "Canonical data model") ---
 
-export const CASE_STATUSES = [
-  'draft',
-  'investigating',
-  'waiting',
-  'ready',
-  'decided',
-  'failed',
-] as const;
+// Only 'draft' (create-case.ts, reducer.ts's `case.created` fold) and
+// 'decided' (reducer.ts's `proposal.reviewed` fold, policy.ts's
+// `reviewProposal`, both only on an approved decision) are ever assigned
+// anywhere in the codebase. The previously-declared 'investigating',
+// 'waiting', 'ready', and 'failed' values had no producer and were removed;
+// see docs/audits/2026-08-30-generic-decision-workspace-audit.md §4.
+export const CASE_STATUSES = ['draft', 'decided'] as const;
 export type CaseStatus = (typeof CASE_STATUSES)[number];
 
 export const CASE_PACK_SELECTED_BY = ['user', 'router'] as const;
@@ -341,6 +439,12 @@ export const CaseStateSchema = z
     activeFocus: ActiveFocusSchema.nullable(),
     selectedOptionId: idString().nullable(),
     selectedEvidenceId: idString().nullable(),
+    // Optional (not just nullable, unlike `activeFocus`) so a snapshot
+    // persisted before this field existed still parses -- `.optional()`
+    // lets the key be entirely absent; `.nullable()` still lets it be
+    // explicitly cleared once set. See the WorkspaceViewState module
+    // comment above and ADR 0005 "Consequences".
+    view: WorkspaceViewStateSchema.nullable().optional(),
     eventSequence: z.number().int().min(0),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),

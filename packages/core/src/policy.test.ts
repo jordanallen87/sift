@@ -35,7 +35,7 @@ function makeCaseState(overrides: Partial<CaseState> = {}): CaseState {
     schemaVersion: '1.0',
     id: 'case-1',
     title: 'Test case',
-    status: 'ready',
+    status: 'draft',
     pack: {
       id: 'car-purchase',
       version: '1.0.0',
@@ -173,7 +173,7 @@ describe('reviewProposal: human-only policy enforcement', () => {
 describe('reviewProposal: human approval', () => {
   it('approves a pending proposal and transitions the case to decided', () => {
     const proposal = makeProposal();
-    const caseState = makeCaseState({ status: 'ready', proposal });
+    const caseState = makeCaseState({ status: 'draft', proposal });
     const clock = makeClock('2026-03-01T12:00:00.000Z');
 
     const result = reviewProposal(caseState, makeReviewInput({ decision: 'approve' }), clock);
@@ -220,7 +220,7 @@ describe('reviewProposal: human approval', () => {
 describe('reviewProposal: human rejection', () => {
   it('rejects a pending proposal without moving the case to decided', () => {
     const proposal = makeProposal();
-    const caseState = makeCaseState({ status: 'ready', proposal });
+    const caseState = makeCaseState({ status: 'draft', proposal });
 
     const result = reviewProposal(
       caseState,
@@ -228,7 +228,7 @@ describe('reviewProposal: human rejection', () => {
       makeClock('2026-03-01T00:00:00.000Z'),
     );
 
-    expect(result.status).toBe('ready');
+    expect(result.status).toBe('draft');
     expect(result.proposal?.status).toBe('rejected');
     expect(result.proposal?.reviewedByActor).toBe('human');
     expect(result.proposal?.reviewedAt).toBe('2026-03-01T00:00:00.000Z');

@@ -167,6 +167,7 @@ export class MemoryCaseStore implements CaseStore {
         ? { selectedEvidenceId: patch.selectedEvidenceId ?? null }
         : {}),
       ...('activeFocus' in patch ? { activeFocus: patch.activeFocus ?? null } : {}),
+      ...('view' in patch ? { view: patch.view ?? null } : {}),
       ...(patch.sources !== undefined ? { sources: [...patch.sources] } : {}),
       updatedAt,
     };

@@ -49,7 +49,7 @@ describe('HttpConflictResponseSchema', () => {
       schemaVersion: '1.0' as const,
       id: 'case-1',
       title: 'Choose our next family car',
-      status: 'investigating' as const,
+      status: 'draft' as const,
       pack: {
         id: 'car-purchase',
         version: '1.0.0',

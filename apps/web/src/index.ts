@@ -31,8 +31,6 @@ export { ReadinessPanel } from './components/ReadinessPanel.js';
 export type { ReadinessPanelProps, ReadinessPanelData } from './components/ReadinessPanel.js';
 export { EvidenceCard } from './components/EvidenceCard.js';
 export type { EvidenceCardProps, EvidenceItemData } from './components/EvidenceCard.js';
-export { EvidenceList } from './components/EvidenceList.js';
-export type { EvidenceListProps } from './components/EvidenceList.js';
 export { ActivityTimeline } from './components/ActivityTimeline.js';
 export type { ActivityTimelineProps } from './components/ActivityTimeline.js';
 export { RecommendationCard } from './components/RecommendationCard.js';

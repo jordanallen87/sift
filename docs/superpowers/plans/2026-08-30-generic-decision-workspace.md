@@ -194,6 +194,12 @@ The audit found this pipeline incomplete end-to-end; each item below closes a sp
       stale-sequence conflict is the only thing that can be observed. Reproduced once during the
       rename gate; passes standalone and on re-run. Not caused by the rename — the same suite passed
       2267/2267 immediately after it.
+- [ ] **J5. Harden `submitCustomConcern`'s success-banner wait.** `tests/e2e/pages/sift-page.ts:348`
+      waits for `custom-concern-form-success` to become visible after `defineCaseAttribute`
+      resolves. Under full-suite parallelism (8 workers) this exceeded its timeout once, failing
+      `vehicle-catalog-journey` at right-pane-390; it passed standalone and on a full re-run
+      (40/40). Distinct from J3: that one is state-dependent, this one is genuinely timing.
+      The fix is a longer bounded wait on the real signal, NOT a removed or weakened assertion.
 - [ ] **J4. Full `pnpm verify` green**, deployed check, completion report per §70.
 
 ## Verification strategy

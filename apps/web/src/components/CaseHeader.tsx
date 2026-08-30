@@ -33,27 +33,26 @@ export interface CaseHeaderProps {
 }
 
 /**
- * Case-status -> UI label. Grounded per status:
- * - `ready` uses "Ready for decision" -- product.md's terminology table maps
- *   `Convergence` -> "Ready for decision" verbatim, and `ready` is the case
- *   status that convergence produces.
- * - `waiting` uses "Waiting for confirmation" -- copied verbatim from
- *   product.md's "Required visible states" list.
- * - `failed` uses "Recoverable error" -- copied verbatim from the same list,
- *   rather than borrowing "Action blocked" (that label is reserved for the
- *   `Deny` intervention outcome, a distinct policy concept from a technical
- *   run failure -- design-system.md draws the same distinction between the
- *   `blocked` and `error` status tokens).
- * - `draft`/`investigating`/`decided` are plain, non-ambiguous state names
- *   with no separate terminology-table entry to defer to.
+ * Case-status -> UI label.
+ *
+ * Only two statuses exist (ADR 0004). `CASE_STATUSES` previously declared six,
+ * but the audit found that no code path anywhere in `packages/` or `apps/`
+ * ever assigned `investigating`, `waiting`, `ready`, or `failed` -- the only
+ * writes are `'draft'` at case creation (`create-case.ts`, `reducer.ts`) and
+ * `'decided'` on approval (`reducer.ts`, `policy.ts`). This map used to carry
+ * carefully-sourced labels for all six, which is exactly what made the gap
+ * invisible: the UI looked complete while four of its branches were
+ * unreachable, and the badge read "Draft" beside a finished investigation
+ * because `recommendation.ready` never touches `status` at all.
+ *
+ * The four unreachable values were removed from the contract rather than
+ * wired up, because change set section 37 replaces this lifecycle vocabulary
+ * wholesale with task-shaped stages. Do not reintroduce a label here without
+ * a real producer for the status it names.
  */
 const CASE_STATUS_LABEL: Record<CaseState['status'], string> = {
   draft: 'Draft',
-  investigating: 'Investigating',
-  waiting: 'Waiting for confirmation',
-  ready: 'Ready for decision',
   decided: 'Decided',
-  failed: 'Recoverable error',
 };
 
 /**

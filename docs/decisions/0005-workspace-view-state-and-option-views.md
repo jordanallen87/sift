@@ -227,8 +227,13 @@ information architecture.
 
 ## Consequences
 
-- `CaseStateSchema` (`packages/contracts/src/case.ts:315–348`) gains a `view` field (nullable
-  `WorkspaceViewState`, mirroring `activeFocus`'s own nullable pattern at `case.ts:341`). Every
+- `CaseStateSchema` (`packages/contracts/src/case.ts:315–348`) gains a `view` field. It is both
+  `.optional()` and `.nullable()`, which is a deliberate departure from `activeFocus`'s plain
+  `.nullable()` pattern at `case.ts:341`: `activeFocus` has existed since the first migration, so
+  every persisted snapshot already carries the key, whereas `view` is added to a schema that must
+  keep parsing snapshots written before it existed. A plain `.nullable()` would have made every
+  pre-existing row fail validation on read. Covered by a test that parses a snapshot with no `view`
+  key at all. Every
   place in the codebase that treats a `CaseState` diff as evidence of a decision change —
   Runtime Inspector state diffs, any future "case changed" WebMCP notification, and recommendation
   staleness checks — must treat `view` the same way it must already implicitly treat

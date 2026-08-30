@@ -52,21 +52,68 @@ At minimum, the demos visibly pass through queued, investigating, tool-active, e
 
 ## Workspace layout
 
-**Answer-first, everything else one tap away** (ADR 0002; before this decision the page was a single undifferentiated stack of eight regions requiring a full scroll to reach the recommendation on every case — a real usability defect the project owner identified directly against the live product). The responsive page contains these regions in this order:
+**Status: target architecture (ADR 0004, ADR 0005).** This section specifies the contract the implementation must converge on. It supersedes the nine-region ordered list this section previously specified under ADR 0002 — a list the shipped implementation had already silently drifted from into an unspecced eleven-region stack, which is the regression ADR 0004 exists to close (see that ADR's Context for the measured evidence). Treat every region below as a requirement to build or finish, not as a description of code already known to exist; `docs/build-log.md` records actual implementation status task by task.
 
-1. **Case header** — title, Decision Pack badge, pack-selection explanation, live connection/run status, reset-demo action.
-2. **What Sift is doing** — the obligation being investigated, why it is next, active skill, active specialist, the manual "Request investigation" control, and live run status. Always visible, never collapsible — it is both the primary manual trigger and the live-progress readout.
-3. **Our pick** — the recommendation (proposed outcome, rationale, facts, hypotheses, limitations, sources) and the human decision controls (approve/revise/reject), grouped as one visually cohesive hero directly below "What Sift is doing." Always visible, never collapsible. This is deliberately the first substantial content the user reaches: what Sift currently thinks, and what the user needs to do about it.
-4. **Compare the options** — the side-by-side option comparison table and the option editor, collapsed by default into a disclosure row whose closed summary shows a live option count.
-5. **What Sift found** — source-linked claims, conflicts, and stale state, collapsed by default into a disclosure row whose closed summary shows a live evidence count.
-6. **Still checking** — required obligations grouped by satisfied, active, blocked, accepted uncertainty, and open, collapsed by default into a disclosure row whose closed summary shows a live count of what remains unresolved.
-7. **Sift's work so far** — a chronological event ledger including tool calls, skill changes, steering, evidence writes, budget decisions, and pauses, collapsed by default into a disclosure row whose closed summary shows a live event count and a pulsing indicator while work is genuinely in progress.
-8. **Add something Sift should check** — the case-extension proposal form, collapsed by default into a disclosure row, with one exception: it renders open by default exactly when an agent-proposed case extension is awaiting human confirmation, since that is itself a state requiring the user's attention rather than passive information.
-9. **Runtime Inspector** — a developer-facing drill-in for the active run, opened from the case header and rendered as a contained right-pane route rather than competing with the normal decision UI.
+**A primary workspace view dominates the page** rather than a stack of independent cards:
 
-Regions 4 through 8 are disclosure rows: closed by default, opened by a tap on their summary, and never hide their live state — a closed row's summary always carries an accurate, currently-true count or status, so nothing genuinely new or actionable is invisible without opening it. This preserves the real-time contract above (every region still renders only from actual committed events/snapshots) while keeping the page short: a first-time, non-technical user reaches Sift's current answer and the approve/reject controls without scrolling past readiness, evidence, or activity detail they did not ask to see yet.
+1. **Case identity** — a single slim line: decision title and a compact status summary (e.g. "4 vehicles · Comparing · 2 things need attention"). No Decision Pack ID, version, compiled hash, command ID, or other developer identifier appears here. A short domain label may appear if pack presentation metadata supplies one; the pack ID and hash never do.
+2. **The answer hero** — the current recommendation and the single next human action, merged into one region directly below case identity. It is one region, not two, specifically so it cannot disagree with itself about the case's current state (ADR 0004 decision 1: today's `ApprovalCard` and `RecommendationCard` can render contradictory summaries of the same case in the same glance). This is deliberately the first substantial content the user reaches. It renders only when there is something to say; see "Empty regions" below.
+3. **The primary workspace view** — one of the generic option views (Quick Pick, List, Compare, Board; see "Workspace views" below), selected by `WorkspaceViewState.mode`. This is the main body of the page; every other region is secondary to it.
+4. **Secondary decision navigation** — Decision Profile, Questions ("To Check"), and Research/Notes, reached through tabs, drawers, sheets, or contextual sections rather than permanent stacked cards.
+5. **Developer/Inspect boundary** — the Runtime Inspector and every raw runtime identifier (`commandId`, `runId`, compiled pack hash, specialist ID, skill ID, the raw chronological activity ledger, E0–E3 evidence-level vocabulary) live behind an explicit entry point (e.g. "Inspect" / "Developer view") and never appear on the consumer surface by default. See "Consumer and developer projections" below.
 
-The canonical viewport is ChatGPT's right pane. At widths from 390 through 480 pixels, regions stack vertically, "What Sift is doing" and "Our pick" remain immediately below the header, primary actions remain visible without scrolling, and no region introduces horizontal page scrolling. At desktop width, the same single-column order and disclosure behavior apply — the implementation must not depend on a three-column viewport or full-page navigation chrome.
+**Empty regions.** Do not render an empty conceptual region merely because `CaseState` contains a corresponding field (change-set §5). An empty state must be intentional, compact, and attached to the region that owns the concept — never its own full-height card whose entire content is an announcement of its own emptiness. A workspace with no options yet shows one compact prompt to add or find options, not several independently empty cards each reporting that there is nothing to show.
+
+**Above-the-fold is a testable acceptance property, not only a written promise.** At each of the three canonical narrow widths (390, 430, 480), the answer hero's top edge must fall within the first viewport height, measured against the real production build. This exact property was specified once already (ADR 0002) and silently regressed once because nothing tested it (ADR 0004's own account: "a spec sentence alone already failed to hold it"). A Playwright assertion enforcing it is required release evidence — see `testing.md` — not merely a sentence in this document.
+
+At desktop/expanded width, the same primary-view-dominant structure applies, with a genuinely different information architecture where a specific view benefits from one (see "Narrow and expanded modes" below) — never a three-column dashboard or full-page navigation chrome layered onto the narrow design.
+
+### Consumer and developer projections
+
+Change-set §33 requires that the consumer workspace and a developer/inspect surface project from the *same* underlying events — never two independently maintained truth sources. The consumer surface answers "what does this mean for my decision"; the developer surface answers "what exactly did the system do." `apps/web/src/components/activity-labels.ts` is the designated extension point for this mapping (internal event type → consumer copy), not a new mechanism to build. Content that moves off the consumer surface and stays developer-only: `commandId`, `runId`, the compiled pack hash, specialist ID, skill ID, the raw chronological activity ledger, and the E0–E3 evidence-level vocabulary.
+
+### Lifecycle language
+
+The four-stage tracker (Started / Investigating / Pick ready / Decided) is retired. Consumer-facing progress uses task-shaped stages appropriate to the pack and the case's current point in the process — a generic shopping/comparison lifecycle is Find; Shortlist; Compare; Review; Decide, or a compact subset of it. This tracker must not dominate the page once a comparison is active: once inside an active workspace view, the view itself is more informative than a permanent process tracker (change-set §37).
+
+This has a direct contract consequence: **`CaseStatus` is a two-value type, `'draft' | 'decided'`.** The values `investigating`, `waiting`, `ready`, and `failed` are removed from the contract (see `architecture.md`) — no production code path ever assigned them, and the lifecycle vocabulary that would have displayed them is replaced entirely by the task-shaped stages above (ADR 0004 decision 4).
+
+### Current focus ("Currently checking")
+
+Where the workspace shows what is actively being investigated, it must derive from a genuinely populated `activeFocus` value — never render a region whose only possible state is a permanently-true empty placeholder. `activeFocus` remains a real `CaseState` field (see `architecture.md`), but until a production code path writes a non-null value to it, no "currently checking" region renders at all, rather than rendering a card that can only ever show its own absence (ADR 0004 decision 5). Once populated, consumer copy reads like "Currently checking — Whether the Forester's lower price still holds after dealer fees" or "Rechecking — Ride-comfort evidence after your priorities changed" (change-set §39); the underlying obligation, skill, and specialist identifiers remain visible only in the developer view.
+
+## Workspace views
+
+**Status: specified, not yet implemented** (ADR 0005). Four option views exist, each answering a different decision task rather than being cosmetic renderings of the same data (change-set §8):
+
+- **Quick Pick** — a single-option triage view. One option dominates the pane; the user Passes, Maybes, or Shortlists it through accessible buttons (swipe gestures are additive, never gesture-only). Answers "should I keep looking at this one."
+- **List** — a compact, information-dense card per option: identity, price, high-value attributes, strengths, concerns, unresolved information, current fit, relevant source-backed findings. Answers "tell me about each option." Not every available field is shown; pack presentation metadata influences which fields are prominent.
+- **Compare** — a configurable comparison table. Answers "how do these options differ." Narrow mode is a two-option head-to-head; expanded mode is a multi-column table. Which options and which attribute rows are visible, which rows are pinned, sort order, and filters are all configurable — by the user directly, and through WebMCP by ChatGPT (see `webmcp.md`, PRESENTATION tools). Custom (`custom.*`) fields render as ordinary rows, subtly marked (e.g. a "Custom" badge) as added for this comparison; their raw IDs never reach this surface.
+- **Board** — movable status columns (a useful default: Considering; Top choices; Need to verify; Out), configurable where the pack allows. Answers "where does each option currently stand." Moving an option preserves human authority — the model may suggest a move with a stated reason but does not silently eliminate a candidate.
+
+`WorkspaceViewState.mode` selects the active view. `WorkspaceViewState` is a `CaseState` field (see `architecture.md`) that persists through the same `updateSelection()` path as `selectedOptionId`/`activeFocus` — a presentation change, and structurally incapable of invalidating a recommendation because that path never reaches the invalidation code (ADR 0005 decision 1). This is what makes change-set §54's rule true by construction rather than by convention: "Show only safety and cargo" changes what is visible; it does not change what the user says matters. Changing `criteria` is a separate, decision-mutating command, and the two must never be conflated.
+
+`FindingsSheet`'s existing List/Table/Kanban tabs are evidence-review UI — keyed on evidence disposition, not option identity — and are not a foundation for these four views; they remain unchanged, serving their existing purpose. Only its generic `Sheet`/`Tabs` shell is shared as a UI primitive with the new view components (ADR 0005 decision 3).
+
+### Narrow and expanded modes
+
+**Status: specified, not yet implemented** — no width-detection mechanism exists in the browser app today (ADR 0005 decision 4). Narrow and expanded are two intentional information architectures, not one layout scaled by CSS breakpoint (change-set §7). Responsive behavior changes what information is shown and how, not only how wide it is: at expanded width, Compare may show several option columns; at 390px, a two-option head-to-head may be the more usable design for the identical question. Quick Pick is narrow-native and is not expected to need a materially different expanded layout.
+
+### Decision Profile
+
+**Status: specified, not yet implemented.** A first-class consumer concept aggregating "what are we actually looking for": budget/constraints, usage context, must-haves, preferences, priority ordering, and open clarifying questions — projected from the existing criteria/attribute/case-extension model rather than a competing second source of truth (change-set §15). Priorities are shown to ordinary users as simplified levels (e.g. Very important / Important / Somewhat important) rather than raw numeric weights by default; exact weights remain available in an advanced view and are always preserved internally regardless of display (change-set §42). ChatGPT can read the Decision Profile and the case's missing/suggested-question state through WebMCP (see `webmcp.md`).
+
+### Questions ("To Check")
+
+The consumer projection of obligations. Each unresolved obligation is shown as a plain-language question (e.g. "CR-V dealer price still needs verification"), never as obligation/evidence-level jargon. Focusing a Question informs subsequent case context the same way focusing an option does.
+
+### Research and Notes
+
+**Status: specified, not yet implemented as first-class UI**; the underlying source/evidence storage this builds on exists today. Research (submitted sources, claims, and their provenance) is shown per-option as a Research summary → Findings → Sources hierarchy: source title, publisher, relevance, freshness, and disposition (verified/questioned/conflicted) are consumer-visible; E0–E3 evidence-level vocabulary stays in the developer view unless useful. A `CaseNote` is a lighter-weight, non-evidentiary record — an observation, question, preference, or reminder attached to one or more options — that never automatically becomes evidence and survives reload. Both the user and ChatGPT can add research and notes; attribution is always visible.
+
+### Custom fields are first-class
+
+A case-defined `custom.*` attribute (see `pack-authoring.md`) is a hero product capability here, not an edge case. It renders beside pack-native fields in List, Compare, and Board with a subtle "added for this comparison" indicator, never as a raw ID. Opening a custom field explains why it exists, who added it, what sources support it, and what remains unknown. The model may populate a custom field's value across options, but every populated value preserves provenance, origin, and confidence, and an unsupported subjective value remains explicitly unknown rather than a fabricated inference (change-set §22–§26).
 
 ## Required visible states
 
@@ -116,26 +163,34 @@ Catalog data is intentionally a separate, narrower fact class from case data (AD
 
 ## User-facing terminology
 
+Consumer-facing labels are not applied mechanically — choose language that makes sense in context. The guiding rule (change-set §4): consumer UI should explain what something means for the decision, not how Sift implemented it. The table below is illustrative, not exhaustive; the canonical mapping implementation is `apps/web/src/components/activity-labels.ts` (see "Consumer and developer projections" above).
+
 | Internal term | UI label |
 | --- | --- |
-| `DecisionPackManifest` / `CompiledDecisionPack` | Decision Pack |
-| Obligation | Question to resolve |
+| `DecisionPackManifest` / `CompiledDecisionPack` | Decision Pack — developer view only; the consumer surface shows at most a short domain label |
+| Case | Comparison / Decision |
+| Obligation | Question to resolve, grouped under **To Check** |
 | Convergence | Ready for decision |
-| Intervention | Guidance or safeguard |
-| `Guide` | Agent redirected |
+| Intervention | Guidance or safeguard — developer view only |
+| `Guide` | Agent redirected / Rechecking another way |
 | `Confirm` | Your approval needed |
 | `Deny` | Action blocked |
-| Evidence ledger | Evidence, shown under the heading **What Sift found** |
-| Agent graph | Investigation team |
-| Readiness | **Still checking** |
-| Activity ledger | **Sift's work so far** |
-| Recommendation | **Our pick** |
+| Evidence ledger | Research, shown per-option as Research summary → Findings → Sources |
+| Claim | Finding |
+| Agent graph | Investigation team — developer view only |
+| Readiness | **To Check** |
+| Raw activity ledger (`commandId`, `runId`, tool/skill/specialist IDs) | developer view only |
+| `activeFocus`, when genuinely populated | **Currently checking** / **Rechecking** |
+| Recommendation | **Current recommendation**, or **Leading option** before readiness is earned — never "Our pick" before then |
 | Approval | **Your decision** |
-| Option comparison | **Compare the options** |
-| Current focus | **What Sift is doing** |
+| Accepted uncertainty | Decide without this |
+| Case extension / `custom.*` attribute | comparison field, marked "added for this comparison" |
+| Decision Profile (criteria + attributes + case extensions, projected) | **Decision Profile** |
+| Option comparison view | **Compare** |
 | `VehicleCatalogRecord` | Vehicle |
 | Shortlist (pre-case candidate selection) | Your shortlist |
 | `startCase` | Compare vehicles |
+| E0–E3 evidence levels | developer view only |
 
 ## Success criteria
 

@@ -133,12 +133,23 @@ export type AppendResult =
  * return type is `AppendResult` unchanged (its `'duplicate'` member fits
  * unmodified: `acceptedSequence` there is simply "whatever the sequence was
  * at the time", which never changes for a selection-only patch).
+ *
+ * `view` (docs/decisions/0005-workspace-view-state-and-option-views.md
+ * "Decision" §1) joins this patch for exactly the same reason: it is
+ * presentation state (the active option view -- Quick Pick/List/Compare/
+ * Board -- plus focus/visibility/sort/filter configuration), not a decision
+ * mutation, and ADR 0005's central claim is that routing it through this
+ * non-event path -- rather than a new `view.changed`-style `CaseEvent` --
+ * makes "presentation change ≠ decision mutation" true by construction: a
+ * view-only patch structurally cannot reach `append()`/`applyCaseEvent`, so
+ * it can never advance `eventSequence` or invalidate a `recommendation`.
  */
 export interface SelectionPatch {
   readonly selectedOptionId?: string | null;
   readonly selectedEvidenceId?: string | null;
   readonly activeFocus?: CaseState['activeFocus'];
   readonly sources?: readonly CaseState['sources'][number][];
+  readonly view?: CaseState['view'];
 }
 
 export type CaseEventListener = (event: CaseEvent) => void;

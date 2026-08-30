@@ -58,7 +58,7 @@ describe('ExecutionRequestSchema', () => {
       caseSummary: {
         caseId: 'case-1',
         title: 'Choose our next family car',
-        status: 'investigating',
+        status: 'draft',
         criteria: [],
         optionSummaries: [{ id: 'car-1', label: '2022 Honda Civic', kind: 'car' }],
         evidenceCounts: { satisfied: 1, active: 2, blocked: 0, acceptedUncertainty: 0, open: 3 },
@@ -97,7 +97,7 @@ describe('ExecutionRequestSchema', () => {
       caseSummary: {
         caseId: 'case-1',
         title: 'x',
-        status: 'investigating',
+        status: 'draft',
         criteria: [],
         optionSummaries: [],
         evidenceCounts: { satisfied: 0, active: 0, blocked: 0, acceptedUncertainty: 0, open: 0 },

@@ -14,7 +14,7 @@ function buildProps(overrides: Partial<CaseHeaderProps> = {}): CaseHeaderProps {
       selectedBy: 'router',
       reasons: ['Matched keywords: car, vehicle, dealer'],
     },
-    status: 'investigating',
+    status: 'draft',
     connectionState: 'live',
     onResetDemo: vi.fn(),
     ...overrides,
@@ -105,13 +105,12 @@ describe('CaseHeader', () => {
     expect(screen.getByTestId('case-header-pack-explanation')).toHaveTextContent(/you selected/i);
   });
 
+  // Only the two statuses any code path can actually produce (ADR 0004).
+  // This list previously covered six; the other four were never assigned
+  // anywhere, so those cases asserted labels no user could ever see.
   it.each([
     ['draft', 'Draft'],
-    ['investigating', 'Investigating'],
-    ['waiting', 'Waiting for confirmation'],
-    ['ready', 'Ready for decision'],
     ['decided', 'Decided'],
-    ['failed', 'Recoverable error'],
   ] as const)('maps case status %s to the UI label "%s"', (status, expectedLabel) => {
     render(<CaseHeader {...buildProps({ status })} />);
     expect(screen.getByTestId('case-header-run-status')).toHaveTextContent(expectedLabel);

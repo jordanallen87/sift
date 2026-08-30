@@ -64,6 +64,32 @@ function criteriaUpdatedEvent(caseId: string, sequence: number): CaseEvent {
   };
 }
 
+function recommendationReadyEvent(caseId: string, sequence: number): CaseEvent {
+  return {
+    eventId: `${caseId}-ev-${sequence}`,
+    caseId,
+    sequence,
+    timestamp: now,
+    type: 'recommendation.ready',
+    payload: {
+      recommendation: {
+        id: 'rec-1',
+        status: 'ready',
+        favoredOptionId: 'option-1',
+        rationale: 'Best fit given current evidence.',
+        facts: [],
+        hypotheses: [],
+        confidence: 0.8,
+        limitations: [],
+        sourceIds: [],
+        resolvedObligationIds: [],
+        acceptedUncertaintyObligationIds: [],
+        generatedAt: now,
+      },
+    },
+  };
+}
+
 function seedSnapshotFor(caseId: string): CaseState {
   return {
     schemaVersion: '1.0',
@@ -404,6 +430,61 @@ export function runCaseStoreContractTests(createStore: () => CaseStore): void {
       expect(clearedToNull.snapshot.selectedOptionId).toBeNull();
       expect(clearedToNull.snapshot.selectedEvidenceId).toBeNull();
       expect(clearedToNull.snapshot.activeFocus).toBeNull();
+    });
+
+    it('updateSelection() patches view and it is readable back without advancing eventSequence or appending a case_events row', () => {
+      const store = createStore();
+      store.append('case-1', [caseCreatedEvent('case-1')], 0);
+
+      const view = {
+        mode: 'compare' as const,
+        compare: { optionIds: ['option-1', 'option-2'] },
+        visibleAttributeIds: ['car.price'],
+      };
+      const result = store.updateSelection('case-1', { view }, 1, now);
+
+      expect(result.status).toBe('applied');
+      if (result.status !== 'applied') throw new Error('expected applied');
+      expect(result.snapshot.view).toEqual(view);
+      expect(result.snapshot.eventSequence).toBe(1); // unchanged: still just case.created's sequence
+      expect(store.load('case-1')?.view).toEqual(view);
+      expect(store.subscribe('case-1', 0).replay).toHaveLength(1); // still just case.created -- no view event appended
+    });
+
+    it('updateSelection() patching view does not clear or alter an existing recommendation (presentation cannot invalidate a decision -- ADR 0005)', () => {
+      const store = createStore();
+      store.append('case-1', [caseCreatedEvent('case-1')], 0);
+      const withRecommendation = store.append('case-1', [recommendationReadyEvent('case-1', 2)], 1);
+      expect(withRecommendation.status).toBe('applied');
+      if (withRecommendation.status !== 'applied') throw new Error('expected applied');
+      const recommendationBefore = withRecommendation.snapshot.recommendation;
+      expect(recommendationBefore).not.toBeNull();
+
+      const result = store.updateSelection(
+        'case-1',
+        { view: { mode: 'board', board: { columns: [] } } },
+        2,
+        now,
+      );
+
+      expect(result.status).toBe('applied');
+      if (result.status !== 'applied') throw new Error('expected applied');
+      expect(result.snapshot.recommendation).toEqual(recommendationBefore);
+      expect(result.snapshot.eventSequence).toBe(2); // still the recommendation.ready sequence
+    });
+
+    it('updateSelection() sets view to an explicit null (clearing it)', () => {
+      const store = createStore();
+      store.append('case-1', [caseCreatedEvent('case-1')], 0);
+      const withView = store.updateSelection('case-1', { view: { mode: 'list' } }, 1, now);
+      expect(withView.status).toBe('applied');
+      if (withView.status !== 'applied') throw new Error('expected applied');
+      expect(withView.snapshot.view).toEqual({ mode: 'list' });
+
+      const cleared = store.updateSelection('case-1', { view: null }, 1, now);
+      expect(cleared.status).toBe('applied');
+      if (cleared.status !== 'applied') throw new Error('expected applied');
+      expect(cleared.snapshot.view).toBeNull();
     });
 
     it('subscribe() returns an empty replay (not a crash) for a case that was never created', () => {

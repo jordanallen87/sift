@@ -180,7 +180,7 @@ function buildExecutionRequest(overrides: Partial<ExecutionRequest> = {}): Execu
     caseSummary: {
       caseId: 'case-demo-energy-guardian',
       title: 'Why is my energy bill so high?',
-      status: 'investigating',
+      status: 'draft',
       criteria: criteriaFor(50, 50),
       optionSummaries: [],
       evidenceCounts: { satisfied: 0, active: 1, blocked: 0, acceptedUncertainty: 0, open: 4 },
@@ -257,7 +257,7 @@ function buildDeps(options: BuildDepsOptions = {}): {
     caseSummary: {
       caseId: 'case-demo-energy-guardian',
       title: 'Why is my energy bill so high?',
-      status: 'investigating',
+      status: 'draft',
       criteria: criteriaFor(options.costWeight ?? 50, options.conservationWeight ?? 50),
       optionSummaries: [],
       evidenceCounts: { satisfied: 3, active: 1, blocked: 0, acceptedUncertainty: 2, open: 1 },

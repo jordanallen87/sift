@@ -137,7 +137,7 @@ interface CaseState {
   schemaVersion: '1.0'
   id: string
   title: string
-  status: 'draft' | 'investigating' | 'waiting' | 'ready' | 'decided' | 'failed'
+  status: 'draft' | 'decided'
   pack: {
     id: string
     version: string
@@ -157,11 +157,16 @@ interface CaseState {
   activeFocus: ActiveFocus | null
   selectedOptionId: string | null
   selectedEvidenceId: string | null
+  view: WorkspaceViewState | null
   eventSequence: number
   createdAt: string
   updatedAt: string
 }
 ```
+
+`status` is a two-value type (ADR 0004 decision 4). The four other values a prior revision of this contract declared — `investigating`, `waiting`, `ready`, `failed` — are removed: no production code path ever assigned them (the only writes were `'draft'` at case creation and `'decided'` on approval), and `product.md`'s lifecycle language is now task-shaped (Find/Shortlist/Compare/Review/Decide) rather than status-badge-driven.
+
+`view` (`WorkspaceViewState`, defined in `docs/decisions/0005-workspace-view-state-and-option-views.md`) carries the shared, model-writable workspace view state — mode (`quick_pick | list | compare | board`), focused/visible/pinned option and attribute selections, sort, filters, and per-view configuration such as Compare's candidate set or Board's columns. The field exists in `CaseStateSchema` today. **Its write path is not yet implemented**: `SelectionPatch` has not yet grown the corresponding `view` parameter, no command handler writes it, and no UI component reads it, so it is always `null` in practice until that work lands. See "Two persistence paths" below for the mechanism `view` is specified to use once it does.
 
 Pack-defined attributes and case-defined `custom.*` attributes use the shared `AttributeValue` discriminated union in `pack-authoring.md`. The pack provides common typed defaults; the case may persist new typed definitions, criteria, and derived obligations when the compiled extension policy permits them. Required pack obligations and protected criteria remain immutable.
 
@@ -180,7 +185,16 @@ All timestamps in deterministic tests come from an injected `Clock`. IDs come fr
 
 Commands use optimistic concurrency. A stale `eventSequence` produces HTTP `409` with the latest snapshot; clients refresh rather than replaying an unexamined mutation.
 
-`selectedOptionId`, `selectedEvidenceId`, `activeFocus`, and `sources` are accepted, documented exceptions to "every canonical mutation is a `CaseEvent`": `focusOption`/`focusEvidence` are pure attention-cursor changes with no decision-relevant effect ("visible selection state only... does not change ranking or evidence" per `webmcp.md`), and a submitted source's own record is distinct from any `evidence.accepted` event its content may separately produce. The service persists these directly onto the snapshot without an accompanying `case_events` row or `eventSequence` advance. This means a case reconstructed purely by replaying `case_events` from empty will not recover selection/focus state or raw submitted-source records — acceptable because normal reads (`GET /api/cases/:caseId`, `sift_get_case_context`) always serve the persisted snapshot, never a from-scratch replay, and no required demo assertion depends on these fields surviving a pure event-log reconstruction. Do not extend this exception to any field that affects evidence, readiness, or the recommendation.
+### Two persistence paths: `append()` versus `updateSelection()`
+
+Sift has exactly two ways to durably change a case, and which one a command handler calls is what makes change-set §54's rule ("presentation filtering ≠ criterion mutation") true by construction rather than by convention (ADR 0005 decision 1):
+
+- **`append()`** is the sole write path for canonical decision events. It appends one or more rows to `case_events`, advances `eventSequence`, runs the event through `applyCaseEvent`, and is the only path any recommendation-staleness or readiness-invalidation logic is wired to observe. Every command in `SiftCommands` other than `focusOption`/`focusEvidence` calls `append()`.
+- **`updateSelection()`** (backed by a `SelectionPatch`) is a deliberate, separately-documented escape hatch for `CaseState` fields no `CaseEvent` variant ever touches: `selectedOptionId`, `selectedEvidenceId`, `activeFocus`, `sources`, and — once its write path is implemented — `view`. It patches the field(s) directly and persists the resulting snapshot, but it does **not** append a `case_events` row and does **not** advance `eventSequence`; there is no domain event to record. It still honors the same optimistic-concurrency (`expectedSequence`) and idempotency-key deduplication `append()` uses, sharing the same `idempotency_keys` table, so a retried WebMCP presentation call is still safe under duplicate delivery.
+
+The consequence is structural, not conventional: a change routed through `updateSelection()` cannot reach recommendation-invalidation logic, because that code path is never invoked for a selection-only patch. This is why `focusOption`/`focusEvidence` today — and `WorkspaceViewState` writes (`sift_set_view`, `sift_focus_question`, `sift_configure_comparison`; see `webmcp.md`), once their write path is implemented — can be called freely and repeatedly without human confirmation, unlike `sift_update_criteria` or `sift_submit_source`: it is not possible for a presentation-only call to silently become a decision mutation, regardless of how a tool description is worded.
+
+`focusOption`/`focusEvidence` are pure attention-cursor changes with no decision-relevant effect ("visible selection state only... does not change ranking or evidence" per `webmcp.md`), and a submitted source's own record is distinct from any `evidence.accepted` event its content may separately produce. This means a case reconstructed purely by replaying `case_events` from empty will not recover selection/focus/view state or raw submitted-source records — acceptable because normal reads (`GET /api/cases/:caseId`, `sift_get_case_context`) always serve the persisted snapshot, never a from-scratch replay, and no required demo assertion depends on these fields surviving a pure event-log reconstruction. Do not extend this exception to any field that affects evidence, readiness, or the recommendation.
 
 ## Real-time event contract
 
@@ -254,6 +268,10 @@ schema_migrations    applied migration ledger
 Case-event append and snapshot replacement occur in one transaction. `(case_id, sequence)` and idempotency keys are unique. `activity_events` gives the normal UI one replayable public sequence across commands and runs; it is derived from committed domain or normalized runtime activity and cannot mutate the case. Detailed runtime telemetry is operational evidence and also cannot directly mutate canonical case state.
 
 Local storage defaults to `.sift-data/sift.sqlite`. Railway uses `/data/sift.sqlite` on a persistent volume. Local Strands session files live under `.sift-data/strands-sessions`; Railway uses `/data/strands-sessions`. AgentCore may use S3 session storage, but canonical case writes return through the Railway service.
+
+### Legacy database adoption on boot
+
+Sift was called Pax until 2026-08-30, and the deployed Railway service holds a real, populated database at the pre-rename path (`/data/pax.sqlite`) on its persistent volume. Renaming the canonical filename without a migration step would silently open a fresh, empty `sift.sqlite` beside the untouched legacy file — the deployment would appear to have lost every case, rather than failing loudly, which is exactly the failure mode `docs/audits/2026-08-30-generic-decision-workspace-audit.md` §8 (the rename blast-radius audit) warns must be handled deliberately and verified against the live deployment, not assumed. This is implemented, not merely specified: on every boot, before opening the canonical database file, the service checks for an existing `sift.sqlite`; if one exists it is used unconditionally. Only when no `sift.sqlite` exists yet and a legacy `pax.sqlite` is present does adoption run: the legacy file is opened, its WAL is checkpointed (`wal_checkpoint(TRUNCATE)`) so no recently committed pages are stranded in a `pax.sqlite-wal` sidecar the renamed file would never be opened with, and it is then renamed in place to `sift.sqlite`. A stale legacy file found beside an already-adopted `sift.sqlite` is left on disk untouched rather than deleted — destroying data on the basis of a filename guess is not this step's call to make. Adoption is idempotent: it is a no-op on a fresh checkout with neither file, and a no-op on every boot after the first successful adoption.
 
 Scenario and release commands export normalized JSONL event/trace bundles from SQLite into `artifacts/verification/`. JSONL is not the runtime source of truth.
 
