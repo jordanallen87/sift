@@ -88,6 +88,22 @@ B1–B2 first.
 - [ ] **A7. The above-the-fold invariant.** A Playwright assertion that the recommendation
       region's top edge is within the first viewport height at 390/430/480.
       *This is the regression gate for the defect that has now occurred twice.*
+- [ ] **A10. The workspace is very tall once a case is seeded.** Observed in the regenerated
+      390px baseline: ~3379px, because the comparison table is always expanded inside the view
+      switcher and "Manage options" also renders open. Everything is legible and the critical
+      above-the-fold property holds (the hero is first), so this is a design refinement rather
+      than a defect — but change set §64 asks this work to REDUCE apparent complexity, and an
+      always-expanded full attribute table works against that. Consider collapsing lower attribute
+      groups by default, or defaulting the switcher to Quick Pick or List rather than Compare.
+- [ ] **A9. Relabel the hero's command-status block.** Found by live inspection at 430px after the
+      Phase A restructure: the hero renders "Nothing's been looked into yet" directly above a block
+      headed "INVESTIGATION STATUS — COMPLETED" describing `Added option "2022 Subaru Outback
+      Premium AWD"`. Both statements are individually true — nothing *has* been investigated, and
+      the last *command* did complete — but read together they contradict, which is a milder form
+      of the exact defect this phase removed ("Our pick: READY" above "no proposal pending"). The
+      block reports command status, not investigation status, and must be labelled as such; it
+      should also not appear at all when the only completed command was fixture seeding the user
+      never issued.
 - [ ] **A8. Tighten the visual gate.** `maxDiffPixelRatio: 0.01` was permissive enough that a whole
       product rename passed with stale baselines. Lower it, or add a text-content assertion
       alongside the pixel check, so a copy change cannot pass silently.
@@ -149,6 +165,34 @@ B1–B2 first.
 - [ ] **E3. Catalog search exposed to ChatGPT**, generic with pack-declared filters (§20). Today
       the catalog is HTTP-only and unreachable from WebMCP.
 - [ ] **E4. Pack-level Decision Guide** as declarative data — explicitly not prompt injection.
+
+### Phase E outcome and remaining gaps (2026-08-30)
+
+Catalog widened 12 -> 17 tools across four authority classes. Case context now carries custom-field
+definitions (closing the gap where `custom.*` values were visible to the model but their meaning was
+not), a research summary, real unresolved-question text, stale/conflicted signals, and the current
+view — every collection reporting `{items, total}` so truncation is never silent. `sift_search_catalog`
+is generic over a pack-keyed adapter rather than vehicle-specific.
+
+Verified directly, not taken on report: the contract test asserts exactly 17 tools and that none
+reaches `reviewProposal`; the §54 boundary test asserts `criteria` and `recommendation` are unchanged
+AND that no `SiftCommands` method is called at all.
+
+Genuinely not built, each blocked on something real rather than skipped:
+
+- [ ] **E5. `sift_set_view` / `sift_configure_comparison` persist only for the session.** No backend
+      command reaches `updateSelection()` for `view`, so the contract field exists with no writer.
+      The tools hold view state in memory, which is functional within a session and reflected by
+      `sift_get_case_context`, but does not survive reload or reach another viewer. Both the tool
+      descriptions and `webmcp.md` say so explicitly — an overclaiming description would be worse
+      than a missing tool, because ChatGPT would act on a page state that isn't real. Needs a
+      command wired to the existing persistence path.
+- [ ] **E6. `sift_set_option_attribute`.** ADR 0006 decision 4. `upsertOption` replaces an entity's
+      whole attributes map, so it cannot stand in for a scoped single-attribute write.
+- [ ] **E7. `sift_get_decision_guide`.** Needs the pack-manifest fields from §46/§47 in
+      `packages/contracts`. Also blocks D4 (`suggestedQuestions`).
+- [ ] **E8. `sift_focus_question`.** `WorkspaceViewState` has no focused-question field, and
+      `activeFocus` is system-owned rather than model-settable.
 
 ## Phase F — custom fields as a hero capability
 

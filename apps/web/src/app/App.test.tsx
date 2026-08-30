@@ -326,7 +326,7 @@ describe('App', () => {
   });
 
   describe('live workspace wiring', () => {
-    it('renders CaseHeader with the real streamed snapshot title, pack badge, and status', async () => {
+    it('renders CaseHeader with the real streamed snapshot title, and never leaks the pack id/badge to the consumer surface', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID, title: 'Choose our next car (live)' });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
@@ -334,7 +334,11 @@ describe('App', () => {
       expect(screen.getByTestId('case-header-title')).toHaveTextContent(
         'Choose our next car (live)',
       );
-      expect(screen.getByTestId('case-header-pack-badge')).toHaveTextContent('car-purchase');
+      // ADR 0004 decision item 1: the Decision Pack badge/id/hash and the
+      // pack-selection sentence leave the consumer surface entirely.
+      expect(screen.queryByTestId('case-header-pack-badge')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('case-header-pack-explanation')).not.toBeInTheDocument();
+      expect(screen.queryByText(/car-purchase/)).not.toBeInTheDocument();
     });
 
     it('renders the loading state for the header before the first snapshot resolves', async () => {
@@ -444,10 +448,26 @@ describe('App', () => {
       });
     });
 
-    it('renders a live SSE activity event via ActivityTimeline as it streams in', async () => {
-      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+    // Replaces a prior test asserting a live SSE event streamed into
+    // `ActivityTimeline`'s raw ledger. ADR 0004 decision item 3/4 moves that
+    // raw chronological ledger ("Sift's work so far") to developer content;
+    // this is the consumer-surface equivalent -- a live, correlated SSE
+    // event still visibly updates the hero's quiet `LiveRunStatus`
+    // indicator and flips the headline to the honest "investigating" phase,
+    // with no timer or fabricated progress involved (product.md "Real-time
+    // experience contract").
+    it("streams a live, correlated SSE event into the hero's LiveRunStatus indicator and phase headline", async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null });
       renderLiveWorkspace(snapshot);
-      await startDemoAndWait();
+      server.use(
+        runHandler({ ...buildFakeCommandReceipt({ caseId: CASE_ID }), runId: 'run-stream-1' }),
+      );
+      const user = await startDemoAndWait();
+
+      await user.click(screen.getByTestId('request-investigation'));
+      await waitFor(() => {
+        expect(screen.getByTestId('live-run-status')).toBeInTheDocument();
+      });
 
       await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
       const source = FakeEventSource.instances.at(-1)!;
@@ -459,16 +479,20 @@ describe('App', () => {
         sequence: 1,
         timestamp: '2026-08-27T00:01:00.000Z',
         caseId: CASE_ID,
+        runId: 'run-stream-1',
         type: 'specialist.started',
         phase: 'active',
         summary: 'Deal analyst started working.',
       });
 
       await waitFor(() => {
-        expect(screen.getByTestId('activity-timeline-list')).toHaveTextContent(
+        expect(screen.getByTestId('live-run-status-summary')).toHaveTextContent(
           'Deal analyst started working.',
         );
       });
+      expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
+        'Sift is investigating.',
+      );
     });
 
     it('reflects the real SSE connectionState in the CaseHeader connection indicator', async () => {
@@ -604,9 +628,14 @@ describe('App', () => {
 
       await user.click(screen.getByTestId('request-investigation'));
 
+      // The real run id is never rendered as raw text on the consumer
+      // surface anymore (ADR 0004 decision item 3) -- proven here by
+      // clicking through to the real Runtime Inspector, the one place the
+      // id is developer-appropriate to show.
       await waitFor(() => {
-        expect(screen.getByTestId('live-run-status-run-id')).toHaveTextContent('run-live-1');
+        expect(screen.getByTestId('open-runtime-inspector')).toBeInTheDocument();
       });
+      expect(screen.queryByText('run-live-1')).not.toBeInTheDocument();
       expect(capturedBody).toMatchObject({
         caseId: CASE_ID,
         expectedSequence: snapshot.eventSequence,
@@ -669,7 +698,7 @@ describe('App', () => {
       await user.click(screen.getByTestId('request-investigation'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('live-run-status-run-id')).toHaveTextContent('run-retry-1');
+        expect(screen.getByTestId('open-runtime-inspector')).toBeInTheDocument();
       });
       expect(callCount).toBe(2);
       expect(screen.queryByTestId('request-investigation-error')).not.toBeInTheDocument();
@@ -938,34 +967,19 @@ describe('App', () => {
       );
     });
 
-    it('renders the obligation label, reason, active skill, and active specialist from a real activeFocus', async () => {
+    // ADR 0004 decision item 5: `CaseState.activeFocus` is written only as
+    // `null` by every production code path -- the old "What Sift is doing"
+    // current-focus card was unreachable dead code whose only visible
+    // branch was a permanently-true empty state. It is deleted outright,
+    // not replaced with a fabricated substitute ("Nothing may render from
+    // `activeFocus` again until a real production code path writes a
+    // non-null value to it"). This proves the deletion actually took
+    // effect: even a snapshot carrying a real, fully-populated `activeFocus`
+    // (something no production writer produces today, but the fixture can)
+    // renders no trace of the old current-focus UI anywhere.
+    it('renders nothing from activeFocus even when the snapshot carries a real (never-production-written) value', async () => {
       const snapshot = buildFixtureCaseState({
         id: CASE_ID,
-        obligations: [
-          {
-            id: 'obl-1',
-            label: 'Confirm total price',
-            question: 'What is the out-the-door price?',
-            category: 'price',
-            required: true,
-            priority: 1,
-            requiredEvidenceLevel: 'E1',
-            maxAttempts: 3,
-            acceptedUncertaintyAllowed: false,
-            dependsOn: [],
-            preferredSkills: [],
-            preferredSpecialists: [],
-            completionRule: {
-              minimumEvidenceLevel: 'E1',
-              minimumIndependentSources: 1,
-              acceptedUncertaintyAllowed: false,
-            },
-            origin: 'pack',
-            status: 'active',
-            attemptsUsed: 1,
-            updatedAt: '2026-08-27T00:00:00.000Z',
-          },
-        ],
         activeFocus: {
           obligationId: 'obl-1',
           reason: 'Dealer quote has not been corroborated yet.',
@@ -977,16 +991,16 @@ describe('App', () => {
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
-      await waitFor(() => {
-        expect(screen.getByTestId('current-focus-obligation')).toHaveTextContent(
-          'Confirm total price',
-        );
-      });
-      expect(screen.getByTestId('current-focus-reason')).toHaveTextContent(
-        'Dealer quote has not been corroborated yet.',
-      );
-      expect(screen.getByTestId('current-focus-skill')).toHaveTextContent('price-verification');
-      expect(screen.getByTestId('current-focus-specialist')).toHaveTextContent('deal-analyst');
+      expect(screen.queryByTestId('current-focus')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('current-focus-detail')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('current-focus-obligation')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('current-focus-reason')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('current-focus-skill')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('current-focus-specialist')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('current-focus-empty')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Dealer quote has not been corroborated yet.'),
+      ).not.toBeInTheDocument();
     });
 
     it('shows the "Draft withheld" recommendation state when the last event is draft.withheld and no recommendation exists yet', async () => {
@@ -1062,12 +1076,19 @@ describe('App', () => {
       server.use(debugRunHandler('run-prior-1'));
       await startDemoAndWait();
 
+      // `LiveRunStatus` renders nothing at all before any command has been
+      // sent (ADR 0004 item 2); a case reloaded with prior run history must
+      // therefore show the real quiet indicator, not that empty state.
       await waitFor(() => {
-        expect(screen.queryByTestId('live-run-status-empty')).not.toBeInTheDocument();
+        expect(screen.getByTestId('live-run-status')).toBeInTheDocument();
       });
-      expect(screen.getByTestId('live-run-status-run-id')).toHaveTextContent('run-prior-1');
-      expect(screen.getByTestId('live-run-status-command-id')).toHaveTextContent('cmd-prior-1');
       expect(screen.getByTestId('live-run-status-phase')).toHaveTextContent(/completed/i);
+      // Neither raw id renders as visible text on the consumer surface
+      // (ADR 0004 item 3) -- proven by clicking through to the real
+      // Runtime Inspector below, the one place `run-prior-1` is
+      // developer-appropriate to show.
+      expect(screen.queryByText('run-prior-1')).not.toBeInTheDocument();
+      expect(screen.queryByText('cmd-prior-1')).not.toBeInTheDocument();
 
       // The "Open Runtime Inspector" control is directly adjacent to
       // LiveRunStatus and must not disagree with it: it was still gated on
@@ -1146,14 +1167,31 @@ describe('App', () => {
       await startDemoAndWait();
 
       await waitFor(() => {
-        expect(screen.queryByTestId('live-run-status-empty')).not.toBeInTheDocument();
+        expect(screen.getByTestId('live-run-status')).toBeInTheDocument();
       });
-      expect(screen.getByTestId('live-run-status-run-id')).toHaveTextContent('run-prior-1');
-      expect(screen.getByTestId('live-run-status-run-id')).not.toHaveTextContent('run-foreign');
-      expect(screen.getByTestId('live-run-status-command-id')).toHaveTextContent('cmd-prior-1');
+      // Proven by clicking through to the real Runtime Inspector -- the
+      // real run id is never rendered as raw consumer-surface text (ADR
+      // 0004 item 3), so the *scoping* behavior this test exists to prove
+      // (the derivation must never reflect a foreign case's event, even
+      // one with a higher sequence number) is now verified at the one
+      // place the id is developer-appropriate to show.
+      await waitFor(() => {
+        expect(screen.getByTestId('open-runtime-inspector')).toBeInTheDocument();
+      });
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId('open-runtime-inspector'));
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-run-id')).toHaveTextContent('run-prior-1');
+      });
+      expect(screen.getByTestId('runtime-inspector-run-id')).not.toHaveTextContent('run-foreign');
     });
 
-    it('still shows the "No command has been sent yet." empty state for a genuinely fresh case with no prior activity', async () => {
+    // ADR 0004 item 2 / audit §2: an empty conceptual region must be
+    // ABSENT, not a card announcing its own emptiness -- `LiveRunStatus`
+    // used to render a "No command has been sent yet." card here; it now
+    // renders nothing at all for a genuinely fresh case with no prior
+    // activity.
+    it('renders no LiveRunStatus indicator at all for a genuinely fresh case with no prior activity', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null });
       renderLiveWorkspace(snapshot, []);
       await startDemoAndWait();
@@ -1161,7 +1199,8 @@ describe('App', () => {
       await waitFor(() => {
         expect(screen.getByTestId('case-header')).toBeInTheDocument();
       });
-      expect(screen.getByTestId('live-run-status-empty')).toBeInTheDocument();
+      expect(screen.queryByTestId('live-run-status')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('live-run-status-empty')).not.toBeInTheDocument();
     });
 
     it('does not send a reset command when the active pack id is not a recognized demo id', async () => {
@@ -1394,7 +1433,10 @@ describe('App', () => {
         // The inspector is now a Sheet overlay (round-2 design review: "show
         // these in ... a side sliding sheet" rather than navigating to a
         // separate page) -- the case body stays mounted underneath it.
-        expect(screen.getByTestId('current-focus')).toBeInTheDocument();
+        // `recommendation-hero` replaces the retired "current-focus" card as
+        // the stable, always-present region proving this (ADR 0004 item 5
+        // deleted the current-focus card entirely).
+        expect(screen.getByTestId('recommendation-hero')).toBeInTheDocument();
         expect(screen.getByTestId('case-header')).toBeInTheDocument();
 
         await waitFor(() => {
@@ -1406,45 +1448,18 @@ describe('App', () => {
         await waitFor(() => {
           expect(screen.queryByTestId('runtime-inspector')).not.toBeInTheDocument();
         });
-        expect(screen.getByTestId('current-focus')).toBeInTheDocument();
+        expect(screen.getByTestId('recommendation-hero')).toBeInTheDocument();
       });
 
-      it('opens the Runtime Inspector from a correlated ActivityTimeline item', async () => {
-        const snapshot = buildFixtureCaseState({ id: CASE_ID });
-        renderLiveWorkspace(snapshot);
-        server.use(debugRunHandler('run-from-activity'));
-        await startDemoAndWait();
-
-        await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
-        const source = FakeEventSource.instances.at(-1)!;
-        source.triggerOpen();
-        source.emit({
-          schemaVersion: '1.0',
-          eventId: 'evt-correlated',
-          sequence: 1,
-          timestamp: '2026-08-27T00:01:00.000Z',
-          caseId: CASE_ID,
-          runId: 'run-from-activity',
-          type: 'specialist.started',
-          phase: 'active',
-          summary: 'Deal analyst started working.',
-        });
-
-        await waitFor(() => {
-          expect(
-            screen.getByTestId('activity-item-inspect-run-evt-correlated'),
-          ).toBeInTheDocument();
-        });
-        await userEvent
-          .setup()
-          .click(screen.getByTestId('activity-item-inspect-run-evt-correlated'));
-
-        await waitFor(() => {
-          expect(screen.getByTestId('runtime-inspector-run-id')).toHaveTextContent(
-            'run-from-activity',
-          );
-        });
-      });
+      // A prior version of this test opened the Inspector from a per-item
+      // "Inspect run" control on `ActivityTimeline`, the raw chronological
+      // activity ledger. ADR 0004 item 3/4 moves that ledger to developer
+      // content and this file no longer mounts it on the consumer surface
+      // at all (change-set §34: "Do not build a redundant separate debug
+      // system") -- the single "Inspect run" control tied to the hero's own
+      // `LiveRunStatus` (covered by the test above and by "streams a live,
+      // correlated SSE event...") is the one remaining, still-tested entry
+      // point into the Runtime Inspector.
 
       it('has no axe violations with the Runtime Inspector open', async () => {
         const snapshot = buildFixtureCaseState({ id: CASE_ID });
@@ -1479,22 +1494,23 @@ describe('App', () => {
     });
   });
 
-  // ADR 0002 "Answer-first workspace layout": the recommendation/approval
-  // hero is always visible and precedes every disclosure row, and each
-  // disclosure row's closed `<summary>` carries an accurate live summary
-  // even while collapsed.
-  describe('workspace layout (ADR 0002, answer-first + disclosure rows)', () => {
-    it('renders the recommendation hero before every disclosure row', async () => {
+  // ADR 0004 "Consumer workspace information architecture": the merged
+  // answer-first hero is always visible and precedes every disclosure row
+  // -- the machine-checkable form of "answer first" this task's brief asks
+  // for, in DOM order rather than only visual position. Each disclosure
+  // row's closed `<summary>` still carries an accurate live summary even
+  // while collapsed (a property ADR 0002 established and ADR 0004 keeps).
+  describe('workspace layout (ADR 0004, answer-first hero + disclosure rows)', () => {
+    it('renders the recommendation hero before every disclosure row, in real DOM order', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
       const hero = screen.getByTestId('recommendation-hero');
       for (const testId of [
-        'disclosure-compare',
+        'disclosure-options',
         'disclosure-findings',
         'disclosure-still-checking',
-        'disclosure-work-so-far',
         'disclosure-add-concern',
       ]) {
         const position = hero.compareDocumentPosition(screen.getByTestId(testId));
@@ -1507,11 +1523,7 @@ describe('App', () => {
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
-      for (const testId of [
-        'disclosure-compare',
-        'disclosure-still-checking',
-        'disclosure-work-so-far',
-      ]) {
+      for (const testId of ['disclosure-options', 'disclosure-still-checking']) {
         expect(screen.getByTestId<HTMLDetailsElement>(testId).open).toBe(false);
       }
       // "What Sift found" is a FindingsSheet trigger, not a native disclosure
@@ -1520,7 +1532,7 @@ describe('App', () => {
       expect(screen.queryByTestId('findings-sheet')).not.toBeInTheDocument();
     });
 
-    it('shows a live option count on the closed "Compare the options" row', async () => {
+    it('shows a live option count on the closed "Manage options" row', async () => {
       const snapshot = buildFixtureCaseState({
         id: CASE_ID,
         entities: [
@@ -1546,7 +1558,7 @@ describe('App', () => {
       await startDemoAndWait();
 
       await waitFor(() => {
-        expect(screen.getByTestId('disclosure-compare-meta')).toHaveTextContent('2 options');
+        expect(screen.getByTestId('disclosure-options-meta')).toHaveTextContent('2 options');
       });
     });
 
@@ -1638,31 +1650,28 @@ describe('App', () => {
       });
     });
 
-    it('shows a live pulsing indicator on "Sift\'s work so far" only while a run is genuinely active', async () => {
+    // The raw chronological ledger this test used to check ("Sift's work so
+    // far" / `ActivityTimeline`, with its own live-pulsing indicator) is
+    // retired from the consumer surface entirely (ADR 0004 item 3/4); the
+    // equivalent "a live run visibly and quietly updates the workspace"
+    // coverage now lives in 'live workspace wiring' > "streams a live,
+    // correlated SSE event into the hero's LiveRunStatus indicator and
+    // phase headline", against the hero's own `LiveRunStatus`.
+
+    it('renders the primary Quick Pick / List / Compare / Board view switcher, always expanded (not a disclosure row)', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
-      expect(screen.queryByTestId('disclosure-work-so-far-live')).not.toBeInTheDocument();
-
-      await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
-      const source = FakeEventSource.instances.at(-1)!;
-      source.triggerOpen();
-      source.emit({
-        schemaVersion: '1.0',
-        eventId: 'evt-live',
-        sequence: 1,
-        timestamp: '2026-08-27T00:01:00.000Z',
-        caseId: CASE_ID,
-        type: 'specialist.started',
-        phase: 'active',
-        summary: 'Deal analyst started working.',
-      });
-
       await waitFor(() => {
-        expect(screen.getByTestId('disclosure-work-so-far-live')).toBeInTheDocument();
+        expect(screen.getByTestId('workspace-view-switcher')).toBeInTheDocument();
       });
-      expect(screen.getByTestId('disclosure-work-so-far-meta')).toHaveTextContent('1 step');
+      // A real `<details>` disclosure would carry a `disclosure-*` testid
+      // (per `DisclosureSection`'s own naming convention) -- the view
+      // switcher deliberately carries none, because ADR 0004 item 5 makes
+      // it a primary, always-expanded surface, not a closed-by-default row.
+      expect(screen.queryByTestId('disclosure-view')).not.toBeInTheDocument();
+      expect(screen.getByTestId('workspace-view-content-compare')).toBeInTheDocument();
     });
 
     it('auto-opens "Add something Sift should check" when an agent-proposed extension is pending', async () => {
@@ -2148,39 +2157,12 @@ describe('App', () => {
       });
     });
 
-    it('falls back to showing the raw obligationId in Current Focus when activeFocus references an obligation not present in the snapshot', async () => {
-      const snapshot = buildFixtureCaseState({
-        id: CASE_ID,
-        obligations: [],
-        activeFocus: {
-          obligationId: 'obl-ghost',
-          reason: 'Investigating a concern raised mid-session.',
-          since: '2026-08-27T00:00:00.000Z',
-        },
-      });
-      renderLiveWorkspace(snapshot);
-      await startDemoAndWait();
-
-      await waitFor(() => {
-        expect(screen.getByTestId('current-focus-obligation')).toHaveTextContent('obl-ghost');
-      });
-    });
-
-    it('does not render Skill/Specialist chips in Current Focus when the real activeFocus does not carry them', async () => {
-      const snapshot = buildFixtureCaseState({
-        id: CASE_ID,
-        activeFocus: {
-          obligationId: 'obl-1',
-          reason: 'Reviewing without a specific skill or specialist assigned yet.',
-          since: '2026-08-27T00:00:00.000Z',
-        },
-      });
-      renderLiveWorkspace(snapshot);
-      await startDemoAndWait();
-
-      await waitFor(() => expect(screen.getByTestId('current-focus-detail')).toBeInTheDocument());
-      expect(screen.queryByTestId('current-focus-skill')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('current-focus-specialist')).not.toBeInTheDocument();
-    });
+    // The two `activeFocus`-rendering defensive branches this section used
+    // to cover (a ghost obligation id with no matching obligation; a focus
+    // with no skill/specialist) no longer apply -- the current-focus UI
+    // they exercised is deleted entirely (ADR 0004 decision item 5; see
+    // 'live workspace wiring' > "renders nothing from activeFocus even when
+    // the snapshot carries a real (never-production-written) value", which
+    // proves the deletion holds even for a fully-populated `activeFocus`).
   });
 });

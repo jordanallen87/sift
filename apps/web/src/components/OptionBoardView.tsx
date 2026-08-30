@@ -183,13 +183,13 @@ export function OptionBoardView({
   return (
     <section
       data-testid="option-board-view"
-      aria-labelledby="option-board-view-heading"
+      aria-labelledby="board-heading"
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
-      <h2 id="option-board-view-heading">Where your options stand</h2>
+      <h2 id="board-heading">Where your options stand</h2>
 
       <div
-        data-testid="option-board-view-scroll-region"
+        data-testid="board-scroll-region"
         className="overflow-x-auto"
         tabIndex={0}
         role="region"
@@ -201,7 +201,7 @@ export function OptionBoardView({
             return (
               <div
                 key={column.id}
-                data-testid={`option-board-view-column-${column.id}`}
+                data-testid={`board-column-${column.id}`}
                 className={`flex ${COLUMN_WIDTH_CLASS} shrink-0 flex-col gap-[var(--space-2)]`}
               >
                 <div className="flex flex-col gap-[var(--space-0-5)]">
@@ -210,7 +210,7 @@ export function OptionBoardView({
                   </h3>
                   {column.hint !== undefined ? (
                     <p
-                      data-testid={`option-board-view-column-hint-${column.id}`}
+                      data-testid={`board-column-hint-${column.id}`}
                       className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]"
                     >
                       {column.hint}
@@ -220,26 +220,26 @@ export function OptionBoardView({
 
                 {columnOptions.length === 0 ? (
                   <p
-                    data-testid={`option-board-view-column-empty-${column.id}`}
+                    data-testid={`board-column-empty-${column.id}`}
                     className="text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]"
                   >
                     Nothing here yet.
                   </p>
                 ) : (
                   <ul
-                    data-testid={`option-board-view-column-list-${column.id}`}
+                    data-testid={`board-column-list-${column.id}`}
                     className="flex flex-col gap-[var(--space-2)]"
                   >
                     {columnOptions.map((option) => {
                       const isSelected = option.id === selectedOptionId;
                       const facts = pickFacts(option, attributeDefinitions);
                       const reason = reasons?.[option.id];
-                      const moveSelectId = `option-board-view-move-select-${option.id}`;
+                      const moveSelectId = `board-move-select-${option.id}`;
 
                       return (
                         <li
                           key={option.id}
-                          data-testid={`option-board-view-card-${option.id}`}
+                          data-testid={`board-card-${option.id}`}
                           data-selected={isSelected ? 'true' : 'false'}
                           className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] bg-muted p-[var(--space-2)] text-[length:var(--font-size-sm)]"
                           style={
@@ -253,7 +253,7 @@ export function OptionBoardView({
                         >
                           <button
                             type="button"
-                            data-testid={`option-board-view-focus-${option.id}`}
+                            data-testid={`board-focus-${option.id}`}
                             onClick={() => onFocusOption(option.id)}
                             aria-pressed={isSelected}
                             className="w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-[inherit] text-[inherit]"
@@ -266,7 +266,7 @@ export function OptionBoardView({
 
                           {facts.length > 0 ? (
                             <ul
-                              data-testid={`option-board-view-facts-${option.id}`}
+                              data-testid={`board-facts-${option.id}`}
                               className="flex flex-col gap-[var(--space-0-5)] text-[var(--color-ink-secondary)]"
                             >
                               {facts.map((fact) => (
@@ -279,7 +279,7 @@ export function OptionBoardView({
 
                           {reason !== undefined && reason.length > 0 ? (
                             <p
-                              data-testid={`option-board-view-reason-${option.id}`}
+                              data-testid={`board-reason-${option.id}`}
                               className="text-[var(--color-ink-secondary)]"
                             >
                               {reason}
@@ -292,7 +292,7 @@ export function OptionBoardView({
                             </label>
                             <select
                               id={moveSelectId}
-                              data-testid={`option-board-view-move-${option.id}`}
+                              data-testid={`board-move-${option.id}`}
                               value={resolveColumnId(option.id, optionColumnIds, effectiveColumns)}
                               onChange={(event) => onMoveOption(option.id, event.target.value)}
                               className="rounded-[var(--radius-sm)] bg-card px-[var(--space-1)] py-[var(--space-0-5)] text-[length:var(--font-size-xs)]"

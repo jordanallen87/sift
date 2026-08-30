@@ -133,16 +133,10 @@ describe('OptionBoardView', () => {
       />,
     );
 
-    expect(screen.getByTestId('option-board-view-column-considering')).toHaveTextContent(
-      'Considering',
-    );
-    expect(screen.getByTestId('option-board-view-column-top_choices')).toHaveTextContent(
-      'Top choices',
-    );
-    expect(screen.getByTestId('option-board-view-column-need_to_verify')).toHaveTextContent(
-      'Need to verify',
-    );
-    expect(screen.getByTestId('option-board-view-column-out')).toHaveTextContent('Out');
+    expect(screen.getByTestId('board-column-considering')).toHaveTextContent('Considering');
+    expect(screen.getByTestId('board-column-top_choices')).toHaveTextContent('Top choices');
+    expect(screen.getByTestId('board-column-need_to_verify')).toHaveTextContent('Need to verify');
+    expect(screen.getByTestId('board-column-out')).toHaveTextContent('Out');
   });
 
   it('honors custom columns', () => {
@@ -161,12 +155,10 @@ describe('OptionBoardView', () => {
       />,
     );
 
-    expect(screen.getByTestId('option-board-view-column-new_arrivals')).toHaveTextContent(
-      'New arrivals',
-    );
-    expect(screen.getByTestId('option-board-view-column-finalists')).toHaveTextContent('Finalists');
-    expect(screen.queryByTestId('option-board-view-column-considering')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('option-board-view-column-out')).not.toBeInTheDocument();
+    expect(screen.getByTestId('board-column-new_arrivals')).toHaveTextContent('New arrivals');
+    expect(screen.getByTestId('board-column-finalists')).toHaveTextContent('Finalists');
+    expect(screen.queryByTestId('board-column-considering')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('board-column-out')).not.toBeInTheDocument();
   });
 
   it('places each option in its assigned column; unassigned options land in the first column', () => {
@@ -182,19 +174,17 @@ describe('OptionBoardView', () => {
     );
 
     expect(
-      within(screen.getByTestId('option-board-view-column-list-top_choices')).getByTestId(
-        'option-board-view-card-option-1',
+      within(screen.getByTestId('board-column-list-top_choices')).getByTestId(
+        'board-card-option-1',
       ),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByTestId('option-board-view-column-list-out')).getByTestId(
-        'option-board-view-card-option-2',
-      ),
+      within(screen.getByTestId('board-column-list-out')).getByTestId('board-card-option-2'),
     ).toBeInTheDocument();
     // option-3 has no entry in optionColumnIds -- falls back to the first column (Considering).
     expect(
-      within(screen.getByTestId('option-board-view-column-list-considering')).getByTestId(
-        'option-board-view-card-option-3',
+      within(screen.getByTestId('board-column-list-considering')).getByTestId(
+        'board-card-option-3',
       ),
     ).toBeInTheDocument();
   });
@@ -213,7 +203,7 @@ describe('OptionBoardView', () => {
       />,
     );
 
-    const select = screen.getByTestId('option-board-view-move-option-1');
+    const select = screen.getByTestId('board-move-option-1');
     await user.selectOptions(select, 'top_choices');
 
     expect(onMoveOption).toHaveBeenCalledExactlyOnceWith('option-1', 'top_choices');
@@ -233,19 +223,17 @@ describe('OptionBoardView', () => {
       />,
     );
 
-    const select = screen.getByTestId('option-board-view-move-option-1');
+    const select = screen.getByTestId('board-move-option-1');
     await user.selectOptions(select, 'top_choices');
 
     // The callback fired, but nothing about the rendered board moved on its own: option-1 is
     // still in Considering because the component holds no internal placement state.
     expect(
-      within(screen.getByTestId('option-board-view-column-list-considering')).getByTestId(
-        'option-board-view-card-option-1',
+      within(screen.getByTestId('board-column-list-considering')).getByTestId(
+        'board-card-option-1',
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId('option-board-view-column-list-top_choices'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId('board-column-list-top_choices')).not.toBeInTheDocument();
 
     // Only re-rendering with new props -- as the caller would after actually persisting the
     // move -- changes what is on screen.
@@ -261,14 +249,14 @@ describe('OptionBoardView', () => {
     );
 
     expect(
-      within(screen.getByTestId('option-board-view-column-list-top_choices')).getByTestId(
-        'option-board-view-card-option-1',
+      within(screen.getByTestId('board-column-list-top_choices')).getByTestId(
+        'board-card-option-1',
       ),
     ).toBeInTheDocument();
     // option-1 no longer sits in Considering -- only the still-unassigned option-2/option-3 do.
     expect(
-      within(screen.getByTestId('option-board-view-column-list-considering')).queryByTestId(
-        'option-board-view-card-option-1',
+      within(screen.getByTestId('board-column-list-considering')).queryByTestId(
+        'board-card-option-1',
       ),
     ).not.toBeInTheDocument();
   });
@@ -287,7 +275,7 @@ describe('OptionBoardView', () => {
       />,
     );
 
-    await user.click(screen.getByTestId('option-board-view-focus-option-2'));
+    await user.click(screen.getByTestId('board-focus-option-2'));
     expect(onFocusOption).toHaveBeenCalledExactlyOnceWith('option-2');
   });
 
@@ -304,10 +292,10 @@ describe('OptionBoardView', () => {
       />,
     );
 
-    expect(screen.getByTestId('option-board-view-reason-option-1')).toHaveTextContent(
+    expect(screen.getByTestId('board-reason-option-1')).toHaveTextContent(
       'Dealer offer conflicts with advertised price',
     );
-    expect(screen.queryByTestId('option-board-view-reason-option-2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('board-reason-option-2')).not.toBeInTheDocument();
   });
 
   it('shows the option label and a couple of decision-relevant facts on each card', () => {
@@ -322,9 +310,9 @@ describe('OptionBoardView', () => {
       />,
     );
 
-    const card = screen.getByTestId('option-board-view-card-option-1');
+    const card = screen.getByTestId('board-card-option-1');
     expect(card).toHaveTextContent('Toyota RAV4');
-    const facts = screen.getByTestId('option-board-view-facts-option-1');
+    const facts = screen.getByTestId('board-facts-option-1');
     expect(facts).toHaveTextContent('Price: 28500 USD');
     expect(facts).toHaveTextContent('Mileage: 15000 mi');
   });

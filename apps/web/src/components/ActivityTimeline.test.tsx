@@ -57,7 +57,12 @@ describe('ActivityTimeline', () => {
     render(<ActivityTimeline events={[buildEvent({ type: 'evidence.conflicted' })]} />);
 
     const item = screen.getByTestId('activity-item-event-1');
-    expect(item).toHaveTextContent('Evidence conflict found');
+    // Label text refined per `docs/decisions/
+    // 0004-consumer-workspace-information-architecture.md` decision item 3
+    // (activity-labels.ts extended toward change-set §4's "Evidence ->
+    // Research/Source/Fact" terminology) -- still a safe, non-raw label,
+    // just no longer using "Evidence" verbatim.
+    expect(item).toHaveTextContent('Conflicting findings found');
     expect(item).not.toHaveTextContent('evidence.conflicted');
   });
 

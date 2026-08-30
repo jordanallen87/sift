@@ -21,7 +21,11 @@
 import { expect, test } from '@playwright/test';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
 import { installConsoleGuard } from './helpers/console-guard.js';
-import { assertRightPaneIntegrity, disableAnimations } from './helpers/layout-assertions.js';
+import {
+  assertRecommendationHeroAboveTheFold,
+  assertRightPaneIntegrity,
+  disableAnimations,
+} from './helpers/layout-assertions.js';
 import {
   CAR_PURCHASE_CRITERION_IDS,
   getCaseState,
@@ -91,12 +95,22 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     }
     expect(afterCreate['recommendation']).toBeNull();
 
-    // --- See those exact vehicles in the comparison table ---
-    await sift.openDisclosure('compare');
+    // `RecommendationHero` (ADR 0004 item 1) mounts unconditionally, so this
+    // real, non-demo case creation flow reaches the same above-the-fold
+    // invariant `docs/decisions/0004-consumer-workspace-information-
+    // architecture.md` decision item 6 requires for the two hero demo
+    // journeys.
+    await assertRecommendationHeroAboveTheFold(page);
+
+    // --- See those exact vehicles in "Manage options" (renamed from
+    // "Compare the options" by `docs/decisions/
+    // 0004-consumer-workspace-information-architecture.md`; it now wraps
+    // only `OptionEditor`, not the comparison table) ---
+    await sift.openDisclosure('options');
     for (const entity of entities) {
       await expect(page.getByTestId('option-editor-list')).toContainText(entity.label);
     }
-    await assertNoSeriousAxeViolations(page, 'case workspace, comparison open');
+    await assertNoSeriousAxeViolations(page, 'case workspace, options open');
 
     // --- Add listing-specific information to one candidate (the existing
     // OptionEditor -- spec brief §11) ---
@@ -161,7 +175,7 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     // transition). ---
     await page.reload();
     await expect(page.getByTestId('case-header')).toBeVisible({ timeout: 15_000 });
-    await sift.openDisclosure('compare');
+    await sift.openDisclosure('options');
     for (const entity of entities) {
       await expect(page.getByTestId('option-editor-list')).toContainText(entity.label);
     }

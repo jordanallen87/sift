@@ -72,7 +72,18 @@ export function RecommendationCard({
       aria-labelledby="recommendation-card-heading"
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
-      <h2 id="recommendation-card-heading">Our pick</h2>
+      {/* Change-set §38 "Recommendation language": "Avoid overly-final
+          wording like 'Our pick' before readiness is earned. Prefer:
+          'Current recommendation'; 'Leading option'; 'Current leader'."
+          "Current recommendation" is also the literal §4 terminology-table
+          mapping ("Recommendation -> Current recommendation"), used as a
+          static heading here rather than switching text by `status`:
+          calling a `stale` recommendation "current" is still honest (it is
+          the most recent one Sift produced, the stale-note directly below
+          says it is being recomputed), and by the time this component ever
+          renders with a real `recommendation`, "current" never overclaims
+          the certainty "Our pick" implied. */}
+      <h2 id="recommendation-card-heading">Current recommendation</h2>
 
       {recommendation === null ? (
         loading ? (

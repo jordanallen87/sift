@@ -1,20 +1,44 @@
 /**
- * Correlated queued/active/completed/failed status for the most recent
- * command or run, driven strictly by a real `CommandReceipt`/`RunReceipt`
- * plus real streamed `PublicActivityEvent`s -- never a fabricated timer
- * (product.md "Real-time experience contract": "The initiating control
- * becomes correlated queued/active state without blocking the rest of the
- * case" and "Loading copy or timers cannot fabricate an event that did not
- * occur.").
+ * A quiet, honest live indicator for the most recent command/run, driven
+ * strictly by a real `CommandReceipt`/`RunReceipt` plus real streamed
+ * `PublicActivityEvent`s -- never a fabricated timer (product.md "Real-time
+ * experience contract": "The initiating control becomes correlated
+ * queued/active state without blocking the rest of the case" and "Loading
+ * copy or timers cannot fabricate an event that did not occur.").
  *
- * The instant a receipt is returned, this component honestly renders
- * "Queued" -- that is not a fabricated state, it is the documented,
- * synchronous meaning of a `CommandReceipt` having been accepted (product.md
- * step 2-3 of the real-time contract) before any asynchronous event has had
- * a chance to stream in. Every state after that comes only from a real
- * `PublicActivityEvent` correlated to this receipt by `runId` (preferred) or
- * `commandId` (fallback, for the brief window before a run-starting command
- * has an established `runId` on its own events).
+ * Two behavior changes from this component's previous version, both
+ * required by `docs/decisions/
+ * 0004-consumer-workspace-information-architecture.md`:
+ *
+ * 1. **Renders nothing at all before any command has been sent.** Audit §2
+ *    named this file's old "Latest command / No command has been sent
+ *    yet." card as one of eleven regions that rendered a full card whose
+ *    only content was an announcement of its own emptiness (change-set §5:
+ *    "Do not render an empty conceptual region merely because CaseState
+ *    contains a corresponding field."). `receipt === null` now returns
+ *    `null` outright -- the caller (`RecommendationHero.tsx`) mounts this
+ *    component unconditionally and lets it decide its own visibility,
+ *    exactly the pattern `ApprovalCard`/`RecommendationCard` already use
+ *    for their own `null` inputs.
+ * 2. **No longer renders `receipt.commandId`/`receipt.runId` as raw text.**
+ *    ADR 0004 decision item 3 moves `commandId`/`runId` to the
+ *    developer/inspect projection (change-set §4's terminology table:
+ *    "commandId/runId -> Developer view only"; §34 lists both explicitly as
+ *    Developer view content). The real run id is still tracked internally
+ *    (the caller still needs it to enable/target the "Inspect run"
+ *    control, which opens the real `RuntimeInspector` developer view -- see
+ *    `RecommendationHero.tsx`) -- it is simply never rendered as visible
+ *    text on the consumer surface anymore. The heading also drops "Latest
+ *    command" (engine vocabulary -- "command" describes how Sift
+ *    implemented this, not what it means for the decision) for
+ *    "Investigation status," matching change-set §4's guiding rule:
+ *    "Consumer UI should explain what something means for the decision,
+ *    not how Pax implemented it."
+ *
+ * Every state after the instant-"Queued" moment comes only from a real
+ * `PublicActivityEvent` correlated to this receipt by `runId` (preferred)
+ * or `commandId` (fallback, for the brief window before a run-starting
+ * command has an established `runId` on its own events).
  */
 import { getActivityLabel, STATUS_TONE_META } from './activity-labels.js';
 import type { PublicActivityEvent, PublicActivityPhase } from '@sift/contracts';
@@ -71,28 +95,7 @@ function correlatedEvents(
 
 export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
   if (receipt === null) {
-    return (
-      <section
-        data-testid="live-run-status"
-        aria-labelledby="live-run-status-heading"
-        // bg-muted, not bg-card: App.tsx always nests this section inside
-        // the "Current focus" card (itself bg-card) -- a second bg-card fill
-        // here would be visually indistinguishable from its own parent now
-        // that both are flat/borderless, so this reaches for the same
-        // muted-fill-inside-a-card contrast mechanism ui/input.tsx uses.
-        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-muted p-[var(--space-3)]"
-      >
-        <h2 id="live-run-status-heading" className="label-caps text-[var(--color-ink-secondary)]">
-          Latest command
-        </h2>
-        <p
-          data-testid="live-run-status-empty"
-          className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-        >
-          No command has been sent yet.
-        </p>
-      </section>
-    );
+    return null;
   }
 
   const history = correlatedEvents(events, receipt);
@@ -127,11 +130,11 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
     <section
       data-testid="live-run-status"
       aria-labelledby="live-run-status-heading"
-      className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-3)]"
+      className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-muted p-[var(--space-3)]"
     >
-      <h2 id="live-run-status-heading" className="label-caps text-[var(--color-ink-secondary)]">
-        Latest command
-      </h2>
+      <h3 id="live-run-status-heading" className="label-caps text-[var(--color-ink-secondary)]">
+        Investigation status
+      </h3>
 
       <Badge
         // Remounts (replaying `.status-change-enter`) on every real phase
@@ -176,23 +179,6 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
           </li>
         ))}
       </ol>
-
-      <div className="flex flex-wrap gap-[var(--space-2)] text-[length:var(--font-size-2xs)] text-[var(--color-ink-muted)]">
-        <span
-          data-testid="live-run-status-command-id"
-          className="font-[family-name:var(--font-mono)]"
-        >
-          command: {receipt.commandId}
-        </span>
-        {receipt.runId !== undefined ? (
-          <span
-            data-testid="live-run-status-run-id"
-            className="font-[family-name:var(--font-mono)]"
-          >
-            run: {receipt.runId}
-          </span>
-        ) : null}
-      </div>
 
       {latest ? (
         <p className="text-[length:var(--font-size-2xs)] text-[var(--color-ink-muted)]">

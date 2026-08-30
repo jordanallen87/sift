@@ -24,6 +24,21 @@
  * ("Draft withheld"). Where no terminology-table entry exists, the label is
  * a plain, non-jargon description of the underlying event, never the raw
  * `type` string.
+ *
+ * Extended (not replaced) per `docs/decisions/
+ * 0004-consumer-workspace-information-architecture.md` decision item 3,
+ * which names this file directly as "the designated extension point for
+ * this boundary rather than a new mapping layer built from scratch" and
+ * directs it "be extended with the additional mappings the generic
+ * workspace needs (research/evidence-conflict language, question/obligation
+ * language, presentation-vs-criterion distinctions per change-set §54)."
+ * `PublicActivityEventType` is a closed union owned by `@sift/contracts`
+ * (outside this package), so "extended" here means the entries below were
+ * re-worded toward change-set §4's terminology table -- "Evidence ->
+ * Research/Source/Fact," "Claim -> Finding," "Stale evidence -> Needs
+ * re-checking" -- not that new keys were added; `obligation.updated`
+ * already satisfied the "Obligation -> Question to resolve" mapping and is
+ * unchanged.
  */
 import type { PublicActivityEventType } from '@sift/contracts';
 import { PUBLIC_ACTIVITY_EVENT_TYPES } from '@sift/contracts';
@@ -147,11 +162,15 @@ const ACTIVITY_LABELS = {
   'intervention.guided': { label: 'Agent redirected', tone: 'active' },
   // `Confirm` -> "Your approval needed" (product.md terminology table, verbatim).
   'intervention.confirmation_required': { label: 'Your approval needed', tone: 'ready' },
-  'evidence.accepted': { label: 'Evidence accepted', tone: 'satisfied' },
-  'evidence.conflicted': { label: 'Evidence conflict found', tone: 'blocked' },
+  // `Evidence` -> "Research/Source/Fact" (change-set §4 terminology table).
+  'evidence.accepted': { label: 'Finding accepted', tone: 'satisfied' },
+  'evidence.conflicted': { label: 'Conflicting findings found', tone: 'blocked' },
   // `Obligation` -> "Question to resolve" (product.md terminology table, verbatim).
   'obligation.updated': { label: 'Question to resolve updated', tone: 'open' },
-  'recommendation.invalidated': { label: 'Recommendation invalidated', tone: 'stale' },
+  // `Stale evidence` -> "Needs re-checking" (change-set §4 terminology
+  // table) -- "invalidated" is engine vocabulary describing how Sift
+  // implemented the change, not what it means for the decision.
+  'recommendation.invalidated': { label: 'Recommendation needs another look', tone: 'stale' },
   'recommendation.ready': { label: 'Recommendation ready for review', tone: 'ready' },
   // Exact required copy (docs/specs/value-proposition.md "Required visible copy").
   'draft.withheld': { label: 'Draft withheld', tone: 'blocked' },

@@ -86,11 +86,16 @@ describe('registerSiftTools: registration lifecycle', () => {
     expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_SIFT_TOOL_NAMES].sort());
   });
 
-  it('registers the ten case-scoped tools once an active case is set', async () => {
+  it('registers the fifteen case-scoped tools once an active case is set', async () => {
     const { adapter } = await setUpWithActiveCase('case-1');
-    expect(adapter.registeredToolNames).toHaveLength(12);
+    expect(adapter.registeredToolNames).toHaveLength(17);
     expect(adapter.registeredToolNames).toContain('sift_select_pack');
     expect(adapter.registeredToolNames).toContain('sift_request_revision');
+    expect(adapter.registeredToolNames).toContain('sift_get_option_details');
+    expect(adapter.registeredToolNames).toContain('sift_list_research');
+    expect(adapter.registeredToolNames).toContain('sift_search_catalog');
+    expect(adapter.registeredToolNames).toContain('sift_set_view');
+    expect(adapter.registeredToolNames).toContain('sift_configure_comparison');
   });
 
   it('aborts the previous case-scoped generation when the active case changes', async () => {
@@ -134,7 +139,7 @@ describe('registerSiftTools: registration lifecycle', () => {
     });
 
     await handle.setActiveCase('case-1');
-    expect(adapter.registeredToolNames).toHaveLength(12);
+    expect(adapter.registeredToolNames).toHaveLength(17);
 
     await handle.setActiveCase(null);
     expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_SIFT_TOOL_NAMES].sort());
@@ -879,7 +884,7 @@ describe('callback-vs-envelope equivalence', () => {
 });
 
 describe('no tool can approve or reject a decision proposal', () => {
-  it('never calls commands.reviewProposal from any of the twelve registered tools', async () => {
+  it('never calls commands.reviewProposal from any of the seventeen registered tools', async () => {
     const reviewProposal = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
     const { adapter, commands } = await setUpWithActiveCase('case-1', { reviewProposal });
 
@@ -888,6 +893,18 @@ describe('no tool can approve or reject a decision proposal', () => {
     }
     await invokeTool(adapter, 'sift_get_case_context', {});
     await invokeTool(adapter, 'sift_list_packs', {});
+    // The five tools this task adds (docs/decisions/0006-webmcp-two-way-
+    // collaboration-contract.md): three reads with no `SiftCommands`
+    // dependency at all, plus the two presentation tools -- empirically
+    // invoked here too rather than only reasoned about structurally.
+    await invokeTool(adapter, 'sift_get_option_details', { caseId: 'case-1', optionId: 'opt-1' });
+    await invokeTool(adapter, 'sift_list_research', { caseId: 'case-1' });
+    await invokeTool(adapter, 'sift_search_catalog', { caseId: 'case-1' });
+    await invokeTool(adapter, 'sift_set_view', { caseId: 'case-1', mode: 'list' });
+    await invokeTool(adapter, 'sift_configure_comparison', {
+      caseId: 'case-1',
+      visibleAttributeIds: ['price'],
+    });
 
     expect(commands.reviewProposal).not.toHaveBeenCalled();
     expect(reviewProposal).not.toHaveBeenCalled();

@@ -47,13 +47,23 @@
  * WebMCP callbacks use the same command implementation") -- see
  * `sift-page.ts`'s `postRunRequest`/`waitForRecommendationRationaleContains`
  * for the full mechanics.
+ *
+ * Rewritten this task for `docs/decisions/
+ * 0004-consumer-workspace-information-architecture.md` -- see
+ * `car-purchase-journey.spec.ts`'s own header comment for the full list of
+ * information-architecture changes both hero journeys share (the
+ * answer-first `RecommendationHero`, "Manage options" replacing "Compare the
+ * options", the always-expanded `WorkspaceViewSwitcher` replacing the old
+ * unconditional comparison table, the Decision Pack badge and raw activity
+ * ledger leaving the consumer surface). Each removed region is proven gone
+ * with an explicit negative assertion below.
  */
 import { expect, test } from '@playwright/test';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
 import { installConsoleGuard } from './helpers/console-guard.js';
 import {
-  assertElementsWithinViewport,
   assertPrimaryTouchTargets,
+  assertRecommendationHeroAboveTheFold,
   assertRightPaneIntegrity,
   disableAnimations,
 } from './helpers/layout-assertions.js';
@@ -61,6 +71,7 @@ import { dynamicScreenshotMasks } from './helpers/visual-masks.js';
 import {
   getCaseState,
   HOME_ENERGY_CRITERION_IDS,
+  HOME_ENERGY_RESPONSE_OPTION_ENTITY_ORDER,
   HOME_ENERGY_RESPONSE_OPTION_IDS,
   HOME_ENERGY_RESPONSE_OPTIONS_OBLIGATION_ID,
   SiftPage,
@@ -74,15 +85,16 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     await disableAnimations(page);
     const guard = installConsoleGuard(page);
     const sift = new SiftPage(page);
-    // A plain `mask` (timestamp rows + generated-id spans) is sufficient
-    // for every screenshot below -- unlike `car-purchase-journey.spec.ts`
-    // (see that spec's own header comment for the full causal chain, plus
-    // `visual-masks.ts`'s), Home Energy Guardian's Swarm hands off between
-    // specialists strictly sequentially
-    // (`HOME_ENERGY_SEQUENTIAL_SPECIALIST_IDS`), so `ActivityTimeline`'s
-    // item order and `LiveRunStatus`'s phase-breadcrumb length are both
-    // genuinely deterministic here -- confirmed empirically by multiple
-    // clean, zero-diff repeated runs of this exact spec.
+    // A plain `mask` (timestamp rows) is sufficient for every screenshot
+    // below -- unlike `car-purchase-journey.spec.ts` (see that spec's own
+    // header comment for the full causal chain, plus `visual-masks.ts`'s),
+    // Home Energy Guardian's Swarm hands off between specialists strictly
+    // sequentially (`HOME_ENERGY_SEQUENTIAL_SPECIALIST_IDS`), so the
+    // underlying activity event order and `LiveRunStatus`'s
+    // phase-breadcrumb length are both genuinely deterministic here --
+    // confirmed empirically by multiple clean, zero-diff repeated runs of
+    // this exact spec. This journey therefore needs no `withVolatileRegionsHidden`
+    // equivalent at all.
     const masks = dynamicScreenshotMasks(page);
 
     // --- Launch ---
@@ -105,36 +117,79 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     // "Browser adapter"; CLAUDE.md "Non-negotiable product truths").
     await expect(page.getByTestId('webmcp-status-unsupported')).toBeVisible();
 
-    // --- 4 seeded response options (ADR 0002: "Compare the options" is a
-    // closed-by-default disclosure row -- the seeded count is proven from
-    // its own live meta summary rather than the comparison table itself,
-    // which is not yet in the DOM's visible flow). ---
-    await expect(page.getByTestId('disclosure-compare-meta')).toHaveText(
+    // --- 4 seeded response options (ADR 0004: "Manage options" -- renamed
+    // from "Compare the options" -- is a closed-by-default disclosure row;
+    // the seeded count is proven from its own live meta summary rather than
+    // the options list itself, which is not yet in the DOM's visible flow). ---
+    await expect(page.getByTestId('disclosure-options-meta')).toHaveText(
       `${HOME_ENERGY_RESPONSE_OPTION_IDS.length} options`,
     );
 
     // Fully settled, non-racing checkpoint: case loaded, seeded, nothing
     // investigated yet -- a stable baseline before any async run starts.
-    await expect(page.getByTestId('current-focus-empty')).toBeVisible();
+    // `RecommendationHero` (ADR 0004 item 1) is the one region that says
+    // what Sift currently thinks; its `not_started` phase is the honest
+    // "nothing looked into yet" signal that replaces the retired
+    // "What Sift is doing" / `current-focus-empty` card below.
+    await expect(page.getByTestId('recommendation-hero-status')).toHaveAttribute(
+      'data-phase',
+      'not_started',
+    );
+    await expect(page.getByTestId('recommendation-hero-headline')).toHaveText(
+      "Nothing's been looked into yet.",
+    );
+
+    // --- Negative assertions: regions ADR 0004 deliberately removed from
+    // the consumer surface stay removed (see `car-purchase-journey.spec.ts`
+    // for the same checks and their full rationale). ---
+    await expect(page.getByTestId('current-focus')).toHaveCount(0);
+    await expect(page.getByTestId('current-focus-empty')).toHaveCount(0);
+    await expect(page.getByTestId('case-header-pack-badge')).toHaveCount(0);
+    await expect(page.getByTestId('case-header-run-status')).toHaveCount(0);
+
+    // ADR 0004 decision item 6: above-the-fold invariant.
+    await assertRecommendationHeroAboveTheFold(page);
+
     await expect(page.getByTestId('case-workspace')).toHaveScreenshot('seeded-case.png', {
       mask: masks,
       maxDiffPixelRatio: 0.01,
     });
 
-    // Opened once here and left open for the rest of the journey (ADR
-    // 0002's "Compare the options" row) -- every later step that reaches
-    // OptionEditor/OptionComparison content depends on it.
-    await sift.openDisclosure('compare');
+    // --- Workspace view switcher (ADR 0004 item 5; ADR 0005) -- see
+    // `car-purchase-journey.spec.ts` for the full rationale on why Compare
+    // narrows to a head-to-head pair at every viewport today. The pair it
+    // picks (`options.slice(0, 2)` with nothing focused yet) follows the
+    // *real* entity order the fixture builds (`monitor-one-cycle`,
+    // `change-rate-plan`), not `HOME_ENERGY_RESPONSE_OPTION_IDS`'s own
+    // alphabetized listing -- see `HOME_ENERGY_RESPONSE_OPTION_ENTITY_ORDER`'s
+    // header comment in `sift-page.ts`. ---
+    await expect(page.getByTestId('workspace-view-switcher')).toBeVisible();
+    await expect(page.getByTestId('workspace-view-content-compare')).toBeVisible();
+    await expect(
+      page.getByTestId(`option-compare-view-header-${HOME_ENERGY_RESPONSE_OPTION_ENTITY_ORDER[0]}`),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId(`option-compare-view-header-${HOME_ENERGY_RESPONSE_OPTION_ENTITY_ORDER[1]}`),
+    ).toBeVisible();
+    await expect(page.getByTestId('option-compare-view-narrow-note')).toContainText(
+      `2 of ${HOME_ENERGY_RESPONSE_OPTION_IDS.length}`,
+    );
 
+    // Switching to List proves all 4 seeded response options genuinely
+    // render somewhere in the workspace, not narrowed.
+    await sift.selectWorkspaceView('list');
     for (const optionId of HOME_ENERGY_RESPONSE_OPTION_IDS) {
-      await expect(page.getByTestId(`option-comparison-header-${optionId}`)).toBeVisible();
+      await expect(page.getByTestId(`option-list-view-card-${optionId}`)).toBeVisible();
     }
+    await sift.selectWorkspaceView('compare');
 
-    // Case-header pack badge: real rendered right edge, not just the
-    // document-level scrollWidth proxy (layout-assertions.ts's
-    // `assertElementsWithinViewport` header comment explains why the latter
-    // cannot catch this bug class on its own).
-    await assertElementsWithinViewport(page, ['case-header-pack-badge']);
+    // Opened once here and left open for the rest of the journey (the
+    // "Manage options" row) -- every later step that reaches `OptionEditor`
+    // content depends on it.
+    await sift.openDisclosure('options');
+    for (const optionId of HOME_ENERGY_RESPONSE_OPTION_IDS) {
+      await expect(page.getByTestId(`option-editor-option-${optionId}`)).toBeVisible();
+    }
 
     // Option-editor edit/cancel row: real rendered geometry, not just
     // className presence -- entering and leaving edit mode here is a pure
@@ -152,16 +207,17 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
 
     // --- Round 1: real live streaming investigation, driven by the visible control ---
     const round1 = await sift.requestInvestigation();
-    // Opened only for this one visibility proof, then closed again --
-    // unlike car-purchase-journey.spec.ts, the bounded Swarm's two-round
-    // trajectory produces a genuinely large activity count (confirmed
-    // directly: a "decided" baseline with this row left open ran past
-    // 17,000px), so this journey keeps "Sift's work so far" closed by
-    // default for every later screenshot, matching the calm, legible
-    // baseline every other region already keeps.
-    await sift.openDisclosure('work-so-far');
-    await expect(page.getByTestId('activity-timeline')).toBeVisible();
-    await sift.closeDisclosure('work-so-far');
+    // `LiveRunStatus`, now embedded directly in `RecommendationHero`, is
+    // already populating live from real streamed events -- no need to open
+    // anything to see it, unlike the retired "Sift's work so far" disclosure
+    // row this journey used to open/close here specifically to keep its own
+    // (very tall, for this pack's two-round trajectory) content out of every
+    // later screenshot. That row -- and the raw chronological activity
+    // ledger it wrapped -- is developer-only content now (ADR 0004 item
+    // 3/4), confirmed gone from the consumer surface entirely.
+    await expect(page.getByTestId('live-run-status')).toBeVisible();
+    await expect(page.getByTestId('disclosure-work-so-far')).toHaveCount(0);
+    await expect(page.getByTestId('activity-timeline')).toHaveCount(0);
     await assertNoSeriousAxeViolations(page, 'mid-investigation');
     await assertRightPaneIntegrity(page, [
       'request-investigation',

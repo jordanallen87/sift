@@ -32,6 +32,13 @@ import { z } from 'zod';
 import { BrowserModelContextAdapter, InMemoryModelContextAdapter } from './adapter.js';
 import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-sift-commands.js';
 import { SIFT_WEBMCP_TOOL_NAMES, registerSiftTools } from './register-sift-tools.js';
+import {
+  ConfigureComparisonInputSchema,
+  GetOptionDetailsInputSchema,
+  ListResearchInputSchema,
+  SearchCatalogInputSchema,
+  SetViewInputSchema,
+} from './webmcp-local-schemas.js';
 
 interface CatalogFixture {
   name: string;
@@ -45,7 +52,7 @@ const CATALOG: CatalogFixture[] = [
   {
     name: 'sift_get_case_context',
     description:
-      'Returns the active case summary, selected pack ID/version/hash, pack-defined and case-defined criteria/attributes, options, readiness counts, current focus, selected option/evidence, recommendation, active run correlation, and pending human action. It omits private model messages and oversized source bodies.',
+      'Returns the active case summary, selected pack ID/version/hash, pack-defined and case-defined criteria/attributes, options, readiness counts, current focus, selected option/evidence, recommendation, active run correlation, pending human action, case-defined custom-field definitions (label, reason, origin, confirmation state), a bounded research summary (source titles and publishers, not full excerpts), unresolved questions with their real question text, stale or conflicted signals, and the current workspace view. It omits private model messages and oversized source bodies. Call this to understand the case before acting and again afterward to see what changed; it never mutates anything.',
     sourceSchema: GetCaseContextInputSchema,
   },
   {
@@ -113,6 +120,36 @@ const CATALOG: CatalogFixture[] = [
       'Attaches a human revision request to the pending recommendation and reopens affected obligations.',
     sourceSchema: RequestRevisionInputSchema,
   },
+  {
+    name: 'sift_get_option_details',
+    description:
+      'Returns full detail for one option: its complete attribute map (pack-defined and custom.* fields, each with value, status, confidence, and source ids), plus the claims and sources specifically linked to it. Use this when the bounded option list in sift_get_case_context is not enough -- for example, before explaining why one option is or is not a good fit, or before citing evidence for a specific option. It is read-only: it never changes which option is focused in the page; call sift_focus_option separately if the user should see this option highlighted.',
+    sourceSchema: GetOptionDetailsInputSchema,
+  },
+  {
+    name: 'sift_list_research',
+    description:
+      "Returns every source submitted to this case (title, publisher, URL, origin, verification status) and every claim recorded against it -- a fuller, dedicated view than the small research summary embedded in sift_get_case_context. Use this when the user asks what has been researched so far, or before deciding whether more research is needed. It never marks a source as trusted or changes any evidence disposition; source verification remains Sift's own to decide.",
+    sourceSchema: ListResearchInputSchema,
+  },
+  {
+    name: 'sift_search_catalog',
+    description:
+      "Searches Sift's own bundled catalog for the active Decision Pack's option type -- currently vehicle data for the car-purchase pack -- using pack-recognized filters (car-purchase recognizes year, make, model, and bodyStyle) plus optional free text. Use this to find real candidate options from what the user has described before adding any of them to the case; it never relies on the model's own knowledge of makes or models, and it never adds a result to the case by itself. Call sift_upsert_option separately once the user chooses a candidate. Returns an empty result, not an error, when the active pack has no catalog registered.",
+    sourceSchema: SearchCatalogInputSchema,
+  },
+  {
+    name: 'sift_set_view',
+    description:
+      "Changes which workspace view is shown -- Quick Pick, List, Compare, or Board -- and optionally which option is focused or which options are visible. Use this when the user asks to see the case a different way, such as 'walk me through them instead' or 'show me a list.' This changes PRESENTATION ONLY: it can never add, remove, reweight, or relabel a criterion, and it can never invalidate the recommendation, because it never writes through the same path a decision change does. The chosen view currently holds only for this browser session; it is not yet saved across a reload.",
+    sourceSchema: SetViewInputSchema,
+  },
+  {
+    name: 'sift_configure_comparison',
+    description:
+      "Configures the Compare view: which options are shown side by side, which attribute rows are visible or pinned, and how rows are sorted. Use this when the user wants to narrow or reorganize what the comparison shows, such as 'show only safety and cargo' or 'show me the three finalists.' Do not confuse this with changing what the user cares about: showing or hiding a row changes what is DISPLAYED, never the decision's criteria, and it can never invalidate the recommendation -- use sift_update_criteria instead when the user actually wants a factor to start or stop mattering to the decision itself. The chosen configuration currently holds only for this browser session; it is not yet saved across a reload.",
+    sourceSchema: ConfigureComparisonInputSchema,
+  },
 ];
 
 interface ReceiptLikeToolResult {
@@ -148,12 +185,12 @@ async function registerFullCatalog(): Promise<InMemoryModelContextAdapter> {
 }
 
 describe('WebMCP tool catalog: exact names, descriptions, and JSON schemas', () => {
-  it('registers exactly the twelve catalog tool names webmcp.md defines, no more and no fewer', async () => {
+  it('registers exactly the seventeen catalog tool names webmcp.md defines, no more and no fewer', async () => {
     const adapter = await registerFullCatalog();
     expect([...adapter.registeredToolNames].sort()).toEqual(
       [...CATALOG.map((fixture) => fixture.name)].sort(),
     );
-    expect(SIFT_WEBMCP_TOOL_NAMES).toHaveLength(12);
+    expect(SIFT_WEBMCP_TOOL_NAMES).toHaveLength(17);
   });
 
   it.each(CATALOG)(
@@ -253,7 +290,7 @@ describe('No tool can approve or reject a decision proposal', () => {
     expect(jsonSchema.properties['actor']).toBeUndefined();
   });
 
-  it('none of the twelve registered tools ever calls the one SiftCommands method that can approve a proposal (reviewProposal)', async () => {
+  it('none of the seventeen registered tools ever calls the one SiftCommands method that can approve a proposal (reviewProposal)', async () => {
     const reviewProposal = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
     const adapter = new InMemoryModelContextAdapter();
     const commands = createFakeSiftCommands({ reviewProposal });

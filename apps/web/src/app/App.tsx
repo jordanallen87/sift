@@ -12,47 +12,86 @@
  * one calling back with a real receipt sets `activeCaseId` and renders the
  * live case workspace below.
  *
- * This pass wires the entire workspace to real data: `useCaseEvents` (the
- * real SSE/poll-fallback subscription) supplies the canonical `CaseState`
- * snapshot and ordered `PublicActivityEvent[]` every region below renders
- * from; `registerSiftTools` mounts the full WebMCP catalog only while a case
- * is active, re-registering its case-scoped tools whenever the active case
- * changes; every visible control calls through the one shared `SiftCommands`
- * instance from `useSiftCommands()` -- there is no parallel mutation path
- * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
- * implementation").
+ * The workspace is wired to real data: `useCaseEvents` (the real SSE/poll-
+ * fallback subscription) supplies the canonical `CaseState` snapshot and
+ * ordered `PublicActivityEvent[]` every region below renders from;
+ * `registerSiftTools` mounts the full WebMCP catalog only while a case is
+ * active, re-registering its case-scoped tools whenever the active case
+ * changes; every visible control calls through the one shared
+ * `SiftCommands` instance from `useSiftCommands()` -- there is no parallel
+ * mutation path (CLAUDE.md "Visible UI controls and WebMCP callbacks use
+ * the same command implementation").
  *
- * Region order matches product.md's "Workspace layout" exactly (ADR 0002,
- * "answer-first, everything else one tap away"): case header,
- * `WorkspaceStatusHeader` (a pure-presentation next-step banner + progress
- * tracker over `deriveWorkspaceStatus`, added in the round-2 design-review
- * pass -- product feedback: "I have no clue where to start"), what Sift is
- * doing, our pick (recommendation + approval, always expanded), then four
- * closed-by-default `DisclosureSection` rows -- compare the options, what
- * Sift found, still checking, Sift's work so far -- and a fifth disclosure
- * for adding a concern that opens itself only when an agent-proposed case
- * extension is awaiting confirmation. The "What Sift found" row is a
- * trigger, not a native disclosure (`DisclosureSection`'s `onTriggerClick`):
- * it opens `FindingsSheet`, a dedicated List/Table/Kanban review surface,
- * instead of expanding a wall of evidence cards inline -- also round-2
- * feedback, on the same live product.
+ * REGION ORDER (rewritten this task per `docs/decisions/
+ * 0004-consumer-workspace-information-architecture.md`, replacing the
+ * eleven-region stack `docs/audits/2026-08-30-generic-decision-workspace-
+ * audit.md` §1-§2 measured at 2040px tall with the answer starting below
+ * the fold at 430px):
+ *
+ *  1. `CaseHeader` -- title, live connection status, reset. No Decision
+ *     Pack badge/id/hash, no pack-selection sentence (ADR 0004 item 1/3;
+ *     those move to developer detail, which this task does not build a new
+ *     UI for beyond what `RuntimeInspector` already exposes).
+ *  2. `WebMcpStatus` -- unchanged, already a single quiet line (audit §5:
+ *     "already matches §45's 'keep subtle'").
+ *  3. `ErrorState` -- only while the live stream has actually errored.
+ *  4. `RecommendationHero` -- the answer-first hero (ADR 0004 item 1): one
+ *     region, one state machine (`workspace-status.ts`'s extended
+ *     `deriveWorkspaceStatus`), merging what used to be three separate,
+ *     occasionally-contradicting regions (the retired `WorkspaceStatusHeader`
+ *     tracker/banner, `RecommendationCard`, `ApprovalCard`). This is
+ *     deliberately the first substantial content below the header --
+ *     verified directly by this task's own DOM-order test.
+ *  5. "Manage options" -- a closed-by-default `DisclosureSection` wrapping
+ *     `OptionEditor` (add/edit candidates), with a live option count.
+ *     Kept as its own disclosure, separate from viewing/comparing them,
+ *     since ADR 0005 elevates comparison itself to a top-level primary
+ *     surface (next).
+ *  6. `WorkspaceViewSwitcher` -- the primary workspace view switcher (ADR
+ *     0004 item 5; change-set §6, §8-§13): Quick Pick / List / Compare /
+ *     Board tabs. Always expanded, never a disclosure row -- this is the
+ *     region ADR 0005 elevates to replace `OptionComparison`'s old
+ *     unconditional table, which this file no longer renders at all (kept
+ *     working, per this task's brief, until its successor was wired -- it
+ *     now is).
+ *  7. "What Sift found" -- a `DisclosureSection` trigger opening
+ *     `FindingsSheet` (unchanged from the prior design).
+ *  8. "Still checking" -- a closed-by-default `DisclosureSection` wrapping
+ *     `ReadinessPanel`.
+ *  9. "Add something Sift should check" -- a `DisclosureSection` (opens
+ *     itself only while an agent-proposed extension awaits confirmation)
+ *     wrapping `CustomConcernForm` and, only when one is actually pending,
+ *     `CaseExtensionReviewCard` (ADR 0004 item 2: an empty conceptual
+ *     region must be absent, not a card announcing its own emptiness --
+ *     applied here at the orchestration level rather than editing that
+ *     component's own internals).
+ *
+ * Retired from this file entirely, per ADR 0004:
+ *  - `WorkspaceStatusHeader` (the four-stage tracker + next-step banner) --
+ *    folded into `RecommendationHero`/`workspace-status.ts`.
+ *  - The "What Sift is doing" / `activeFocus` current-focus card (item 7 of
+ *    this task's brief; ADR 0004 decision item 5). `CaseState.activeFocus`
+ *    is written only as `null` by every production code path (`create-
+ *    case.ts`, `reducer.ts`) -- this file's old rendering of it was
+ *    unreachable dead code whose only visible branch was a permanently-true
+ *    "Nothing is being actively investigated right now." Deleted outright,
+ *    not replaced with a fabricated substitute: nothing may render from
+ *    `activeFocus` again until a real production writer exists for it.
+ *  - "Sift's work so far" (`ActivityTimeline`, the raw chronological
+ *    activity ledger) -- ADR 0004 item 3/4 moves this to developer content;
+ *    the Runtime Inspector (reachable via the Hero's "Inspect run" control,
+ *    unchanged) remains the one real entry point into it, rather than this
+ *    file building a second, redundant history browser (change-set §34:
+ *    "Do not build a redundant separate debug system").
  *
  * The Runtime Inspector is a Sheet overlay, not a route/full-body swap:
  * `RuntimeInspector` renders as a sibling of the normal workspace (mounted
  * only while `inspectingRunId !== null`) rather than replacing it, so the
- * case body stays visible underneath. Reachable two ways, both feeding the
- * same `inspectingRunId` state: an "Inspect run" control next to
- * `LiveRunStatus` (enabled once a real `runId` exists this session) and a
- * per-item "Inspect run" button `ActivityTimeline` renders for any streamed
- * activity event that carries a `runId`.
+ * case body stays visible underneath.
  *
  * `readiness` is computed by calling the REAL `evaluateReadiness` from
- * `@sift/core` directly (this task added `@sift/core` as a runtime dependency
- * of `apps/web` -- see `apps/web/package.json` and `ReadinessPanel.tsx`'s own
- * forward-looking doc comment, which named this exact moment: "the moment a
- * later task wires it in"). This app never re-implements readiness,
- * satisfying CLAUDE.md's "The deterministic core, not an LLM, owns ...
- * readiness."
+ * `@sift/core` directly. This app never re-implements readiness, satisfying
+ * CLAUDE.md's "The deterministic core, not an LLM, owns ... readiness."
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
@@ -63,27 +102,25 @@ import {
   type CompiledDecisionPack,
   type EvidenceDisposition,
   type PublicActivityEvent,
+  type WorkspaceViewMode,
 } from '@sift/contracts';
 import { evaluateReadiness } from '@sift/core';
-import { Button } from '@/components/ui/button';
 import { SiftClientError } from '../api/sift-client.js';
 import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active-case-storage.js';
 import { DemoLauncher } from '../components/DemoLauncher.js';
 import { VehicleCatalogFlow } from '../components/VehicleCatalogFlow.js';
 import { CaseHeader, type CaseHeaderConnectionState } from '../components/CaseHeader.js';
 import { DisclosureSection } from '../components/DisclosureSection.js';
-import { WorkspaceStatusHeader } from '../components/WorkspaceStatusHeader.js';
+import { RecommendationHero } from '../components/RecommendationHero.js';
+import type { ApprovalCardReview } from '../components/ApprovalCard.js';
 import { deriveWorkspaceStatus } from '../components/workspace-status.js';
 import { ReadinessPanel } from '../components/ReadinessPanel.js';
 import { FindingsSheet } from '../components/FindingsSheet.js';
-import { ActivityTimeline } from '../components/ActivityTimeline.js';
-import { RecommendationCard } from '../components/RecommendationCard.js';
-import { ApprovalCard, type ApprovalCardReview } from '../components/ApprovalCard.js';
 import { OptionEditor } from '../components/OptionEditor.js';
-import { OptionComparison } from '../components/OptionComparison.js';
+import { WorkspaceViewSwitcher } from '../components/WorkspaceViewSwitcher.js';
 import { CustomConcernForm } from '../components/CustomConcernForm.js';
 import { CaseExtensionReviewCard } from '../components/CaseExtensionReviewCard.js';
-import { LiveRunStatus, type LiveRunStatusReceipt } from '../components/LiveRunStatus.js';
+import type { LiveRunStatusReceipt } from '../components/LiveRunStatus.js';
 import { WebMcpStatus } from '../components/WebMcpStatus.js';
 import { ErrorState } from '../components/ErrorState.js';
 import { RuntimeInspector } from '../components/RuntimeInspector.js';
@@ -104,9 +141,11 @@ import {
 // `if (parsed.success) setInstalledPacks(...)` degrade-gracefully path (see
 // that effect's own comment below), so `installedPacks` silently stayed `[]`
 // forever in every real (non-test) session -- `activePack` was always
-// `null`, `OptionComparison` always fell back to one ungrouped "All
-// attributes" row instead of the pack's real named groups, and
-// `OptionEditor`'s `optionKind`/`optionLabel` always fell back to the
+// `null`, the Compare view (`OptionComparison` at the time; superseded by
+// `WorkspaceViewSwitcher`/`OptionCompareView`, see this file's own header
+// comment) always fell back to one ungrouped "All attributes" row instead
+// of the pack's real named groups, and `OptionEditor`'s `optionKind`/
+// `optionLabel` always fell back to the
 // generic `'option'` default, which matches none of `car-purchase`'s
 // declared attributes' `appliesTo: ['candidate']` -- so the manual
 // candidate-entry form (product.md "Explicit scope cuts": "users may
@@ -128,10 +167,9 @@ const InstalledPacksResponseSchema = z
  * live command's own promise-resolution handlers) naturally starts `null`
  * and stays `null` regardless of how much real history the case actually
  * has, even though `events` already carries that full replayed history and
- * is what Readiness/Evidence/Activity correctly derive their own
- * post-reload state from -- producing "No command has been sent yet."
- * directly above a Readiness panel and Activity log that both correctly
- * show a fully decided case.
+ * is what Readiness correctly derives its own post-reload state from --
+ * producing a hero that looks like nothing has ever happened directly
+ * above a Readiness panel that correctly shows a fully decided case.
  *
  * Walks `events` from the most recent backward for the latest event that
  * carries a `runId` (preferred, matching `LiveRunStatus`'s own correlation
@@ -200,9 +238,8 @@ export function App() {
   const [restoringCaseId, setRestoringCaseId] = useState<string | null>(() => readStoredCaseId());
   const [installedPacks, setInstalledPacks] = useState<CompiledDecisionPack[]>([]);
   const [lastRunReceipt, setLastRunReceipt] = useState<LiveRunStatusReceipt | null>(null);
-  // Runtime Inspector (Region 7, this task) -- the runId currently open in
-  // the Inspector, or `null` when the normal case body is showing. See this
-  // file's own header comment for how it is reached and closed.
+  // Runtime Inspector -- the runId currently open in the Inspector, or
+  // `null` when the normal case body is showing.
   const [inspectingRunId, setInspectingRunId] = useState<string | null>(null);
   const [findingsSheetOpen, setFindingsSheetOpen] = useState(false);
   const [resetPending, setResetPending] = useState(false);
@@ -212,10 +249,31 @@ export function App() {
   const [proposalReviewError, setProposalReviewError] = useState<string | null>(null);
   const [dispositionPendingId, setDispositionPendingId] = useState<string | null>(null);
   const [dispositionError, setDispositionError] = useState<string | null>(null);
-  // "Go to Our pick" (the next-step banner's action once a proposal is
-  // pending) scrolls here rather than navigating -- the hero is already on
-  // the page, just possibly below the fold.
-  const recommendationHeroRef = useRef<HTMLDivElement | null>(null);
+  // Primary workspace view switcher state (ADR 0004 item 5; ADR 0005). No
+  // `sift_set_view` command exists yet anywhere in this codebase to
+  // persist this through the real `WorkspaceViewState.mode` field ADR 0005
+  // designed for it (confirmed directly: only `sift_focus_option` is wired
+  // in `register-sift-tools.ts`/`command-service.ts` today) -- this is
+  // therefore session-local state, a deliberate, disclosed scope limit
+  // rather than a fabricated persistence story. `WorkspaceViewSwitcher`'s
+  // own prop contract does not assume this source, so swapping it for the
+  // real persisted field later is a caller-only change.
+  const [viewMode, setViewMode] = useState<WorkspaceViewMode>('compare');
+  // Quick Pick's queue position over `snapshot.entities`, in the same
+  // session-local spirit as `viewMode` above (`WorkspaceViewState.quickPick`
+  // has no real writer yet either).
+  const [quickPickPosition, setQuickPickPosition] = useState(0);
+  // Board placement, session-local for the same disclosed reason as
+  // `viewMode` above: `WorkspaceViewState.board` exists in the contract but
+  // has no command that writes it yet. Deliberately NOT derived from case
+  // state -- where an option sits on the board is the user's working
+  // arrangement, not a verdict the engine has reached about it
+  // (change-set §12), so it must never be inferred from readiness or
+  // recommendation status.
+  const [boardPlacement, setBoardPlacement] = useState<Record<string, string>>({});
+  const handleMoveOption = useCallback((optionId: string, toColumnId: string) => {
+    setBoardPlacement((prev) => ({ ...prev, [optionId]: toColumnId }));
+  }, []);
 
   const {
     snapshot,
@@ -237,10 +295,10 @@ export function App() {
 
   // Installed Decision Pack catalog -- fetched once (independent of the
   // active case) and reused both for the `sift_list_packs` WebMCP tool and
-  // `OptionComparison`'s pack presentation metadata. `GET /api/packs` has no
-  // dedicated `SiftCommands` method (it is a read-only route, per
+  // `WorkspaceViewSwitcher`'s pack presentation metadata. `GET /api/packs`
+  // has no dedicated `SiftCommands` method (it is a read-only route, per
   // architecture.md's "HTTP service" list); a transient failure here
-  // degrades gracefully -- `OptionComparison` falls back to one flat
+  // degrades gracefully -- the comparison view falls back to one flat
   // attribute group and `sift_list_packs` simply reports zero installed
   // packs rather than blocking the rest of the workspace.
   useEffect(() => {
@@ -382,8 +440,7 @@ export function App() {
   // `lastRunReceipt` (session-local) takes priority once a real command has
   // been sent this browser lifetime; before that -- a fresh load or a
   // reload -- fall back to a receipt derived from the case's own replayed
-  // history, so "Latest command" never contradicts the Readiness panel and
-  // Activity log rendered right below it. See `deriveReceiptFromEvents`.
+  // history. See `deriveReceiptFromEvents`.
   //
   // Scoped to `activeCaseId` here, not just handed the raw `events` array:
   // on "Reset demo" (`handleResetDemo` below), `setActiveCaseId(newId)` and
@@ -521,6 +578,39 @@ export function App() {
     [commands, snapshot, activeCaseId],
   );
 
+  // Real WebMCP-parity focus wiring (change-set §30 "WebMCP should control
+  // focus"): the same `focusOption` command a `sift_focus_option` tool call
+  // uses (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same
+  // command implementation"). Deliberately fire-and-forget with no pending/
+  // error UI state of its own: ADR 0005 designed `focusOption` to route
+  // through `updateSelection()` specifically so a presentation-only action
+  // like this is "safe to be called freely and repeatedly without human
+  // confirmation" (ADR 0005 consequences) -- a dropped click here is a
+  // missed visual focus update, not a lost decision, so it does not earn a
+  // new blocking error surface the way `requestInvestigation`/
+  // `reviewProposal`/`setEvidenceDisposition` do.
+  const handleFocusOption = useCallback(
+    (optionId: string) => {
+      if (snapshot === null || activeCaseId === null) return;
+      commands
+        .focusOption({ caseId: activeCaseId, optionId, expectedSequence: snapshot.eventSequence })
+        .catch(() => undefined);
+    },
+    [commands, snapshot, activeCaseId],
+  );
+
+  const handleQuickPickAdvance = useCallback(() => {
+    setQuickPickPosition((position) => position + 1);
+  }, []);
+
+  const handleQuickPickShortlist = useCallback(
+    (optionId: string) => {
+      handleFocusOption(optionId);
+      handleQuickPickAdvance();
+    },
+    [handleFocusOption, handleQuickPickAdvance],
+  );
+
   if (activeCaseId === null) {
     if (restoringCaseId !== null) {
       // Avoids a launcher-then-workspace flash while the reload-restore
@@ -586,12 +676,6 @@ export function App() {
       ? { unresolvedRequiredCount: readiness?.blockers.length ?? 0 }
       : null;
 
-  const activeFocus = snapshot?.activeFocus ?? null;
-  const focusedObligation =
-    activeFocus !== null
-      ? (snapshot?.obligations.find((o) => o.id === activeFocus.obligationId) ?? null)
-      : null;
-
   // Disclosure-row live summaries (ADR 0002: "nothing is hidden -- every
   // row's live state is visible without opening it"). Computed here, not
   // inside DisclosureSection or the wrapped child components, which stay
@@ -611,7 +695,6 @@ export function App() {
   const isRunActive =
     lastEvent !== null &&
     (lastEvent.phase === 'active' || lastEvent.phase === 'queued' || lastEvent.phase === 'waiting');
-  const workSoFarLive = runRequestPending || isRunActive;
   const addConcernMeta = pendingExtension !== null ? '1 needs your review' : undefined;
 
   // "What Sift found" urgency signal (round-2 design review): a real count
@@ -629,23 +712,8 @@ export function App() {
     recommendation: snapshot?.recommendation ?? null,
     proposal: snapshot?.proposal ?? null,
     flaggedFindingsCount,
+    withheld: withheld !== null,
   });
-
-  function handleNextStepAction() {
-    switch (workspaceStatus.nextStep.action?.label) {
-      case 'Request investigation':
-        handleRequestInvestigation();
-        return;
-      case 'Review findings':
-        setFindingsSheetOpen(true);
-        return;
-      case 'Go to Our pick':
-        recommendationHeroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        return;
-      default:
-        return;
-    }
-  }
 
   return (
     <div
@@ -654,18 +722,11 @@ export function App() {
       // `CaseExtensionReviewCard` -- own local `useState` (in-progress form
       // fields, a submission `success`/`error` flag) that is otherwise never
       // reset by a prop change alone, since React reuses the same component
-      // instance across a re-render with no identity change. Confirmed live:
-      // submitting a custom concern against one case and then clicking
-      // "Reset demo" left that concern's "Concern added..." success banner
-      // showing on the *next* case's otherwise-untouched form -- falsely
-      // implying something had just been added to a case nothing had been
-      // submitted against (product.md's real-time contract: render only
-      // from what actually happened in the active case). Keying the whole
-      // workspace by the case it belongs to forces every case-scoped child
-      // to remount -- resetting all such local state -- exactly when the
-      // active case actually changes, and not on any other re-render (a
-      // routine snapshot/SSE update never changes `activeCaseId`, so
-      // `.page-enter` below still plays only once per case, as before).
+      // instance across a re-render with no identity change. Keying the
+      // whole workspace by the case it belongs to forces every case-scoped
+      // child to remount -- resetting all such local state, including this
+      // file's own `viewMode`/`quickPickPosition` -- exactly when the
+      // active case actually changes.
       key={activeCaseId}
       data-testid="case-workspace"
       className="page-enter mx-auto flex min-h-screen w-full max-w-[480px] flex-col gap-[var(--space-4)] p-[var(--space-4)]"
@@ -673,8 +734,6 @@ export function App() {
       {snapshot ? (
         <CaseHeader
           title={snapshot.title}
-          pack={snapshot.pack}
-          status={snapshot.status}
           connectionState={mapConnectionState(connectionState)}
           onResetDemo={handleResetDemo}
           resetPending={resetPending}
@@ -690,122 +749,32 @@ export function App() {
         </div>
       )}
 
-      {snapshot ? (
-        <WorkspaceStatusHeader status={workspaceStatus} onNextStepAction={handleNextStepAction} />
-      ) : null}
-
       <WebMcpStatus adapter={webMcpAdapter} />
 
       {streamError ? <ErrorState message={streamError} /> : null}
 
-      <section
-        data-testid="current-focus"
-        aria-labelledby="current-focus-heading"
-        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
-      >
-        <h2 id="current-focus-heading">What Sift is doing</h2>
-        {activeFocus !== null ? (
-          <div data-testid="current-focus-detail" className="flex flex-col gap-[var(--space-1)]">
-            <p
-              data-testid="current-focus-obligation"
-              className="font-[var(--font-weight-semibold)] text-[var(--color-ink)]"
-            >
-              {focusedObligation?.label ?? activeFocus.obligationId}
-            </p>
-            <p
-              data-testid="current-focus-reason"
-              className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-            >
-              {activeFocus.reason}
-            </p>
-            <div className="flex flex-wrap gap-[var(--space-2)] text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]">
-              {activeFocus.skillId !== undefined ? (
-                <span data-testid="current-focus-skill">Skill: {activeFocus.skillId}</span>
-              ) : null}
-              {activeFocus.specialistId !== undefined ? (
-                <span data-testid="current-focus-specialist">
-                  Specialist: {activeFocus.specialistId}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <p
-            data-testid="current-focus-empty"
-            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-          >
-            Nothing is being actively investigated right now.
-          </p>
-        )}
-
-        <Button
-          type="button"
-          data-testid="request-investigation"
-          aria-busy={runRequestPending}
-          disabled={runRequestPending || snapshot === null}
-          onClick={() => {
-            handleRequestInvestigation();
-          }}
-          size="sm"
-          className="min-h-[var(--size-touch-target-min)] self-start"
-        >
-          {runRequestPending ? 'Requesting…' : 'Request investigation'}
-        </Button>
-
-        {runRequestError ? (
-          <p
-            role="alert"
-            data-testid="request-investigation-error"
-            className="text-[length:var(--font-size-sm)]"
-            style={{ color: 'var(--color-status-error-ink)' }}
-          >
-            {runRequestError}
-          </p>
-        ) : null}
-
-        <LiveRunStatus receipt={liveRunStatusReceipt} events={events} />
-
-        {liveRunStatusReceipt?.runId !== undefined ? (
-          <Button
-            type="button"
-            data-testid="open-runtime-inspector"
-            onClick={() => setInspectingRunId(liveRunStatusReceipt.runId!)}
-            variant="secondary"
-            size="sm"
-            className="min-h-[var(--size-touch-target-min)] self-start"
-          >
-            Inspect run
-          </Button>
-        ) : null}
-      </section>
-
-      {/* Region 3, "Our pick" (ADR 0002): the recommendation and the
-              human decision controls, grouped as one always-visible hero
-              directly below "What Sift is doing" -- the first substantial
-              content a user reaches, deliberately never a disclosure row. */}
-      <div
-        ref={recommendationHeroRef}
-        data-testid="recommendation-hero"
-        className="flex flex-col gap-[var(--space-3)]"
-      >
-        <RecommendationCard
-          recommendation={snapshot?.recommendation ?? null}
-          withheld={withheld}
-          loading={snapshot === null}
-          sources={sources}
-        />
-
-        <ApprovalCard
-          proposal={snapshot?.proposal ?? null}
-          onReview={handleReviewProposal}
-          reviewPending={proposalReviewPending}
-          error={proposalReviewError}
-        />
-      </div>
+      <RecommendationHero
+        status={workspaceStatus}
+        recommendation={snapshot?.recommendation ?? null}
+        withheld={withheld}
+        sources={sources}
+        proposal={snapshot?.proposal ?? null}
+        onReview={handleReviewProposal}
+        reviewPending={proposalReviewPending}
+        reviewError={proposalReviewError}
+        onRequestInvestigation={() => handleRequestInvestigation()}
+        requestPending={runRequestPending}
+        requestDisabled={snapshot === null}
+        requestError={runRequestError}
+        onReviewFindingsClick={() => setFindingsSheetOpen(true)}
+        liveRunReceipt={liveRunStatusReceipt}
+        liveEvents={events}
+        onInspectRun={setInspectingRunId}
+      />
 
       <DisclosureSection
-        testId="compare"
-        title="Compare the options"
+        testId="options"
+        title="Manage options"
         meta={`${optionsCount} option${optionsCount === 1 ? '' : 's'}`}
       >
         <OptionEditor
@@ -816,14 +785,24 @@ export function App() {
           attributeDefinitions={snapshot?.attributeDefinitions ?? []}
           options={snapshot?.entities ?? []}
         />
-
-        <OptionComparison
-          options={snapshot?.entities ?? []}
-          attributeDefinitions={snapshot?.attributeDefinitions ?? []}
-          presentation={activePack?.presentation ?? null}
-          selectedOptionId={snapshot?.selectedOptionId ?? null}
-        />
       </DisclosureSection>
+
+      <WorkspaceViewSwitcher
+        mode={viewMode}
+        onModeChange={setViewMode}
+        options={snapshot?.entities ?? []}
+        attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+        presentation={activePack?.presentation ?? null}
+        selectedOptionId={snapshot?.selectedOptionId ?? null}
+        onFocusOption={handleFocusOption}
+        quickPickPosition={quickPickPosition}
+        onQuickPickPass={handleQuickPickAdvance}
+        onQuickPickMaybe={handleQuickPickAdvance}
+        onQuickPickShortlist={handleQuickPickShortlist}
+        onQuickPickFocusChange={() => undefined}
+        boardPlacement={boardPlacement}
+        onMoveOption={handleMoveOption}
+      />
 
       <DisclosureSection
         testId="findings"
@@ -851,19 +830,6 @@ export function App() {
       </DisclosureSection>
 
       <DisclosureSection
-        testId="work-so-far"
-        title="Sift's work so far"
-        meta={`${events.length} step${events.length === 1 ? '' : 's'}`}
-        live={workSoFarLive}
-      >
-        <ActivityTimeline
-          events={snapshot === null ? null : events}
-          loading={snapshot === null}
-          onInspectRun={setInspectingRunId}
-        />
-      </DisclosureSection>
-
-      <DisclosureSection
         testId="add-concern"
         title="Add something Sift should check"
         meta={addConcernMeta}
@@ -875,11 +841,18 @@ export function App() {
           applicableKinds={applicableKinds}
         />
 
-        <CaseExtensionReviewCard
-          caseId={activeCaseId}
-          expectedSequence={snapshot?.eventSequence ?? 0}
-          extension={pendingExtension}
-        />
+        {/* ADR 0004 item 2 / audit §2: an empty conceptual region must be
+            absent, not a card announcing its own emptiness. Mounted only
+            once a real agent-proposed extension is actually pending review
+            -- fixed here, at the orchestration level, rather than editing
+            `CaseExtensionReviewCard`'s own internals. */}
+        {pendingExtension !== null ? (
+          <CaseExtensionReviewCard
+            caseId={activeCaseId}
+            expectedSequence={snapshot?.eventSequence ?? 0}
+            extension={pendingExtension}
+          />
+        ) : null}
       </DisclosureSection>
 
       {inspectingRunId !== null ? (

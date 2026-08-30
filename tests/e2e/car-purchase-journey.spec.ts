@@ -13,6 +13,20 @@
  * `CustomConcernForm` -> round-2 investigation -> a revised recommendation
  * -> human-only approval of the pending proposal.
  *
+ * Rewritten this task for `docs/decisions/
+ * 0004-consumer-workspace-information-architecture.md`: the answer-first
+ * `RecommendationHero` (merging the retired `WorkspaceStatusHeader`,
+ * `RecommendationCard`, and `ApprovalCard` into one region) replaces the old
+ * "current focus" card and stacked recommendation/approval regions; "Compare
+ * the options" is renamed to "Manage options" (`disclosure-options`) and no
+ * longer contains the comparison table, which moved to the always-expanded
+ * `WorkspaceViewSwitcher` (Quick Pick / List / Compare / Board tabs); the
+ * Decision Pack badge and the raw chronological activity ledger ("Sift's
+ * work so far") both left the consumer surface entirely. Each removed
+ * region is proven gone with an explicit negative assertion below, not
+ * silently dropped, per this task's own rule for preserving regression
+ * value on a deliberate removal.
+ *
  * "Criteria reweight" has no dedicated visible control yet (confirmed: no
  * criteria-editing UI exists anywhere in `apps/web/src/components` today --
  * `updateCriteria` is reachable only through the WebMCP tool catalog and
@@ -29,8 +43,8 @@ import { expect, test } from '@playwright/test';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
 import { installConsoleGuard } from './helpers/console-guard.js';
 import {
-  assertElementsWithinViewport,
   assertPrimaryTouchTargets,
+  assertRecommendationHeroAboveTheFold,
   assertRightPaneIntegrity,
   disableAnimations,
 } from './helpers/layout-assertions.js';
@@ -59,19 +73,20 @@ test.describe('Choose our next car -- full demo journey', () => {
     // final case state and an identical *set* of 87 activity events every
     // time, but the exact interleaved *order* those events streamed in
     // genuinely differed run to run (real concurrent async completion
-    // timing, not a bug). `ActivityTimeline` renders in that arrival order,
-    // and `LiveRunStatus`'s phase breadcrumb (built by walking the same
-    // order) varies in *line count*, not just content -- so a plain `mask`
-    // is not enough (it paints over an existing box without changing that
-    // box's size); every screenshot captured after round 1 starts wraps the
-    // capture in `withVolatileRegionsHidden`, which removes both regions
-    // from layout for the duration of the capture and restores them
-    // immediately after (see `visual-masks.ts`'s header comment for the
-    // full causal chain -- including the actual failed-double-run evidence
-    // -- and why forcing artificial ordering onto a genuinely concurrent
-    // Strands Graph is not the correct fix here). Home Energy Guardian's
-    // Swarm, by contrast, hands off between specialists strictly
-    // sequentially (`HOME_ENERGY_SEQUENTIAL_SPECIALIST_IDS`), which is why
+    // timing, not a bug). `LiveRunStatus`'s phase breadcrumb (built by
+    // walking that same arrival order) varies in *line count*, not just
+    // content -- so a plain `mask` is not enough (it paints over an existing
+    // box without changing that box's size); every screenshot captured after
+    // round 1 starts wraps the capture in `withVolatileRegionsHidden`, which
+    // removes it from layout for the duration of the capture and restores it
+    // immediately after (see `visual-masks.ts`'s header comment for the full
+    // causal chain -- including the actual failed-double-run evidence, and
+    // why `ActivityTimeline` needed the identical treatment before ADR 0004
+    // moved it off the consumer surface entirely -- and why forcing
+    // artificial ordering onto a genuinely concurrent Strands Graph is not
+    // the correct fix here). Home Energy Guardian's Swarm, by contrast,
+    // hands off between specialists strictly sequentially
+    // (`HOME_ENERGY_SEQUENTIAL_SPECIALIST_IDS`), which is why
     // `home-energy-guardian-journey.spec.ts` needs no equivalent treatment.
 
     // --- Launch ---
@@ -93,38 +108,97 @@ test.describe('Choose our next car -- full demo journey', () => {
     // "Browser adapter"; CLAUDE.md "Non-negotiable product truths").
     await expect(page.getByTestId('webmcp-status-unsupported')).toBeVisible();
 
-    // --- 4 seeded candidates (ADR 0002: "Compare the options" is a
-    // closed-by-default disclosure row -- the seeded count is proven from
-    // its own live meta summary rather than the comparison table itself,
-    // which is not yet in the DOM's visible flow). ---
-    await expect(page.getByTestId('disclosure-compare-meta')).toHaveText(
+    // --- 4 seeded candidates (ADR 0004: "Manage options" -- renamed from
+    // "Compare the options" -- is a closed-by-default disclosure row; the
+    // seeded count is proven from its own live meta summary rather than the
+    // options list itself, which is not yet in the DOM's visible flow). ---
+    await expect(page.getByTestId('disclosure-options-meta')).toHaveText(
       `${CAR_PURCHASE_CANDIDATE_IDS.length} options`,
     );
 
     // Fully settled, non-racing checkpoint: case loaded, seeded, nothing
     // investigated yet -- a stable baseline before any async run starts.
-    await expect(page.getByTestId('current-focus-empty')).toBeVisible();
+    // `RecommendationHero` (ADR 0004 item 1) is the one region that says
+    // what Sift currently thinks; its `not_started` phase is the honest
+    // "nothing looked into yet" signal that replaces the retired
+    // "What Sift is doing" / `current-focus-empty` card below.
+    await expect(page.getByTestId('recommendation-hero-status')).toHaveAttribute(
+      'data-phase',
+      'not_started',
+    );
+    await expect(page.getByTestId('recommendation-hero-headline')).toHaveText(
+      "Nothing's been looked into yet.",
+    );
+
+    // --- Negative assertions: regions ADR 0004 deliberately removed from
+    // the consumer surface stay removed. Preserved here (rather than simply
+    // deleted along with the old positive checks) so a regression that
+    // reintroduces any of them is still caught. ---
+    // The "What Sift is doing" / `activeFocus` card: structurally dead code
+    // (nothing ever wrote a non-null `activeFocus` in production) deleted
+    // outright, per ADR 0004 decision item 5.
+    await expect(page.getByTestId('current-focus')).toHaveCount(0);
+    await expect(page.getByTestId('current-focus-empty')).toHaveCount(0);
+    // The Decision Pack badge/id/compiled-hash and the case-status badge:
+    // moved to developer-only detail entirely, per ADR 0004 decision item 1.
+    await expect(page.getByTestId('case-header-pack-badge')).toHaveCount(0);
+    await expect(page.getByTestId('case-header-run-status')).toHaveCount(0);
+
+    // ADR 0004 decision item 6: the answer must be reachable without
+    // scrolling at each canonical narrow width -- the machine-checked
+    // above-the-fold invariant added specifically because this property
+    // regressed once already, silently.
+    await assertRecommendationHeroAboveTheFold(page);
+
     await expect(page.getByTestId('case-workspace')).toHaveScreenshot('seeded-case.png', {
       mask: masks,
       maxDiffPixelRatio: 0.01,
     });
 
-    // Opened once here and left open for the rest of the journey (ADR
-    // 0002's "Compare the options" row) -- every later step that reaches
-    // OptionEditor/OptionComparison content depends on it, and re-toggling
-    // it closed and open again between each step would add fragile
-    // sequencing with no real coverage benefit.
-    await sift.openDisclosure('compare');
+    // --- Workspace view switcher (ADR 0004 item 5; ADR 0005): always
+    // expanded, never a disclosure -- renders directly below "Manage
+    // options" and replaces the old unconditional comparison table. Compare
+    // is the default tab; at narrow widths (`layout="narrow"`, hardcoded for
+    // every viewport today -- `WorkspaceViewSwitcher.tsx`'s own header
+    // comment documents this as a disclosed, not-yet-wired scope limit, not
+    // a bug this suite should paper over) it narrows to a head-to-head pair
+    // rather than all 4 candidates, so this proves the real narrowed
+    // behavior instead of assuming the old unconditional-table behavior
+    // still holds. ---
+    await expect(page.getByTestId('workspace-view-switcher')).toBeVisible();
+    await expect(page.getByTestId('workspace-view-content-compare')).toBeVisible();
+    await expect(
+      page.getByTestId(`option-compare-view-header-${CAR_PURCHASE_CANDIDATE_IDS[0]}`),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId(`option-compare-view-header-${CAR_PURCHASE_CANDIDATE_IDS[1]}`),
+    ).toBeVisible();
+    await expect(page.getByTestId('option-compare-view-narrow-note')).toContainText(
+      `2 of ${CAR_PURCHASE_CANDIDATE_IDS.length}`,
+    );
 
+    // Switching to List proves all 4 seeded candidates genuinely render
+    // somewhere in the workspace, not narrowed -- the direct DOM-presence
+    // proof the old comparison-table loop made, now against the view that
+    // actually shows every option unconditionally.
+    await sift.selectWorkspaceView('list');
     for (const candidateId of CAR_PURCHASE_CANDIDATE_IDS) {
-      await expect(page.getByTestId(`option-comparison-header-${candidateId}`)).toBeVisible();
+      await expect(page.getByTestId(`option-list-view-card-${candidateId}`)).toBeVisible();
     }
+    // Returns to the default tab before continuing -- every later
+    // screenshot in this journey should show the workspace as a real user
+    // would first reach it, not a tab this test happened to select last.
+    await sift.selectWorkspaceView('compare');
 
-    // Case-header pack badge: real rendered right edge, not just the
-    // document-level scrollWidth proxy (layout-assertions.ts's
-    // `assertElementsWithinViewport` header comment explains why the latter
-    // cannot catch this bug class on its own).
-    await assertElementsWithinViewport(page, ['case-header-pack-badge']);
+    // Opened once here and left open for the rest of the journey (the
+    // "Manage options" row) -- every later step that reaches `OptionEditor`
+    // content depends on it, and re-toggling it closed and open again
+    // between each step would add fragile sequencing with no real coverage
+    // benefit.
+    await sift.openDisclosure('options');
+    for (const candidateId of CAR_PURCHASE_CANDIDATE_IDS) {
+      await expect(page.getByTestId(`option-editor-option-${candidateId}`)).toBeVisible();
+    }
 
     // Option-editor edit/cancel row: real rendered geometry, not just
     // className presence -- entering and leaving edit mode here is a pure
@@ -142,12 +216,17 @@ test.describe('Choose our next car -- full demo journey', () => {
 
     // --- Round 1: real live streaming investigation ---
     const round1 = await sift.requestInvestigation();
-    // Opened once, same reasoning as "compare" above (ADR 0002's "Sift's
-    // work so far" row) -- left open for the rest of the journey.
-    await sift.openDisclosure('work-so-far');
-    // Mid-investigation state: the activity timeline is already populating
-    // live from real streamed events (not a static end state).
-    await expect(page.getByTestId('activity-timeline')).toBeVisible();
+    // Mid-investigation state: `LiveRunStatus`, now embedded directly in
+    // `RecommendationHero`, is already populating live from real streamed
+    // events (not a static end state) -- the answer-first hero's own proof
+    // that something is happening, without needing to open anything.
+    await expect(page.getByTestId('live-run-status')).toBeVisible();
+    // The raw chronological activity ledger ("Sift's work so far") that
+    // used to live in its own disclosure row here is developer-only content
+    // now (ADR 0004 item 3/4) -- confirmed gone from the consumer surface
+    // entirely, not merely closed.
+    await expect(page.getByTestId('disclosure-work-so-far')).toHaveCount(0);
+    await expect(page.getByTestId('activity-timeline')).toHaveCount(0);
     await assertNoSeriousAxeViolations(page, 'mid-investigation');
     await assertRightPaneIntegrity(page, [
       'request-investigation',

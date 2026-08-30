@@ -7,14 +7,6 @@ import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 function buildProps(overrides: Partial<CaseHeaderProps> = {}): CaseHeaderProps {
   return {
     title: 'Choose Our Next Car',
-    pack: {
-      id: 'car-purchase',
-      version: '1.0.0',
-      compiledHash: 'a'.repeat(64),
-      selectedBy: 'router',
-      reasons: ['Matched keywords: car, vehicle, dealer'],
-    },
-    status: 'draft',
     connectionState: 'live',
     onResetDemo: vi.fn(),
     ...overrides,
@@ -27,93 +19,35 @@ describe('CaseHeader', () => {
     expect(screen.getByRole('heading', { name: 'Choose Our Next Car' })).toBeInTheDocument();
   });
 
-  it('renders the Decision Pack badge with id, version, and a short hash', () => {
+  // ADR 0004 decision item 1: the Decision Pack badge (id/version/compiled
+  // hash) and the pack-selection explanation sentence leave the consumer
+  // surface entirely -- "Do NOT put pack hashes, IDs, command IDs, or
+  // developer metadata here." `CaseHeaderProps` no longer even accepts a
+  // `pack` value, so there is nothing this component could render even if
+  // asked to; these assertions prove the removal at the DOM level, per
+  // ADR 0004's own instruction that a test asserting a removed developer
+  // string be rewritten to assert the id is now absent, not deleted
+  // wholesale.
+  it('never renders a Decision Pack badge, id, version, or compiled hash', () => {
     render(<CaseHeader {...buildProps()} />);
-    const badge = screen.getByTestId('case-header-pack-badge');
-    expect(badge).toHaveTextContent('Decision Pack');
-    expect(badge).toHaveTextContent('car-purchase@1.0.0');
-    expect(badge).toHaveTextContent('aaaaaaaa');
+    expect(screen.queryByTestId('case-header-pack-badge')).not.toBeInTheDocument();
+    expect(screen.queryByText(/decision pack/i)).not.toBeInTheDocument();
   });
 
-  it('truncates the pack badge with a visible ellipsis instead of silently overflowing at 390px width', () => {
-    // Regression test: at a 390px viewport, a long pack id/version/hash
-    // combination (e.g. "Decision Pack: home-energy-guardian@1.0.0
-    // #8d414e7a") is wider than its flex container. Confirmed live via
-    // getBoundingClientRect() -- badge width 414.9px vs. container 326px --
-    // the badge silently overflowed past the viewport edge with no visual
-    // indication anything was cut off, because Tailwind's `truncate` does
-    // nothing on a flex item whose default `min-width: auto` prevents it
-    // from shrinking below its content's natural width.
-    //
-    // jsdom does not run a real layout engine (see
-    // ../test/narrow-viewport.tsx's documented caveat, and the identical
-    // precedent in EvidenceCard.test.tsx / OptionEditor.test.tsx), so this
-    // is a structural/class-presence assertion rather than a pixel
-    // measurement: it proves the badge no longer relies on invisible
-    // overflow by asserting (a) the badge itself can shrink below its
-    // content's natural width instead of forcing it (`min-w-0`, plus a
-    // `max-w-full` ceiling so it is bounded by its flex container), and (b)
-    // the actual truncating element carries Tailwind's `truncate` utility
-    // (`overflow-hidden text-ellipsis whitespace-nowrap`) so an overflow
-    // shows a visible "…" rather than being invisibly clipped.
-    render(
-      <CaseHeader
-        {...buildProps({
-          pack: {
-            id: 'home-energy-guardian',
-            version: '1.0.0',
-            compiledHash: '8d414e7a'.repeat(8),
-            selectedBy: 'router',
-            reasons: [],
-          },
-        })}
-      />,
-    );
-
-    const badge = screen.getByTestId('case-header-pack-badge');
-    expect(badge).toHaveClass('min-w-0');
-    expect(badge).toHaveClass('max-w-full');
-
-    const truncatedContent = badge.querySelector('.truncate');
-    expect(truncatedContent).not.toBeNull();
-    expect(truncatedContent).toHaveClass('min-w-0');
-    // The full text is still present in the DOM (this is CSS-driven visual
-    // truncation, not a shortened string) -- a reader/assistive technology
-    // still gets it via the element's normal text content (selectable,
-    // copyable, and read by a screen reader) even though it renders
-    // ellipsized. Note this is distinct from the badge's own `title`
-    // attribute (`CaseHeader.tsx`), which is set to `pack.compiledHash`
-    // alone -- a native tooltip for the hash, not a mechanism for
-    // recovering this full "Decision Pack: id@version" string.
-    expect(truncatedContent).toHaveTextContent('Decision Pack: home-energy-guardian@1.0.0');
-    expect(truncatedContent).toHaveTextContent('8d414e7a');
+  it('never renders the pack-selection explanation sentence', () => {
+    render(<CaseHeader {...buildProps()} />);
+    expect(screen.queryByTestId('case-header-pack-explanation')).not.toBeInTheDocument();
+    expect(screen.queryByText(/selected this decision pack/i)).not.toBeInTheDocument();
   });
 
-  it('explains a router-selected pack differently from a user-selected pack', () => {
-    const { rerender } = render(
-      <CaseHeader {...buildProps({ pack: buildProps().pack, status: 'draft' })} />,
-    );
-    expect(screen.getByTestId('case-header-pack-explanation')).toHaveTextContent(/sift selected/i);
-
-    rerender(
-      <CaseHeader
-        {...buildProps({
-          pack: { ...buildProps().pack, selectedBy: 'user', reasons: [] },
-        })}
-      />,
-    );
-    expect(screen.getByTestId('case-header-pack-explanation')).toHaveTextContent(/you selected/i);
-  });
-
-  // Only the two statuses any code path can actually produce (ADR 0004).
-  // This list previously covered six; the other four were never assigned
-  // anywhere, so those cases asserted labels no user could ever see.
-  it.each([
-    ['draft', 'Draft'],
-    ['decided', 'Decided'],
-  ] as const)('maps case status %s to the UI label "%s"', (status, expectedLabel) => {
-    render(<CaseHeader {...buildProps({ status })} />);
-    expect(screen.getByTestId('case-header-run-status')).toHaveTextContent(expectedLabel);
+  // ADR 0004 decision item 1's explicit "keeps" list is title + live
+  // connection status + reset, with no third case-status badge -- the old
+  // `draft`/`decided` pill never carried the "compact status summary" §6
+  // actually asks for, and that richer summary is now the merged
+  // answer-first hero's job (`RecommendationHero.tsx`), not this header's.
+  it('never renders a separate case-status badge', () => {
+    render(<CaseHeader {...buildProps()} />);
+    expect(screen.queryByTestId('case-header-run-status')).not.toBeInTheDocument();
   });
 
   it.each([

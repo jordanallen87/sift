@@ -21,15 +21,35 @@ function buildEvent(overrides: Partial<PublicActivityEvent> = {}): PublicActivit
 }
 
 describe('LiveRunStatus', () => {
-  it('renders the empty state when no command has been sent yet', () => {
-    render(<LiveRunStatus receipt={null} events={[]} />);
-    expect(screen.getByTestId('live-run-status-empty')).toBeInTheDocument();
+  // ADR 0004 decision item 2 / audit §2: an empty conceptual region must be
+  // ABSENT, not a card announcing its own emptiness. This component used to
+  // render a full "Latest command / No command has been sent yet." card;
+  // it now renders nothing at all until a real command has actually been
+  // sent.
+  it('renders nothing before any command has been sent', () => {
+    const { container } = render(<LiveRunStatus receipt={null} events={[]} />);
+    expect(screen.queryByTestId('live-run-status')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('live-run-status-empty')).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('shows "queued" immediately from a real receipt before any event has streamed in', () => {
     render(<LiveRunStatus receipt={{ commandId: 'cmd-1', runId: 'run-1' }} events={[]} />);
     expect(screen.getByTestId('live-run-status-phase')).toHaveTextContent(/queued/i);
-    expect(screen.getByTestId('live-run-status-run-id')).toHaveTextContent('run-1');
+  });
+
+  // ADR 0004 decision item 3: `commandId`/`runId` move to the
+  // developer/inspect projection and are never rendered as raw text on the
+  // consumer surface anymore (change-set §4's terminology table:
+  // "commandId/runId -> Developer view only").
+  it('never renders the raw commandId or runId as visible text', () => {
+    render(
+      <LiveRunStatus receipt={{ commandId: 'cmd-secret-1', runId: 'run-secret-1' }} events={[]} />,
+    );
+    expect(screen.queryByTestId('live-run-status-command-id')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('live-run-status-run-id')).not.toBeInTheDocument();
+    expect(screen.queryByText('cmd-secret-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('run-secret-1')).not.toBeInTheDocument();
   });
 
   it('reflects the latest phase from a real event correlated by runId', () => {

@@ -25,7 +25,14 @@
  */
 import { expect, type APIRequestContext, type APIResponse, type Page } from '@playwright/test';
 
-/** Real, stable car-purchase fixture candidate ids (`packages/scenarios/src/seeds.ts`). */
+/**
+ * Real, stable car-purchase fixture candidate ids (`packages/scenarios/src/seeds.ts`), in the same
+ * order `CaseState.entities` is actually built in (`CAR_PURCHASE_CANDIDATE_IDS.map(...)` there,
+ * confirmed directly) -- unlike Home Energy Guardian's id lists below, this array's declared order
+ * already matches the real entity order, so it is safe to index directly (e.g. `[0]`/`[1]`) for
+ * `OptionCompareView`'s narrow-layout head-to-head selection (see
+ * `HOME_ENERGY_RESPONSE_OPTION_ENTITY_ORDER`'s own comment for why that distinction matters).
+ */
 export const CAR_PURCHASE_CANDIDATE_IDS = [
   'candidate-rav4',
   'candidate-crv',
@@ -43,6 +50,27 @@ export const CAR_PURCHASE_CRITERION_IDS = {
 export const HOME_ENERGY_RESPONSE_OPTION_IDS = [
   'change-rate-plan',
   'monitor-one-cycle',
+  'request-energy-audit',
+  'request-hvac-inspection',
+] as const;
+
+/**
+ * The real order `CaseState.entities` is built in -- `buildHomeEnergyResponseOptionEntities`
+ * (`packages/scenarios/src/seeds.ts`) maps directly over `packages/scenarios/fixtures/energy/
+ * response-options.json`'s own declared array order, which is `monitor-one-cycle,
+ * change-rate-plan, request-energy-audit, request-hvac-inspection` -- distinct from
+ * `HOME_ENERGY_RESPONSE_OPTION_IDS` above (an alphabetized convenience listing, not a claim about
+ * entity order). This distinction did not matter before `OptionCompareView` existed: the retired
+ * `OptionComparison` table rendered every option as a column regardless of order. It matters now
+ * because `OptionCompareView`'s narrow-layout head-to-head selection (`pickHeadToHeadOptions`)
+ * renders `options.slice(0, 2)` whenever nothing is focused yet (`docs/decisions/
+ * 0004-consumer-workspace-information-architecture.md`'s `WorkspaceViewSwitcher`, always mounted
+ * with `layout="narrow"` today) -- a test asserting *which two* options the Compare tab shows by
+ * default must use this real entity order, not the alphabetized one above.
+ */
+export const HOME_ENERGY_RESPONSE_OPTION_ENTITY_ORDER = [
+  'monitor-one-cycle',
+  'change-rate-plan',
   'request-energy-audit',
   'request-hvac-inspection',
 ] as const;
@@ -229,29 +257,50 @@ export class SiftPage {
   }
 
   /**
-   * Waits for `LiveRunStatus` to report *this exact* `runId`'s phase as
-   * "Completed" -- driven purely by real streamed `PublicActivityEvent`s,
-   * never a fixed sleep. Polls both the correlated run id and phase
-   * together (rather than the phase alone) so a stale "Completed" left over
-   * from a previous run's own correlated card can never satisfy this wait.
+   * Waits for run `runId` to reach a real terminal "completed" status, then
+   * confirms the browser's own live status region reflects it too.
+   *
+   * This method used to poll `live-run-status-run-id`'s own text content
+   * specifically so a stale "Completed" phase left over from a *previous*
+   * run (round 1, while this method is really waiting on round 2) could
+   * never satisfy the wait. `docs/decisions/
+   * 0004-consumer-workspace-information-architecture.md` decision item 3
+   * removed that text from the DOM entirely -- `LiveRunStatus.tsx` no longer
+   * renders `commandId`/`runId` as visible text at all (both are
+   * Developer-view-only content now; see that component's own header
+   * comment) -- so there is nothing left to read to disambiguate one run's
+   * "Completed" badge from another's by text alone.
+   *
+   * The honest, unambiguous replacement: `GET /api/debug/runs/:runId`
+   * (`apps/agent/src/routes/debug.ts`) is the exact same real HTTP route the
+   * Runtime Inspector's own `useRuntimeInspector` hook calls, keyed
+   * unambiguously by the real `runId` this method already receives -- no
+   * DOM-visible identifier is needed to correlate it correctly, which is a
+   * *stronger* correlation guarantee than the removed text ever was, not a
+   * weaker stand-in for it. Once the server confirms this exact run reached
+   * a terminal state, this also waits for the UI's own `live-run-status-
+   * phase` text to catch up to "Completed" -- still a real, observable
+   * proof that the browser's live SSE subscription reflects it, not merely
+   * that the server-side record does.
    */
   async waitForInvestigationCompleted(runId: string): Promise<void> {
     await expect
       .poll(
         async () => {
-          const runIdText = await this.page
-            .getByTestId('live-run-status-run-id')
-            .textContent()
-            .catch(() => null);
-          const phaseText = await this.page
-            .getByTestId('live-run-status-phase')
-            .textContent()
-            .catch(() => null);
-          return Boolean(runIdText?.includes(runId)) && Boolean(phaseText?.includes('Completed'));
+          const response = await this.page.request.get(
+            `/api/debug/runs/${encodeURIComponent(runId)}`,
+          );
+          if (!response.ok()) return null;
+          const body = (await response.json()) as { overview: { status: string } };
+          return body.overview.status;
         },
-        { timeout: 30_000, message: `run "${runId}" did not reach "Completed" in time` },
+        { timeout: 30_000, message: `run "${runId}" did not reach "completed" status in time` },
       )
-      .toBe(true);
+      .toBe('completed');
+
+    await expect(this.page.getByTestId('live-run-status-phase')).toHaveText(/completed/i, {
+      timeout: 30_000,
+    });
   }
 
   async waitForRecommendationReady(): Promise<void> {
@@ -268,17 +317,22 @@ export class SiftPage {
    * rationale containing `expectedSubstring` -- the honest, real,
    * SSE-driven completion signal for an investigation issued through
    * `postRunRequest` rather than a browser click. `waitForInvestigationCompleted`
-   * above cannot be used for that case: `LiveRunStatus`'s `runId`/`phase`
-   * come from `lastRunReceipt`, client-local React state only ever set
-   * inside `App.tsx`'s own `handleRequestInvestigation` from
-   * `commands.requestInvestigation(...).then(...)` -- a run requested
-   * directly over HTTP, outside that call, never populates it, so
-   * `live-run-status-run-id`/`-phase` simply never mention that run at all
-   * (confirmed directly against the real running app). The recommendation
-   * card, by contrast, is driven purely from the canonical `CaseState`
-   * snapshot streamed over SSE, exactly like the criteria-reweight step
-   * every journey spec already exercises -- this is genuinely the same "no
-   * click, no reload, reflected live" proof, not a weaker substitute for it.
+   * above cannot be used for that case: its final UI-observable check reads
+   * `live-run-status-phase`, which reflects `App.tsx`'s `liveRunStatusReceipt`
+   * (`lastRunReceipt ?? derivedRunReceipt`) -- `lastRunReceipt` is
+   * client-local React state only ever set inside `handleRequestInvestigation`
+   * from `commands.requestInvestigation(...).then(...)` (the browser-click
+   * path), and it takes priority over `derivedRunReceipt` once set. A run
+   * requested directly over HTTP, outside that call (this file's
+   * `postRunRequest`), never touches `lastRunReceipt` -- so once an earlier
+   * browser-click run has set it once this session, `LiveRunStatus` stays
+   * correlated to *that* run's `runId` and never transitions to reflect a
+   * later `postRunRequest`-issued run at all (confirmed directly against the
+   * real running app). The recommendation card, by contrast, is driven
+   * purely from the canonical `CaseState` snapshot streamed over SSE,
+   * exactly like the criteria-reweight step every journey spec already
+   * exercises -- this is genuinely the same "no click, no reload, reflected
+   * live" proof, not a weaker substitute for it.
    */
   async waitForRecommendationRationaleContains(expectedSubstring: string): Promise<void> {
     await expect(this.page.getByTestId('recommendation-card-status')).toContainText(
@@ -294,9 +348,13 @@ export class SiftPage {
   /**
    * Opens a closed-by-default `DisclosureSection` row (ADR 0002, round-2
    * design review: "answer-first, everything else one tap away") by its
-   * `testId` suffix, e.g. `openDisclosure('compare')` for
-   * `disclosure-compare`. A no-op if the row is already open (native
-   * `<details>` state, checked directly rather than assumed).
+   * `testId` suffix, e.g. `openDisclosure('options')` for
+   * `disclosure-options` (renamed from `disclosure-compare` by
+   * `docs/decisions/0004-consumer-workspace-information-architecture.md` --
+   * it now wraps only `OptionEditor`/"Manage options"; the comparison
+   * content that used to live in the same row moved to `WorkspaceViewSwitcher`,
+   * see `selectWorkspaceView` below). A no-op if the row is already open
+   * (native `<details>` state, checked directly rather than assumed).
    */
   async openDisclosure(testId: string): Promise<void> {
     const details = this.page.getByTestId(`disclosure-${testId}`);
@@ -319,6 +377,19 @@ export class SiftPage {
       await this.page.getByTestId(`disclosure-${testId}-summary`).click();
     }
     await expect(details).toHaveJSProperty('open', false);
+  }
+
+  /**
+   * Selects one tab of `WorkspaceViewSwitcher` -- Quick Pick / List / Compare
+   * / Board (`docs/decisions/0004-consumer-workspace-information-architecture.md`
+   * decision item 5) -- and waits for that tab's own content region to
+   * become visible. Unlike `openDisclosure`, this region is always
+   * expanded, never a disclosure row; it renders directly below the
+   * "Manage options" row and above "What Sift found".
+   */
+  async selectWorkspaceView(mode: 'quick_pick' | 'list' | 'compare' | 'board'): Promise<void> {
+    await this.page.getByTestId(`workspace-view-tab-${mode}`).click();
+    await expect(this.page.getByTestId(`workspace-view-content-${mode}`)).toBeVisible();
   }
 
   /** Opens the "What Sift found" review Sheet -- a trigger row, not a native disclosure (`DisclosureSection`'s `onTriggerClick` mode), since it opens `FindingsSheet` rather than expanding inline. */

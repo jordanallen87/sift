@@ -93,7 +93,7 @@
  * this route owns: `AGENTCORE_COMMAND_NAMES` below excludes both
  * `reviewProposal` (approve/reject a `DecisionProposal`) and
  * `reviewCaseExtension` (confirm/reject an agent-proposed case extension) --
- * the same two human-confirmation verbs `docs/specs/webmcp.md`'s twelve-tool
+ * the same two human-confirmation verbs `docs/specs/webmcp.md`'s WebMCP tool
  * catalog already withholds from ChatGPT (`sift_request_revision` is the only
  * decision-adjacent WebMCP tool, and it can only attach a revision request,
  * never approve -- see `model-context/webmcp-contract.test.ts`'s "No tool

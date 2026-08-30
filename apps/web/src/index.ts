@@ -40,6 +40,16 @@ export type {
 } from './components/RecommendationCard.js';
 export { ApprovalCard } from './components/ApprovalCard.js';
 export type { ApprovalCardProps, ApprovalCardReview } from './components/ApprovalCard.js';
+export { RecommendationHero } from './components/RecommendationHero.js';
+export type { RecommendationHeroProps } from './components/RecommendationHero.js';
+export { deriveWorkspaceStatus, HERO_PHASES } from './components/workspace-status.js';
+export type {
+  HeroPhase,
+  HeroAction,
+  HeroActionKind,
+  WorkspaceStatus,
+  WorkspaceStatusInput,
+} from './components/workspace-status.js';
 export { formatAttributeValue } from './components/attribute-value-format.js';
 export { DynamicAttributeField } from './components/DynamicAttributeField.js';
 export type { DynamicAttributeFieldProps } from './components/DynamicAttributeField.js';
@@ -47,6 +57,8 @@ export { OptionEditor } from './components/OptionEditor.js';
 export type { OptionEditorProps } from './components/OptionEditor.js';
 export { OptionComparison } from './components/OptionComparison.js';
 export type { OptionComparisonProps } from './components/OptionComparison.js';
+export { WorkspaceViewSwitcher } from './components/WorkspaceViewSwitcher.js';
+export type { WorkspaceViewSwitcherProps } from './components/WorkspaceViewSwitcher.js';
 export { CustomConcernForm } from './components/CustomConcernForm.js';
 export type { CustomConcernFormProps } from './components/CustomConcernForm.js';
 export { CaseExtensionReviewCard } from './components/CaseExtensionReviewCard.js';

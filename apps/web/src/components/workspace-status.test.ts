@@ -11,11 +11,13 @@ function buildRecommendation(overrides: Partial<Recommendation> = {}): Recommend
     hypotheses: [],
     limitations: [],
     sourceIds: [],
-    optionId: 'candidate-1',
-    createdAt: '2026-08-27T00:00:00.000Z',
-    updatedAt: '2026-08-27T00:00:00.000Z',
+    favoredOptionId: null,
+    confidence: 0.8,
+    resolvedObligationIds: [],
+    acceptedUncertaintyObligationIds: [],
+    generatedAt: '2026-08-27T00:00:00.000Z',
     ...overrides,
-  } as Recommendation;
+  };
 }
 
 function buildProposal(overrides: Partial<DecisionProposal> = {}): DecisionProposal {
@@ -24,9 +26,8 @@ function buildProposal(overrides: Partial<DecisionProposal> = {}): DecisionPropo
     recommendationId: 'rec-1',
     status: 'pending',
     createdAt: '2026-08-27T00:00:00.000Z',
-    updatedAt: '2026-08-27T00:00:00.000Z',
     ...overrides,
-  } as DecisionProposal;
+  };
 }
 
 function buildInput(overrides: Partial<WorkspaceStatusInput> = {}): WorkspaceStatusInput {
@@ -39,40 +40,51 @@ function buildInput(overrides: Partial<WorkspaceStatusInput> = {}): WorkspaceSta
   };
 }
 
-function stageState(status: ReturnType<typeof deriveWorkspaceStatus>, stage: string) {
-  return status.stages.find((s) => s.stage === stage)?.state;
-}
-
 describe('deriveWorkspaceStatus', () => {
-  it('a fresh case with nothing started shows the open next step, started done, investigating current', () => {
+  it('a fresh case with nothing started reaches the not_started phase with a request-investigation action', () => {
     const status = deriveWorkspaceStatus(buildInput());
-    expect(status.nextStep).toEqual({
-      tone: 'open',
-      text: "Nothing's been looked into yet.",
-      action: { label: 'Request investigation' },
+    expect(status).toEqual({
+      phase: 'not_started',
+      headline: "Nothing's been looked into yet.",
+      action: { label: 'Request investigation', kind: 'request_investigation' },
     });
-    expect(stageState(status, 'started')).toBe('done');
-    expect(stageState(status, 'investigating')).toBe('current');
-    expect(stageState(status, 'pick-ready')).toBe('upcoming');
-    expect(stageState(status, 'decided')).toBe('upcoming');
   });
 
-  it('a genuinely active run shows the active next step, not the open one', () => {
+  it('a genuinely active run reaches the investigating phase, not not_started', () => {
     const status = deriveWorkspaceStatus(buildInput({ isRunActive: true }));
-    expect(status.nextStep.tone).toBe('active');
-    expect(status.nextStep.action).toBeUndefined();
-    expect(stageState(status, 'investigating')).toBe('current');
+    expect(status.phase).toBe('investigating');
+    expect(status.headline).toBe('Sift is investigating.');
+    expect(status.action).toBeUndefined();
   });
 
-  it('singular vs plural finding count in the flagged-findings next step', () => {
+  it('singular vs plural finding count in the ready_blocked detail text', () => {
     const one = deriveWorkspaceStatus(buildInput({ flaggedFindingsCount: 1 }));
-    expect(one.nextStep.text).toBe('1 finding may need a closer look before Sift can finish.');
+    expect(one.phase).toBe('ready_blocked');
+    expect(one.detail).toBe('1 finding may need a closer look before Sift can finish.');
     const three = deriveWorkspaceStatus(buildInput({ flaggedFindingsCount: 3 }));
-    expect(three.nextStep.text).toBe('3 findings may need a closer look before Sift can finish.');
-    expect(three.nextStep.action).toEqual({ label: 'Review findings' });
+    expect(three.detail).toBe('3 findings may need a closer look before Sift can finish.');
+    expect(three.action).toEqual({ label: 'Review findings', kind: 'review_findings' });
   });
 
-  it('a pending proposal wins over flagged findings and marks every earlier stage done', () => {
+  it('a withheld draft with no recommendation yet reaches ready_blocked with the "Not ready yet" headline', () => {
+    const status = deriveWorkspaceStatus(buildInput({ withheld: true }));
+    expect(status.phase).toBe('ready_blocked');
+    expect(status.headline).toBe('Not ready yet');
+    // No flagged findings were supplied, so no review-findings action --
+    // the withheld recommendation's own concrete reasons render from
+    // `RecommendationCard`'s `withheld` prop, not duplicated here.
+    expect(status.action).toBeUndefined();
+  });
+
+  it('a real recommendation with no proposal yet reaches ready_blocked with the "Current recommendation" headline', () => {
+    const status = deriveWorkspaceStatus(
+      buildInput({ recommendation: buildRecommendation({ status: 'ready' }) }),
+    );
+    expect(status.phase).toBe('ready_blocked');
+    expect(status.headline).toBe('Current recommendation');
+  });
+
+  it('a pending proposal reaches pending_approval and wins over flagged findings', () => {
     const status = deriveWorkspaceStatus(
       buildInput({
         recommendation: buildRecommendation({ status: 'ready' }),
@@ -80,48 +92,41 @@ describe('deriveWorkspaceStatus', () => {
         flaggedFindingsCount: 2,
       }),
     );
-    expect(status.nextStep.tone).toBe('ready');
-    expect(status.nextStep.action).toEqual({ label: 'Go to Our pick' });
-    expect(stageState(status, 'started')).toBe('done');
-    expect(stageState(status, 'investigating')).toBe('done');
-    expect(stageState(status, 'pick-ready')).toBe('done');
-    expect(stageState(status, 'decided')).toBe('current');
+    expect(status.phase).toBe('pending_approval');
+    expect(status.headline).toBe('Sift has a recommendation ready for your decision.');
+    // No redundant action -- ApprovalCard's own Approve/Reject/Revise
+    // controls are the real next action, rendered directly in the hero.
+    expect(status.action).toBeUndefined();
   });
 
-  it('a settled proposal marks every stage done and falls through to the calm state', () => {
+  it.each([
+    ['approved', 'Decided.'],
+    ['rejected', 'Rejected. Sift can keep looking if you want another recommendation.'],
+    ['revision_requested', 'Revision requested. Sift will bring back an updated recommendation.'],
+  ] as const)(
+    'a settled proposal (%s) reaches the decided phase with its own headline',
+    (settledStatus, expectedHeadline) => {
+      const status = deriveWorkspaceStatus(
+        buildInput({
+          recommendation: buildRecommendation({ status: 'ready' }),
+          proposal: buildProposal({ status: settledStatus }),
+        }),
+      );
+      expect(status.phase).toBe('decided');
+      expect(status.headline).toBe(expectedHeadline);
+      expect(status.action).toBeUndefined();
+    },
+  );
+
+  it('a decided case takes priority even while flagged findings or an active run are also present', () => {
     const status = deriveWorkspaceStatus(
       buildInput({
         recommendation: buildRecommendation({ status: 'ready' }),
         proposal: buildProposal({ status: 'approved' }),
+        flaggedFindingsCount: 5,
+        isRunActive: true,
       }),
     );
-    expect(status.nextStep).toEqual({
-      tone: 'calm',
-      text: "You're all caught up. Sift will let you know if anything changes.",
-    });
-    expect(stageState(status, 'decided')).toBe('done');
-  });
-
-  it('a reopened case (stale recommendation after new evidence) reverts pick-ready to current', () => {
-    const status = deriveWorkspaceStatus(
-      buildInput({
-        recommendation: buildRecommendation({ status: 'stale' }),
-        proposal: null,
-      }),
-    );
-    expect(stageState(status, 'investigating')).toBe('done');
-    expect(stageState(status, 'pick-ready')).toBe('current');
-    expect(stageState(status, 'decided')).toBe('upcoming');
-  });
-
-  it('all four stages have a state for every possible input', () => {
-    const status = deriveWorkspaceStatus(buildInput());
-    expect(status.stages).toHaveLength(4);
-    expect(status.stages.map((s) => s.stage)).toEqual([
-      'started',
-      'investigating',
-      'pick-ready',
-      'decided',
-    ]);
+    expect(status.phase).toBe('decided');
   });
 });

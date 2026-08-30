@@ -32,13 +32,19 @@ test.describe('reload persistence', () => {
     await sift.waitForRecommendationReady();
 
     const titleBefore = await page.getByTestId('case-header-title').textContent();
-    const badgeBefore = await page.getByTestId('case-header-pack-badge').textContent();
     const rationaleBefore = await page.getByTestId('recommendation-card-rationale').textContent();
     expect(titleBefore, 'a real title must exist before reload').toBeTruthy();
     expect(
       rationaleBefore,
       'a real recommendation rationale must exist before reload',
     ).toBeTruthy();
+
+    // The Decision Pack badge left the consumer surface entirely
+    // (`docs/decisions/0004-consumer-workspace-information-architecture.md`
+    // decision item 1) -- confirmed absent before reload too, so the
+    // negative assertion after reload below is a genuine "still absent"
+    // proof, not merely "never existed to begin with here."
+    await expect(page.getByTestId('case-header-pack-badge')).toHaveCount(0);
 
     // Track every "start a new case" call across the reload -- if
     // restoration accidentally fell back to creating a fresh case instead
@@ -58,22 +64,38 @@ test.describe('reload persistence', () => {
 
     await expect(page.getByTestId('case-header')).toBeVisible({ timeout: 15_000 });
     expect(await page.getByTestId('case-header-title').textContent()).toBe(titleBefore);
-    expect(await page.getByTestId('case-header-pack-badge').textContent()).toBe(badgeBefore);
+    await expect(page.getByTestId('case-header-pack-badge')).toHaveCount(0);
     await expect(page.getByTestId('recommendation-card-rationale')).toHaveText(
       rationaleBefore ?? '',
     );
 
-    // The activity backlog also came back from the server (not just the
-    // canonical snapshot) -- the poll-fallback/initial-load endpoint
-    // returns both together. "Sift's work so far" is a closed-by-default
-    // disclosure row (ADR 0002), so it's opened before this check.
-    await sift.openDisclosure('work-so-far');
-    await expect(page.getByTestId('activity-timeline-list')).toBeVisible();
-    const activityItemCount = await page
-      .getByTestId('activity-timeline-list')
-      .locator('li')
-      .count();
-    expect(activityItemCount).toBeGreaterThan(0);
+    // The activity backlog (not just the canonical snapshot) also came back
+    // from the server -- the poll-fallback/initial-load endpoint returns
+    // both together.
+    //
+    // This used to be proven by opening "Sift's work so far" (a
+    // closed-by-default disclosure row wrapping `ActivityTimeline`) and
+    // counting its rendered items. `docs/decisions/
+    // 0004-consumer-workspace-information-architecture.md` decision item
+    // 3/4 moved that raw chronological ledger off the consumer surface
+    // entirely -- confirmed gone from the DOM below, not merely closed.
+    // `LiveRunStatus`, now embedded directly in the answer-first hero, is
+    // the replacement proof: it is driven purely by real streamed/replayed
+    // `PublicActivityEvent`s correlated to a receipt `App.tsx`'s
+    // `deriveReceiptFromEvents` derives from that same replayed history. If
+    // only the canonical snapshot had come back and the activity backlog
+    // had not, `liveRunStatusReceipt` would stay `null` and this region
+    // would render nothing at all (`LiveRunStatus.tsx`'s own "renders
+    // nothing before any command" contract) -- so a populated, "Completed"
+    // `LiveRunStatus` after a hard reload is real, positive proof the full
+    // backlog round-tripped through the server, not just the snapshot.
+    await expect(page.getByTestId('disclosure-work-so-far')).toHaveCount(0);
+    await expect(page.getByTestId('activity-timeline')).toHaveCount(0);
+    await expect(page.getByTestId('live-run-status')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('live-run-status-phase')).toHaveText(/completed/i, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('live-run-status-summary')).not.toBeEmpty();
 
     expect(demoStartCalls, 'reload must restore the existing case, not start a new one').toEqual(
       [],

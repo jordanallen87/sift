@@ -162,10 +162,21 @@ function CompareRow({ definition, pinned, isStriped, renderedOptions }: CompareR
     >
       <th
         scope="row"
-        className="p-[var(--space-2)] text-[length:var(--font-size-sm)] font-normal text-[var(--color-ink-secondary)]"
+        // `align-top` + wrapping, deliberately not truncation. Live
+        // verification at 430px caught this: the label was `truncate`d,
+        // but truncation needs an overflow context the `th` never
+        // established, so long labels ("True out-the-door price", "Cargo
+        // volume behind second row") visually overlapped the adjacent
+        // value cell rather than clipping -- unreadable, and worse than
+        // either wrapping or clipping. Wrapping is the right fix rather
+        // than adding `overflow-hidden`: in a comparison table an
+        // ellipsized attribute name ("Estimated 5-year mainten...") leaves
+        // the reader unable to tell what the number beside it measures,
+        // which is precisely the question this view exists to answer.
+        className="p-[var(--space-2)] align-top text-[length:var(--font-size-sm)] font-normal break-words text-[var(--color-ink-secondary)]"
       >
-        <span className="inline-flex min-w-0 items-center gap-[var(--space-1)]">
-          <span className="truncate">{definition.label}</span>
+        <span className="flex min-w-0 flex-wrap items-center gap-[var(--space-1)]">
+          <span className="min-w-0 break-words">{definition.label}</span>
           {custom ? (
             <Badge
               variant="outline"
@@ -311,11 +322,34 @@ export function OptionCompareView({
             <table
               data-testid="option-compare-view-table"
               data-layout={layout}
-              className="w-full border-collapse text-left"
+              // `table-fixed` in head-to-head, and only there. Live
+              // verification at 430px found the real defect this guards
+              // against: with the browser's default auto table layout, the
+              // attribute-label column sizes itself to its longest label
+              // ("Both dog travel crates fit behind the second row without
+              // folding either seat") and measured 468px inside a 366px
+              // pane -- wider than the whole viewport on its own. The page
+              // itself did not scroll sideways (the wrapper's overflow-x
+              // contained it correctly), so nothing failed; the user simply
+              // saw a column of attribute names and had to scroll right to
+              // reach a single value, which defeats the entire point of
+              // head-to-head at narrow width (change-set §7). `truncate` on
+              // the label was already present but inert, because truncation
+              // needs a constrained width to act on. Fixed layout gives the
+              // column a real bound so the two option columns are visible
+              // without scrolling. Expanded layout deliberately keeps auto
+              // sizing: there the table is meant to be wider than the pane
+              // and scroll inside its own container.
+              className={`w-full border-collapse text-left ${isHeadToHead ? 'table-fixed' : ''}`}
             >
               <thead>
                 <tr>
-                  <th scope="col" className="p-[var(--space-2)] text-[length:var(--font-size-sm)]">
+                  <th
+                    scope="col"
+                    className={`p-[var(--space-2)] text-[length:var(--font-size-sm)] ${
+                      isHeadToHead ? 'w-[38%]' : ''
+                    }`}
+                  >
                     <span className="visually-hidden">Attribute</span>
                   </th>
                   {renderedOptions.map((option) => {

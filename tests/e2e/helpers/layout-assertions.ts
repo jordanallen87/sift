@@ -59,20 +59,25 @@ export async function assertPrimaryTouchTargets(
  * edge (via Playwright's real `boundingBox()`, not a computed-style guess)
  * inside the current viewport width. Unlike `assertPrimaryTouchTargets`,
  * this carries no minimum-size requirement -- it exists for non-interactive,
- * label/badge-style elements (e.g. `case-header-pack-badge`) that must still
- * stay visually inside the pane even though they are not actionable
- * controls.
+ * label/badge-style elements that must still stay visually inside the pane
+ * even though they are not actionable controls (e.g. the connection-status
+ * badge `CaseHeader.tsx` renders today; the Decision Pack badge this
+ * assertion was originally written against was removed from the consumer
+ * surface entirely by `docs/decisions/
+ * 0004-consumer-workspace-information-architecture.md` -- see
+ * `car-purchase-journey.spec.ts`'s negative assertion proving that removal
+ * holds, rather than this general-purpose helper still naming it).
  *
  * `assertNoHorizontalOverflow` alone cannot catch this class of bug: this
  * app's deliberate `html, body { overflow-x: hidden }` backstop
  * (`apps/web/src/styles/global.css`) keeps `document.documentElement.scrollWidth`
  * pinned to `clientWidth` even when a child element is silently clipped past
  * the viewport edge -- exactly how the case-header pack badge's own overflow
- * went undetected by the automated suite before its `min-w-0`/`truncate`
- * fix. This assertion checks a specific element's own geometry directly, so
- * the next instance of this bug class (a different element, not just this
- * one badge) is still caught even though the document-level scrollWidth
- * proxy stays green.
+ * (before it was removed) went undetected by the automated suite before its
+ * `min-w-0`/`truncate` fix. This assertion checks a specific element's own
+ * geometry directly, so the next instance of this bug class (a different
+ * element) is still caught even though the document-level scrollWidth proxy
+ * stays green.
  */
 export async function assertElementsWithinViewport(
   page: Page,
@@ -173,4 +178,43 @@ export async function assertRightPaneIntegrity(
   await assertNoHorizontalOverflow(page);
   await assertNoStickyOverlap(page, primaryActionTestIds);
   await assertPrimaryTouchTargets(page, primaryActionTestIds);
+}
+
+/**
+ * The machine-checked above-the-fold invariant `docs/decisions/
+ * 0004-consumer-workspace-information-architecture.md` decision item 6
+ * requires: "A Playwright assertion is added verifying that the
+ * recommendation region's top edge falls within the first viewport height
+ * at each of the three canonical narrow widths -- 390, 430, and 480."
+ *
+ * This exists specifically because `product.md`'s "primary actions remain
+ * visible without scrolling" promise (originally established by ADR 0002)
+ * regressed once, silently -- two unspecced regions (`WorkspaceStatusHeader`,
+ * `WebMcpStatus`) grew the page to 2040px tall with the answer starting
+ * below the fold at 430px, and nothing in the test suite measured it (ADR
+ * 0004 §1, quoted directly: "Nothing in the test suite measured whether the
+ * answer stayed above the fold, so no gate caught the regression when it
+ * happened"). A spec sentence alone already failed to hold this property
+ * once; this assertion is the gate that replaces relying on that sentence
+ * alone.
+ *
+ * Scoped to the three canonical narrow widths (<= 480px) exactly as ADR
+ * 0004 states it -- `desktop-1440` is the secondary, non-canonical
+ * project (`testing.md`), and the invariant is not claimed there, so this
+ * is a deliberate no-op at that width rather than a silently-skipped
+ * assertion.
+ */
+export async function assertRecommendationHeroAboveTheFold(page: Page): Promise<void> {
+  const viewport = page.viewportSize();
+  if (!viewport || viewport.width > 480) return;
+
+  const box = await page.getByTestId('recommendation-hero').boundingBox();
+  expect(box, 'the recommendation hero must be present and rendered to measure it').not.toBeNull();
+  if (box === null) return;
+
+  expect(
+    box.y,
+    `recommendation-hero's top edge (${box.y}px) must fall within the first viewport height ` +
+      `(${viewport.height}px) at ${viewport.width}px -- ADR 0004's above-the-fold invariant`,
+  ).toBeLessThan(viewport.height);
 }
