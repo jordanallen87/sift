@@ -4,7 +4,8 @@ Covers the work driven by `docs/change-sets/2026-08-30-generic-decision-workspac
 `docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`. The earlier build's report is
 `docs/completion-report.md` and remains accurate for the work it describes; this is the follow-on.
 
-**Final git SHA:** `4a9008f95405282e6e254137f7dea6ee631522a0`
+**Final verified git SHA:** `0b82c6b6cdfa7da1c6a0255b7607c6021af2bc7f` — the tree the passing
+`pnpm verify` run below attests to. This report is committed immediately after it.
 **Commits in this effort:** 15
 
 ---
@@ -61,7 +62,7 @@ Commands and their actual results.
 
 | Command | Result |
 | --- | --- |
-| `pnpm verify` | **PASSED**, 10/10 stages (run `2026-08-30T20-30-02-266Z-c8b2301d`) |
+| `pnpm verify` | **PASSED**, 10/10 stages (run `2026-08-30T20-33-17-368Z-9da584db`) |
 | `pnpm verify:release` | **FAILED on one check** — see §5 |
 | `pnpm run test:unit` | 2774 passing |
 | `pnpm run test:scenario` | 4 passing |
