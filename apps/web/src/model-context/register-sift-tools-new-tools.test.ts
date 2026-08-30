@@ -656,7 +656,8 @@ const FIXTURE_DECISION_GUIDE: DecisionGuide = {
   suggestedQuestions: ['What is the total budget, including taxes and fees?'],
   importantUnknowns: ['Whether the vehicle physically fits the household garage.'],
   researchGuidance: 'Prefer independent reviews and verified ownership-cost data.',
-  customFieldGuidance: 'Create a custom field only when no pack-defined attribute already covers it.',
+  customFieldGuidance:
+    'Create a custom field only when no pack-defined attribute already covers it.',
   presentationGuidance: 'Show price and total cost of ownership together.',
 };
 
@@ -689,7 +690,9 @@ describe('sift_get_decision_guide', () => {
     // Structured typed fields, never one concatenated prose blob -- each
     // field survives independently in the response.
     expect(result.data?.guide.domainPurpose).toBe(FIXTURE_DECISION_GUIDE.domainPurpose);
-    expect(result.data?.guide.suggestedQuestions).toEqual(FIXTURE_DECISION_GUIDE.suggestedQuestions);
+    expect(result.data?.guide.suggestedQuestions).toEqual(
+      FIXTURE_DECISION_GUIDE.suggestedQuestions,
+    );
     expect(result.data?.guide.presentationGuidance).toBe(
       FIXTURE_DECISION_GUIDE.presentationGuidance,
     );

@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import type { AttributeStatus, EvidenceExpectation } from '@sift/contracts';
-import { meetsEvidenceExpectation } from './evidence-expectation.js';
+import type { AttributeDefinition, AttributeStatus, EvidenceExpectation } from '@sift/contracts';
+import { isIdentityAttribute, meetsEvidenceExpectation } from './evidence-expectation.js';
+
+function definition(overrides: Partial<AttributeDefinition>): AttributeDefinition {
+  return {
+    id: 'car.make',
+    label: 'Make',
+    valueType: 'string',
+    required: true,
+    appliesTo: ['car'],
+    evidenceExpectation: 'source',
+    comparison: 'none',
+    sensitive: false,
+    ...overrides,
+  };
+}
 
 const STATUSES: AttributeStatus[] = ['asserted', 'supported', 'verified', 'conflicted', 'unknown'];
 
@@ -89,5 +103,47 @@ describe('meetsEvidenceExpectation', () => {
         expect(meetsEvidenceExpectation(status, expectation)).toBe(expected[expectation][status]);
       }
     }
+  });
+});
+
+describe('isIdentityAttribute', () => {
+  // Car-purchase pack examples (`packages/packs/src/car-purchase.ts`):
+  // `car.make`/`car.model`/`car.trim`/`car.body_style` are plain
+  // `valueType: 'string'` catalog descriptors the pack marks
+  // `comparison: 'none'` -- they describe what an option IS, not how well it
+  // performs, so they carry no decision-insight signal on their own.
+
+  it('is true for a plain string field with no comparison direction', () => {
+    expect(isIdentityAttribute(definition({ valueType: 'string', comparison: 'none' }))).toBe(true);
+  });
+
+  it('is false once a comparison direction is declared, even for a string field', () => {
+    for (const comparison of ['lower_better', 'higher_better', 'target', 'constraint'] as const) {
+      expect(isIdentityAttribute(definition({ valueType: 'string', comparison }))).toBe(false);
+    }
+  });
+
+  it('is false for a non-string value type with no comparison direction -- e.g. a genuinely qualitative concern like ride comfort', () => {
+    for (const valueType of [
+      'number',
+      'money',
+      'boolean',
+      'date',
+      'duration',
+      'enum',
+      'range',
+      'string_list',
+      'text',
+    ] as const) {
+      expect(isIdentityAttribute(definition({ valueType, comparison: 'none' }))).toBe(false);
+    }
+  });
+
+  it('is false for a custom.* attribute even when it is a comparison:none string -- a user only adds a custom field because it matters to their own decision', () => {
+    expect(
+      isIdentityAttribute(
+        definition({ id: 'custom.dog_crate_fit', valueType: 'string', comparison: 'none' }),
+      ),
+    ).toBe(false);
   });
 });

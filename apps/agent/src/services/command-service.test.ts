@@ -747,7 +747,11 @@ describe('CommandService', () => {
         type: 'string',
         value: 'Fits with seats down.',
       });
-      expect(attrs?.['car.price']?.value).toEqual({ type: 'money', amount: 24000, currency: 'USD' });
+      expect(attrs?.['car.price']?.value).toEqual({
+        type: 'money',
+        amount: 24000,
+        currency: 'USD',
+      });
     });
 
     it('accepts an explicit "unknown" status with no value (§24 explicit unknowns)', () => {
@@ -817,7 +821,10 @@ describe('CommandService', () => {
         caseId: 'missing',
         optionId: 'x',
         expectedSequence: 0,
-        attribute: { definitionId: 'car.price', value: { type: 'money', amount: 1, currency: 'USD' } },
+        attribute: {
+          definitionId: 'car.price',
+          value: { type: 'money', amount: 1, currency: 'USD' },
+        },
       });
       expect(result.status).toBe('not_found');
     });
@@ -828,7 +835,10 @@ describe('CommandService', () => {
         caseId: snapshot.id,
         optionId,
         expectedSequence: snapshot.eventSequence + 5,
-        attribute: { definitionId: 'car.price', value: { type: 'money', amount: 1, currency: 'USD' } },
+        attribute: {
+          definitionId: 'car.price',
+          value: { type: 'money', amount: 1, currency: 'USD' },
+        },
       });
       expect(result.status).toBe('conflict');
     });

@@ -53,6 +53,12 @@
  * "Nothing strongly supported yet." fallback, matching `QuickPickView.tsx`'s identical empty-state
  * copy, never an invented bullet.
  *
+ * The split is derived over every applicable definition, not just the `prominentDefinitions` the
+ * fact row renders -- see `buildInsights`'s own header comment for why (an identity-attribute
+ * filter, and a fact-row-duplicate suppression, added after the initial version produced the same
+ * "value shown confidently, then flagged as needing evidence, in the same glance" contradiction
+ * `QuickPickView.tsx`'s header comment names).
+ *
  * **Honest unknowns (§10, CLAUDE.md).** The attribute-values row renders "Unknown" for any
  * prominent attribute with no value, muted the same way `OptionCompareView`'s cells and
  * `QuickPickView`'s highlight row do -- never blank, never invented.
@@ -83,7 +89,7 @@ import { useMemo } from 'react';
 import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
 import { formatAttributeValue } from './attribute-value-format.js';
 import { Badge } from '@/components/ui/badge';
-import { meetsEvidenceExpectation } from '../lib/evidence-expectation.js';
+import { isIdentityAttribute, meetsEvidenceExpectation } from '../lib/evidence-expectation.js';
 
 export interface OptionListViewProps {
   options: EntityRecord[];
@@ -101,6 +107,13 @@ export interface OptionListViewProps {
 
 const CUSTOM_ATTRIBUTE_ID_PREFIX = 'custom.';
 const MAX_PROMINENT_ATTRIBUTES = 6;
+// Caps each of the three insight lists once `buildInsights` widened from
+// "only the prominent set" to every applicable definition (see that
+// function's header comment) -- otherwise a pack with many attributes could
+// grow "Concerns"/"Unresolved" without bound, defeating "avoid dumping every
+// available field" (§10) just one section down from where `facts` already
+// enforces it.
+const MAX_INSIGHT_ITEMS_PER_SECTION = 6;
 
 /** Identical check to `OptionCompareView.tsx`'s `isCustomAttributeId` -- `attributes.ts`'s `custom.` id namespace comment warns this id is otherwise "rendered directly in the generic UI" with no humanizing step (ADR 0005 Decision 6). */
 function isCustomAttributeId(id: string): boolean {
@@ -189,16 +202,42 @@ interface CardInsights {
   unresolved: CardInsight[];
 }
 
-/** The three-way honest split the header comment describes, over the same prominent set `buildFacts` uses. */
+/**
+ * The three-way honest split the header comment describes. Widened to run
+ * over every applicable definition, not just the prominent set `buildFacts`
+ * uses for the fact row: sourcing both from the same set meant every
+ * insight necessarily duplicated a fact already shown above it, including
+ * the self-contradictory case of a value shown confidently in the fact row
+ * and then, one section down, flagged as still needing evidence (the same
+ * "Model year: 2022" / "Model year still needs stronger evidence" defect
+ * `QuickPickView.tsx`'s header comment describes -- this view showed it too,
+ * as "Price: 28500" / "Price still needs stronger evidence" for the exact
+ * same value). Two refinements now sit on top of the raw per-attribute
+ * signal, mirroring `QuickPickView.tsx`'s `buildInsights` exactly:
+ *
+ * 1. A plain identity/label descriptor (`isIdentityAttribute` --
+ *    `../lib/evidence-expectation.js`) is skipped before any evidence
+ *    check, so it never appears in any of the three lists regardless of
+ *    status.
+ * 2. An under-evidenced value that is already shown, unqualified, in the
+ *    fact row (`prominentIds`) is not repeated as a concern -- suppressed
+ *    only for that one branch, so a genuinely unknown or conflicted value
+ *    (never merely "already shown with no caveat") always still surfaces,
+ *    and a value that DOES meet its evidence bar is still repeated in
+ *    `strengths` deliberately, as confirmation rather than contradiction.
+ */
 function buildInsights(
   option: EntityRecord,
-  prominentDefinitions: AttributeDefinition[],
+  applicableDefinitions: AttributeDefinition[],
+  prominentIds: ReadonlySet<string>,
 ): CardInsights {
   const strengths: CardInsight[] = [];
   const concerns: CardInsight[] = [];
   const unresolved: CardInsight[] = [];
 
-  for (const definition of prominentDefinitions) {
+  for (const definition of applicableDefinitions) {
+    if (isIdentityAttribute(definition)) continue;
+
     const record = option.attributes[definition.id];
 
     if (record === undefined || record.status === 'unknown' || record.value === undefined) {
@@ -220,7 +259,7 @@ function buildInsights(
         definitionId: definition.id,
         text: `${definition.label}: ${formatAttributeValue(record.value)}`,
       });
-    } else {
+    } else if (!prominentIds.has(definition.id)) {
       concerns.push({
         definitionId: definition.id,
         text: `${definition.label} still needs stronger evidence`,
@@ -228,7 +267,11 @@ function buildInsights(
     }
   }
 
-  return { strengths, concerns, unresolved };
+  return {
+    strengths: strengths.slice(0, MAX_INSIGHT_ITEMS_PER_SECTION),
+    concerns: concerns.slice(0, MAX_INSIGHT_ITEMS_PER_SECTION),
+    unresolved: unresolved.slice(0, MAX_INSIGHT_ITEMS_PER_SECTION),
+  };
 }
 
 interface InsightSectionProps {
@@ -301,10 +344,10 @@ function OptionListCard({
     () => buildFacts(option, prominentDefinitions),
     [option, prominentDefinitions],
   );
-  const insights = useMemo(
-    () => buildInsights(option, prominentDefinitions),
-    [option, prominentDefinitions],
-  );
+  const insights = useMemo(() => {
+    const prominentIds = new Set(prominentDefinitions.map((definition) => definition.id));
+    return buildInsights(option, applicableDefinitions, prominentIds);
+  }, [option, applicableDefinitions, prominentDefinitions]);
 
   return (
     <li

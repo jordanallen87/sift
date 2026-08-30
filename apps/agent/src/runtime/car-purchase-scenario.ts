@@ -205,7 +205,15 @@ export function ensureSourcesExist(
     newSources.push({
       id: sourceId,
       url: `https://fixtures.example.com/sources/${sourceId}`,
-      title: sourceId,
+      // The human-readable publisher name, NOT the raw `sourceId`.
+      // `RecommendationCard` renders `source.title` as the citation link's
+      // visible text, so `title: sourceId` put internal ids like
+      // "source-national-crash-safety-consortium" directly in front of the
+      // user under "Sources" -- change-set §34 / DoD item 34. Found by
+      // reading a regenerated 430px baseline, after the same leak had
+      // already been closed in `rationale`/`limitations`: the citation list
+      // was a third surface nobody had checked.
+      title: publisherFor(sourceId),
       publisher: publisherFor(sourceId),
       retrievedAt: now,
       origin: 'fixture',

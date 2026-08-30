@@ -249,7 +249,11 @@ function PersonalConcernRow({ concern, onConfirm, onReject }: PersonalConcernRow
 }
 
 /** Renders nothing when `questions` is empty (§5, and decision-profile.ts's own "an empty list is the honest answer" rule) -- no card announces a Decision Guide/obligation/question that does not exist. */
-function SuggestedQuestionsSection({ questions }: { questions: DecisionProfileSuggestedQuestion[] }) {
+function SuggestedQuestionsSection({
+  questions,
+}: {
+  questions: DecisionProfileSuggestedQuestion[];
+}) {
   if (questions.length === 0) return null;
 
   return (

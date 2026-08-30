@@ -205,7 +205,7 @@ const CATALOG: CatalogFixture[] = [
   {
     name: 'sift_list_notes',
     description:
-      "Returns every note recorded on this case (body, kind, who wrote it, and which options/question/sources it references), most-recently-added first. A note is an informal observation, preference, reminder, or open question -- never evidence, a criterion, or a comparison field -- so this list never affects readiness or the recommendation. Use this when the user asks what has been noted so far, or before adding a new note to avoid recording a duplicate. Call sift_list_research instead for externally-sourced research (sources and claims).",
+      'Returns every note recorded on this case (body, kind, who wrote it, and which options/question/sources it references), most-recently-added first. A note is an informal observation, preference, reminder, or open question -- never evidence, a criterion, or a comparison field -- so this list never affects readiness or the recommendation. Use this when the user asks what has been noted so far, or before adding a new note to avoid recording a duplicate. Call sift_list_research instead for externally-sourced research (sources and claims).',
     sourceSchema: ListNotesInputSchema,
   },
   {

@@ -1685,6 +1685,7 @@ describe('App', () => {
         'disclosure-options',
         'disclosure-findings',
         'disclosure-still-checking',
+        'disclosure-add-note',
         'disclosure-add-concern',
       ]) {
         const position = hero.compareDocumentPosition(screen.getByTestId(testId));
@@ -1697,7 +1698,11 @@ describe('App', () => {
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
-      for (const testId of ['disclosure-options', 'disclosure-still-checking']) {
+      for (const testId of [
+        'disclosure-options',
+        'disclosure-still-checking',
+        'disclosure-add-note',
+      ]) {
         expect(screen.getByTestId<HTMLDetailsElement>(testId).open).toBe(false);
       }
       // "What Sift found" is a FindingsSheet trigger, not a native disclosure
@@ -2056,6 +2061,62 @@ describe('App', () => {
     });
   });
 
+  // A human-facing "add note" affordance -- `CaseNote`/`note.added`/
+  // `addNote` were already fully built and reachable only through the
+  // `sift_add_note` WebMCP tool; this closes the gap for a person at the
+  // keyboard. `AddNoteForm` lives in its own closed-by-default
+  // `DisclosureSection` (mirroring "Manage options"/"Still checking"/"Add
+  // something Sift should check") rather than inside `CaseNotes`, so the
+  // affordance stays reachable even when `CaseNotes` itself renders nothing
+  // (global constraint 4) and an empty case does not grow a large permanent
+  // empty region -- the closed row is the only permanent element.
+  describe('Add a note (AddNoteForm)', () => {
+    it('renders the "Add a note" disclosure row even when the case has no notes yet', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      expect(screen.getByTestId('disclosure-add-note')).toBeInTheDocument();
+      expect(screen.queryByTestId('case-notes')).not.toBeInTheDocument();
+    });
+
+    it('starts closed by default', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      expect(screen.getByTestId<HTMLDetailsElement>('disclosure-add-note').open).toBe(false);
+    });
+
+    it('submits a human-entered note through commands.addNote with no origin field, and shows success', async () => {
+      let capturedBody: unknown;
+      server.use(
+        commandHandler('addNote', buildFakeCommandReceipt({ caseId: CASE_ID }), (body) => {
+          capturedBody = body;
+        }),
+      );
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      const user = await startDemoAndWait();
+
+      await user.click(screen.getByTestId('disclosure-add-note-summary'));
+      await user.type(
+        screen.getByLabelText('Note'),
+        'The seat position felt wrong on the test drive.',
+      );
+      await user.click(screen.getByTestId('add-note-form-submit'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('add-note-form-success')).toBeInTheDocument();
+      });
+      expect(capturedBody).toEqual({
+        caseId: CASE_ID,
+        expectedSequence: snapshot.eventSequence,
+        note: { body: 'The seat position felt wrong on the test drive.' },
+      });
+    });
+  });
+
   // Task A11: the rendered workspace view must derive from the persisted
   // `CaseState.view` when one exists, rather than from an independent local
   // `useState` -- otherwise a genuinely persisted `sift_set_view` WebMCP
@@ -2146,7 +2207,11 @@ describe('App', () => {
       expect(screen.getByTestId('workspace-view-content-quick_pick')).toBeVisible();
 
       server.use(
-        pollHandler({ ...snapshot, view: { mode: 'board' }, eventSequence: snapshot.eventSequence + 1 }),
+        pollHandler({
+          ...snapshot,
+          view: { mode: 'board' },
+          eventSequence: snapshot.eventSequence + 1,
+        }),
       );
       await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
       const source = FakeEventSource.instances.at(-1)!;
@@ -2166,6 +2231,241 @@ describe('App', () => {
       await waitFor(() => {
         expect(screen.getByTestId('workspace-view-content-board')).toBeVisible();
       });
+    });
+  });
+
+  // Seam defect closed this task (this file's own top-of-conversation
+  // brief): `sift_configure_comparison`/`sift_set_view` genuinely persist
+  // `CaseState.view.compare.optionIds`/`visibleAttributeIds`/
+  // `pinnedAttributeIds` through the real `setView` command, and
+  // `OptionCompareView` genuinely implements those as real narrowing props
+  // -- but nothing in `App.tsx` read the persisted values and passed them
+  // down, so a real `sift_configure_comparison` WebMCP call reported success
+  // while the rendered table never moved. This is the §58 demo moment's own
+  // regression gate: a persisted view configuration must actually change
+  // what the Compare table renders, not merely be storable.
+  describe('Compare view configuration reaches OptionCompareView (WebMCP demo moment, §58)', () => {
+    const PRICE_DEFINITION = {
+      id: 'price',
+      label: 'Price',
+      valueType: 'money' as const,
+      required: false,
+      appliesTo: ['car'],
+      evidenceExpectation: 'assertion' as const,
+      comparison: 'lower_better' as const,
+      sensitive: false,
+    };
+    const MILEAGE_DEFINITION = {
+      id: 'mileage',
+      label: 'Mileage',
+      valueType: 'number' as const,
+      required: false,
+      appliesTo: ['car'],
+      evidenceExpectation: 'assertion' as const,
+      comparison: 'lower_better' as const,
+      sensitive: false,
+    };
+
+    function buildCar(id: string, label: string, price: number) {
+      return {
+        id,
+        kind: 'car',
+        label,
+        attributes: {
+          price: {
+            definitionId: 'price',
+            label: 'Price',
+            value: { type: 'money' as const, amount: price, currency: 'USD' },
+            origin: 'user' as const,
+            sourceIds: [],
+            status: 'asserted' as const,
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+          mileage: {
+            definitionId: 'mileage',
+            label: 'Mileage',
+            value: { type: 'number' as const, value: 10000, unit: 'mi' },
+            origin: 'user' as const,
+            sourceIds: [],
+            status: 'asserted' as const,
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        },
+        createdAt: '2026-08-27T00:00:00.000Z',
+        updatedAt: '2026-08-27T00:00:00.000Z',
+      };
+    }
+
+    // Forces expanded layout so `OptionCompareView`'s own narrow-layout
+    // head-to-head auto-pairing (which independently limits to 2 columns)
+    // cannot masquerade as this test's real subject: the persisted
+    // `compare.optionIds`/`visibleAttributeIds`/`pinnedAttributeIds` wiring.
+    function stubExpandedLayout() {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      }));
+    }
+
+    it('renders every option and attribute unchanged when the persisted view has no compare configuration', async () => {
+      stubExpandedLayout();
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        view: { mode: 'compare' },
+        attributeDefinitions: [PRICE_DEFINITION, MILEAGE_DEFINITION],
+        entities: [
+          buildCar('candidate-rav4', 'Toyota RAV4', 28500),
+          buildCar('candidate-crv', 'Honda CR-V', 32400),
+          buildCar('candidate-forester', 'Subaru Forester', 27000),
+        ],
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-view-content-compare')).toBeVisible();
+      });
+      expect(screen.getByTestId('option-compare-view-header-candidate-rav4')).toBeInTheDocument();
+      expect(screen.getByTestId('option-compare-view-header-candidate-crv')).toBeInTheDocument();
+      expect(
+        screen.getByTestId('option-compare-view-header-candidate-forester'),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('option-compare-view-row-price')).toBeInTheDocument();
+      expect(screen.getByTestId('option-compare-view-row-mileage')).toBeInTheDocument();
+
+      vi.unstubAllGlobals();
+    });
+
+    it('a persisted view.compare.optionIds/visibleAttributeIds/pinnedAttributeIds configuration genuinely narrows what the Compare table renders, and the hidden option is explained as not eliminated', async () => {
+      stubExpandedLayout();
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        view: {
+          mode: 'compare',
+          compare: { optionIds: ['candidate-rav4', 'candidate-crv'] },
+          visibleAttributeIds: ['price'],
+          pinnedAttributeIds: ['price'],
+        },
+        attributeDefinitions: [PRICE_DEFINITION, MILEAGE_DEFINITION],
+        entities: [
+          buildCar('candidate-rav4', 'Toyota RAV4', 28500),
+          buildCar('candidate-crv', 'Honda CR-V', 32400),
+          buildCar('candidate-forester', 'Subaru Forester', 27000),
+        ],
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-view-content-compare')).toBeVisible();
+      });
+      // The model's reconfiguration genuinely reached the rendered table.
+      expect(screen.getByTestId('option-compare-view-header-candidate-rav4')).toBeInTheDocument();
+      expect(screen.getByTestId('option-compare-view-header-candidate-crv')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('option-compare-view-header-candidate-forester'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId('option-compare-view-row-price')).toBeInTheDocument();
+      expect(screen.queryByTestId('option-compare-view-row-mileage')).not.toBeInTheDocument();
+      expect(screen.getByTestId('option-compare-view-row-price')).toHaveAttribute(
+        'data-pinned',
+        'true',
+      );
+      // The Forester was filtered from the comparison, not eliminated --
+      // Defect 1's own "never read as eliminated" requirement.
+      expect(screen.getByTestId('option-compare-view-filtered-note')).toHaveTextContent(
+        /not eliminated/i,
+      );
+
+      vi.unstubAllGlobals();
+    });
+
+    it('renders a confirmed case extension as a real Compare row; a still-pending one does not appear', async () => {
+      stubExpandedLayout();
+      const snapshot = buildFixtureCaseState({
+        id: CASE_ID,
+        view: { mode: 'compare' },
+        attributeDefinitions: [PRICE_DEFINITION],
+        entities: [
+          {
+            ...buildCar('candidate-rav4', 'Toyota RAV4', 28500),
+            attributes: {
+              ...buildCar('candidate-rav4', 'Toyota RAV4', 28500).attributes,
+              'custom.trunk_space': {
+                definitionId: 'custom.trunk_space',
+                label: 'Trunk space fit',
+                value: { type: 'string' as const, value: 'Fits a folded stroller' },
+                origin: 'user' as const,
+                sourceIds: [],
+                status: 'asserted' as const,
+                updatedAt: '2026-08-27T00:00:00.000Z',
+              },
+            },
+          },
+        ],
+        caseExtensions: [
+          {
+            id: 'ext-confirmed',
+            caseId: CASE_ID,
+            definition: {
+              id: 'custom.trunk_space',
+              label: 'Trunk space fit',
+              valueType: 'string',
+              required: false,
+              appliesTo: ['car'],
+              evidenceExpectation: 'assertion',
+              comparison: 'none',
+              sensitive: false,
+              origin: 'user',
+              reason: 'The household needs room for a folded stroller.',
+              confirmation: 'confirmed',
+              proposedBy: 'user',
+              createdAt: '2026-08-27T00:00:00.000Z',
+            },
+            createdAt: '2026-08-27T00:00:00.000Z',
+          },
+          {
+            id: 'ext-pending',
+            caseId: CASE_ID,
+            definition: {
+              id: 'custom.pet_sensory_fit',
+              label: 'Pet sensory fit',
+              valueType: 'string',
+              required: false,
+              appliesTo: ['car'],
+              evidenceExpectation: 'assertion',
+              comparison: 'none',
+              sensitive: false,
+              origin: 'agent_proposed',
+              reason: 'The household mentioned a sound-sensitive dog.',
+              confirmation: 'pending',
+              proposedBy: 'lead-investigator',
+              createdAt: '2026-08-27T00:00:00.000Z',
+            },
+            createdAt: '2026-08-27T00:00:00.000Z',
+          },
+        ],
+      });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-view-content-compare')).toBeVisible();
+      });
+      const row = screen.getByTestId('option-compare-view-row-custom.trunk_space');
+      expect(row).toHaveTextContent('Trunk space fit');
+      expect(
+        screen.getByTestId('option-compare-view-custom-badge-custom.trunk_space'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('option-compare-view-row-custom.pet_sensory_fit'),
+      ).not.toBeInTheDocument();
+
+      vi.unstubAllGlobals();
     });
   });
 

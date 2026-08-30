@@ -113,6 +113,25 @@ describe('RecommendationHero', () => {
     );
   });
 
+  // Regression for the stacked-duplicate-heading defect: the hero headline
+  // and the nested RecommendationCard used to both render "Current
+  // recommendation" as their own <h2>, directly on top of each other. ADR
+  // 0004 merged the answer and its next action into ONE region precisely so
+  // it "cannot disagree with itself because it is one region, not two" --
+  // that guarantee is broken if the region renders the same heading twice.
+  it('renders exactly one "Current recommendation" heading, not a duplicated nested one', () => {
+    const recommendation = buildRecommendation();
+    const status = deriveWorkspaceStatus(
+      buildStatusInput({ recommendation, flaggedFindingsCount: 4 }),
+    );
+    render(<RecommendationHero {...buildProps({ status, recommendation })} />);
+
+    expect(screen.getAllByText('Current recommendation')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'Current recommendation' })).toBe(
+      screen.getByTestId('recommendation-hero-headline'),
+    );
+  });
+
   it('shows a "Review findings" action exactly when flagged findings block progress, and calls the handler', async () => {
     const user = userEvent.setup();
     const onReviewFindingsClick = vi.fn();

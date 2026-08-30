@@ -50,9 +50,51 @@
  * was hard-coded here, which is exactly the gap ADR 0005 Decision 4 named
  * ("no existing component or hook ... provides a starting point for the
  * width-detection mechanism itself").
+ *
+ * `compareOptionIds`/`compareVisibleAttributeIds`/`comparePinnedAttributeIds`/
+ * `caseExtensions` (Defect 1 & 2 seam fix): `OptionCompareView` already
+ * genuinely implements `visibleOptionIds`/`visibleAttributeIds`/
+ * `pinnedAttributeIds`/`caseExtensions` as real props, and
+ * `sift_configure_comparison`/`sift_set_view` already genuinely persist
+ * `CaseState.view` through the real `setView` command -- but until this
+ * fix nothing here forwarded the persisted values, so a model-driven
+ * `sift_configure_comparison` call reported success while the page never
+ * moved (§58's own named demo moment). This component stays the thin
+ * router it already was: it takes the already-resolved values as props
+ * (from `App.tsx`, which reads `snapshot.view`) and forwards them,
+ * exactly like `selectedOptionId`/`presentation` above.
+ *
+ * `WorkspaceViewState.compare.optionIds` and the top-level
+ * `visibleOptionIds` overlap in intent (both narrow which options are
+ * visible), so `compareOptionIds` here is deliberately fed from
+ * `compare.optionIds`, not the top-level field. Two independent sources
+ * point at the same conclusion: `sift_configure_comparison` -- the tool
+ * whose description is literally "Configures the Compare view: which
+ * options are shown side by side" and the one §58's demo moment names --
+ * writes exactly `compare.optionIds` (`register-sift-tools.ts`
+ * `buildConfigureComparisonTool`); and ADR 0005's own "Consequences"
+ * section states the Compare component's rendering must be "driven by
+ * `WorkspaceViewState.compare.optionIds`, `visibleAttributeIds`,
+ * `pinnedAttributeIds`, `sort`, and `filters`" (0005-workspace-view-state-
+ * and-option-views.md, Consequences, third bullet) -- notably naming
+ * `compare.optionIds`, not the top-level `visibleOptionIds`, for this
+ * exact purpose. The top-level `visibleOptionIds` field (written by the
+ * more generic `sift_set_view`) is left for a future non-Compare
+ * consumer (e.g. List) to claim; this component does not read it.
+ * `visibleAttributeIds`/`pinnedAttributeIds` are NOT namespaced under
+ * `compare` in the schema (`WorkspaceViewStateSchema`,
+ * `packages/contracts/src/case.ts`) -- ADR 0005 calls them "the outer
+ * `visibleAttributeIds`/`pinnedAttributeIds`" for exactly this reason --
+ * so `compareVisibleAttributeIds`/`comparePinnedAttributeIds` read the
+ * top-level fields directly, unlike `compareOptionIds`.
  */
 import { WORKSPACE_VIEW_MODES, type WorkspaceViewMode } from '@sift/contracts';
-import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
+import type {
+  AttributeDefinition,
+  CaseExtension,
+  EntityRecord,
+  PresentationDefinition,
+} from '@sift/contracts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { QuickPickView } from './QuickPickView.js';
 import { OptionCompareView } from './OptionCompareView.js';
@@ -65,9 +107,22 @@ export interface WorkspaceViewSwitcherProps {
   onModeChange: (mode: WorkspaceViewMode) => void;
   options: EntityRecord[];
   attributeDefinitions: AttributeDefinition[];
+  /** Confirmed case-level custom concerns (`CaseState.caseExtensions`) -- forwarded to `OptionCompareView` so a confirmed custom field renders as a real comparison row (Defect 2). See this file's header comment. */
+  caseExtensions: CaseExtension[];
   presentation: PresentationDefinition | null;
   selectedOptionId: string | null;
   onFocusOption: (optionId: string) => void;
+
+  // Compare view configuration (Defect 1 seam fix) -- see this file's own
+  // header comment for the `compare.optionIds` vs. top-level
+  // `visibleOptionIds` decision. `undefined` (the caller's own default when
+  // a case has never set `CaseState.view` at all) reaches `OptionCompareView`
+  // unchanged, which already renders its own full, unnarrowed table for
+  // `undefined` -- so an unconfigured case looks exactly as it did before
+  // this fix.
+  compareOptionIds?: string[] | undefined;
+  compareVisibleAttributeIds?: string[] | undefined;
+  comparePinnedAttributeIds?: string[] | undefined;
 
   // Quick Pick's own triage queue position -- see this file's header
   // comment on why this is caller state, not local state here.
@@ -100,9 +155,13 @@ export function WorkspaceViewSwitcher({
   onModeChange,
   options,
   attributeDefinitions,
+  caseExtensions,
   presentation,
   selectedOptionId,
   onFocusOption,
+  compareOptionIds,
+  compareVisibleAttributeIds,
+  comparePinnedAttributeIds,
   quickPickPosition,
   onQuickPickPass,
   onQuickPickMaybe,
@@ -153,8 +212,12 @@ export function WorkspaceViewSwitcher({
           <OptionCompareView
             options={options}
             attributeDefinitions={attributeDefinitions}
+            caseExtensions={caseExtensions}
             presentation={presentation}
             selectedOptionId={selectedOptionId}
+            visibleOptionIds={compareOptionIds}
+            visibleAttributeIds={compareVisibleAttributeIds}
+            pinnedAttributeIds={comparePinnedAttributeIds}
             layout={widthMode}
             onFocusOption={onFocusOption}
           />

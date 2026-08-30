@@ -189,7 +189,10 @@ describe('deriveDecisionProfile', () => {
       ],
     });
     const profile = deriveDecisionProfile(caseState);
-    expect(profile.mustHave[0]?.target).toBe('40000 USD');
+    // Deterministic, comma-grouped, symbol-mapped money formatting -- see
+    // attribute-value-format.ts's header comment. Not locale-dependent: the
+    // symbol/grouping are hand-composed the same way in every environment.
+    expect(profile.mustHave[0]?.target).toBe('$40,000');
   });
 
   it('carries a null target when none is set, never a fabricated value', () => {
@@ -448,7 +451,7 @@ describe('deriveDecisionProfile', () => {
       ]);
     });
 
-    it('preserves the guide\'s own declared question order', () => {
+    it("preserves the guide's own declared question order", () => {
       const caseState = buildFixtureCaseState();
       const guide = buildGuide({
         suggestedQuestions: ['Do you need AWD?', 'Is $40,000 a hard ceiling or target?'],
@@ -468,7 +471,7 @@ describe('deriveDecisionProfile', () => {
       expect(profile.suggestedQuestions).toEqual([]);
     });
 
-    it('surfaces an open obligation\'s own question, tagged unmet_obligation, with its relatedId', () => {
+    it("surfaces an open obligation's own question, tagged unmet_obligation, with its relatedId", () => {
       const caseState = buildFixtureCaseState({
         obligations: [
           buildFixtureObligation({
@@ -480,7 +483,12 @@ describe('deriveDecisionProfile', () => {
       });
       const profile = deriveDecisionProfile(caseState);
       expect(profile.suggestedQuestions).toEqual([
-        { id: 'obligation:obl-price', text: 'What is the out-the-door price?', source: 'unmet_obligation', relatedId: 'obl-price' },
+        {
+          id: 'obligation:obl-price',
+          text: 'What is the out-the-door price?',
+          source: 'unmet_obligation',
+          relatedId: 'obl-price',
+        },
       ]);
     });
 
@@ -510,14 +518,18 @@ describe('deriveDecisionProfile', () => {
       const caseState = buildFixtureCaseState({
         obligations: [
           buildFixtureObligation({ id: 'low', question: 'Low priority question?', priority: 1 }),
-          buildFixtureObligation({ id: 'high', question: 'High priority question?', priority: 100 }),
+          buildFixtureObligation({
+            id: 'high',
+            question: 'High priority question?',
+            priority: 100,
+          }),
         ],
       });
       const profile = deriveDecisionProfile(caseState);
       expect(profile.suggestedQuestions.map((q) => q.relatedId)).toEqual(['high', 'low']);
     });
 
-    it('surfaces a missing criterion\'s own declared question, tagged missing_criterion', () => {
+    it("surfaces a missing criterion's own declared question, tagged missing_criterion", () => {
       const caseState = buildFixtureCaseState({
         criteria: [
           buildCriterion({
@@ -585,7 +597,7 @@ describe('deriveDecisionProfile', () => {
       expect(profile.suggestedQuestions).toEqual([]); // ...honestly empty rather than invented
     });
 
-    it('surfaces a pending extension\'s obligation question when one genuinely exists (case_extension-origin obligation)', () => {
+    it("surfaces a pending extension's obligation question when one genuinely exists (case_extension-origin obligation)", () => {
       const caseState = buildFixtureCaseState({
         caseExtensions: [
           buildExtension({

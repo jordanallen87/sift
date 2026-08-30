@@ -11,7 +11,23 @@
  * into one undifferentiated bullet list) -- this is the UI half of
  * value-proposition.md's capability-boundary claim, "Typed claims linked to
  * durable sources" and "separation of fact and hypothesis" (GoalLoop
- * validator, strands-runtime.md).
+ * validator, strands-runtime.md). Per global constraint 4 ("never render
+ * what cannot be true") and change-set DoD item 35 ("Empty conceptual
+ * regions are not rendered unnecessarily"), the FACTS and HYPOTHESES blocks
+ * are each omitted entirely -- not rendered as an empty tinted callout --
+ * when `recommendation.facts`/`recommendation.hypotheses` is empty. A
+ * present-but-empty HYPOTHESES block is especially misleading: its
+ * "accepted uncertainty" tint reads as an active warning even though
+ * nothing is actually open.
+ *
+ * This component owns no top-level heading of its own: it is only ever
+ * mounted inside `RecommendationHero`, whose own `<h2>` headline already
+ * reads "Current recommendation" for every state this card renders content
+ * in (see workspace-status.ts). A second, identical "Current recommendation"
+ * `<h2>` here duplicated that headline directly above it -- see ADR 0004,
+ * whose entire point was merging the answer and its next action into ONE
+ * region precisely so "it cannot disagree with itself because it is one
+ * region, not two."
  *
  * The `withheld` prop drives the exact required copy from
  * docs/specs/value-proposition.md's "Required visible copy":
@@ -69,22 +85,8 @@ export function RecommendationCard({
   return (
     <section
       data-testid="recommendation-card"
-      aria-labelledby="recommendation-card-heading"
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
-      {/* Change-set §38 "Recommendation language": "Avoid overly-final
-          wording like 'Our pick' before readiness is earned. Prefer:
-          'Current recommendation'; 'Leading option'; 'Current leader'."
-          "Current recommendation" is also the literal §4 terminology-table
-          mapping ("Recommendation -> Current recommendation"), used as a
-          static heading here rather than switching text by `status`:
-          calling a `stale` recommendation "current" is still honest (it is
-          the most recent one Sift produced, the stale-note directly below
-          says it is being recomputed), and by the time this component ever
-          renders with a real `recommendation`, "current" never overclaims
-          the certainty "Our pick" implied. */}
-      <h2 id="recommendation-card-heading">Current recommendation</h2>
-
       {recommendation === null ? (
         loading ? (
           <div
@@ -164,62 +166,56 @@ export function RecommendationCard({
             {recommendation.rationale}
           </p>
 
-          <div className="flex flex-col gap-[var(--space-2)]">
-            <div
-              data-testid="recommendation-card-facts"
-              className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-2)]"
-              style={{ backgroundColor: STATUS_TONE_META.satisfied.bg }}
-            >
-              <h3 className="label-caps" style={{ color: STATUS_TONE_META.satisfied.ink }}>
-                Facts
-              </h3>
-              {recommendation.facts.length === 0 ? (
-                <p className="text-[length:var(--font-size-sm)] text-[var(--color-ink-muted)]">
-                  No supporting facts recorded.
-                </p>
-              ) : (
-                <ul className="flex flex-col gap-[var(--space-0-5)]">
-                  {recommendation.facts.map((fact) => (
-                    <li
-                      key={fact}
-                      className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]"
-                    >
-                      {fact}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {recommendation.facts.length > 0 || recommendation.hypotheses.length > 0 ? (
+            <div className="flex flex-col gap-[var(--space-2)]">
+              {recommendation.facts.length > 0 ? (
+                <div
+                  data-testid="recommendation-card-facts"
+                  className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-2)]"
+                  style={{ backgroundColor: STATUS_TONE_META.satisfied.bg }}
+                >
+                  <h3 className="label-caps" style={{ color: STATUS_TONE_META.satisfied.ink }}>
+                    Facts
+                  </h3>
+                  <ul className="flex flex-col gap-[var(--space-0-5)]">
+                    {recommendation.facts.map((fact) => (
+                      <li
+                        key={fact}
+                        className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]"
+                      >
+                        {fact}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
-            <div
-              data-testid="recommendation-card-hypotheses"
-              className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-2)]"
-              style={{ backgroundColor: STATUS_TONE_META['accepted-uncertainty'].bg }}
-            >
-              <h3
-                className="label-caps"
-                style={{ color: STATUS_TONE_META['accepted-uncertainty'].ink }}
-              >
-                Hypotheses
-              </h3>
-              {recommendation.hypotheses.length === 0 ? (
-                <p className="text-[length:var(--font-size-sm)] text-[var(--color-ink-muted)]">
-                  No open hypotheses.
-                </p>
-              ) : (
-                <ul className="flex flex-col gap-[var(--space-0-5)]">
-                  {recommendation.hypotheses.map((hypothesis) => (
-                    <li
-                      key={hypothesis}
-                      className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]"
-                    >
-                      {hypothesis}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {recommendation.hypotheses.length > 0 ? (
+                <div
+                  data-testid="recommendation-card-hypotheses"
+                  className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-2)]"
+                  style={{ backgroundColor: STATUS_TONE_META['accepted-uncertainty'].bg }}
+                >
+                  <h3
+                    className="label-caps"
+                    style={{ color: STATUS_TONE_META['accepted-uncertainty'].ink }}
+                  >
+                    Hypotheses
+                  </h3>
+                  <ul className="flex flex-col gap-[var(--space-0-5)]">
+                    {recommendation.hypotheses.map((hypothesis) => (
+                      <li
+                        key={hypothesis}
+                        className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]"
+                      >
+                        {hypothesis}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
-          </div>
+          ) : null}
 
           {recommendation.limitations.length > 0 ? (
             <div

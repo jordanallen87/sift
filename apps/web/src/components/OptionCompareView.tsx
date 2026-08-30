@@ -35,24 +35,67 @@
  * shared helper): the `attributeGroups`-driven grouping fallback, the "Unknown" (never blank)
  * missing-value rule, and the `overflow-x-auto`-inside-its-own-container scroll discipline so the
  * comparison table -- not the page -- scrolls sideways (§49 "no horizontal page overflow").
+ *
+ * Two seam defects closed here (this component's own props were already individually correct;
+ * nothing upstream connected them):
+ *
+ * 1. `visibleOptionIds`/`visibleAttributeIds`/`pinnedAttributeIds` were real props no caller ever
+ *    populated -- `sift_configure_comparison` genuinely persisted `WorkspaceViewState`, but
+ *    `WorkspaceViewSwitcher` mounted this component passing none of them, so the model's
+ *    reconfiguration silently never reached the page (§58's demo moment). See
+ *    `WorkspaceViewSwitcher.tsx`'s own header comment for the App.tsx -> WorkspaceViewSwitcher ->
+ *    here wiring and the `compare.optionIds` vs. top-level `visibleOptionIds` field decision.
+ *    `filteredOutOptionCount`/`option-compare-view-filtered-note` below is the accompanying §54
+ *    guard: a column `visibleOptionIds` narrows out must read as "not shown in this view," never as
+ *    "eliminated."
+ * 2. `caseExtensions` (`CaseState.caseExtensions`) was never passed in at all, so a confirmed
+ *    case-defined concern had real values but never became a comparison row. `caseExtensions` is
+ *    merged into `attributeDefinitions` (confirmed only) before the existing custom-id rendering
+ *    logic below runs, so no separate marking step was needed.
  */
 import { useMemo } from 'react';
-import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
+import type {
+  AttributeDefinition,
+  CaseExtension,
+  EntityRecord,
+  PresentationDefinition,
+} from '@sift/contracts';
 import { formatAttributeValue } from './attribute-value-format.js';
 import { Badge } from '@/components/ui/badge';
 
 export interface OptionCompareViewProps {
   options: EntityRecord[];
   attributeDefinitions: AttributeDefinition[];
+  /**
+   * Confirmed-or-pending case-level custom concerns (`CaseState.caseExtensions`).
+   * Defect 2 fix: only entries with `definition.confirmation === 'confirmed'` are
+   * merged in as real comparison rows, alongside `attributeDefinitions` -- a
+   * still-`pending` (or `rejected`) extension is a proposal awaiting human
+   * review, not yet an agreed comparison dimension (change-set §21/§27).
+   * Defaults to an empty array so every existing caller (and every earlier
+   * test in this file) that never passes this prop keeps rendering exactly
+   * as before. Because `CaseExtension.definition.id` always carries the
+   * `custom.` prefix (`CaseAttributeIdSchema`), a merged-in extension
+   * automatically picks up the existing `isCustomAttributeId` "Custom" badge
+   * and label-not-id rendering below -- no separate marking logic needed.
+   */
+  caseExtensions?: CaseExtension[];
   /** `CompiledDecisionPack.presentation`, or `null` if not yet available. */
   presentation: PresentationDefinition | null;
   selectedOptionId: string | null;
-  /** Narrows which option columns render. `undefined` shows every option -- the backward-compatible default (§11 "configurable visible rows" is additive, not required). */
-  visibleOptionIds?: string[];
+  /**
+   * Narrows which option columns render. `undefined` shows every option -- the
+   * backward-compatible default (§11 "configurable visible rows" is additive,
+   * not required). The caller (`WorkspaceViewSwitcher`) decides which
+   * persisted `WorkspaceViewState` field feeds this -- see that file's own
+   * header comment for the `compare.optionIds` vs. top-level `visibleOptionIds`
+   * decision; this component stays agnostic of `CaseState.view` entirely.
+   */
+  visibleOptionIds?: string[] | undefined;
   /** Narrows which attribute rows render (both pinned and grouped). `undefined` shows every applicable attribute. */
-  visibleAttributeIds?: string[];
+  visibleAttributeIds?: string[] | undefined;
   /** Rendered first, ahead of the grouped table, and visually distinguished. Order follows this array, not `attributeDefinitions` order, so the caller controls pin priority. */
-  pinnedAttributeIds?: string[];
+  pinnedAttributeIds?: string[] | undefined;
   /** Caller-decided information architecture (ADR 0005 Decision 4) -- this component never calls `matchMedia`. */
   layout: 'narrow' | 'expanded';
   /** Fired when a user or WebMCP-driven caller focuses an option's column header. Shared-focus plumbing (§30) lives in the caller; this component only reports the intent. */
@@ -211,6 +254,7 @@ function CompareRow({ definition, pinned, isStriped, renderedOptions }: CompareR
 export function OptionCompareView({
   options,
   attributeDefinitions,
+  caseExtensions = [],
   presentation,
   selectedOptionId,
   visibleOptionIds,
@@ -224,6 +268,14 @@ export function OptionCompareView({
     [options, visibleOptionIds],
   );
 
+  // Defect 1 (§54 "presentation filtering ≠ decision mutation"): an option
+  // that `visibleOptionIds` narrowed out of `options` entirely must never
+  // read as eliminated -- it is a display choice, not a verdict on the
+  // option. Distinct from `hiddenOptionCount` below (which only covers the
+  // narrow-layout head-to-head auto-pairing of an *already-visible* set):
+  // this counts options the caller's own configuration removed from view.
+  const filteredOutOptionCount = options.length - displayedOptions.length;
+
   const isHeadToHead = layout === 'narrow';
   const renderedOptions = useMemo(
     () =>
@@ -232,12 +284,35 @@ export function OptionCompareView({
   );
   const hiddenOptionCount = displayedOptions.length - renderedOptions.length;
 
+  // Defect 2 (§21/§27): confirmed case-level custom concerns become real
+  // comparison rows, first-class beside pack-native attributes. Only
+  // `confirmed` extensions qualify -- a `pending` one is still awaiting
+  // human review and is not yet an agreed comparison dimension, and a
+  // `rejected` one was actively declined. See this file's `caseExtensions`
+  // prop doc for why no separate "mark as custom" step is needed here: the
+  // existing `custom.` id-prefix check below already covers it.
+  const confirmedExtensionDefinitions = useMemo<AttributeDefinition[]>(() => {
+    const existingIds = new Set(attributeDefinitions.map((definition) => definition.id));
+    return caseExtensions
+      .filter(
+        (extension) =>
+          extension.definition.confirmation === 'confirmed' &&
+          !existingIds.has(extension.definition.id),
+      )
+      .map((extension) => extension.definition);
+  }, [attributeDefinitions, caseExtensions]);
+
+  const allDefinitions = useMemo(
+    () => [...attributeDefinitions, ...confirmedExtensionDefinitions],
+    [attributeDefinitions, confirmedExtensionDefinitions],
+  );
+
   const applicableDefinitions = useMemo(() => {
     const relevantKinds = new Set(options.map((option) => option.kind));
-    return attributeDefinitions.filter((definition) =>
+    return allDefinitions.filter((definition) =>
       definition.appliesTo.some((kind) => relevantKinds.has(kind)),
     );
-  }, [options, attributeDefinitions]);
+  }, [options, allDefinitions]);
 
   const narrowedDefinitions = useMemo(() => {
     if (visibleAttributeIds === undefined) return applicableDefinitions;
@@ -299,6 +374,16 @@ export function OptionCompareView({
         </p>
       ) : (
         <>
+          {filteredOutOptionCount > 0 ? (
+            <p
+              data-testid="option-compare-view-filtered-note"
+              className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]"
+            >
+              Showing {displayedOptions.length} of {options.length} options in this comparison.
+              Options not shown here are not eliminated -- they're just not part of this view.
+            </p>
+          ) : null}
+
           {isHeadToHead && hiddenOptionCount > 0 ? (
             <p
               data-testid="option-compare-view-narrow-note"

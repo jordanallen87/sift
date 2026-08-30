@@ -492,7 +492,7 @@ describe('RuntimeInspector', () => {
   // longer sees the sheet markup -- `overflowRisks` is trivially `[]` here.
   // `renderResult.getByTestId` still finds it, since Testing Library binds
   // queries to `document.body` by default, not `container`.
-  it('surfaces a redaction\'s path and reason on a Timeline item that carries one -- never the underlying value, since Redaction never carries one', async () => {
+  it("surfaces a redaction's path and reason on a Timeline item that carries one -- never the underlying value, since Redaction never carries one", async () => {
     server.use(
       debugHandler(buildOverview(), [
         buildEvent({
@@ -513,7 +513,9 @@ describe('RuntimeInspector', () => {
     );
     await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
 
-    const redactions = await screen.findByTestId('runtime-inspector-timeline-item-debug-1-redactions');
+    const redactions = await screen.findByTestId(
+      'runtime-inspector-timeline-item-debug-1-redactions',
+    );
     expect(redactions).toHaveTextContent('payload.note');
     expect(redactions).toHaveTextContent('matched a configured secret pattern');
   });
@@ -545,7 +547,13 @@ describe('RuntimeInspector', () => {
     server.use(
       debugHandler(buildOverview(), [
         buildEvent({
-          stateDiff: [{ op: 'replace', path: '/recommendation', value: { favoredOptionId: 'candidate-rav4' } }],
+          stateDiff: [
+            {
+              op: 'replace',
+              path: '/recommendation',
+              value: { favoredOptionId: 'candidate-rav4' },
+            },
+          ],
         }),
       ]),
     );
@@ -562,7 +570,9 @@ describe('RuntimeInspector', () => {
     );
     await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
 
-    const disclosure = await screen.findByTestId('runtime-inspector-timeline-item-debug-1-state-diff');
+    const disclosure = await screen.findByTestId(
+      'runtime-inspector-timeline-item-debug-1-state-diff',
+    );
     await user.click(within(disclosure).getByText(/State diff/));
     expect(disclosure).toHaveTextContent('replace');
     expect(disclosure).toHaveTextContent('/recommendation');
@@ -709,17 +719,21 @@ describe('RuntimeInspector', () => {
         'true',
       );
       expect(screen.getByText('Case created.')).toBeInTheDocument();
-      expect(screen.getByTestId('runtime-inspector-run-id')).toHaveTextContent(
-        'No run selected',
-      );
+      expect(screen.getByTestId('runtime-inspector-run-id')).toHaveTextContent('No run selected');
       // No run was ever selected, so no fetch to /api/debug/runs/:runId
       // should have happened -- proven negatively: no overview data renders
       // even after settling.
       expect(screen.queryByTestId('runtime-inspector-overview')).not.toBeInTheDocument();
     });
 
-    it('defaults events to an empty list (never crashes) and shows ActivityTimeline\'s own honest empty state', async () => {
-      render(<RuntimeInspector runId={null} onClose={() => undefined} apiConfig={{ baseUrl: BASE_URL }} />);
+    it("defaults events to an empty list (never crashes) and shows ActivityTimeline's own honest empty state", async () => {
+      render(
+        <RuntimeInspector
+          runId={null}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
 
       await waitFor(() => {
         expect(screen.getByTestId('activity-timeline-no-items')).toBeInTheDocument();

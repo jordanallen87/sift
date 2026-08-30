@@ -83,6 +83,8 @@ export { CaseExtensionReviewCard } from './components/CaseExtensionReviewCard.js
 export type { CaseExtensionReviewCardProps } from './components/CaseExtensionReviewCard.js';
 export { CaseNotes } from './components/CaseNotes.js';
 export type { CaseNotesProps } from './components/CaseNotes.js';
+export { AddNoteForm } from './components/AddNoteForm.js';
+export type { AddNoteFormProps } from './components/AddNoteForm.js';
 export { LiveRunStatus } from './components/LiveRunStatus.js';
 export type { LiveRunStatusProps, LiveRunStatusReceipt } from './components/LiveRunStatus.js';
 export { WebMcpStatus } from './components/WebMcpStatus.js';

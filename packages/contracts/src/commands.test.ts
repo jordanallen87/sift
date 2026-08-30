@@ -252,15 +252,15 @@ describe('SetViewInputSchema (plan task E5)', () => {
   });
 
   it('rejects a missing expectedSequence', () => {
-    expect(
-      SetViewInputSchema.safeParse({ caseId: 'case-1', view: { mode: 'list' } }).success,
-    ).toBe(false);
+    expect(SetViewInputSchema.safeParse({ caseId: 'case-1', view: { mode: 'list' } }).success).toBe(
+      false,
+    );
   });
 
   it('rejects a missing view', () => {
-    expect(
-      SetViewInputSchema.safeParse({ caseId: 'case-1', expectedSequence: 0 }).success,
-    ).toBe(false);
+    expect(SetViewInputSchema.safeParse({ caseId: 'case-1', expectedSequence: 0 }).success).toBe(
+      false,
+    );
   });
 
   it('delegates to WorkspaceViewStateSchema, rejecting an unrecognized view mode', () => {
@@ -332,7 +332,10 @@ describe('SetOptionAttributeInputSchema (ADR 0006 decision 4)', () => {
       SetOptionAttributeInputSchema.safeParse({
         caseId: 'case-1',
         expectedSequence: 4,
-        attribute: { definitionId: 'car.price', value: { type: 'money', amount: 1, currency: 'USD' } },
+        attribute: {
+          definitionId: 'car.price',
+          value: { type: 'money', amount: 1, currency: 'USD' },
+        },
       }).success,
     ).toBe(false);
   });
@@ -353,7 +356,10 @@ describe('SetOptionAttributeInputSchema (ADR 0006 decision 4)', () => {
         caseId: 'case-1',
         optionId: 'car-1',
         expectedSequence: 4,
-        attribute: { definitionId: 'car.price', value: { type: 'money', amount: 1, currency: 'USD' } },
+        attribute: {
+          definitionId: 'car.price',
+          value: { type: 'money', amount: 1, currency: 'USD' },
+        },
         extra: true,
       }).success,
     ).toBe(false);
@@ -386,7 +392,7 @@ describe('AddNoteInputSchema (docs/change-sets/2026-08-30-generic-decision-works
     expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
   });
 
-  it('defaults origin to being absent (undefined) on the wire, matching DefineCaseAttributeInputSchema\'s optional origin channel', () => {
+  it("defaults origin to being absent (undefined) on the wire, matching DefineCaseAttributeInputSchema's optional origin channel", () => {
     const result = AddNoteInputSchema.safeParse({
       caseId: 'case-1',
       expectedSequence: 4,

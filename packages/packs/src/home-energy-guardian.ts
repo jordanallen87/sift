@@ -1208,7 +1208,7 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
     researchGuidance:
       "Re-derive rate-change and weather attribution from the household's own billing and weather history rather than assuming a typical seasonal pattern; treat a household-event correlation as a plausible explanation to confirm with the household, not a settled cause.",
     customFieldGuidance:
-      'Prefer a typed custom field over noting an unusual household circumstance only in prose. Never infer that an emergency risk is absent -- that judgment always requires an explicit source or human confirmation, since it gates the household\'s safety, not only cost.',
+      "Prefer a typed custom field over noting an unusual household circumstance only in prose. Never infer that an emergency risk is absent -- that judgment always requires an explicit source or human confirmation, since it gates the household's safety, not only cost.",
     presentationGuidance:
       'Show the anomaly, rate-change attribution, and weather attribution together, since a response option should address whichever of those actually explains most of the gap rather than the bill total alone.',
   },

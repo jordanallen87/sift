@@ -318,7 +318,9 @@ const UNMET_OBLIGATION_STATUSES: ReadonlySet<ObligationState['status']> = new Se
 ]);
 
 /** Source 1 (see module header): pack-authored questions, verbatim, in the guide's own declared order. */
-function suggestedQuestionsFromGuide(guide: DecisionGuide | undefined): DecisionProfileSuggestedQuestion[] {
+function suggestedQuestionsFromGuide(
+  guide: DecisionGuide | undefined,
+): DecisionProfileSuggestedQuestion[] {
   if (guide === undefined) return [];
   return guide.suggestedQuestions.map((text, index) => ({
     id: `guide:${index}`,
@@ -449,5 +451,13 @@ export function deriveDecisionProfile(
 
   const suggestedQuestions = deriveSuggestedQuestions(caseState, activeCriteria, missing, guide);
 
-  return { mustHave, important, niceToHave, context, personalConcerns, missing, suggestedQuestions };
+  return {
+    mustHave,
+    important,
+    niceToHave,
+    context,
+    personalConcerns,
+    missing,
+    suggestedQuestions,
+  };
 }

@@ -393,9 +393,9 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
       .replayFrom(caseId, 0)
       .find((event) => event.runId === run2Id && event.type === 'tool.started');
     expect(round2ToolActivity?.debugEventId).toBeTruthy();
-    expect(
-      runtimeEventsRound2.some((event) => event.id === round2ToolActivity?.debugEventId),
-    ).toBe(true);
+    expect(runtimeEventsRound2.some((event) => event.id === round2ToolActivity?.debugEventId)).toBe(
+      true,
+    );
 
     // A human, never the engine, approves the proposal -- proven by the
     // engine's own output: it only ever appended

@@ -475,7 +475,8 @@ describe('decisionGuide (§46/§47 pack-level Decision Guide)', () => {
 
   it('names the emergency-risk exclusion in importantUnknowns or customFieldGuidance, not just cost', () => {
     const guide = HOME_ENERGY_GUARDIAN_MANIFEST.decisionGuide;
-    const joined = `${guide?.importantUnknowns.join(' ')} ${guide?.customFieldGuidance}`.toLowerCase();
+    const joined =
+      `${guide?.importantUnknowns.join(' ')} ${guide?.customFieldGuidance}`.toLowerCase();
     expect(joined).toMatch(/emergency|risk|safety/);
   });
 });

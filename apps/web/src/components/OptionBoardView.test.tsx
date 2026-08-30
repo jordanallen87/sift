@@ -313,8 +313,10 @@ describe('OptionBoardView', () => {
     const card = screen.getByTestId('board-card-option-1');
     expect(card).toHaveTextContent('Toyota RAV4');
     const facts = screen.getByTestId('board-facts-option-1');
-    expect(facts).toHaveTextContent('Price: 28500 USD');
-    expect(facts).toHaveTextContent('Mileage: 15000 mi');
+    // Deterministic, comma-grouped, symbol-mapped formatting -- see
+    // attribute-value-format.ts's header comment.
+    expect(facts).toHaveTextContent('Price: $28,500');
+    expect(facts).toHaveTextContent('Mileage: 15,000 mi');
   });
 
   it('never renders raw internal ids as user-visible text', () => {

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
+import type { AttributeDefinition, CaseExtension, EntityRecord } from '@sift/contracts';
 import { WorkspaceViewSwitcher, type WorkspaceViewSwitcherProps } from './WorkspaceViewSwitcher.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
@@ -40,6 +40,7 @@ function buildProps(
     onModeChange: vi.fn(),
     options: [buildOption()],
     attributeDefinitions: [buildDefinition()],
+    caseExtensions: [],
     presentation: null,
     selectedOptionId: null,
     onFocusOption: vi.fn(),
@@ -50,6 +51,30 @@ function buildProps(
     onQuickPickFocusChange: vi.fn(),
     boardPlacement: {},
     onMoveOption: vi.fn(),
+    ...overrides,
+  };
+}
+
+function buildCaseExtension(overrides: Partial<CaseExtension> = {}): CaseExtension {
+  return {
+    id: 'ext-1',
+    caseId: 'case-1',
+    definition: {
+      id: 'custom.trunk_space',
+      label: 'Trunk space fit',
+      valueType: 'string',
+      required: false,
+      appliesTo: ['car'],
+      evidenceExpectation: 'assertion',
+      comparison: 'none',
+      sensitive: false,
+      origin: 'user',
+      reason: 'The household needs room for a folded stroller.',
+      confirmation: 'confirmed',
+      proposedBy: 'user',
+      createdAt: '2026-08-27T00:00:00.000Z',
+    },
+    createdAt: '2026-08-27T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -181,5 +206,92 @@ describe('WorkspaceViewSwitcher', () => {
     );
 
     vi.unstubAllGlobals();
+  });
+
+  // Defect 1 (§58 WebMCP demo moment): `sift_configure_comparison` persists
+  // through the real `setView` command, but nothing upstream of this
+  // component ever threaded the persisted configuration into
+  // `OptionCompareView` -- the model's reconfiguration silently never
+  // reached the page. These three props are this component's own half of
+  // that wiring: proof that whatever `App.tsx` reads off the persisted
+  // `CaseState.view` genuinely reaches `OptionCompareView`'s narrowing
+  // props, not merely that this component *could* accept them.
+  it('threads compareOptionIds through to OptionCompareView as the option columns that actually render', () => {
+    // Forced to expanded layout: narrow layout's own head-to-head
+    // auto-pairing would otherwise hide the third option regardless of
+    // whether `compareOptionIds` is wired at all, producing a false pass.
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    }));
+
+    const options = [
+      buildOption(),
+      buildOption({ id: 'candidate-crv', label: 'Honda CR-V' }),
+      buildOption({ id: 'candidate-forester', label: 'Subaru Forester' }),
+    ];
+    render(
+      <WorkspaceViewSwitcher
+        {...buildProps({
+          mode: 'compare',
+          options,
+          compareOptionIds: ['candidate-rav4', 'candidate-crv'],
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('option-compare-view-header-candidate-rav4')).toBeInTheDocument();
+    expect(screen.getByTestId('option-compare-view-header-candidate-crv')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('option-compare-view-header-candidate-forester'),
+    ).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('threads compareVisibleAttributeIds and comparePinnedAttributeIds through to OptionCompareView', () => {
+    const definitions = [
+      buildDefinition({ id: 'price', label: 'Price' }),
+      buildDefinition({ id: 'mileage', label: 'Mileage' }),
+    ];
+    render(
+      <WorkspaceViewSwitcher
+        {...buildProps({
+          mode: 'compare',
+          attributeDefinitions: definitions,
+          compareVisibleAttributeIds: ['mileage'],
+          comparePinnedAttributeIds: ['mileage'],
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('option-compare-view-row-mileage')).toHaveAttribute(
+      'data-pinned',
+      'true',
+    );
+    expect(screen.queryByTestId('option-compare-view-row-price')).not.toBeInTheDocument();
+  });
+
+  it('renders todays full table unchanged when no compare configuration is supplied (undefined stays undefined, not narrowed to nothing)', () => {
+    const options = [buildOption(), buildOption({ id: 'candidate-crv', label: 'Honda CR-V' })];
+    render(<WorkspaceViewSwitcher {...buildProps({ mode: 'compare', options })} />);
+
+    expect(screen.getByTestId('option-compare-view-header-candidate-rav4')).toBeInTheDocument();
+    expect(screen.getByTestId('option-compare-view-header-candidate-crv')).toBeInTheDocument();
+  });
+
+  // Defect 2: confirmed case extensions must reach the Compare table too.
+  it('threads caseExtensions through to OptionCompareView so a confirmed custom field renders as a row', () => {
+    render(
+      <WorkspaceViewSwitcher
+        {...buildProps({ mode: 'compare', caseExtensions: [buildCaseExtension()] })}
+      />,
+    );
+
+    expect(screen.getByTestId('option-compare-view-row-custom.trunk_space')).toBeInTheDocument();
   });
 });

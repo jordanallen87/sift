@@ -25,6 +25,7 @@ import {
   assertRecommendationHeroAboveTheFold,
   assertRightPaneIntegrity,
   disableAnimations,
+  expectNamedScreenshot,
 } from './helpers/layout-assertions.js';
 import {
   CAR_PURCHASE_CRITERION_IDS,
@@ -57,8 +58,11 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
       'vehicle-catalog-start-comparison',
       'vehicle-catalog-back',
     ]);
-    await expect(page.getByTestId('vehicle-catalog-flow')).toHaveScreenshot(
+    await expectNamedScreenshot(
+      page,
+      page.getByTestId('vehicle-catalog-flow'),
       'vehicle-catalog-initial.png',
+      { testId: 'vehicle-catalog-flow', text: 'Compare vehicles' },
       { maxDiffPixelRatio: 0.01 },
     );
 

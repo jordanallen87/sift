@@ -177,9 +177,7 @@ describe('ActivityTimeline', () => {
   // exact runtime event" -- distinct from "Inspect run" above, which only
   // jumps to the run's Overview, not a specific correlated event.
   it('does not render an "Inspect event" button when onInspectEvent is not provided', () => {
-    render(
-      <ActivityTimeline events={[buildEvent({ runId: 'run-1', debugEventId: 'debug-1' })]} />,
-    );
+    render(<ActivityTimeline events={[buildEvent({ runId: 'run-1', debugEventId: 'debug-1' })]} />);
     expect(screen.queryByTestId('activity-item-inspect-event-event-1')).not.toBeInTheDocument();
   });
 

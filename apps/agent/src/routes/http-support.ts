@@ -76,8 +76,7 @@ export function readCommandId(req: Request, res: Response): string | undefined {
 }
 
 export type CommandOriginReadResult =
-  | { readonly ok: true; readonly origin: CommandOrigin | undefined }
-  | { readonly ok: false };
+  { readonly ok: true; readonly origin: CommandOrigin | undefined } | { readonly ok: false };
 
 /**
  * Reads and validates the OPTIONAL `X-Sift-Command-Origin` request header

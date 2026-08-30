@@ -530,7 +530,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
           caseId,
           optionId,
           expectedSequence: optionReceipt.acceptedSequence,
-          attribute: { definitionId: 'car.price', value: { type: 'money', amount: 1, currency: 'USD' } },
+          attribute: {
+            definitionId: 'car.price',
+            value: { type: 'money', amount: 1, currency: 'USD' },
+          },
         });
       expect(setAttrResponse.status).toBe(200);
       const afterAttr = asJson<CommandReceipt>(setAttrResponse.body).acceptedSequence;

@@ -74,9 +74,14 @@
  *      (global constraint 4), so no wrapping/gating is needed at this call
  *      site the way region 6a needs it. A note is real content but
  *      deliberately not evidence (`CaseNoteSchema`'s own doc comment); this
- *      region only displays what already exists -- adding a note today goes
- *      through the `sift_add_note` WebMCP tool (`register-sift-tools.ts`),
- *      this task's own scoped write path, not a form mounted here.
+ *      region only displays what already exists.
+ *  6c. "Add a note" (`AddNoteForm`) -- a closed-by-default `DisclosureSection`
+ *      immediately after 6b, giving a person at the keyboard the write half
+ *      of §28/§63 that previously existed only through the `sift_add_note`
+ *      WebMCP tool (`register-sift-tools.ts`). Kept as its own row rather
+ *      than folded into `CaseNotes` (which stays read-only by design) so the
+ *      affordance is reachable even when `CaseNotes` renders nothing --
+ *      `AddNoteForm.tsx`'s own header comment has the full reasoning.
  *  7. "What Sift found" -- a `DisclosureSection` trigger opening
  *     `FindingsSheet` (unchanged from the prior design).
  *  8. "Still checking" -- a closed-by-default `DisclosureSection` wrapping
@@ -157,6 +162,7 @@ import { WorkspaceViewSwitcher } from '../components/WorkspaceViewSwitcher.js';
 import { DecisionProfileView } from '../components/DecisionProfileView.js';
 import { deriveDecisionProfile } from '../components/decision-profile.js';
 import { CaseNotes } from '../components/CaseNotes.js';
+import { AddNoteForm } from '../components/AddNoteForm.js';
 import { CustomConcernForm } from '../components/CustomConcernForm.js';
 import { CaseExtensionReviewCard } from '../components/CaseExtensionReviewCard.js';
 import type { LiveRunStatusReceipt } from '../components/LiveRunStatus.js';
@@ -396,6 +402,34 @@ export function App() {
   const persistedViewMode = snapshot?.view?.mode;
   const [optimisticViewMode, setOptimisticViewMode] = useState<WorkspaceViewMode | null>(null);
   const viewMode = optimisticViewMode ?? persistedViewMode ?? 'quick_pick';
+
+  // Compare view configuration -- the other half of this same "persisted
+  // WorkspaceViewState never reaches the rendered page" seam `viewMode`
+  // above already closes for `mode`. `sift_configure_comparison`/
+  // `sift_set_view` genuinely persist `CaseState.view.compare.optionIds`/
+  // `visibleAttributeIds`/`pinnedAttributeIds` through the real `setView`
+  // command (see that command's own tests), and `OptionCompareView`
+  // genuinely implements those as real narrowing props -- but until this
+  // fix nothing here read `snapshot.view` and passed them to
+  // `WorkspaceViewSwitcher`, so a real `sift_configure_comparison` WebMCP
+  // call (§58's own named demo moment) reported success while the rendered
+  // table never moved. No optimistic-override treatment is needed here the
+  // way `viewMode` gets one: these three are read-and-forward only (nothing
+  // in this file writes them locally), so they simply track whatever is
+  // currently persisted, `undefined` when a case has never configured
+  // Compare at all -- `OptionCompareView` already renders its full,
+  // unnarrowed table for `undefined`, so an unconfigured case looks exactly
+  // as it did before this fix.
+  //
+  // `compare.optionIds` (not the top-level `visibleOptionIds`, which
+  // overlaps in intent) is deliberately what governs the Compare table's
+  // visible option set -- see `WorkspaceViewSwitcher.tsx`'s own header
+  // comment for the full reasoning (the tool named in §58's demo moment,
+  // `sift_configure_comparison`, writes exactly this field; ADR 0005's
+  // "Consequences" section names it explicitly for this purpose).
+  const compareOptionIds = snapshot?.view?.compare?.optionIds;
+  const compareVisibleAttributeIds = snapshot?.view?.visibleAttributeIds;
+  const comparePinnedAttributeIds = snapshot?.view?.pinnedAttributeIds;
 
   // Reconciliation: once the persisted value actually catches up with an
   // optimistic override, drop the override so the persisted field resumes
@@ -1038,9 +1072,13 @@ export function App() {
         onModeChange={handleViewModeChange}
         options={snapshot?.entities ?? []}
         attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+        caseExtensions={snapshot?.caseExtensions ?? []}
         presentation={activePack?.presentation ?? null}
         selectedOptionId={snapshot?.selectedOptionId ?? null}
         onFocusOption={handleFocusOption}
+        compareOptionIds={compareOptionIds}
+        compareVisibleAttributeIds={compareVisibleAttributeIds}
+        comparePinnedAttributeIds={comparePinnedAttributeIds}
         quickPickPosition={quickPickPosition}
         onQuickPickPass={handleQuickPickAdvance}
         onQuickPickMaybe={handleQuickPickAdvance}
@@ -1065,6 +1103,17 @@ export function App() {
           gated a second time at this call site, matching how this
           component is meant to be used. */}
       <CaseNotes notes={snapshot?.notes ?? []} options={snapshot?.entities ?? []} />
+
+      {/* "Add a note" -- the human-facing add affordance for the write half
+          of §28/§63 (`AddNoteForm.tsx`'s own header comment has the full
+          reasoning for why this is a sibling disclosure row rather than
+          something mounted inside `CaseNotes` itself). A closed-by-default
+          `DisclosureSection`, like every other investigative row, so it
+          stays reachable even when `snapshot.notes` is empty without
+          growing a permanent visible empty region. */}
+      <DisclosureSection testId="add-note" title="Add a note">
+        <AddNoteForm caseId={activeCaseId} expectedSequence={snapshot?.eventSequence ?? 0} />
+      </DisclosureSection>
 
       <DisclosureSection
         testId="findings"

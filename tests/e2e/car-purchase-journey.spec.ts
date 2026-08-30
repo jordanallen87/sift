@@ -47,6 +47,7 @@ import {
   assertRecommendationHeroAboveTheFold,
   assertRightPaneIntegrity,
   disableAnimations,
+  expectNamedScreenshot,
 } from './helpers/layout-assertions.js';
 import { dynamicScreenshotMasks, withVolatileRegionsHidden } from './helpers/visual-masks.js';
 import {
@@ -96,9 +97,13 @@ test.describe('Choose our next car -- full demo journey', () => {
       'demo-launcher-car-purchase',
       'demo-launcher-home-energy-guardian',
     ]);
-    await expect(page.getByTestId('demo-launcher')).toHaveScreenshot('initial-launcher.png', {
-      maxDiffPixelRatio: 0.01,
-    });
+    await expectNamedScreenshot(
+      page,
+      page.getByTestId('demo-launcher'),
+      'initial-launcher.png',
+      { testId: 'demo-launcher', text: 'Start a Sift case' },
+      { maxDiffPixelRatio: 0.01 },
+    );
 
     const { caseId } = await sift.launchCarPurchase();
     expect(caseId).toMatch(/.+/);
@@ -150,22 +155,31 @@ test.describe('Choose our next car -- full demo journey', () => {
     // regressed once already, silently.
     await assertRecommendationHeroAboveTheFold(page);
 
-    await expect(page.getByTestId('case-workspace')).toHaveScreenshot('seeded-case.png', {
-      mask: masks,
-      maxDiffPixelRatio: 0.01,
-    });
+    await expectNamedScreenshot(
+      page,
+      page.getByTestId('case-workspace'),
+      'seeded-case.png',
+      { testId: 'recommendation-hero-headline', text: "Nothing's been looked into yet." },
+      { mask: masks, maxDiffPixelRatio: 0.01 },
+    );
 
     // --- Workspace view switcher (ADR 0004 item 5; ADR 0005): always
     // expanded, never a disclosure -- renders directly below "Manage
-    // options" and replaces the old unconditional comparison table. Compare
-    // is the default tab; at narrow widths (`layout="narrow"`, hardcoded for
-    // every viewport today -- `WorkspaceViewSwitcher.tsx`'s own header
-    // comment documents this as a disclosed, not-yet-wired scope limit, not
-    // a bug this suite should paper over) it narrows to a head-to-head pair
-    // rather than all 4 candidates, so this proves the real narrowed
-    // behavior instead of assuming the old unconditional-table behavior
-    // still holds. ---
+    // options" and replaces the old unconditional comparison table.
+    //
+    // Compare is no longer the DEFAULT tab -- task A10 changed the opening
+    // view to Quick Pick because an always-fully-expanded attribute table
+    // made a freshly seeded 390px workspace ~3379px tall, working directly
+    // against change-set §64's "reduce apparent complexity". So this step
+    // now selects Compare explicitly rather than assuming it is open. The
+    // switch is one tap on the always-visible tab strip; nothing became
+    // unreachable.
+    //
+    // At narrow widths Compare shows a head-to-head pair rather than all 4
+    // candidates, so this proves the real narrowed behavior instead of the
+    // old unconditional-table behavior. ---
     await expect(page.getByTestId('workspace-view-switcher')).toBeVisible();
+    await sift.selectWorkspaceView('compare');
     await expect(page.getByTestId('workspace-view-content-compare')).toBeVisible();
     await expect(
       page.getByTestId(`option-compare-view-header-${CAR_PURCHASE_CANDIDATE_IDS[0]}`),
@@ -173,9 +187,26 @@ test.describe('Choose our next car -- full demo journey', () => {
     await expect(
       page.getByTestId(`option-compare-view-header-${CAR_PURCHASE_CANDIDATE_IDS[1]}`),
     ).toBeVisible();
-    await expect(page.getByTestId('option-compare-view-narrow-note')).toContainText(
-      `2 of ${CAR_PURCHASE_CANDIDATE_IDS.length}`,
-    );
+
+    // Narrowing is now genuinely width-dependent, so this assertion is too.
+    // Task B3 replaced `OptionCompareView`'s hardcoded `layout="narrow"`
+    // with real width detection (`useWidthMode`, boundary 480px), which is
+    // what change-set §27 asks for: head-to-head in the canonical right
+    // pane, multi-column when there is room. Asserting the narrow note at
+    // every viewport would now be asserting the old hardcoded defect.
+    const viewportWidth = page.viewportSize()?.width ?? 0;
+    if (viewportWidth <= 480) {
+      await expect(page.getByTestId('option-compare-view-narrow-note')).toContainText(
+        `2 of ${CAR_PURCHASE_CANDIDATE_IDS.length}`,
+      );
+    } else {
+      // Expanded: every candidate is a column, and no narrowing note is
+      // rendered at all (never render what cannot be true).
+      await expect(page.getByTestId('option-compare-view-narrow-note')).toHaveCount(0);
+      for (const candidateId of CAR_PURCHASE_CANDIDATE_IDS) {
+        await expect(page.getByTestId(`option-compare-view-header-${candidateId}`)).toBeVisible();
+      }
+    }
 
     // Switching to List proves all 4 seeded candidates genuinely render
     // somewhere in the workspace, not narrowed -- the direct DOM-presence
@@ -272,9 +303,13 @@ test.describe('Choose our next car -- full demo journey', () => {
     expect(round1SourceCount).toBeGreaterThan(0);
 
     await withVolatileRegionsHidden(page, () =>
-      expect(page.getByTestId('case-workspace')).toHaveScreenshot('recommendation-ready.png', {
-        maxDiffPixelRatio: 0.01,
-      }),
+      expectNamedScreenshot(
+        page,
+        page.getByTestId('case-workspace'),
+        'recommendation-ready.png',
+        { testId: 'recommendation-card-status', text: 'Ready for review' },
+        { maxDiffPixelRatio: 0.01 },
+      ),
     );
 
     // --- Criteria reweight: the real command route, no click, no reload ---
@@ -298,9 +333,13 @@ test.describe('Choose our next car -- full demo journey', () => {
     // A stable, fully-settled pause point (nothing is in flight -- round 2
     // has not been requested yet).
     await withVolatileRegionsHidden(page, () =>
-      expect(page.getByTestId('case-workspace')).toHaveScreenshot('recommendation-stale.png', {
-        maxDiffPixelRatio: 0.01,
-      }),
+      expectNamedScreenshot(
+        page,
+        page.getByTestId('case-workspace'),
+        'recommendation-stale.png',
+        { testId: 'recommendation-card-status', text: 'Stale' },
+        { maxDiffPixelRatio: 0.01 },
+      ),
     );
 
     // --- Custom concern: the visible-control equivalent of sift_define_case_attribute ---
@@ -359,17 +398,25 @@ test.describe('Choose our next car -- full demo journey', () => {
       `option-editor-edit-${CAR_PURCHASE_CANDIDATE_IDS[0]}`,
     ]);
     await withVolatileRegionsHidden(page, () =>
-      expect(page.getByTestId('case-workspace')).toHaveScreenshot('awaiting-approval.png', {
-        maxDiffPixelRatio: 0.01,
-      }),
+      expectNamedScreenshot(
+        page,
+        page.getByTestId('case-workspace'),
+        'awaiting-approval.png',
+        { testId: 'approval-card-pending', text: 'Your approval needed' },
+        { maxDiffPixelRatio: 0.01 },
+      ),
     );
 
     await sift.approveProposal();
     await expect(page.getByTestId('approval-card-settled')).toBeVisible();
     await withVolatileRegionsHidden(page, () =>
-      expect(page.getByTestId('case-workspace')).toHaveScreenshot('decided.png', {
-        maxDiffPixelRatio: 0.01,
-      }),
+      expectNamedScreenshot(
+        page,
+        page.getByTestId('case-workspace'),
+        'decided.png',
+        { testId: 'approval-card-stamp', text: 'Approved' },
+        { maxDiffPixelRatio: 0.01 },
+      ),
     );
 
     const finalState = await getCaseState(page.request, caseId);

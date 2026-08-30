@@ -83,19 +83,19 @@ describe('RecommendationCard', () => {
     expect(hypotheses).not.toHaveTextContent('Dealer A confirmed $28,450');
   });
 
-  it('renders honest empty-state copy when there are no facts, hypotheses, or sources yet', () => {
+  it('omits the facts and hypotheses blocks entirely -- not as an empty tinted callout -- when there is no content yet', () => {
+    // Global constraint 4 ("never render what cannot be true") and
+    // change-set DoD item 35 ("Empty conceptual regions are not rendered
+    // unnecessarily"): an empty-but-present FACTS/HYPOTHESES block is
+    // exactly the defect, so assert absence, not merely emptiness.
     render(
       <RecommendationCard
         recommendation={buildRecommendation({ facts: [], hypotheses: [], sourceIds: [] })}
       />,
     );
 
-    expect(screen.getByTestId('recommendation-card-facts')).toHaveTextContent(
-      'No supporting facts recorded.',
-    );
-    expect(screen.getByTestId('recommendation-card-hypotheses')).toHaveTextContent(
-      'No open hypotheses.',
-    );
+    expect(screen.queryByTestId('recommendation-card-facts')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('recommendation-card-hypotheses')).not.toBeInTheDocument();
     expect(screen.queryByTestId('recommendation-card-sources')).not.toBeInTheDocument();
   });
 

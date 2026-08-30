@@ -1012,12 +1012,12 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
     ],
     importantUnknowns: [
       'Whether cargo, rear-seat, or equipment fit is adequate usually cannot be confirmed from published specifications alone, and may require a physical measurement or test drive.',
-      "Advertised price rarely matches the true out-the-door price once fees, mandatory add-ons, and financing terms are included.",
+      'Advertised price rarely matches the true out-the-door price once fees, mandatory add-ons, and financing terms are included.',
     ],
     researchGuidance:
       "Prefer independent published crash-safety, driver-assistance, and reliability sources over a single dealer or manufacturer claim, and treat one source's rating as provisional until a second source corroborates or contradicts it.",
     customFieldGuidance:
-      'Prefer a typed custom field over noting an important comparison factor only in prose -- for example, a specific cargo item or accessibility need this pack did not anticipate. Do not infer a subjective fit or comfort judgment without supporting evidence or a household member\'s own observation.',
+      "Prefer a typed custom field over noting an important comparison factor only in prose -- for example, a specific cargo item or accessibility need this pack did not anticipate. Do not infer a subjective fit or comfort judgment without supporting evidence or a household member's own observation.",
     presentationGuidance:
       'Deal terms and five-year ownership cost are usually worth comparing together, since a lower advertised price can still mean a higher total cost. Safety and reliability ratings are usually compared as a group rather than one attribute at a time.',
   },

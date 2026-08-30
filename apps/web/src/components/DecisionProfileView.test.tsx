@@ -188,7 +188,7 @@ describe('DecisionProfileView', () => {
   });
 
   describe('suggestedQuestions (§16, sourced honestly per task D4)', () => {
-    it('renders each suggested question\'s text', () => {
+    it("renders each suggested question's text", () => {
       render(<DecisionProfileView profile={FULL_PROFILE} />);
       expect(
         screen.getByTestId('decision-profile-view-suggested-question-guide:0'),

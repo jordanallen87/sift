@@ -92,7 +92,9 @@ describe('compilePack: success path', () => {
   // matching a hand-edited "new" value.
   it('produces the identical compiledHash for a manifest that declares no decisionGuide', () => {
     const compiled = compilePack(validManifest(), validCatalog(), fixedClock);
-    expect(compiled.compiledHash).toMatchInlineSnapshot(`"958efa0850a8e6082c0f4af05bd7900138a9aef8a87309b7cfd09c6c17bc570a"`);
+    expect(compiled.compiledHash).toMatchInlineSnapshot(
+      `"958efa0850a8e6082c0f4af05bd7900138a9aef8a87309b7cfd09c6c17bc570a"`,
+    );
   });
 
   it('produces the same compiledHash regardless of compiledAt (clock)', () => {

@@ -44,13 +44,28 @@
  * invents it). This keeps the derivation generic across every Decision Pack
  * (§56 "Generic does not mean lowest common denominator") rather than
  * hard-coding car-shopping judgments like "excellent cargo space."
+ *
+ * Two refinements on top of that raw signal, both in `buildInsights`
+ * (`../lib/evidence-expectation.js`'s `isIdentityAttribute` and this
+ * function's `highlightedIds` suppression), added after the naive version
+ * flagged an option's own identity fields as if they were decision risk:
+ * (1) a plain identity/label descriptor (`isIdentityAttribute` -- e.g. a
+ * listing's own make/model/trim) carries no decision-insight signal on its
+ * own and never appears in either list, regardless of status; (2) an
+ * under-evidenced value that is already shown, unqualified, in the
+ * highlight row above is not repeated in "Watch out" -- doing so would
+ * contradict the card in the same glance ("Model year: 2022" confidently
+ * shown, then "Model year still needs stronger evidence" right below it).
+ * A genuinely unknown or conflicted value is never suppressed by either
+ * refinement's status branch -- only the "resolved but under-evidenced"
+ * branch is -- so "Watch out" still surfaces real problems.
  */
 import { useEffect, useMemo } from 'react';
 import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatAttributeValue } from './attribute-value-format.js';
-import { meetsEvidenceExpectation } from '../lib/evidence-expectation.js';
+import { isIdentityAttribute, meetsEvidenceExpectation } from '../lib/evidence-expectation.js';
 
 export interface QuickPickViewProps {
   /** The full triage queue, in the caller's order. Only `options[position]` is rendered -- one option dominates the pane (change set §9). */
@@ -82,11 +97,21 @@ interface AttributeInsight {
 function buildInsights(
   option: EntityRecord,
   applicableDefinitions: AttributeDefinition[],
+  highlightedIds: ReadonlySet<string>,
 ): { whyItFits: AttributeInsight[]; watchOut: AttributeInsight[] } {
   const whyItFits: AttributeInsight[] = [];
   const watchOut: AttributeInsight[] = [];
 
   for (const definition of applicableDefinitions) {
+    // A plain identity/label descriptor (e.g. a listing's own make/model/
+    // trim) carries no decision-insight signal on its own -- see
+    // `isIdentityAttribute`'s doc comment. Skipped before any evidence
+    // check, so it never appears in either list regardless of status --
+    // this is what stops "Make still needs stronger evidence" noise for an
+    // option's own identity fields (this module's header comment,
+    // "'Why it fits' / 'Watch out' derivation").
+    if (isIdentityAttribute(definition)) continue;
+
     const record = option.attributes[definition.id];
 
     if (record === undefined || record.status === 'unknown') {
@@ -114,7 +139,16 @@ function buildInsights(
         definitionId: definition.id,
         text: `${definition.label}: ${formatAttributeValue(record.value)}`,
       });
-    } else {
+    } else if (!highlightedIds.has(definition.id)) {
+      // Under-evidenced, but the same value is already shown, unqualified,
+      // in the highlight row above -- repeating "still needs stronger
+      // evidence" right under a value the card just asserted with no
+      // caveat would contradict the card in the same glance (the observed
+      // "Model year: 2022" / "Model year still needs stronger evidence"
+      // defect). Suppressed only for this branch: a genuinely unknown or
+      // conflicted value is never suppressed (it must still show as a real
+      // problem), and a value that DOES meet its evidence bar is repeated
+      // deliberately, as confirmation rather than contradiction.
       watchOut.push({
         definitionId: definition.id,
         text: `${definition.label} still needs stronger evidence`,
@@ -162,8 +196,9 @@ export function QuickPickView({
 
   const { whyItFits, watchOut } = useMemo(() => {
     if (currentOption === null) return { whyItFits: [], watchOut: [] };
-    return buildInsights(currentOption, applicableDefinitions);
-  }, [currentOption, applicableDefinitions]);
+    const highlightedIds = new Set(highlightDefinitions.map((definition) => definition.id));
+    return buildInsights(currentOption, applicableDefinitions, highlightedIds);
+  }, [currentOption, applicableDefinitions, highlightDefinitions]);
 
   // Reports the option actually on screen so a caller can keep shared focus
   // (case `activeFocus`, WebMCP `focusedOptionId`) synchronized -- change

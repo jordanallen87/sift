@@ -5,7 +5,7 @@
  * card/approval controls/WebMCP status, primary controls stay inside the
  * viewport with at least a 44x44 CSS-pixel target.
  */
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /** `document.documentElement.scrollWidth <= clientWidth` at the current viewport/state. */
 export async function assertNoHorizontalOverflow(page: Page): Promise<void> {
@@ -217,4 +217,62 @@ export async function assertRecommendationHeroAboveTheFold(page: Page): Promise<
     `recommendation-hero's top edge (${box.y}px) must fall within the first viewport height ` +
       `(${viewport.height}px) at ${viewport.width}px -- ADR 0004's above-the-fold invariant`,
   ).toBeLessThan(viewport.height);
+}
+
+/**
+ * A8 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`):
+ * `maxDiffPixelRatio: 0.01` alone let a whole product rename (Pax -> Sift)
+ * pass with stale baselines -- every named screenshot still rendered
+ * "Start a Pax case," and the suite stayed green throughout, because a
+ * raster pixel-diff at a 1% tolerance never actually reads the rendered
+ * characters. Lowering the ratio further trades that failure mode for pure
+ * flakiness (font antialiasing/subpixel jitter across CI runners) without
+ * closing the actual hole: a pixel-diff cannot distinguish "the copy
+ * changed" from "a font rendered one pixel differently."
+ *
+ * The fix the plan specifies is a second, independent signal: a real text
+ * assertion against the exact visible string that gives a given screen its
+ * identity (a heading, a status word, a primary action's label), asserted
+ * immediately before the screenshot is taken. `expectNamedScreenshot` is the
+ * one shared call site for that pairing (rather than a copy-pasted
+ * `expect(...).toContainText(...)` above each of this suite's ~13
+ * `toHaveScreenshot` call sites) -- a renamed product, an emptied region, or
+ * a silently changed primary action now fails a plain, readable text
+ * assertion long before any pixel comparison runs, with a message that
+ * names the exact missing text rather than a diff image a person still has
+ * to go look at.
+ */
+export interface ScreenshotIdentityCheck {
+  /** The `data-testid` that carries this screen's identifying text. */
+  testId: string;
+  /** The exact visible substring (or pattern) that must be present. `toContainText` semantics -- not required to be the element's entire text content. */
+  text: string | RegExp;
+}
+
+function isIdentityCheckList(
+  value: ScreenshotIdentityCheck | readonly ScreenshotIdentityCheck[],
+): value is readonly ScreenshotIdentityCheck[] {
+  return Array.isArray(value);
+}
+
+export async function expectNamedScreenshot(
+  page: Page,
+  target: Locator,
+  name: string,
+  identity: ScreenshotIdentityCheck | readonly ScreenshotIdentityCheck[],
+  screenshotOptions?: Parameters<Locator['screenshot']>[0] & {
+    mask?: Locator[];
+    maxDiffPixelRatio?: number;
+  },
+): Promise<void> {
+  const checks: readonly ScreenshotIdentityCheck[] = isIdentityCheckList(identity)
+    ? identity
+    : [identity];
+  for (const check of checks) {
+    await expect(
+      page.getByTestId(check.testId),
+      `screenshot "${name}": identity text missing on "${check.testId}"`,
+    ).toContainText(check.text);
+  }
+  await expect(target).toHaveScreenshot(name, screenshotOptions);
 }

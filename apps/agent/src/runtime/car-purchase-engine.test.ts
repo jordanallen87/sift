@@ -373,6 +373,15 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
     // path, which is what the deployed product actually runs. ---
     expect(snapshot.recommendation?.rationale).not.toMatch(/\bcandidate-[a-z0-9-]+/i);
     expect(snapshot.recommendation?.rationale).not.toMatch(/\bsource-[a-z0-9-]+/i);
+    // Every cited source's `title` too: `RecommendationCard` renders it as
+    // the visible citation link text, so a `title` set to the raw id put
+    // "source-national-crash-safety-consortium" under "Sources" in the UI.
+    // Third surface of the same defect -- rationale and limitations were
+    // fixed first, and this one was only found by reading a baseline image.
+    for (const source of snapshot.sources) {
+      expect(source.title).not.toMatch(/^source-/);
+      expect(source.title.length).toBeGreaterThan(0);
+    }
     // Still says something real, rather than having been emptied to pass.
     expect(snapshot.recommendation?.rationale.length ?? 0).toBeGreaterThan(20);
 
@@ -573,9 +582,9 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
       .replayFrom(caseId, 0)
       .find((event) => event.runId === run2Id && event.type === 'tool.started');
     expect(round2ToolActivity?.debugEventId).toBeTruthy();
-    expect(
-      runtimeEventsRound2.some((event) => event.id === round2ToolActivity?.debugEventId),
-    ).toBe(true);
+    expect(runtimeEventsRound2.some((event) => event.id === round2ToolActivity?.debugEventId)).toBe(
+      true,
+    );
 
     // A human, never the engine, approves the proposal -- proven by the engine
     // never having touched `proposal.reviewed`.

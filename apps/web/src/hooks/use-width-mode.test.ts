@@ -15,12 +15,16 @@ import { NARROW_MAX_WIDTH_PX, useWidthMode } from './use-width-mode.js';
 function installFakeMatchMedia(initialMatches: boolean) {
   let matches = initialMatches;
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
-  const removeEventListener = vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
-    listeners.delete(listener);
-  });
-  const addEventListener = vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
-    listeners.add(listener);
-  });
+  const removeEventListener = vi.fn(
+    (_type: string, listener: (event: MediaQueryListEvent) => void) => {
+      listeners.delete(listener);
+    },
+  );
+  const addEventListener = vi.fn(
+    (_type: string, listener: (event: MediaQueryListEvent) => void) => {
+      listeners.add(listener);
+    },
+  );
   const matchMedia = vi.fn((query: string) => {
     const mql = {
       get matches() {

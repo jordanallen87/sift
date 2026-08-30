@@ -48,6 +48,23 @@ const DEFINITIONS: AttributeDefinition[] = [
     comparison: 'none',
     sensitive: false,
   },
+  // Decision-relevant (not identity: `enum`, not `string`) and deliberately
+  // left out of `PRESENTATION`'s only group, so it never lands in
+  // `prominentDefinitions`/the fact row -- used to prove a genuinely
+  // relevant, under-evidenced, not-already-shown attribute still surfaces
+  // as a concern rather than being swept away by the same fix that
+  // suppresses `mileage` below.
+  {
+    id: 'reliability',
+    label: 'Reliability',
+    valueType: 'enum',
+    required: false,
+    appliesTo: ['car'],
+    allowedValues: ['Above Average', 'Average', 'Below Average'],
+    evidenceExpectation: 'source',
+    comparison: 'higher_better',
+    sensitive: false,
+  },
 ];
 
 // First presentation group deliberately omits `warranty`, so it exercises the
@@ -76,9 +93,11 @@ function buildEntity(overrides: Partial<EntityRecord> = {}): EntityRecord {
   };
 }
 
-// A well-evidenced strength (price), an under-evidenced concern (mileage --
-// declares `evidenceExpectation: 'source'` but only reaches `asserted`), a
-// conflicted concern (the custom field), and an excluded-but-real value
+// A well-evidenced strength (price), an under-evidenced value that is ALSO
+// already shown, unqualified, in the fact row -- mileage, which must NOT
+// repeat as a concern (the self-contradiction fix) -- a conflicted concern
+// (the custom field), a genuinely under-evidenced concern that is NOT
+// already shown anywhere else (reliability), and an excluded-but-real value
 // (warranty) that must never reach the rendered card because it falls
 // outside the first presentation group.
 const RAV4 = buildEntity({
@@ -98,6 +117,15 @@ const RAV4 = buildEntity({
       definitionId: 'mileage',
       label: 'Mileage',
       value: { type: 'number', value: 15000, unit: 'mi' },
+      origin: 'user',
+      sourceIds: [],
+      status: 'asserted',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    },
+    reliability: {
+      definitionId: 'reliability',
+      label: 'Reliability',
+      value: { type: 'enum', value: 'Above Average' },
       origin: 'user',
       sourceIds: [],
       status: 'asserted',
@@ -299,14 +327,34 @@ describe('OptionListView', () => {
       />,
     );
 
-    // price: status "asserted" meets its own "assertion" evidence bar -> strength.
+    // price: status "asserted" meets its own "assertion" evidence bar ->
+    // strength (deterministic, comma-grouped, symbol-mapped formatting --
+    // see attribute-value-format.ts's header comment).
     expect(
       screen.getByTestId('option-list-view-strengths-item-candidate-rav4-price'),
-    ).toHaveTextContent('Price: 28500 USD');
+    ).toHaveTextContent('Price: $28,500');
 
-    // mileage: status "asserted" does not meet its declared "source" bar -> concern.
+    // mileage: status "asserted" does not meet its declared "source" bar,
+    // but it is already shown, unqualified, in the fact row above
+    // (`option-list-view-fact-candidate-rav4-mileage`) -- repeating it as a
+    // concern would contradict the card in the same glance, so it must not
+    // appear as a concern (or anywhere else) at all.
     expect(
-      screen.getByTestId('option-list-view-concerns-item-candidate-rav4-mileage'),
+      screen.queryByTestId('option-list-view-concerns-item-candidate-rav4-mileage'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('option-list-view-strengths-item-candidate-rav4-mileage'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('option-list-view-unresolved-item-candidate-rav4-mileage'),
+    ).not.toBeInTheDocument();
+
+    // reliability: same under-evidenced "asserted" vs. "source" gap as
+    // mileage, but it is NOT shown anywhere else on the card (left out of
+    // `PRESENTATION`'s only group) -- a real, not-yet-surfaced problem, so
+    // it must still appear as a concern.
+    expect(
+      screen.getByTestId('option-list-view-concerns-item-candidate-rav4-reliability'),
     ).toHaveTextContent(/needs stronger evidence/i);
 
     // the custom field is "conflicted" -> concern, not a strength.
@@ -315,6 +363,15 @@ describe('OptionListView', () => {
     ).toHaveTextContent(/conflicting information/i);
     expect(
       screen.queryByTestId('option-list-view-strengths-item-candidate-rav4-custom.laptop_work_fit'),
+    ).not.toBeInTheDocument();
+
+    // warranty: a plain identity/label string field with no comparison
+    // direction -- never appears in any insight list, regardless of status.
+    expect(
+      screen.queryByTestId('option-list-view-concerns-item-candidate-rav4-warranty'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('option-list-view-strengths-item-candidate-rav4-warranty'),
     ).not.toBeInTheDocument();
   });
 

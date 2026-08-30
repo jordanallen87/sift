@@ -117,7 +117,10 @@ describe('sift_list_notes', () => {
   it('returns every note, most-recently-added first, when the case has notes', async () => {
     const caseState = buildFixtureCaseState({
       id: 'case-1',
-      notes: [buildNote({ id: 'note-1', body: 'First.' }), buildNote({ id: 'note-2', body: 'Second.' })],
+      notes: [
+        buildNote({ id: 'note-1', body: 'First.' }),
+        buildNote({ id: 'note-2', body: 'Second.' }),
+      ],
     });
     const adapter = new InMemoryModelContextAdapter();
     const handle = await registerSiftTools({
@@ -254,9 +257,11 @@ describe('sift_add_note: honest, provenance-bearing write; never touches obligat
     // (this is exactly what apps/agent's own command-service.test.ts proves
     // the real reducer does -- this fake only needs to relay it honestly).
     const afterState = { ...beforeState, notes: [buildNote()], eventSequence: 2 };
-    const addNote = vi.fn().mockResolvedValue(
-      buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 2, snapshot: afterState }),
-    );
+    const addNote = vi
+      .fn()
+      .mockResolvedValue(
+        buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 2, snapshot: afterState }),
+      );
     const { adapter } = await setUpWithActiveCase('case-1', { addNote });
 
     const result = await invokeTool<typeof afterState>(adapter, 'sift_add_note', {

@@ -18,14 +18,16 @@
  *
  * Global constraint 4 ("never render what cannot be true"): renders `null`
  * outright when `notes` is empty -- not a collapsed section, not an "Add
- * your first note" placeholder card. This task's own brief is explicit that
- * a human-facing "add note" affordance, if one is added, must attach to some
- * OTHER region that already earns its space rather than living inside an
- * otherwise-empty region here; this component intentionally stays read-only.
- * A human or ChatGPT can already add a note today through the
- * `sift_add_note` WebMCP tool (`register-sift-tools.ts`), which is the
- * write capability this task's own brief scopes to WebMCP, not this
- * component.
+ * your first note" placeholder card. This component intentionally stays
+ * read-only: the human-facing "add note" affordance is `AddNoteForm.tsx`, a
+ * sibling component `App.tsx` mounts in its own closed-by-default
+ * `DisclosureSection` right after this one, precisely so the write
+ * affordance stays reachable even while this component itself renders
+ * nothing (see `AddNoteForm.tsx`'s own header comment for the full
+ * reasoning). Both a human through that form and ChatGPT through the
+ * `sift_add_note` WebMCP tool (`register-sift-tools.ts`) call the identical
+ * `commands.addNote` -- this file only ever displays what either path
+ * already wrote.
  *
  * "A note shows who wrote it -- human or agent -- because the difference
  * matters to a reader" (this task's brief): keyed off `CaseNote.origin`

@@ -66,6 +66,7 @@ import {
   assertRecommendationHeroAboveTheFold,
   assertRightPaneIntegrity,
   disableAnimations,
+  expectNamedScreenshot,
 } from './helpers/layout-assertions.js';
 import { dynamicScreenshotMasks } from './helpers/visual-masks.js';
 import {
@@ -105,9 +106,13 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
       'demo-launcher-home-energy-guardian',
     ]);
     await expect(page.getByTestId('demo-launcher')).toBeVisible();
-    await expect(page.getByTestId('demo-launcher')).toHaveScreenshot('initial-launcher.png', {
-      maxDiffPixelRatio: 0.01,
-    });
+    await expectNamedScreenshot(
+      page,
+      page.getByTestId('demo-launcher'),
+      'initial-launcher.png',
+      { testId: 'demo-launcher', text: 'Start a Sift case' },
+      { maxDiffPixelRatio: 0.01 },
+    );
 
     const { caseId } = await sift.launchHomeEnergyGuardian();
     expect(caseId).toMatch(/.+/);
@@ -150,10 +155,13 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     // ADR 0004 decision item 6: above-the-fold invariant.
     await assertRecommendationHeroAboveTheFold(page);
 
-    await expect(page.getByTestId('case-workspace')).toHaveScreenshot('seeded-case.png', {
-      mask: masks,
-      maxDiffPixelRatio: 0.01,
-    });
+    await expectNamedScreenshot(
+      page,
+      page.getByTestId('case-workspace'),
+      'seeded-case.png',
+      { testId: 'recommendation-hero-headline', text: "Nothing's been looked into yet." },
+      { mask: masks, maxDiffPixelRatio: 0.01 },
+    );
 
     // --- Workspace view switcher (ADR 0004 item 5; ADR 0005) -- see
     // `car-purchase-journey.spec.ts` for the full rationale on why Compare
@@ -163,7 +171,12 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     // `change-rate-plan`), not `HOME_ENERGY_RESPONSE_OPTION_IDS`'s own
     // alphabetized listing -- see `HOME_ENERGY_RESPONSE_OPTION_ENTITY_ORDER`'s
     // header comment in `sift-page.ts`. ---
+    // Compare is selected explicitly: task A10 made Quick Pick the opening
+    // view (see `car-purchase-journey.spec.ts` for the height rationale),
+    // so assuming Compare is already open would assert a default this
+    // product deliberately no longer has.
     await expect(page.getByTestId('workspace-view-switcher')).toBeVisible();
+    await sift.selectWorkspaceView('compare');
     await expect(page.getByTestId('workspace-view-content-compare')).toBeVisible();
     await expect(
       page.getByTestId(`option-compare-view-header-${HOME_ENERGY_RESPONSE_OPTION_ENTITY_ORDER[0]}`),
@@ -171,9 +184,22 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     await expect(
       page.getByTestId(`option-compare-view-header-${HOME_ENERGY_RESPONSE_OPTION_ENTITY_ORDER[1]}`),
     ).toBeVisible();
-    await expect(page.getByTestId('option-compare-view-narrow-note')).toContainText(
-      `2 of ${HOME_ENERGY_RESPONSE_OPTION_IDS.length}`,
-    );
+    // Width-dependent, for the same reason documented in
+    // `car-purchase-journey.spec.ts`: task B3 gave `OptionCompareView` real
+    // width detection instead of a hardcoded narrow layout, so head-to-head
+    // is the canonical right-pane behavior and multi-column is what §27 asks
+    // for when there is room.
+    const viewportWidth = page.viewportSize()?.width ?? 0;
+    if (viewportWidth <= 480) {
+      await expect(page.getByTestId('option-compare-view-narrow-note')).toContainText(
+        `2 of ${HOME_ENERGY_RESPONSE_OPTION_IDS.length}`,
+      );
+    } else {
+      await expect(page.getByTestId('option-compare-view-narrow-note')).toHaveCount(0);
+      for (const optionId of HOME_ENERGY_RESPONSE_OPTION_IDS) {
+        await expect(page.getByTestId(`option-compare-view-header-${optionId}`)).toBeVisible();
+      }
+    }
 
     // Switching to List proves all 4 seeded response options genuinely
     // render somewhere in the workspace, not narrowed.
@@ -271,10 +297,13 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
       (round1State['recommendation'] as { favoredOptionId: string } | null)?.favoredOptionId,
     ).toBe('monitor-one-cycle');
 
-    await expect(page.getByTestId('case-workspace')).toHaveScreenshot('recommendation-ready.png', {
-      mask: masks,
-      maxDiffPixelRatio: 0.01,
-    });
+    await expectNamedScreenshot(
+      page,
+      page.getByTestId('case-workspace'),
+      'recommendation-ready.png',
+      { testId: 'recommendation-card-status', text: 'Ready for review' },
+      { mask: masks, maxDiffPixelRatio: 0.01 },
+    );
 
     // --- Criteria reweight: the real command route, no click, no reload ---
     const beforeReweight = await getCaseState(page.request, caseId);
@@ -299,10 +328,13 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     // A stable, fully-settled pause point (nothing is in flight -- round 2
     // has not been requested yet) -- see this file's header comment for why
     // this replaces a genuinely racy "mid-round-2" capture.
-    await expect(page.getByTestId('case-workspace')).toHaveScreenshot('recommendation-stale.png', {
-      mask: masks,
-      maxDiffPixelRatio: 0.01,
-    });
+    await expectNamedScreenshot(
+      page,
+      page.getByTestId('case-workspace'),
+      'recommendation-stale.png',
+      { testId: 'recommendation-card-status', text: 'Stale' },
+      { mask: masks, maxDiffPixelRatio: 0.01 },
+    );
 
     // --- Round 2: no visible control can reach this obligation any more (see header comment) ---
     const afterReweight = await getCaseState(page.request, caseId);
@@ -351,17 +383,23 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
       'option-editor-save',
       `option-editor-edit-${HOME_ENERGY_RESPONSE_OPTION_IDS[0]}`,
     ]);
-    await expect(page.getByTestId('case-workspace')).toHaveScreenshot('awaiting-approval.png', {
-      mask: masks,
-      maxDiffPixelRatio: 0.01,
-    });
+    await expectNamedScreenshot(
+      page,
+      page.getByTestId('case-workspace'),
+      'awaiting-approval.png',
+      { testId: 'approval-card-pending', text: 'Your approval needed' },
+      { mask: masks, maxDiffPixelRatio: 0.01 },
+    );
 
     await sift.approveProposal();
     await expect(page.getByTestId('approval-card-settled')).toBeVisible();
-    await expect(page.getByTestId('case-workspace')).toHaveScreenshot('decided.png', {
-      mask: masks,
-      maxDiffPixelRatio: 0.01,
-    });
+    await expectNamedScreenshot(
+      page,
+      page.getByTestId('case-workspace'),
+      'decided.png',
+      { testId: 'approval-card-stamp', text: 'Approved' },
+      { mask: masks, maxDiffPixelRatio: 0.01 },
+    );
 
     const finalState = await getCaseState(page.request, caseId);
     expect(finalState['status']).toBe('decided');

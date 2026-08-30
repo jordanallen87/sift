@@ -31,7 +31,12 @@ import { Router } from 'express';
 import type { CommandOrigin, CommandReceipt } from '@sift/contracts';
 import type { CommandService } from '../services/command-service.js';
 import type { ServiceResult } from '../services/service-result.js';
-import { readCommandId, readCommandOrigin, respondWithServiceResult, sendError } from './http-support.js';
+import {
+  readCommandId,
+  readCommandOrigin,
+  respondWithServiceResult,
+  sendError,
+} from './http-support.js';
 
 export interface CommandsRouterDeps {
   readonly commandService: CommandService;

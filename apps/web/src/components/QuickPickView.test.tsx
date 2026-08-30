@@ -142,7 +142,9 @@ describe('QuickPickView', () => {
   it('shows the most decision-relevant attribute values on the dominant card', () => {
     renderQuickPick({ position: 1 });
 
-    expect(screen.getByTestId('quick-pick-highlight-price')).toHaveTextContent('32400 USD');
+    // Deterministic, comma-grouped, symbol-mapped formatting -- see
+    // attribute-value-format.ts's header comment.
+    expect(screen.getByTestId('quick-pick-highlight-price')).toHaveTextContent('$32,400');
     expect(screen.getByTestId('quick-pick-highlight-mpg')).toHaveTextContent('32 MPG');
     expect(screen.getByTestId('quick-pick-highlight-cargo')).toHaveTextContent('39.3 cu ft');
   });
@@ -151,19 +153,150 @@ describe('QuickPickView', () => {
     renderQuickPick({ position: 1 });
 
     const whyItFits = screen.getByTestId('quick-pick-why-it-fits');
-    expect(whyItFits).toHaveTextContent('Price: 32400 USD');
+    // Deterministic, comma-grouped, symbol-mapped formatting -- see
+    // attribute-value-format.ts's header comment.
+    expect(whyItFits).toHaveTextContent('Price: $32,400');
     expect(whyItFits).toHaveTextContent('MPG: 32 MPG');
     // 'cargo' is under-evidenced for its own definition's expectation, so it
     // must not be claimed as a strength.
     expect(whyItFits).not.toHaveTextContent('Cargo:');
   });
 
-  it('lists under-evidenced, unknown, and conflicted values under "Watch out"', () => {
+  it('lists genuinely unknown values under "Watch out"', () => {
     renderQuickPick({ position: 1 });
 
     const watchOut = screen.getByTestId('quick-pick-watch-out');
-    expect(watchOut).toHaveTextContent(/cargo still needs stronger evidence/i);
     expect(watchOut).toHaveTextContent(/ride comfort is still unknown/i);
+  });
+
+  it('does not repeat an under-evidenced value as a warning when it is already shown, unqualified, in the highlight row above -- the self-contradiction "Model year: 2022" / "Model year still needs stronger evidence" defect', () => {
+    renderQuickPick({ position: 1 });
+
+    // 'cargo' is under-evidenced for its own definition's expectation (see
+    // the "Why it fits" test above), AND it is one of the highlighted
+    // attribute values shown confidently as "Cargo: 39.3 cu ft" on the same
+    // card (the "shows the most decision-relevant attribute values" test).
+    // Repeating "Cargo still needs stronger evidence" right below that would
+    // contradict what the card just asserted without qualification -- it
+    // must not appear.
+    expect(screen.getByTestId('quick-pick-highlight-cargo')).toHaveTextContent('39.3 cu ft');
+    expect(screen.getByTestId('quick-pick-watch-out')).not.toHaveTextContent(/cargo/i);
+  });
+
+  it('never flags a plain identity/label attribute (a string field with no comparison direction) in "Why it fits" or "Watch out", even when it fails its own declared evidence bar', () => {
+    const definitions: AttributeDefinition[] = [
+      {
+        id: 'car.trim',
+        label: 'Trim',
+        valueType: 'string',
+        required: false,
+        appliesTo: ['car'],
+        evidenceExpectation: 'source',
+        comparison: 'none',
+        sensitive: false,
+      },
+      {
+        id: 'car.mileage',
+        label: 'Mileage',
+        valueType: 'number',
+        required: true,
+        appliesTo: ['car'],
+        unit: 'mi',
+        evidenceExpectation: 'source',
+        comparison: 'lower_better',
+        sensitive: false,
+      },
+    ];
+    const option: EntityRecord = {
+      id: 'candidate-rav4',
+      kind: 'car',
+      label: '2022 Toyota RAV4 XLE',
+      attributes: {
+        'car.trim': {
+          definitionId: 'car.trim',
+          label: 'Trim',
+          value: { type: 'string', value: 'XLE Hybrid AWD' },
+          origin: 'agent_proposed',
+          sourceIds: ['source-listing'],
+          // 'asserted' does not meet this definition's 'source' bar -- under
+          // the old, undifferentiated derivation this produced the exact
+          // observed defect: "Trim still needs stronger evidence" noise for
+          // a listing's own identity field.
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+        'car.mileage': {
+          definitionId: 'car.mileage',
+          label: 'Mileage',
+          value: { type: 'number', value: 28_400, unit: 'mi' },
+          origin: 'agent_proposed',
+          sourceIds: ['source-listing'],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+      },
+      createdAt: '2026-08-27T00:00:00.000Z',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    };
+
+    renderQuickPick({ options: [option], attributeDefinitions: definitions, position: 0 });
+
+    const card = screen.getByTestId('quick-pick-card-candidate-rav4');
+    expect(card).not.toHaveTextContent(/trim/i);
+  });
+
+  it('still lists a genuinely decision-relevant attribute under "Watch out" when it fails its evidence bar and is not already shown in the highlight row', () => {
+    // Five comparison-relevant (decision-relevant) definitions -- one more
+    // than MAX_HIGHLIGHT_ATTRIBUTES/MAX_INSIGHT_ITEMS's shared cap of 4 --
+    // so the fifth, 'reliability', cannot fit in the highlight row and must
+    // be judged purely on its own "Watch out" merit.
+    const definitions: AttributeDefinition[] = (
+      ['price', 'mpg', 'cargo', 'safety', 'reliability'] as const
+    ).map((id) => ({
+      id,
+      label: id[0]!.toUpperCase() + id.slice(1),
+      valueType: 'number',
+      required: false,
+      appliesTo: ['car'],
+      evidenceExpectation: 'source',
+      comparison: 'higher_better',
+      sensitive: false,
+    }));
+    const record = (definitionId: string, label: string, status: 'asserted' | 'conflicted') => ({
+      definitionId,
+      label,
+      value: { type: 'number' as const, value: 7 },
+      origin: 'agent_proposed' as const,
+      sourceIds: [],
+      status,
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    });
+    const option: EntityRecord = {
+      id: 'candidate-x',
+      kind: 'car',
+      label: 'Candidate X',
+      attributes: {
+        price: record('price', 'Price', 'asserted'),
+        mpg: record('mpg', 'Mpg', 'asserted'),
+        cargo: record('cargo', 'Cargo', 'asserted'),
+        safety: record('safety', 'Safety', 'asserted'),
+        // Never highlighted (5th comparison-relevant definition, beyond the
+        // top-4 cap) and conflicted -- a real problem that must still show.
+        reliability: record('reliability', 'Reliability', 'conflicted'),
+      },
+      createdAt: '2026-08-27T00:00:00.000Z',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    };
+
+    renderQuickPick({ options: [option], attributeDefinitions: definitions, position: 0 });
+
+    // Confirms the setup: only 4 of the 5 decision-relevant definitions fit
+    // the highlight row, so 'reliability' is judged solely on its own merit,
+    // not suppressed as an already-shown duplicate.
+    expect(screen.queryByTestId('quick-pick-highlight-reliability')).not.toBeInTheDocument();
+    expect(screen.getByTestId('quick-pick-watch-out')).toHaveTextContent(
+      /reliability has conflicting information/i,
+    );
   });
 
   it('renders an option with a missing attribute honestly as unknown, never blank or fabricated', () => {

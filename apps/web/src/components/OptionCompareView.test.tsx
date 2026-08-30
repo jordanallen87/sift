@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
+import type {
+  AttributeDefinition,
+  CaseExtension,
+  EntityRecord,
+  PresentationDefinition,
+} from '@sift/contracts';
 import { OptionCompareView } from './OptionCompareView.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
@@ -133,6 +138,30 @@ const OPTIONS: EntityRecord[] = [
     },
   }),
 ];
+
+function buildCaseExtension(overrides: Partial<CaseExtension> = {}): CaseExtension {
+  return {
+    id: 'ext-1',
+    caseId: 'case-1',
+    definition: {
+      id: 'custom.trunk_space',
+      label: 'Trunk space fit',
+      valueType: 'string',
+      required: false,
+      appliesTo: ['car'],
+      evidenceExpectation: 'assertion',
+      comparison: 'none',
+      sensitive: false,
+      origin: 'user',
+      reason: 'The household needs room for a folded stroller.',
+      confirmation: 'confirmed',
+      proposedBy: 'user',
+      createdAt: '2026-08-27T00:00:00.000Z',
+    },
+    createdAt: '2026-08-27T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
 describe('OptionCompareView', () => {
   it('renders the empty state when no options are visible', () => {
@@ -464,5 +493,157 @@ describe('OptionCompareView', () => {
       />,
     );
     expect(overflowRisks).toEqual([]);
+  });
+
+  // Defect 1 regression gate: a filtered-out option must never read as
+  // eliminated (§54 -- presentation filtering is not a decision mutation).
+  // Hiding a column via `visibleOptionIds` needs its own visible,
+  // non-alarming explanation distinct from the narrow-layout head-to-head
+  // auto-pairing note above (`option-compare-view-narrow-note`), which only
+  // covers the already-visible set being paired down for the narrow layout.
+  it('explains that options missing from a narrowed visibleOptionIds set are not eliminated, only not shown here', () => {
+    render(
+      <OptionCompareView
+        options={OPTIONS}
+        attributeDefinitions={DEFINITIONS}
+        presentation={null}
+        selectedOptionId={null}
+        visibleOptionIds={['candidate-rav4', 'candidate-crv']}
+        layout="expanded"
+      />,
+    );
+
+    const note = screen.getByTestId('option-compare-view-filtered-note');
+    expect(note).toHaveTextContent(/not eliminated/i);
+    expect(
+      screen.queryByTestId('option-compare-view-header-candidate-forester'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows no "not eliminated" note when visibleOptionIds is absent (nothing was filtered)', () => {
+    render(
+      <OptionCompareView
+        options={OPTIONS}
+        attributeDefinitions={DEFINITIONS}
+        presentation={null}
+        selectedOptionId={null}
+        layout="expanded"
+      />,
+    );
+    expect(screen.queryByTestId('option-compare-view-filtered-note')).not.toBeInTheDocument();
+  });
+
+  // Defect 2: confirmed case-level custom fields (`snapshot.caseExtensions`)
+  // must appear as first-class comparison rows, reusing the existing
+  // `custom.*` Custom-badge/label rendering this file already tests above.
+  describe('confirmed case extensions render as comparison rows (Defect 2)', () => {
+    it('merges a confirmed case extension in as a real row, marked Custom, using its label rather than its raw id', () => {
+      const entityWithExtensionValue = {
+        ...OPTIONS[0]!,
+        attributes: {
+          ...OPTIONS[0]!.attributes,
+          'custom.trunk_space': {
+            definitionId: 'custom.trunk_space',
+            label: 'Trunk space fit',
+            value: { type: 'string' as const, value: 'Fits a folded stroller' },
+            origin: 'user' as const,
+            sourceIds: [],
+            status: 'asserted' as const,
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        },
+      };
+
+      const { container } = render(
+        <OptionCompareView
+          options={[entityWithExtensionValue]}
+          attributeDefinitions={DEFINITIONS}
+          presentation={null}
+          selectedOptionId={null}
+          layout="expanded"
+          caseExtensions={[buildCaseExtension()]}
+        />,
+      );
+
+      const row = screen.getByTestId('option-compare-view-row-custom.trunk_space');
+      expect(row).toHaveTextContent('Trunk space fit');
+      expect(row).toHaveTextContent('Fits a folded stroller');
+      expect(
+        screen.getByTestId('option-compare-view-custom-badge-custom.trunk_space'),
+      ).toHaveTextContent('Custom');
+      expect(container.textContent ?? '').not.toContain('custom.trunk_space');
+    });
+
+    it('excludes a case extension that is still pending human review -- it is a proposal, not an agreed comparison dimension', () => {
+      render(
+        <OptionCompareView
+          options={[OPTIONS[0]!]}
+          attributeDefinitions={DEFINITIONS}
+          presentation={null}
+          selectedOptionId={null}
+          layout="expanded"
+          caseExtensions={[
+            buildCaseExtension({
+              id: 'ext-pending',
+              definition: {
+                ...buildCaseExtension().definition,
+                id: 'custom.paint_color',
+                label: 'Paint color match',
+                confirmation: 'pending',
+              },
+            }),
+          ]}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('option-compare-view-row-custom.paint_color'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('excludes a rejected case extension', () => {
+      render(
+        <OptionCompareView
+          options={[OPTIONS[0]!]}
+          attributeDefinitions={DEFINITIONS}
+          presentation={null}
+          selectedOptionId={null}
+          layout="expanded"
+          caseExtensions={[
+            buildCaseExtension({
+              id: 'ext-rejected',
+              definition: {
+                ...buildCaseExtension().definition,
+                id: 'custom.rejected_field',
+                label: 'Rejected field',
+                confirmation: 'rejected',
+              },
+            }),
+          ]}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('option-compare-view-row-custom.rejected_field'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders no additional rows when caseExtensions is omitted (backward compatible default)', () => {
+      render(
+        <OptionCompareView
+          options={OPTIONS}
+          attributeDefinitions={DEFINITIONS}
+          presentation={null}
+          selectedOptionId={null}
+          layout="expanded"
+        />,
+      );
+      // Only the three DEFINITIONS rows exist -- no crash, no phantom row.
+      expect(screen.getByTestId('option-compare-view-row-price')).toBeInTheDocument();
+      expect(screen.getByTestId('option-compare-view-row-mileage')).toBeInTheDocument();
+      expect(
+        screen.getByTestId('option-compare-view-row-custom.laptop_work_fit'),
+      ).toBeInTheDocument();
+    });
   });
 });
