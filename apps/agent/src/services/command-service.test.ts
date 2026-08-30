@@ -406,22 +406,161 @@ describe('CommandService', () => {
       expect(updated.entities[0]?.attributes['car.price']?.sourceIds).toEqual(['source-1']);
     });
 
-    // `createAttributeRecord`'s `!recordResult.ok` branch (and therefore the
-    // `errors.length > 0` branch right after it) is not covered here,
-    // deliberately: it can only fail if `attributeValueStatusInvariantError`
-    // rejects the status/value pairing (impossible -- this method always
-    // passes the fixed pair `status: 'asserted'` with a `value` that
-    // `UpsertOptionInputSchema`'s `OptionAttributeInputSchema.value` already
-    // requires to be present) or if the final `AttributeRecordSchema.
-    // safeParse(candidate)` rejects a `definitionId`/`label`/`value`/
-    // `sourceIds` that has *already* passed validation against an identical
-    // or strictly narrower Zod schema one line above in `upsertOption`
-    // itself (`idString()` is a strict subset of `AttributeRecordShape`'s
-    // unconstrained `safeString(200)`, and `value`/`sourceIds` reuse the
-    // exact same `AttributeValueSchema`/`idString()` schema instances) --
-    // re-parsing already-valid data with the same schema cannot fail. Not
-    // reachable through any input that has already passed
-    // `UpsertOptionInputSchema.safeParse`.
+    it('accepts an explicit "unknown" status with no value (§24 explicit unknowns, item 3)', () => {
+      const snapshot = startDemo();
+      const result = service.upsertOption('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: {
+          label: 'Honda Civic',
+          kind: 'car',
+          attributes: [{ definitionId: 'custom.laptop_work_fit', status: 'unknown' }],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      const record = updated.entities[0]?.attributes['custom.laptop_work_fit'];
+      expect(record?.status).toBe('unknown');
+      expect(record).not.toHaveProperty('value');
+    });
+
+    it('accepts a low-confidence agent-inferred value, preserving confidence/status/origin (§24, item 3)', () => {
+      const snapshot = startDemo();
+      const result = service.upsertOption('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: {
+          label: 'Honda Civic',
+          kind: 'car',
+          attributes: [
+            {
+              definitionId: 'custom.laptop_work_fit',
+              value: { type: 'string', value: 'Likely good' },
+              status: 'supported',
+              confidence: 0.4,
+              origin: 'agent_proposed',
+            },
+          ],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      const record = updated.entities[0]?.attributes['custom.laptop_work_fit'];
+      expect(record?.status).toBe('supported');
+      expect(record?.confidence).toBe(0.4);
+      expect(record?.origin).toBe('agent_proposed');
+      expect(record?.value).toEqual({ type: 'string', value: 'Likely good' });
+    });
+
+    it('preserves exact backward compatibility for a caller passing just {definitionId, value} (no status/confidence/origin): defaults to status "asserted" and origin "user", identical to pre-item-3 behavior', () => {
+      const snapshot = startDemo();
+      const result = service.upsertOption('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: {
+          label: 'Honda Civic',
+          kind: 'car',
+          attributes: [
+            { definitionId: 'car.price', value: { type: 'money', amount: 24000, currency: 'USD' } },
+          ],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      const record = updated.entities[0]?.attributes['car.price'];
+      expect(record?.status).toBe('asserted');
+      expect(record?.origin).toBe('user');
+      expect(record?.confidence).toBeUndefined();
+    });
+
+    it('rejects a status/value mismatch from the real domain invariant (e.g. status "verified" with no value) -- the `createAttributeRecord` error branch, newly reachable now that value is optional', () => {
+      const snapshot = startDemo();
+      const result = service.upsertOption('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: {
+          label: 'Honda Civic',
+          kind: 'car',
+          attributes: [{ definitionId: 'car.price', status: 'verified' }],
+        },
+      });
+      expect(result.status).toBe('validation');
+    });
+
+    function withReadyRecommendation(snapshot: CaseState): CaseState {
+      const appended = caseStore.append(
+        snapshot.id,
+        [
+          {
+            eventId: 'ev-rec',
+            caseId: snapshot.id,
+            sequence: snapshot.eventSequence + 1,
+            timestamp: FIXED_NOW,
+            type: 'recommendation.ready',
+            payload: {
+              recommendation: {
+                id: 'rec-1',
+                status: 'ready',
+                favoredOptionId: null,
+                rationale: 'because',
+                facts: [],
+                hypotheses: [],
+                confidence: 0.5,
+                limitations: [],
+                sourceIds: [],
+                resolvedObligationIds: [],
+                acceptedUncertaintyObligationIds: [],
+                generatedAt: FIXED_NOW,
+              },
+            },
+          },
+        ],
+        snapshot.eventSequence,
+      );
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+      return appended.snapshot;
+    }
+
+    it('invalidates a ready recommendation when an option attribute an active criterion depends on changes (item 4) -- the synthetic pack\'s own "price" criterion has appliesToAttribute: "car.price"', () => {
+      const withRecommendation = withReadyRecommendation(startDemo());
+      const result = service.upsertOption('cmd-2', {
+        caseId: withRecommendation.id,
+        expectedSequence: withRecommendation.eventSequence,
+        option: {
+          label: 'Honda Civic',
+          kind: 'car',
+          attributes: [
+            { definitionId: 'car.price', value: { type: 'money', amount: 24000, currency: 'USD' } },
+          ],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.recommendation?.status).toBe('stale');
+      const activity = activityStore.replayFrom(withRecommendation.id, 0);
+      expect(activity.some((event) => event.type === 'recommendation.invalidated')).toBe(true);
+    });
+
+    it('does NOT invalidate a ready recommendation when the changed attribute is not referenced by any active criterion (precision: an unrelated attribute write must not invalidate)', () => {
+      const withRecommendation = withReadyRecommendation(startDemo());
+      const result = service.upsertOption('cmd-2', {
+        caseId: withRecommendation.id,
+        expectedSequence: withRecommendation.eventSequence,
+        option: {
+          label: 'Honda Civic',
+          kind: 'car',
+          attributes: [
+            {
+              definitionId: 'custom.trivia_note',
+              value: { type: 'string', value: 'Has a sunroof.' },
+            },
+          ],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.recommendation?.status).toBe('ready');
+    });
   });
 
   describe('focusOption', () => {
@@ -556,7 +695,7 @@ describe('CommandService', () => {
       expect(updated.caseExtensions[0]?.definition.origin).toBe('user');
     });
 
-    it('creates a pending agent-proposed extension when origin is passed explicitly', () => {
+    it('creates a pending agent-proposed extension when origin is passed explicitly as the method parameter (pre-existing call shape, e.g. car-purchase-scenario.ts)', () => {
       const snapshot = startDemo();
       const result = service.defineCaseAttribute(
         'cmd-2',
@@ -566,6 +705,65 @@ describe('CommandService', () => {
       requireOk(result);
       const updated = requireSnapshot(result.value);
       expect(updated.caseExtensions[0]?.definition.confirmation).toBe('pending');
+    });
+
+    it('creates a pending agent-proposed extension when origin is passed on the wire input itself, with NO third method argument (the real gap this task closes: routes/commands.ts and the WebMCP tool only ever call defineCaseAttribute(commandId, input))', () => {
+      const snapshot = startDemo();
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'agent_proposed',
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.caseExtensions[0]?.definition.confirmation).toBe('pending');
+      expect(updated.caseExtensions[0]?.definition.origin).toBe('agent_proposed');
+
+      // The pending extension can then be confirmed through the existing
+      // review path (already wired -- this proves the whole round trip,
+      // not just the origin field landing).
+      const confirmed = service.reviewCaseExtension('cmd-3', {
+        caseId: updated.id,
+        extensionId: updated.caseExtensions[0]!.id,
+        decision: 'confirm',
+        expectedSequence: updated.eventSequence,
+      });
+      requireOk(confirmed);
+      expect(requireSnapshot(confirmed.value).caseExtensions[0]?.definition.confirmation).toBe(
+        'confirmed',
+      );
+    });
+
+    it('creates a pending agent-proposed extension when it can also be rejected through the existing review path', () => {
+      const snapshot = startDemo();
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'agent_proposed',
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+
+      const rejected = service.reviewCaseExtension('cmd-3', {
+        caseId: updated.id,
+        extensionId: updated.caseExtensions[0]!.id,
+        decision: 'reject',
+        expectedSequence: updated.eventSequence,
+      });
+      requireOk(rejected);
+      expect(requireSnapshot(rejected.value).caseExtensions[0]?.definition.confirmation).toBe(
+        'rejected',
+      );
+    });
+
+    it('an explicit origin: "user" on the wire input is auto-confirmed, same as omitting origin entirely', () => {
+      const snapshot = startDemo();
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'user',
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.caseExtensions[0]?.definition.confirmation).toBe('confirmed');
+      expect(updated.caseExtensions[0]?.definition.origin).toBe('user');
     });
 
     it('rejects invalid input (validation)', () => {
@@ -819,6 +1017,183 @@ describe('CommandService', () => {
       });
       expect(result.status).toBe('conflict');
     });
+
+    it('invalidates a ready recommendation when confirming an extension an active criterion already depends on (item 4)', () => {
+      const { snapshot, extensionId } = withPendingExtension();
+
+      const criteriaResult = service.updateCriteria('cmd-criteria', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'pet-sensory-fit',
+              label: 'Pet sensory fit',
+              kind: 'preference',
+              weight: 30,
+              direction: 'qualitative',
+              appliesToAttribute: 'custom.pet_sensory_fit',
+            },
+          },
+        ],
+      });
+      requireOk(criteriaResult);
+      const withCriterion = requireSnapshot(criteriaResult.value);
+
+      const appended = caseStore.append(
+        withCriterion.id,
+        [
+          {
+            eventId: 'ev-rec',
+            caseId: withCriterion.id,
+            sequence: withCriterion.eventSequence + 1,
+            timestamp: FIXED_NOW,
+            type: 'recommendation.ready',
+            payload: {
+              recommendation: {
+                id: 'rec-1',
+                status: 'ready',
+                favoredOptionId: null,
+                rationale: 'because',
+                facts: [],
+                hypotheses: [],
+                confidence: 0.5,
+                limitations: [],
+                sourceIds: [],
+                resolvedObligationIds: [],
+                acceptedUncertaintyObligationIds: [],
+                generatedAt: FIXED_NOW,
+              },
+            },
+          },
+        ],
+        withCriterion.eventSequence,
+      );
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+
+      const result = service.reviewCaseExtension('cmd-confirm', {
+        caseId: appended.snapshot.id,
+        extensionId,
+        decision: 'confirm',
+        expectedSequence: appended.snapshot.eventSequence,
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.recommendation?.status).toBe('stale');
+      const activity = activityStore.replayFrom(appended.snapshot.id, 0);
+      expect(activity.some((event) => event.type === 'recommendation.invalidated')).toBe(true);
+    });
+
+    it('does NOT invalidate a ready recommendation when confirming an extension no active criterion references (precision)', () => {
+      const { snapshot, extensionId } = withPendingExtension();
+
+      const appended = caseStore.append(
+        snapshot.id,
+        [
+          {
+            eventId: 'ev-rec',
+            caseId: snapshot.id,
+            sequence: snapshot.eventSequence + 1,
+            timestamp: FIXED_NOW,
+            type: 'recommendation.ready',
+            payload: {
+              recommendation: {
+                id: 'rec-1',
+                status: 'ready',
+                favoredOptionId: null,
+                rationale: 'because',
+                facts: [],
+                hypotheses: [],
+                confidence: 0.5,
+                limitations: [],
+                sourceIds: [],
+                resolvedObligationIds: [],
+                acceptedUncertaintyObligationIds: [],
+                generatedAt: FIXED_NOW,
+              },
+            },
+          },
+        ],
+        snapshot.eventSequence,
+      );
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+
+      const result = service.reviewCaseExtension('cmd-confirm', {
+        caseId: appended.snapshot.id,
+        extensionId,
+        decision: 'confirm',
+        expectedSequence: appended.snapshot.eventSequence,
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.recommendation?.status).toBe('ready');
+    });
+
+    it('does NOT invalidate a ready recommendation when REJECTING a pending extension (item 4 scopes invalidation to confirm only)', () => {
+      const { snapshot, extensionId } = withPendingExtension();
+
+      const criteriaResult = service.updateCriteria('cmd-criteria', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'pet-sensory-fit',
+              label: 'Pet sensory fit',
+              kind: 'preference',
+              weight: 30,
+              direction: 'qualitative',
+              appliesToAttribute: 'custom.pet_sensory_fit',
+            },
+          },
+        ],
+      });
+      requireOk(criteriaResult);
+      const withCriterion = requireSnapshot(criteriaResult.value);
+
+      const appended = caseStore.append(
+        withCriterion.id,
+        [
+          {
+            eventId: 'ev-rec',
+            caseId: withCriterion.id,
+            sequence: withCriterion.eventSequence + 1,
+            timestamp: FIXED_NOW,
+            type: 'recommendation.ready',
+            payload: {
+              recommendation: {
+                id: 'rec-1',
+                status: 'ready',
+                favoredOptionId: null,
+                rationale: 'because',
+                facts: [],
+                hypotheses: [],
+                confidence: 0.5,
+                limitations: [],
+                sourceIds: [],
+                resolvedObligationIds: [],
+                acceptedUncertaintyObligationIds: [],
+                generatedAt: FIXED_NOW,
+              },
+            },
+          },
+        ],
+        withCriterion.eventSequence,
+      );
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+
+      const result = service.reviewCaseExtension('cmd-reject', {
+        caseId: appended.snapshot.id,
+        extensionId,
+        decision: 'reject',
+        expectedSequence: appended.snapshot.eventSequence,
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.recommendation?.status).toBe('ready');
+    });
   });
 
   describe('updateCriteria', () => {
@@ -844,6 +1219,88 @@ describe('CommandService', () => {
       const updated = requireSnapshot(result.value);
       expect(updated.criteria).toHaveLength(2);
       expect(updated.criteria.some((c) => c.id === 'range')).toBe(true);
+      // Item 2: this criterion has no appliesToAttribute, so
+      // `criterionNeedsEvidenceQuestion` says it always needs a case
+      // obligation ("a criterion with no appliesToAttribute ... always
+      // needs one" -- there is by definition no existing sourced fact that
+      // could answer it).
+      expect(updated.obligations.some((o) => o.id === 'case.range')).toBe(true);
+      const derived = updated.obligations.find((o) => o.id === 'case.range');
+      expect(derived?.origin).toBe('case_extension');
+      expect(derived?.criterionId).toBe('range');
+      expect(derived?.status).toBe('open');
+    });
+
+    it('does NOT derive a case obligation when the referenced attribute already has a sourced value on an existing option (item 2 precision)', () => {
+      const snapshot = startDemo();
+      const withOption = service.upsertOption('cmd-option', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: {
+          label: 'Honda Civic',
+          kind: 'car',
+          attributes: [
+            {
+              definitionId: 'car.price',
+              value: { type: 'money', amount: 24000, currency: 'USD' },
+              sourceIds: ['source-1'],
+            },
+          ],
+        },
+      });
+      requireOk(withOption);
+      const afterOption = requireSnapshot(withOption.value);
+
+      const result = service.updateCriteria('cmd-2', {
+        caseId: afterOption.id,
+        expectedSequence: afterOption.eventSequence,
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'price-again',
+              label: 'Price (again)',
+              kind: 'preference',
+              weight: 40,
+              direction: 'lower_better',
+              appliesToAttribute: 'car.price',
+            },
+          },
+        ],
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.obligations.some((o) => o.id === 'case.price-again')).toBe(false);
+    });
+
+    it('DOES derive a case obligation when the referenced attribute has no sourced value yet (item 2, positive)', () => {
+      const snapshot = startDemo();
+      const result = service.updateCriteria('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'custom.garage_clearance',
+              label: 'Garage clearance',
+              kind: 'hard_constraint',
+              weight: 60,
+              direction: 'target',
+              appliesToAttribute: 'custom.garage_clearance',
+              question: 'Does the vehicle clear an 84-inch garage opening?',
+            },
+          },
+        ],
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      const derived = updated.obligations.find((o) => o.id === 'case.custom.garage_clearance');
+      expect(derived).toBeDefined();
+      expect(derived?.question).toBe('Does the vehicle clear an 84-inch garage opening?');
+      expect(derived?.priority).toBe(60);
+      expect(derived?.acceptedUncertaintyAllowed).toBe(true);
+      expect(derived?.maxAttempts).toBe(2);
     });
 
     it('rejects adding a user-defined criterion when the pinned pack disallows them (policy) -- the synthetic pack every other test uses has allowUserDefined: true, so this needs a differently-configured pack', () => {
@@ -1257,6 +1714,186 @@ describe('CommandService', () => {
       expect(updated.sources[0]?.publisher).toBe('Consumer Reports');
       expect(updated.sources[0]?.publishedAt).toBe(FIXED_NOW);
       expect(updated.sources[0]?.excerpt).toBe('This car scored well in reliability testing.');
+    });
+
+    it('turns submitted claims into durable, option-linked Claim records when obligationId is provided (item 5, §27)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        obligationId: 'hard-constraints',
+        source: {
+          url: 'https://example.com/review/cx-50',
+          title: 'CX-50 owner forum thread',
+          retrievedAt: FIXED_NOW,
+          claims: [
+            { statement: 'Ride is stiff on rough pavement.', appliesToEntityIds: ['car-1'] },
+          ],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+
+      expect(updated.sources).toHaveLength(1);
+      const sourceId = updated.sources[0]!.id;
+
+      expect(updated.claims).toHaveLength(1);
+      const claim = updated.claims[0]!;
+      expect(claim.obligationId).toBe('hard-constraints');
+      expect(claim.entityId).toBe('car-1');
+      expect(claim.statement).toBe('Ride is stiff on rough pavement.');
+      expect(claim.sourceIds).toEqual([sourceId]);
+      expect(claim.stale).toBe(false);
+
+      // A raw, freshly-submitted, not-yet-verified claim is honestly weak
+      // evidence: exactly one EvidenceLink, tagged E0 ("unverified
+      // statement or user-provided assertion" -- evidence.ts's own
+      // achievedEvidenceLevel doc comment), linked back to this claim and
+      // this source.
+      expect(updated.evidenceLinks).toHaveLength(1);
+      const link = updated.evidenceLinks[0]!;
+      expect(link.obligationId).toBe('hard-constraints');
+      expect(link.claimId).toBe(claim.id);
+      expect(link.sourceId).toBe(sourceId);
+      expect(link.level).toBe('E0');
+      expect(link.verdict).toBe('pass');
+      expect(link.disposition).toBe('included');
+
+      // The claim-linkage path uses append() (real CaseEvents), unlike the
+      // pre-existing source-only path -- eventSequence now genuinely
+      // advances.
+      expect(updated.eventSequence).toBeGreaterThan(snapshot.eventSequence);
+    });
+
+    it('creates one Claim per entity when a claim names multiple appliesToEntityIds (each is genuinely option-linked)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        obligationId: 'hard-constraints',
+        source: {
+          url: 'https://example.com/review',
+          title: 'Comparative review',
+          retrievedAt: FIXED_NOW,
+          claims: [
+            {
+              statement: 'Both trims have stiff rear suspension.',
+              appliesToEntityIds: ['car-1', 'car-2'],
+            },
+          ],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.claims).toHaveLength(2);
+      expect(updated.claims.map((c) => c.entityId).sort()).toEqual(['car-1', 'car-2']);
+      expect(updated.evidenceLinks).toHaveLength(2);
+    });
+
+    it('creates one case-general Claim (no entityId) when appliesToEntityIds is empty -- durable, just not option-linked (honest, not fabricated)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        obligationId: 'hard-constraints',
+        source: {
+          url: 'https://example.com/review',
+          title: 'General market review',
+          retrievedAt: FIXED_NOW,
+          claims: [{ statement: 'This model year had a recall.', appliesToEntityIds: [] }],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.claims).toHaveLength(1);
+      expect(updated.claims[0]?.entityId).toBeUndefined();
+    });
+
+    it('persists the source but honestly skips claim linkage when obligationId is absent, and says so in the activity summary (does not silently drop)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        source: {
+          url: 'https://example.com/review',
+          title: 'Unlinked review',
+          retrievedAt: FIXED_NOW,
+          claims: [{ statement: 'Ride is stiff.', appliesToEntityIds: ['car-1'] }],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.sources).toHaveLength(1);
+      expect(updated.claims).toHaveLength(0);
+      expect(updated.evidenceLinks).toHaveLength(0);
+      // Unchanged pre-existing behavior when no linkage happens.
+      expect(updated.eventSequence).toBe(snapshot.eventSequence);
+
+      const activity = activityStore.replayFrom(snapshot.id, 0);
+      expect(
+        activity.some(
+          (event) =>
+            event.summary.includes('1 claim') && event.summary.toLowerCase().includes('not linked'),
+        ),
+      ).toBe(true);
+    });
+
+    it('rejects an obligationId that does not exist on the case (validation, no fabricated linkage)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        obligationId: 'does-not-exist',
+        source: {
+          url: 'https://example.com/review',
+          title: 'Review',
+          retrievedAt: FIXED_NOW,
+          claims: [{ statement: 'Ride is stiff.', appliesToEntityIds: ['car-1'] }],
+        },
+      });
+      expect(result.status).toBe('validation');
+    });
+
+    it('does not require any claims to be present even when obligationId is supplied (no-op linkage step, source still persists)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        obligationId: 'hard-constraints',
+        source: {
+          url: 'https://example.com/review',
+          title: 'Review with no claims',
+          retrievedAt: FIXED_NOW,
+          claims: [],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.sources).toHaveLength(1);
+      expect(updated.claims).toHaveLength(0);
+      expect(updated.eventSequence).toBe(snapshot.eventSequence);
+    });
+
+    it('is idempotent for the claim-linking path too: retrying the same commandId does not double-create claims or the source', () => {
+      const snapshot = startDemo();
+      const input = {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        obligationId: 'hard-constraints',
+        source: {
+          url: 'https://example.com/review',
+          title: 'Review',
+          retrievedAt: FIXED_NOW,
+          claims: [{ statement: 'Ride is stiff.', appliesToEntityIds: ['car-1'] }],
+        },
+      };
+      const first = service.submitSource('cmd-2', input);
+      requireOk(first);
+      const second = service.submitSource('cmd-2', input);
+      requireOk(second);
+      const updated = requireSnapshot(second.value);
+      expect(updated.sources).toHaveLength(1);
+      expect(updated.claims).toHaveLength(1);
     });
   });
 

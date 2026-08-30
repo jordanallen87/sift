@@ -459,7 +459,23 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
 
     // Now confirmed: the engine should independently determine round2 from this real state.
     expect(determineCarPurchaseRound(snapshot)).toBe('round2');
-    expect(snapshot.obligations.some((o) => o.id === 'case.custom.dog_crate_fit')).toBe(false);
+    // Updated by the custom-field/research pipeline task (2026-08-30): this
+    // used to assert `false` here, documenting that nothing durably created
+    // `case.custom.dog_crate_fit` before the engine ran -- exactly the gap
+    // this file's own header comment names as "a real, separately-
+    // documented, deliberately deferred gap in [command-service.ts], not
+    // fixed here". `CommandService.updateCriteria`'s `add` operation now
+    // closes that gap generically (deriving a case-extension obligation for
+    // any newly-added criterion that `criterionNeedsEvidenceQuestion` says
+    // needs one), so the obligation the `updateCriteria` call two lines
+    // above this comment produced already exists by this point.
+    // `ensureDogCrateObligation` below (`determineCarPurchaseRound`'s
+    // caller, via `engine.trigger`) already guards for exactly this case
+    // (`if already present, return snapshot unchanged`), so it remains a
+    // safe no-op here rather than a double-write; the round-2 outcome this
+    // test asserts below (recommendation, proposal, evidence staleness,
+    // hard-constraints satisfaction) is unaffected.
+    expect(snapshot.obligations.some((o) => o.id === 'case.custom.dog_crate_fit')).toBe(true);
 
     // --- POST .../run again: no external flag flip, just the same trigger ---
     const run2Result = runService.requestInvestigation('cmd-run-2', {

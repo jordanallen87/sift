@@ -22,6 +22,9 @@ import {
   AttributeValueSchema,
   EVIDENCE_EXPECTATIONS,
   ATTRIBUTE_COMPARISONS,
+  ATTRIBUTE_ORIGINS,
+  ATTRIBUTE_STATUSES,
+  CASE_ATTRIBUTE_ORIGINS,
   CRITERION_DIRECTIONS,
   CRITERION_KINDS,
 } from './attributes.js';
@@ -96,12 +99,34 @@ export const SiftSelectPackToolInputSchema = SelectPackInputSchema;
 
 // --- UpsertOptionInput (webmcp.md `sift_upsert_option`) ---
 
+// `value`/`status`/`confidence`/`origin` mirror `AttributeRecordSchema`
+// (attributes.ts) exactly -- that schema already supports a verified value
+// with sources, a low-confidence agent inference, and an explicit
+// "unknown" (value absent), per docs/decisions/0006-webmcp-two-way-
+// collaboration-contract.md decision 4 ("`AttributeRecordSchema` already
+// supports every field this needs ... this decision changes only the
+// command input contract"). `value` is optional (was required) so a caller
+// can express `status: 'unknown'` with no value -- the cross-field
+// "value required unless status is unknown" invariant is deliberately not
+// re-declared here via `.superRefine`; it is already enforced once, at the
+// domain layer, by `@sift/core`'s `createAttributeRecord`/
+// `attributeValueStatusInvariantError` (the same real function `command-
+// service.ts`'s `upsertOption` already calls), so this schema only checks
+// shape, matching architecture.md's "validate raw input against schema"
+// step being distinct from the business-rule step that follows it.
+//
+// Backward compatibility: `status`/`confidence`/`origin` are all optional,
+// so an existing caller passing only `{ definitionId, value }` (and
+// optionally `label`/`sourceIds`) parses identically to before this change.
 const OptionAttributeInputSchema = z
   .object({
     definitionId: idString(),
     label: safeString(200).optional(),
-    value: AttributeValueSchema,
+    value: AttributeValueSchema.optional(),
     sourceIds: z.array(idString()).max(50).optional(),
+    status: z.enum(ATTRIBUTE_STATUSES).optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    origin: z.enum(ATTRIBUTE_ORIGINS).optional(),
   })
   .strict();
 
@@ -140,9 +165,24 @@ export const SiftFocusOptionToolInputSchema = FocusOptionInputSchema;
 
 // --- DefineCaseAttributeInput (webmcp.md `sift_define_case_attribute`) ---
 // Deliberately narrower than `CaseAttributeDefinitionSchema` (attributes.ts):
-// `required`, `sensitive`, `origin`, `confirmation`, `proposedBy`, and
-// `createdAt` are assigned by the command handler, not supplied by the
-// caller, per webmcp.md's exact input shape.
+// `required`, `sensitive`, `confirmation`, `proposedBy`, and `createdAt` are
+// assigned by the command handler, not supplied by the caller, per
+// webmcp.md's exact input shape.
+//
+// `origin` (top-level, sibling to `definition`, not inside it) IS supplied
+// by the caller, per docs/change-sets/2026-08-30-generic-decision-
+// workspace.md §23's "Custom field creation authority" distinction --
+// "Explicit user request ... ChatGPT may create it as user-originated" vs.
+// "Agent-generated idea ... it should propose it ... User confirms" -- and
+// docs/decisions/0006-webmcp-two-way-collaboration-contract.md. Optional,
+// defaulting to `'user'` when absent (preserving pre-existing behavior for
+// every caller that predates this field): the ONE calling agent decides,
+// per call, whether the concern it is submitting is something the human
+// just said (`'user'`, auto-`confirmed`) or something the agent itself
+// inferred and wants reviewed (`'agent_proposed'`, lands `pending` --
+// `packages/core/src/extensions.ts`'s `createCaseAttributeDefinition`
+// already implements this confirmation-gate rule; only the wire input was
+// missing the signal to reach it).
 
 const CaseAttributeDraftSchema = z
   .object({
@@ -162,6 +202,7 @@ export const DefineCaseAttributeInputSchema = z
   .object({
     caseId: idString(),
     expectedSequence,
+    origin: z.enum(CASE_ATTRIBUTE_ORIGINS).optional(),
     definition: CaseAttributeDraftSchema,
   })
   .strict();
@@ -282,6 +323,21 @@ export const SubmitSourceInputSchema = z
   .object({
     caseId: idString(),
     expectedSequence,
+    // Optional: item 5 of docs/change-sets/2026-08-30-generic-decision-
+    // workspace.md §27 ("Research must be a first-class shared resource").
+    // `source.claims[]` (`statement`, `appliesToEntityIds`) carries no
+    // signal identifying which `ObligationState` a claim answers --
+    // `Claim.obligationId`/`EvidenceLink.obligationId` are both required
+    // fields on the canonical storage records (`packages/contracts/src/
+    // case.ts`, not owned by this module), so linking a submitted claim to
+    // live evidence genuinely requires the caller to say which obligation
+    // it addresses. When present, `command-service.ts`'s `submitSource`
+    // turns every `source.claims[]` entry into durable `Claim` records
+    // linked to this obligation and to the entities it names. When absent,
+    // the `Source` itself still persists (unchanged, existing behavior);
+    // only claim-level linkage is skipped -- an honest degradation, not a
+    // silent drop (see that method's own doc comment).
+    obligationId: idString().optional(),
     source: SubmittedSourceInputSchema,
   })
   .strict();

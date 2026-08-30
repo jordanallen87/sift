@@ -98,6 +98,119 @@ describe('UpsertOptionInputSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts an attribute with no value when status is "unknown" (explicit unknown, §24)', () => {
+    const result = UpsertOptionInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 3,
+      option: {
+        label: '2022 Honda Civic',
+        kind: 'car',
+        attributes: [{ definitionId: 'custom.laptop_work_fit', status: 'unknown' }],
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('accepts a low-confidence agent-inferred value with status/confidence/origin all set (§24/§25)', () => {
+    const result = UpsertOptionInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 3,
+      option: {
+        label: '2022 Honda Civic',
+        kind: 'car',
+        attributes: [
+          {
+            definitionId: 'custom.laptop_work_fit',
+            value: { type: 'string', value: 'Likely good' },
+            status: 'supported',
+            confidence: 0.4,
+            origin: 'agent_proposed',
+            sourceIds: ['src-1'],
+          },
+        ],
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+    expect(result.success && result.data.option.attributes[0]?.confidence).toBe(0.4);
+  });
+
+  it('accepts a verified value with sources and no confidence set', () => {
+    const result = UpsertOptionInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 3,
+      option: {
+        label: '2022 Honda Civic',
+        kind: 'car',
+        attributes: [
+          {
+            definitionId: 'car.advertised_price',
+            value: { type: 'money', amount: 24999, currency: 'USD' },
+            status: 'verified',
+            origin: 'user',
+            sourceIds: ['src-1'],
+          },
+        ],
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('rejects an out-of-range confidence value', () => {
+    const result = UpsertOptionInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 3,
+      option: {
+        label: 'x',
+        kind: 'car',
+        attributes: [
+          {
+            definitionId: 'car.advertised_price',
+            value: { type: 'money', amount: 1, currency: 'USD' },
+            confidence: 1.5,
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unlisted status or origin value', () => {
+    expect(
+      UpsertOptionInputSchema.safeParse({
+        caseId: 'case-1',
+        expectedSequence: 3,
+        option: {
+          label: 'x',
+          kind: 'car',
+          attributes: [
+            {
+              definitionId: 'car.advertised_price',
+              value: { type: 'money', amount: 1, currency: 'USD' },
+              status: 'not-a-real-status',
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      UpsertOptionInputSchema.safeParse({
+        caseId: 'case-1',
+        expectedSequence: 3,
+        option: {
+          label: 'x',
+          kind: 'car',
+          attributes: [
+            {
+              definitionId: 'car.advertised_price',
+              value: { type: 'money', amount: 1, currency: 'USD' },
+              origin: 'not-a-real-origin',
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it('rejects more than five options being expressed structurally is out of scope (a run-time pack limit, not a schema bound), but rejects an oversized attribute list', () => {
     const result = UpsertOptionInputSchema.safeParse({
       caseId: 'case-1',
@@ -147,6 +260,53 @@ describe('DefineCaseAttributeInputSchema', () => {
       },
     });
     expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+    // `origin` is optional -- omitting it must not fabricate a value.
+    expect(result.success && result.data.origin).toBeUndefined();
+  });
+
+  it('accepts an explicit origin of "user" or "agent_proposed" (§23 authority distinction)', () => {
+    const base = {
+      caseId: 'case-1',
+      expectedSequence: 4,
+      definition: {
+        id: 'custom.dog_crate_fit',
+        label: 'Dog crate fit',
+        valueType: 'boolean',
+        appliesTo: ['car'],
+        evidenceExpectation: 'assertion',
+        comparison: 'constraint',
+        reason: 'Two dog crates must fit in the cargo area.',
+      },
+    } as const;
+
+    const userResult = DefineCaseAttributeInputSchema.safeParse({ ...base, origin: 'user' });
+    expect(userResult.success).toBe(true);
+    expect(userResult.success && userResult.data.origin).toBe('user');
+
+    const agentResult = DefineCaseAttributeInputSchema.safeParse({
+      ...base,
+      origin: 'agent_proposed',
+    });
+    expect(agentResult.success).toBe(true);
+    expect(agentResult.success && agentResult.data.origin).toBe('agent_proposed');
+  });
+
+  it('rejects an origin outside the CaseAttributeOrigin union (e.g. "pack")', () => {
+    const result = DefineCaseAttributeInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 4,
+      origin: 'pack',
+      definition: {
+        id: 'custom.dog_crate_fit',
+        label: 'Dog crate fit',
+        valueType: 'boolean',
+        appliesTo: ['car'],
+        evidenceExpectation: 'assertion',
+        comparison: 'constraint',
+        reason: 'Two dog crates must fit in the cargo area.',
+      },
+    });
+    expect(result.success).toBe(false);
   });
 
   it('rejects a definition id outside the custom. namespace', () => {
@@ -274,6 +434,37 @@ describe('SubmitSourceInputSchema', () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it('accepts an optional obligationId to link submitted claims to a live obligation (§27/item 5)', () => {
+    const result = SubmitSourceInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 7,
+      obligationId: 'car.ride_comfort',
+      source: {
+        url: 'https://example.com/review/cx-50',
+        title: 'CX-50 owner forum thread',
+        retrievedAt: '2026-08-27T00:00:00.000Z',
+        claims: [{ statement: 'Ride is stiff on rough pavement.', appliesToEntityIds: ['car-1'] }],
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+    expect(result.success && result.data.obligationId).toBe('car.ride_comfort');
+  });
+
+  it('still parses without obligationId (backward compatible; claims cannot be linked but the source itself persists)', () => {
+    const result = SubmitSourceInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 7,
+      source: {
+        url: 'https://example.com/review/cx-50',
+        title: 'CX-50 owner forum thread',
+        retrievedAt: '2026-08-27T00:00:00.000Z',
+        claims: [{ statement: 'Ride is stiff on rough pavement.', appliesToEntityIds: ['car-1'] }],
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+    expect(result.success && result.data.obligationId).toBeUndefined();
   });
 });
 
