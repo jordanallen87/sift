@@ -79,6 +79,16 @@ function vehicleFields(record: VehicleCatalogRecord): CatalogSearchResultItem['f
     combinedMpg: record.combinedMpg,
     cylinders: record.cylinders,
     transmission: record.transmission,
+    cityMpg: record.cityMpg,
+    highwayMpg: record.highwayMpg,
+    annualFuelCostUsd: record.annualFuelCostUsd,
+    fiveYearSavingsVsAverageUsd: record.fiveYearSavingsVsAverageUsd,
+    fuelEconomyScore: record.fuelEconomyScore,
+    greenhouseGasScore: record.greenhouseGasScore,
+    co2GramsPerMile: record.co2GramsPerMile,
+    engineDisplacementL: record.engineDisplacementL,
+    electricRangeMiles: record.electricRangeMiles,
+    charge240Hours: record.charge240Hours,
   };
 }
 

@@ -29,8 +29,28 @@ export const VehicleCatalogRecordSchema = z
     drivetrain: z.string().max(100).nullable(),
     fuelType: z.string().max(100).nullable(),
     combinedMpg: z.number().positive().nullable(),
+    cityMpg: z.number().positive().nullable(),
+    highwayMpg: z.number().positive().nullable(),
+    /** EPA's published estimated annual fuel cost, in whole US dollars. */
+    annualFuelCostUsd: z.number().positive().nullable(),
+    /**
+     * EPA's 5-year fuel cost saved (positive) or **spent** (negative) versus
+     * an average new vehicle. Deliberately NOT `.positive()`: about 58% of
+     * catalog records are negative, and rejecting those would silently drop
+     * exactly the thirstiest vehicles -- the ones a cost-conscious shopper
+     * most needs to see.
+     */
+    fiveYearSavingsVsAverageUsd: z.number().int().nullable(),
+    /** EPA 1-10 scores; `null` where EPA reports the vehicle as unrated. */
+    fuelEconomyScore: z.number().int().min(1).max(10).nullable(),
+    greenhouseGasScore: z.number().int().min(1).max(10).nullable(),
+    co2GramsPerMile: z.number().positive().nullable(),
+    engineDisplacementL: z.number().positive().nullable(),
     cylinders: z.number().int().positive().nullable(),
     transmission: z.string().max(200).nullable(),
+    /** EV/PHEV only; `null` on a combustion vehicle, where EPA reports 0 meaning "not applicable". */
+    electricRangeMiles: z.number().positive().nullable(),
+    charge240Hours: z.number().positive().nullable(),
     source: z
       .object({
         dataset: z.string().min(1),
@@ -41,4 +61,9 @@ export const VehicleCatalogRecordSchema = z
   .strict();
 export type VehicleCatalogRecord = z.infer<typeof VehicleCatalogRecordSchema>;
 
-export const VehicleCatalogRecordListSchema = z.array(VehicleCatalogRecordSchema).max(1000);
+// Raised from 1000 when the catalog widened from 2 model years (151 records)
+// to 2016-onward (853). The cap exists to bound a malformed or hostile
+// payload, not to express the real catalog's size, so it leaves generous
+// headroom for a future re-import rather than sitting just above the current
+// count where the next widening would trip it.
+export const VehicleCatalogRecordListSchema = z.array(VehicleCatalogRecordSchema).max(5000);

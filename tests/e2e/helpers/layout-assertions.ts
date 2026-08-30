@@ -255,6 +255,56 @@ function isIdentityCheckList(
   return Array.isArray(value);
 }
 
+/**
+ * Waits until `target`'s rendered height stops changing before a capture.
+ *
+ * Root-caused from a real, reproducible failure pattern: `recommendation-
+ * ready.png` intermittently failed in BOTH hero journeys, at several
+ * viewports, and the received image was ALWAYS TALLER than the baseline
+ * (e.g. 480x5037 expected vs 480x5378 received; 480x6491 vs 480x6740). A
+ * consistently-taller result is not antialiasing and not flake noise — it
+ * means more content had rendered by the time the screenshot fired.
+ *
+ * The cause is that "the run finished" and "the page has finished reacting
+ * to the run" are different instants. Both journeys already wait on
+ * `waitForInvestigationCompleted` and `waitForRecommendationReady`, but a
+ * recommendation becomes ready while further `evidence.accepted` /
+ * `obligation.updated` events are still streaming over SSE and still
+ * growing regions like the readiness lists. Under full-suite parallelism
+ * that tail lands slightly later, so an isolated run and a loaded run
+ * capture genuinely different pages.
+ *
+ * Hiding more regions would not fix this — the content is real and belongs
+ * in the baseline; it simply had not all arrived. Raising
+ * `maxDiffPixelRatio` would have been worse still: it would mask real
+ * layout regressions everywhere to paper over one timing artifact. Waiting
+ * for the page to actually settle is the causal fix, and it strengthens
+ * every named screenshot rather than weakening any of them.
+ */
+async function waitForStableHeight(target: Locator, name: string): Promise<void> {
+  const STABLE_READINGS_REQUIRED = 3;
+  const POLL_MS = 120;
+  const TIMEOUT_MS = 15_000;
+
+  const start = Date.now();
+  let lastHeight = -1;
+  let stableReadings = 0;
+
+  while (Date.now() - start < TIMEOUT_MS) {
+    const height = (await target.boundingBox())?.height ?? -1;
+    stableReadings = height === lastHeight && height > 0 ? stableReadings + 1 : 0;
+    lastHeight = height;
+    if (stableReadings >= STABLE_READINGS_REQUIRED) return;
+    await target.page().waitForTimeout(POLL_MS);
+  }
+
+  throw new Error(
+    `screenshot "${name}": target height never settled within ${TIMEOUT_MS}ms ` +
+      `(last reading ${lastHeight}px). The page is still mutating, so any baseline ` +
+      `captured here would be non-deterministic.`,
+  );
+}
+
 export async function expectNamedScreenshot(
   page: Page,
   target: Locator,
@@ -274,5 +324,6 @@ export async function expectNamedScreenshot(
       `screenshot "${name}": identity text missing on "${check.testId}"`,
     ).toContainText(check.text);
   }
+  await waitForStableHeight(target, name);
   await expect(target).toHaveScreenshot(name, screenshotOptions);
 }

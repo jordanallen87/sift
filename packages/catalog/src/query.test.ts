@@ -57,10 +57,33 @@ describe('listModels', () => {
   });
 });
 
+/**
+ * The most recent model year that actually has a Toyota Camry.
+ *
+ * These tests previously used `listYears()[0]` -- the newest year outright.
+ * That broke when the catalog widened from 2 model years to 2016-onward,
+ * because the newest year in the EPA source is a PARTIAL one: EPA publishes
+ * early releases first, so 2027 currently carries 29 records against roughly
+ * 75 for every settled year, and no Camry among them.
+ *
+ * That is real data, not a defect, so the fix is to stop assuming the newest
+ * year contains any particular model rather than to trim the catalog to make
+ * a fragile assumption true. Picking the newest year that genuinely has the
+ * model keeps the ordering assertion meaningful while surviving the next
+ * partial model year too.
+ */
+function newestYearWithCamry(): number {
+  const year = listYears().find(
+    (candidate) => listTrims({ year: candidate, make: 'Toyota', model: 'Camry' }).length > 0,
+  );
+  if (year === undefined) throw new Error('catalog has no Toyota Camry in any year');
+  return year;
+}
+
 describe('listTrims', () => {
   it('returns full records for one exact year/make/model, deterministically ordered', () => {
-    const [year] = listYears();
-    const records = listTrims({ year: year!, make: 'Toyota', model: 'Camry' });
+    const year = newestYearWithCamry();
+    const records = listTrims({ year, make: 'Toyota', model: 'Camry' });
     expect(records.length).toBeGreaterThan(0);
     for (const record of records) {
       expect(record.year).toBe(year);
@@ -70,17 +93,17 @@ describe('listTrims', () => {
   });
 
   it('is stable across repeated calls (same order every time)', () => {
-    const [year] = listYears();
-    const a = listTrims({ year: year!, make: 'Toyota', model: 'Camry' });
-    const b = listTrims({ year: year!, make: 'Toyota', model: 'Camry' });
+    const year = newestYearWithCamry();
+    const a = listTrims({ year, make: 'Toyota', model: 'Camry' });
+    const b = listTrims({ year, make: 'Toyota', model: 'Camry' });
     expect(a.map((r) => r.id)).toEqual(b.map((r) => r.id));
   });
 });
 
 describe('getVehicle', () => {
   it('returns the exact record for a known id', () => {
-    const [year] = listYears();
-    const [first] = listTrims({ year: year!, make: 'Toyota', model: 'Camry' });
+    const year = newestYearWithCamry();
+    const [first] = listTrims({ year, make: 'Toyota', model: 'Camry' });
     expect(first).toBeDefined();
     const found = getVehicle(first!.id);
     expect(found).toEqual(first);

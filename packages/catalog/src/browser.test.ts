@@ -15,6 +15,16 @@ describe('@sift/catalog/browser entry point', () => {
       combinedMpg: null,
       cylinders: null,
       transmission: null,
+      cityMpg: null,
+      highwayMpg: null,
+      annualFuelCostUsd: null,
+      fiveYearSavingsVsAverageUsd: null,
+      fuelEconomyScore: null,
+      greenhouseGasScore: null,
+      co2GramsPerMile: null,
+      engineDisplacementL: null,
+      electricRangeMiles: null,
+      charge240Hours: null,
       source: { dataset: 'epa-fueleconomy-gov', recordId: '1' },
     });
     expect(result.success).toBe(true);
@@ -33,6 +43,16 @@ describe('@sift/catalog/browser entry point', () => {
       combinedMpg: null,
       cylinders: null,
       transmission: null,
+      cityMpg: null,
+      highwayMpg: null,
+      annualFuelCostUsd: null,
+      fiveYearSavingsVsAverageUsd: null,
+      fuelEconomyScore: null,
+      greenhouseGasScore: null,
+      co2GramsPerMile: null,
+      engineDisplacementL: null,
+      electricRangeMiles: null,
+      charge240Hours: null,
       source: { dataset: 'epa-fueleconomy-gov', recordId: '1' },
     });
     expect(mapped.label).toBe('2025 Toyota Camry');

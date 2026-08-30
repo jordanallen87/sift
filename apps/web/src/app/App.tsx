@@ -431,28 +431,36 @@ export function App() {
   const compareVisibleAttributeIds = snapshot?.view?.visibleAttributeIds;
   const comparePinnedAttributeIds = snapshot?.view?.pinnedAttributeIds;
 
-  // Reconciliation: once the persisted value actually catches up with an
-  // optimistic override, drop the override so the persisted field resumes
-  // being the sole authority (able to reflect a later externally-driven
-  // change, e.g. a real WebMCP `sift_set_view` call once that tool writes
-  // through the real command instead of its own session-local state).
+  // Reconciliation: adopt the persisted view only when it genuinely CHANGES,
+  // never merely when it happens to equal the local override.
+  //
+  // The earlier rule ("clear the override once persisted catches up") caused
+  // a real, reproducible defect that the visual gate caught: the workspace
+  // would silently revert to a previously-selected tab. Two runs of the same
+  // journey rendered different tabs — one Compare, one List — because after
+  // the override was cleared, `viewMode` fell back to `persistedViewMode`
+  // alone, and any later re-delivery of an older snapshot (a poll or SSE
+  // refresh that raced the write) flipped the view back underneath the user.
+  //
+  // The `setView` write is especially likely to lose that race during an
+  // active investigation: it carries `expectedSequence`, the run is
+  // advancing `eventSequence` continuously, so a conflict is normal and the
+  // persisted view never catches up at all. Combined with the swallowed
+  // rejection below, the UI could show a tab the user did not choose with no
+  // signal that anything failed.
+  //
+  // Tracking the last persisted value and reacting only to a genuine
+  // transition keeps both directions working: a real external change (a
+  // WebMCP `sift_set_view` from ChatGPT, or another viewer) still moves the
+  // page, while a stale re-delivery of the value we already had does not.
+  const lastPersistedViewMode = useRef<WorkspaceViewMode | undefined>(persistedViewMode);
   useEffect(() => {
-    if (optimisticViewMode !== null && persistedViewMode === optimisticViewMode) {
-      setOptimisticViewMode(null);
-    }
-  }, [persistedViewMode, optimisticViewMode]);
+    if (persistedViewMode === lastPersistedViewMode.current) return;
+    lastPersistedViewMode.current = persistedViewMode;
+    // A genuine remote/durable change wins over a local override.
+    setOptimisticViewMode(null);
+  }, [persistedViewMode]);
 
-  const handleViewModeChange = useCallback(
-    (mode: WorkspaceViewMode) => {
-      setOptimisticViewMode(mode);
-      if (snapshot === null || activeCaseId === null) return;
-      const view: WorkspaceViewState = { ...(snapshot.view ?? {}), mode };
-      commands
-        .setView({ caseId: activeCaseId, expectedSequence: snapshot.eventSequence, view })
-        .catch(() => undefined);
-    },
-    [commands, snapshot, activeCaseId],
-  );
   // Quick Pick's queue position over `snapshot.entities`, in the same
   // session-local spirit as `viewMode` above (`WorkspaceViewState.quickPick`
   // has no real writer yet either).
@@ -565,6 +573,72 @@ export function App() {
   // re-registering the two global tools on every snapshot/pack-list change.
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
+  const activeCaseIdRef = useRef(activeCaseId);
+  activeCaseIdRef.current = activeCaseId;
+
+  // Serializes view writes so the LAST intent wins, not the last response.
+  //
+  // Three failed repair attempts got here, and the evidence that settled it
+  // was two baseline images showing different tabs: the page was genuinely
+  // bistable between List and Compare. The cause is not rendering timing and
+  // not snapshot staleness -- it is that rapid tab switches issue concurrent
+  // `setView` writes with no ordering. Select Compare then List and both are
+  // in flight; whichever response lands last decides the persisted view, so
+  // the older intent can overwrite the newer one. (A conflict retry, tried
+  // first, made this strictly worse by adding a round-trip for the older
+  // write to lose even later.)
+  //
+  // A single in-flight writer that always drains to the newest requested
+  // view removes the race by construction: at most one request outstanding,
+  // and when it settles the loop re-issues only if the user has since asked
+  // for something else. The final persisted value therefore always equals
+  // the last thing the person actually chose.
+  const desiredViewRef = useRef<WorkspaceViewMode | null>(null);
+  const viewWriteInFlightRef = useRef(false);
+
+  const drainViewWrites = useCallback(async () => {
+    if (viewWriteInFlightRef.current) return;
+    viewWriteInFlightRef.current = true;
+    try {
+      while (desiredViewRef.current !== null) {
+        const mode = desiredViewRef.current;
+        const caseId = activeCaseIdRef.current;
+        const current = snapshotRef.current;
+        if (caseId === null || current === null) {
+          desiredViewRef.current = null;
+          return;
+        }
+        const view: WorkspaceViewState = { ...(current.view ?? {}), mode };
+        try {
+          await commands.setView({ caseId, expectedSequence: current.eventSequence, view });
+        } catch {
+          // Swallowed deliberately, and deliberately NOT a revert. A
+          // rejection here is almost always a stale `expectedSequence`
+          // during a live run: the run advances `eventSequence` constantly,
+          // while this command routes through `updateSelection()` and
+          // changes no decision state at all (change-set §54). The person is
+          // still looking at the view they chose, so an error toast would be
+          // noise about something that did not affect them.
+          //
+          // The real cost is that an unpersisted choice may not survive a
+          // reload. That is a stated limitation, not a hidden one.
+        }
+        // Only clear if nothing newer arrived while this write was in flight.
+        if (desiredViewRef.current === mode) desiredViewRef.current = null;
+      }
+    } finally {
+      viewWriteInFlightRef.current = false;
+    }
+  }, [commands]);
+
+  const handleViewModeChange = useCallback(
+    (mode: WorkspaceViewMode) => {
+      setOptimisticViewMode(mode);
+      desiredViewRef.current = mode;
+      void drainViewWrites();
+    },
+    [drainViewWrites],
+  );
   const installedPacksRef = useRef(installedPacks);
   installedPacksRef.current = installedPacks;
 

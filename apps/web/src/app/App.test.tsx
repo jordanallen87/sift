@@ -211,6 +211,16 @@ describe('App', () => {
               combinedMpg: null,
               cylinders: null,
               transmission: null,
+              cityMpg: null,
+              highwayMpg: null,
+              annualFuelCostUsd: null,
+              fiveYearSavingsVsAverageUsd: null,
+              fuelEconomyScore: null,
+              greenhouseGasScore: null,
+              co2GramsPerMile: null,
+              engineDisplacementL: null,
+              electricRangeMiles: null,
+              charge240Hours: null,
               source: { dataset: 'epa-fueleconomy-gov', recordId: '1' },
             },
             {
@@ -225,6 +235,16 @@ describe('App', () => {
               combinedMpg: null,
               cylinders: null,
               transmission: null,
+              cityMpg: null,
+              highwayMpg: null,
+              annualFuelCostUsd: null,
+              fiveYearSavingsVsAverageUsd: null,
+              fuelEconomyScore: null,
+              greenhouseGasScore: null,
+              co2GramsPerMile: null,
+              engineDisplacementL: null,
+              electricRangeMiles: null,
+              charge240Hours: null,
               source: { dataset: 'epa-fueleconomy-gov', recordId: '2' },
             },
           ],
@@ -2231,6 +2251,56 @@ describe('App', () => {
       await waitFor(() => {
         expect(screen.getByTestId('workspace-view-content-board')).toBeVisible();
       });
+    });
+
+    it('does not revert a just-chosen view when a stale snapshot re-delivers the previous persisted value', async () => {
+      // Regression gate for a real defect the visual gate caught: two runs
+      // of the same Playwright journey rendered DIFFERENT tabs, because the
+      // reconciliation effect cleared the local override as soon as the
+      // persisted value equalled it, after which `viewMode` fell back to the
+      // persisted field alone -- so any later re-delivery of an older
+      // snapshot flipped the tab back underneath the user.
+      //
+      // A `setView` write is especially likely to lose that race during a
+      // live run: it carries `expectedSequence`, the run advances
+      // `eventSequence` continuously, so the persisted value may never catch
+      // up at all. The user's explicit choice must survive that.
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, view: { mode: 'compare' } });
+      renderLiveWorkspace(snapshot);
+      server.use(commandHandler('setView', buildFakeCommandReceipt({ caseId: CASE_ID })));
+      const user = await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-view-content-compare')).toBeVisible();
+      });
+
+      await user.click(screen.getByTestId('workspace-view-tab-list'));
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-view-content-list')).toBeVisible();
+      });
+
+      // A stale refresh re-delivers the OLD persisted view ('compare'). It is
+      // not a new value, so it must not override the choice just made.
+      server.use(pollHandler({ ...snapshot, view: { mode: 'compare' } }));
+      await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+      const source = FakeEventSource.instances.at(-1)!;
+      source.triggerOpen();
+      source.emit({
+        schemaVersion: '1.0',
+        eventId: 'evt-view-stale',
+        sequence: snapshot.eventSequence + 1,
+        timestamp: '2026-08-27T00:03:00.000Z',
+        caseId: CASE_ID,
+        type: 'evidence.accepted',
+        phase: 'completed',
+        summary: 'Evidence accepted.',
+      });
+
+      // Give the effect every chance to misfire before asserting it did not.
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-view-content-list')).toBeVisible();
+      });
+      expect(screen.queryByTestId('workspace-view-content-compare')).not.toBeVisible();
     });
   });
 

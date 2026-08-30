@@ -100,5 +100,32 @@ export function mapCatalogRecordToOption(record: VehicleCatalogRecord): MappedOp
     });
   }
 
+  // `car.five_year_fuel_cost` from EPA's published annual fuel cost.
+  //
+  // The x5 is EPA's own convention, not an invention of ours: `fuelCost08`
+  // is an annual estimate at 15,000 miles/year on a national average fuel
+  // price, and EPA publishes its own five-year save/spend figure
+  // (`youSaveSpend`, carried here as `fiveYearSavingsVsAverageUsd`) on that
+  // same basis. So this is arithmetic on a published figure under a
+  // published assumption, not a fabricated number.
+  //
+  // It is still an ESTIMATE, and the pack agrees: this attribute declares
+  // `evidenceExpectation: 'corroborated'`, so a single source cannot make it
+  // read as well-supported. That is the correct outcome -- a shopper's real
+  // fuel cost depends on their own mileage and local prices, neither of
+  // which EPA knows. Filling it from real data and letting the evidence
+  // rules rank it honestly beats leaving a required criterion permanently
+  // unknown.
+  if (record.annualFuelCostUsd !== null) {
+    attributes.push({
+      definitionId: 'car.five_year_fuel_cost',
+      value: {
+        type: 'money',
+        amount: record.annualFuelCostUsd * 5,
+        currency: 'USD',
+      },
+    });
+  }
+
   return { label: vehicleLabel(record), attributes };
 }

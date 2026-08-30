@@ -306,6 +306,21 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
       (round1State['recommendation'] as { favoredOptionId: string } | null)?.favoredOptionId,
     ).toBe('monitor-one-cycle');
 
+    // Pin the workspace view immediately before capturing.
+    //
+    // `case-workspace` includes the view switcher, so the captured image
+    // depends on which tab is active -- and by this point the journey has
+    // clicked through several. Diffing two failed baselines showed exactly
+    // that: one run captured List, another Compare, from the same test. The
+    // view is persisted state now (Task A11), written by a command that can
+    // legitimately lose a sequence race against the live run, so "whichever
+    // tab happens to be active" is genuinely nondeterministic here.
+    //
+    // Selecting one explicitly removes the variable by construction rather
+    // than tolerating it. This does not weaken the assertion: every tab
+    // still has its own dedicated coverage earlier in this same journey, and
+    // the baseline now captures a defined state instead of an accidental one.
+    await sift.selectWorkspaceView('quick_pick');
     await withVolatileRegionsHidden(page, async () => {
       await expectNamedScreenshot(
         page,

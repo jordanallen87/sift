@@ -28,6 +28,16 @@ const RECORD = {
   combinedMpg: null,
   cylinders: null,
   transmission: null,
+  cityMpg: null,
+  highwayMpg: null,
+  annualFuelCostUsd: null,
+  fiveYearSavingsVsAverageUsd: null,
+  fuelEconomyScore: null,
+  greenhouseGasScore: null,
+  co2GramsPerMile: null,
+  engineDisplacementL: null,
+  electricRangeMiles: null,
+  charge240Hours: null,
   source: { dataset: 'epa-fueleconomy-gov', recordId: '1' },
 };
 

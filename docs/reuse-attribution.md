@@ -305,6 +305,12 @@ Retrieved live 2026-08-29 (`Last-Modified: Fri, 07 Aug 2026 13:13:18 GMT`,
 `ETag "3d9b9836e26dd1:0"`, ~21.7 MB, 47 columns, tens of thousands of
 model/trim rows spanning decades).
 
+**Re-retrieved 2026-08-30** to widen the catalog (see the update at the end
+of this entry): same URL, ~21.7 MB, **50,242 rows spanning 1984-2027**, and
+**84 columns** — the source has gained columns since the 2026-08-29 pull, so
+the "47 columns" figure above is accurate to that snapshot, not to the
+current dataset.
+
 **Ownership/license conclusion:** This is a work of the U.S. federal
 government, public domain in the United States under 17 U.S.C. § 105 — no
 copyright attaches, so no license, attribution requirement, or
@@ -340,10 +346,14 @@ CSV was **not** committed or redistributed wholesale. A one-time, offline,
 checked-in Python transform
 (`packages/catalog/scripts/import-vehicle-catalog.py`) reads the raw CSV
 and produces the checked-in `packages/catalog/data/vehicle-catalog.json`
-(151 records, ~60 KB) by:
+(originally 151 records / ~60 KB; **now 853 records / ~574 KB** after the
+2026-08-30 widening) by:
 
-- filtering to the two most recent model years present in the source at
-  retrieval time (2025/2026);
+- filtering by model year. **Originally** the two most recent years present
+  at retrieval time (2025/2026). **Since 2026-08-30** every model year from
+  `EARLIEST_YEAR = 2016` forward, expressed as an open-ended floor so a later
+  re-import picks up new years automatically instead of freezing at whatever
+  was current when the constant was last edited;
 - filtering to a hand-curated list of 44 popular make/model families
   (`CURATED` in the script) — a deliberate, bounded scope per the spec
   brief's "do NOT turn this task into building a comprehensive automotive
@@ -352,13 +362,25 @@ and produces the checked-in `packages/catalog/data/vehicle-catalog.json`
   per model-year, deduplicated by `(drivetrain, fuelType, combinedMpg)`
   signature, to avoid dozens of near-duplicate trim rows for one popular
   model;
-- retaining only 10 fields per record (`year`, `make`, `model`, `trim`,
+- retaining a bounded field subset per record. **Originally** 10 fields.
+  **Since 2026-08-30**, 20 (`year`, `make`, `model`, `trim`,
   `bodyStyle`, `drivetrain`, `fuelType`, `combinedMpg`, `cylinders`,
-  `transmission`) plus a `source.recordId` pointing back to the EPA
-  dataset's own row id — every other EPA column (36 of the original 47:
-  city/highway MPG breakdowns, CO2/greenhouse-gas scores, alternative-fuel
-  range fields, engine descriptor codes, etc.) was dropped as unnecessary
-  for Sift's comparison use case;
+  `transmission`, plus `cityMpg`, `highwayMpg`, `annualFuelCostUsd`,
+  `fiveYearSavingsVsAverageUsd`, `fuelEconomyScore`, `greenhouseGasScore`,
+  `co2GramsPerMile`, `engineDisplacementL`, `electricRangeMiles`,
+  `charge240Hours`) plus a `source.recordId` pointing back to the EPA
+  dataset's own row id. The remaining EPA columns (city/highway MPG
+  *unrounded* variants, per-fuel breakdowns for dual-fuel vehicles, engine
+  descriptor codes, manufacturer codes, etc.) are still dropped as
+  unnecessary for Sift's comparison use case.
+
+  The two additions that matter most are `annualFuelCostUsd` (EPA's
+  published annual fuel cost, ~100% populated) and
+  `fiveYearSavingsVsAverageUsd` (EPA's 5-year saved/spent figure versus an
+  average new vehicle, ~94% populated). These are real published dollar
+  figures, and `map-to-option.ts` now feeds the first into the pack's
+  `car.five_year_fuel_cost` criterion, which was previously satisfiable only
+  from fictional fixture data;
 - normalizing free-text EPA values into Sift's own vocabulary (e.g. EPA's
   `VClass` "Small Sport Utility Vehicle 4WD" → Sift's `bodyStyle`
   "Compact SUV"; EPA's `drive` "All-Wheel Drive" → Sift's `drivetrain`
@@ -375,8 +397,14 @@ committed, curated output), `packages/catalog/scripts/import-vehicle-catalog.py`
 record is validated against on load).
 
 **Limitations, stated honestly (also surfaced in-product per
-docs/decisions/0003, §"Product limitations"):** catalog coverage is 44
-popular families across 2 model years, not a comprehensive market survey;
+docs/decisions/0003, §"Product limitations"):** catalog coverage is 43
+curated families across model years 2016-2027 (853 records), not a
+comprehensive market survey. Note the newest model year is always PARTIAL —
+EPA publishes early releases first, so 2027 currently carries 29 records
+against roughly 75 for each settled year. That is the source's real state,
+not a filtering artifact, and it is why `query.test.ts` picks the newest
+year that actually contains a given model rather than assuming the newest
+year does;
 EPA's own per-field completeness varies (e.g. `cylinders` is null for
 electric vehicles by nature, `trim` is occasionally EPA's own generic
 placeholder text rather than a marketing trim name); the catalog describes
