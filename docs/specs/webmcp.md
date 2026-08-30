@@ -11,7 +11,7 @@ Sift is a normal browser application first. It registers structured tools with `
 
 WebMCP complements the Strands backend. WebMCP represents page interaction; Strands performs adaptive case work.
 
-WebMCP is a genuinely **two-way** collaboration layer, not only a mutation channel (change-set §14, ADR 0006 decision 1). ChatGPT must be able to pull enough structured state out of Sift to conduct an informed conversation — what decision is being made, what the user wants, constraints and preferences, current options and selection, available and custom comparison fields, collected research, notes, unresolved questions, stale/conflicted evidence, the current recommendation, available actions, and the current workspace view — without reconstructing any of it from screen text. Read capability is expanded to cover this list over time; see "Tool catalog — specified, not yet implemented" below for what remains to be built.
+WebMCP is a genuinely **two-way** collaboration layer, not only a mutation channel (change-set §14, ADR 0006 decision 1). ChatGPT must be able to pull enough structured state out of Sift to conduct an informed conversation — what decision is being made, what the user wants, constraints and preferences, current options and selection, available and custom comparison fields, collected research, notes, unresolved questions, stale/conflicted evidence, the current recommendation, available actions, and the current workspace view — without reconstructing any of it from screen text. Read capability now covers this full list: the widened `sift_get_case_context` (see "Widened case context" below), `sift_get_option_details`, `sift_list_research`, `sift_list_notes`, `sift_search_catalog`, and `sift_get_decision_guide` together let ChatGPT reconstruct case state, pack-level guidance, research, and notes without screen-scraping. ADR 0006's decided target contract (the eight decisions listed in that ADR) is fully implemented as of this writing; the only remaining open item is the fate of `sift_list_packs`/`sift_select_pack` under the expanded catalog, which ADR 0006 explicitly left undecided (see the note under `sift_list_packs` below).
 
 Every tool in this catalog operates identically on a demo case (`startDemo`) and a normal, user-built case (`startCase` + `upsertOption`, docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md) — none of them branch on how the case was created. This is a structural consequence of the registration lifecycle below (tools re-register against whatever the active case snapshot currently is) rather than special-cased logic; `sift_get_case_context` in particular is exactly as useful describing a shortlist a person just built from the vehicle catalog as it is describing the deterministic example case. The one exception is `sift_request_investigation` against a catalog-built `car-purchase` case: the tool call itself still succeeds (the run is durably accepted and a `RunReceipt` returned, exactly as usual), but the run then fails quickly and honestly rather than executing guided investigation, since the deterministic Strands engine behind that pack currently only knows how to investigate the checked-in example case's four candidates (ADR 0003 §4). ChatGPT and the page both observe this the normal way any run failure is observed — a `run.failed` activity event with a clear, human-readable explanation, and `sift_get_case_context`'s active-run correlation reflecting the failed status — not a distinct WebMCP error shape. Every other tool remains fully functional on a catalog-built case.
 
@@ -47,11 +47,11 @@ Every tool belongs to exactly one of four authority classes (ADR 0006 decision 3
 - **PRESENTATION** — mutates only `WorkspaceViewState`/selection/focus fields through `updateSelection()` (see `architecture.md`, ADR 0005). This path structurally cannot advance `eventSequence` or invalidate a recommendation — not because a rule says so, but because the invalidation code is never invoked for a selection-only patch. A presentation tool's implementation is restricted to reach only `updateSelection()`.
 - **EXECUTION** — starts or steers a bounded Strands engine run. Returns a `RunReceipt`; work continues asynchronously and streams through the normal event contract.
 
-**Human authority is absolute and applies across every class.** No tool in this catalog — present or specified — may call `SiftCommands.reviewProposal`, the only method that can approve a decision proposal. `webmcp-contract.test.ts` asserts both the exact tool-name set and that no registered tool ever reaches `reviewProposal`, and that assertion is tightened (new expected count and name list) at every tool addition — it is never loosened into a subset or substring check, and it must never regress as this catalog grows (ADR 0006 decision 7).
+**Human authority is absolute and applies across every class.** No tool in this catalog may call `SiftCommands.reviewProposal`, the only method that can approve a decision proposal. `webmcp-contract.test.ts` asserts both the exact tool-name set and that no registered tool ever reaches `reviewProposal`, and that assertion is tightened (new expected count and name list) at every tool addition — it is never loosened into a subset or substring check, and it must never regress as this catalog grows (ADR 0006 decision 7).
 
 ## Tool catalog — implemented today
 
-The following seventeen tools exist in the repository today. Each is labeled with its authority class.
+The following twenty-two tools exist in the repository today (`SIFT_WEBMCP_TOOL_NAMES`, `register-sift-tools.ts`; the exact count and name list are asserted by `webmcp-contract.test.ts`). Each is labeled with its authority class.
 
 ### `sift_get_case_context` — READ
 
@@ -133,7 +133,7 @@ Input:
 
 Effect: durable update via `append()`. The demo packs permit at most five options. Unknown `definitionId` values are accepted only under the compiled pack's extension policy and must include a valid `custom.*` definition. Changed facts invalidate affected evidence, obligations, scores, and recommendations.
 
-**Known gap, target state specified:** `value` is required on every attribute, so this tool cannot express "this attribute is deliberately unknown," and it carries no `confidence` or `status` field, so a caller cannot preserve evidence status. `AttributeRecordSchema` already supports `status: 'unknown'`, `confidence`, and `origin`; the gap is in this command's input contract, not the storage model. ADR 0006 decision 4 specifies a narrower companion tool, `sift_set_option_attribute`, to close it — see "Tool catalog — specified, not yet implemented" below. `sift_upsert_option` keeps its current whole-option create/replace contract unchanged.
+**Known gap, closed by a companion tool:** `value` is required on every attribute here, so this tool cannot express "this attribute is deliberately unknown," and it carries no `confidence` or `status` field. Rather than widening this tool's contract, ADR 0006 decision 4 added a narrower companion, `sift_set_option_attribute` (WRITE, documented below), which carries `status` (including `'unknown'`), `confidence`, and `sourceIds` for exactly one attribute on an existing option without disturbing any other attribute already recorded there. `sift_upsert_option` itself keeps its whole-option create/replace contract unchanged — use it to create an option or replace its full attribute set, and `sift_set_option_attribute` to update or add one field in place.
 
 ### `sift_update_criteria` — WRITE
 
@@ -286,7 +286,7 @@ Input:
 
 Effect: read-only. Bounded to 50 sources and 50 claims, most-recently-submitted first, with the true total reported alongside.
 
-**Naming note:** this is distinct from the not-yet-implemented `CaseNote` concept (see "Notes tools" below). "Research" here means the pre-existing `Source`/`Claim`/`EvidenceLink` model (change-set §27), which is real and populated today through `sift_submit_source` and the deterministic investigation engines — it does not depend on the `CaseNote` persistence design at all.
+**Naming note:** this is distinct from `CaseNote` (see `sift_list_notes`/`sift_add_note` below). "Research" here means the `Source`/`Claim`/`EvidenceLink` model (change-set §27), populated through `sift_submit_source` and the deterministic investigation engines. A `CaseNote` is a lighter-weight, non-evidentiary record — an observation, question, preference, or reminder — that never becomes a `Source`/`Claim` and never influences evidence validity or readiness; the two concepts are stored, projected, and read by entirely separate tools.
 
 ### `sift_search_catalog` — READ
 
@@ -310,7 +310,7 @@ Input:
 { caseId: string; mode: 'quick_pick' | 'list' | 'compare' | 'board'; focusedOptionId?: string; visibleOptionIds?: string[] }
 ```
 
-**Effect, honestly stated:** ADR 0005 adds `WorkspaceViewState`/`SelectionPatch.view` at the `CaseState`/`CaseStore` layer, and ADR 0006 decision 3 specifies that a presentation tool's implementation reach only `updateSelection()` — but no `CommandService` handler and no `SiftCommands` method exist yet to reach that store method for `view`. Rather than fabricating a call to a command that would fail in production, this tool holds `WorkspaceViewState` in ordinary in-memory session state (`apps/web/src/model-context/register-sift-tools.ts`), reset whenever the active case changes. A `sift_get_case_context` call after this tool reflects the change; the chosen view does **not** yet persist across a reload or sync to another viewer. It never calls any `SiftCommands` method, so it is structurally incapable of invalidating a recommendation regardless of how it is called — proven by asserting no `SiftCommands` method is ever invoked, not only by asserting `updateSelection()` was reached. Once a real command exists, this tool should be rewired to call it.
+**Effect, genuinely durable:** this tool merges its input onto the active case's own current `WorkspaceViewState` (read live via the same accessor `sift_get_case_context` uses, never a locally cached copy) and sends the resulting full `WorkspaceViewState` to the real `setView` command (`SetViewInputSchema`, `packages/contracts/src/commands.ts`; `CommandService.setView`, `apps/agent/src/services/command-service.ts`). That handler routes through `CaseStore.updateSelection()`, never `append()`, so the write is structurally incapable of advancing `eventSequence` or invalidating a recommendation — proven by a test that appends a `ready` recommendation, calls this tool, and asserts `criteria`/`recommendation` are byte-for-byte unchanged. Because the write is durable, it survives a reload and is visible to every viewer of the case, not only the browser session that made the call — this previously persisted only in browser-session memory; that gap is closed. A `sift_get_case_context` call after this tool reflects the change once the caller's own state cache picks up the durable write (the same correlation `sift_focus_option`/`sift_focus_evidence` already exhibit).
 
 ### `sift_configure_comparison` — PRESENTATION
 
@@ -328,29 +328,91 @@ Input:
 }
 ```
 
-At least one field besides `caseId` is required; a call configuring nothing is rejected as `VALIDATION` rather than silently accepted as a no-op. Effect: the same honestly-stated in-memory session state described under `sift_set_view` above — never a `SiftCommands` call, so it structurally cannot invalidate a recommendation.
-
-## Tool catalog — specified, not yet implemented
-
-The tools below are ADR 0006's decided target contract. **None of them exist in the repository yet.** They are documented here so the contract this catalog must grow into is unambiguous, not as a claim of current behavior. Implementing any of them requires: adding the tool's command input/handler, registering it in `register-sift-tools.ts`, and updating `webmcp-contract.test.ts`'s exact tool-name-set assertion to the new count and name list (never loosened — see "Tool authority classes" above).
-
-The catalog is deliberately kept to a small number of coherent typed operations rather than one tool per field or filter (change-set §52: "Keep the tool catalog understandable. Do not create dozens of tiny tools if a few coherent typed operations suffice").
-
-### `sift_set_option_attribute` — WRITE
-
-ADR 0006 decision 4. A narrower companion to `sift_upsert_option` for setting one attribute value (pack-defined or `custom.*`) on an existing option, with `status` (including `'unknown'`), `confidence`, and `sourceIds` all expressible on the call — the exact set of fields `sift_upsert_option`'s required-`value` shape cannot carry today, and `sift_upsert_option` cannot substitute for it: `CommandService.upsertOption` replaces an option's entire `attributes` map from the call's own `option.attributes[]`, so using it to set one attribute would silently discard every other attribute already recorded on that option. This is the tool that makes change-set §24/§25 real: "ChatGPT can create a comparison field and then populate that field across options using structured, provenance-aware values," including leaving a value explicitly unknown rather than inventing one. `AttributeRecordSchema` already supports every field this needs; only the command input contract is missing.
+At least one field besides `caseId` is required; a call configuring nothing is rejected as `VALIDATION` rather than silently accepted as a no-op. Effect: the same genuinely durable `setView` write described under `sift_set_view` above (`mode: 'compare'` merged in automatically) — never held only in browser-session memory.
 
 ### `sift_get_decision_guide` — READ
 
-ADR 0006 decision 6. Returns pack-level guidance about the class of decision being made — important discovery questions, useful starter fields, important hard constraints, recommended research categories, which attributes should not be inferred, useful default comparison views — delivered through progressive disclosure rather than one large guide dumped into every tool response. See "Decision Guide" below for what this must not be.
+ADR 0006 decision 6. Returns this case's Decision Pack's Decision Guide: reference data about the *class* of decision the pack covers, not this specific case — why this kind of decision matters, a suggested discovery approach, example discovery questions worth asking early, things this kind of decision commonly leaves unresolved, what research tends to help, when a custom field is worth creating, and which comparison views tend to help. Delivered through progressive disclosure rather than one large guide dumped into every tool response; see "Decision Guide" below for what this must not be. Call `sift_get_case_context` separately for the specifics of the actual case.
+
+Input:
+
+```ts
+{ caseId: string }
+```
+
+Effect: read-only. Returns `ok: true` with no `data`, not an error, when the active pack declares no Decision Guide or no case is active.
 
 ### `sift_focus_question` — PRESENTATION
 
-Change-set §52's remaining PRESENTATION-group tool: focus a Question/obligation the way `sift_focus_option`/`sift_focus_evidence` already focus an option or evidence item. Not yet implemented because `WorkspaceViewStateSchema` (`packages/contracts/src/case.ts`) has no field to hold a focused-question id today, distinct from the system-owned `activeFocus` (the engine's own "currently investigating" pointer, not a user/model-settable selection) — adding one is a `packages/contracts` change outside a WebMCP-tool-only task's scope.
+Change-set §52's remaining PRESENTATION-group tool: points the shared page at a specific unresolved question — an obligation id from `sift_get_case_context`'s `unresolvedQuestions` — the way `sift_focus_option`/`sift_focus_evidence` already focus an option or evidence item. Backed by `WorkspaceViewState.focusedQuestionId` (`packages/contracts/src/case.ts`), a field distinct from the system-owned `activeFocus` (the engine's own "currently investigating" pointer, not a user/model-settable selection).
 
-### Notes tools
+Input:
 
-Change-set §52 also proposes `sift_list_notes` and `sift_add_note`. These depend on the `CaseNote` concept change-set §28/§51 describes, which genuinely does not exist anywhere in the codebase today (no `CaseNote` type, no `note.*` event, confirmed by direct search) and is a companion persistence decision, not restated by ADR 0006 or this document. Until that persistence design is settled and implemented, these two tools do not exist. This is a narrower gap than it once was: `sift_list_research` above (sources/claims) is implemented and does **not** wait on `CaseNote` — only the separate, genuinely-unbuilt notes concept does.
+```ts
+{ caseId: string; questionId: string; expectedSequence: number }
+```
+
+Effect: the same genuinely durable `setView` write described under `sift_set_view` above — it can never resolve, skip, or change an obligation's status, and it can never invalidate the recommendation, because it never writes through the same path a decision change does.
+
+### `sift_set_option_attribute` — WRITE
+
+ADR 0006 decision 4. A narrower companion to `sift_upsert_option` for setting one attribute value (pack-defined or `custom.*`) on an existing option, merging it into that option's attribute map without disturbing any other attribute already recorded there — unlike `sift_upsert_option`, which replaces an option's entire attribute map. Carries full provenance on every call: `value` (omit it only when `status` is `'unknown'` — never invent a value Sift cannot support), `status` (`'asserted' | 'supported' | 'verified' | 'conflicted' | 'unknown'`), `confidence`, `origin`, and `sourceIds`. This is the tool that makes change-set §24/§25 real: "ChatGPT can create a comparison field and then populate that field across options using structured, provenance-aware values," including leaving a value explicitly unknown rather than inventing one.
+
+Input:
+
+```ts
+{
+  caseId: string
+  optionId: string
+  expectedSequence: number
+  attribute: {
+    definitionId: string
+    label?: string
+    value?: AttributeValue
+    sourceIds?: string[]
+    status?: 'asserted' | 'supported' | 'verified' | 'conflicted' | 'unknown'
+    confidence?: number
+    origin?: 'pack' | 'user' | 'agent_proposed'
+  }
+}
+```
+
+Effect: durable update via `append()`. **Be honest about which status your evidence actually justifies:** a specification, listing, or other indirect source can support `'asserted'` or `'supported'`, never `'verified'` — `'verified'` is a claim that a human, or an equivalent direct check, actually confirmed the fact firsthand. Sift enforces this in `packages/core` (`createAttributeRecord`, `attributeValueStatusInvariantError`) regardless of caller: a write claiming `status: 'verified'` from `origin: 'pack'` or `origin: 'agent_proposed'` is rejected; only `origin: 'user'` may claim it. That rejection reaches this tool's caller as an honest `VALIDATION` error, naming what was rejected and what would have been accepted, through the same generic error-mapping path every other command error uses — never silently downgraded to a weaker status or retried.
+
+### `sift_list_notes` — READ
+
+Returns every `CaseNote` recorded on this case (body, kind, who wrote it, and which options/question/sources it references), most-recently-added first. A note is an informal observation, preference, reminder, or open question — never evidence, a criterion, or a comparison field — so this list never affects readiness or the recommendation. Use this before adding a new note to avoid recording a duplicate. Call `sift_list_research` instead for externally-sourced research (sources and claims).
+
+Input:
+
+```ts
+{ caseId: string }
+```
+
+Effect: read-only. Bounded to 50 notes, most-recently-added first, with the true total reported alongside.
+
+### `sift_add_note` — WRITE
+
+Records a `CaseNote`: a human's or ChatGPT's informal observation, preference, reminder, or open question attached to the case — for example "the seat position felt wrong on the test drive" or "need to check this Saturday." **A note is not evidence, not a criterion, and not a comparison field, and adding one never satisfies an obligation, changes readiness, or invalidates the recommendation — by construction, not by convention:** the command handler (`CommandService.addNote`) appends only a `note.added` event and touches nothing else; it has no code path that reads or writes any obligation, evidence link, case extension, or recommendation. Use `sift_submit_source` instead when the content is externally verifiable research that should influence the decision; use `sift_update_criteria` when the user wants a factor to start or stop mattering to the decision itself; use `sift_define_case_attribute` or `sift_set_option_attribute` when the user wants a new typed comparison field populated with a provenance-aware value. A note may optionally reference one or more options and one unresolved question (obligation), and may cite existing source ids purely for context — doing so creates no evidence link and changes no source's verification status.
+
+Input:
+
+```ts
+{
+  caseId: string
+  expectedSequence: number
+  origin?: 'user' | 'agent_proposed'
+  note: {
+    body: string
+    kind?: 'observation' | 'research' | 'question' | 'preference' | 'reminder'
+    optionIds?: string[]
+    obligationId?: string
+    sourceIds?: string[]
+  }
+}
+```
+
+Effect: durable update via `append()`, but never a `recommendation.invalidated` event and never a readiness/evidence change — the absence of that code path is the entire guarantee. Referencing an `optionIds` or `obligationId` value that does not exist on the case is rejected as a clean validation error rather than silently recorded as a dangling reference.
 
 ## Widened case context
 
@@ -360,17 +422,17 @@ ADR 0006 decision 2 specifies that `sift_get_case_context`'s projection stops de
 - `research` — a small (8-source) bounded summary of `sources` (title, publisher, URL, origin, verification, retrieved/published dates — **never** `Source.excerpt`, which can run up to 5000 characters) plus a `totalClaims` count. `sift_list_research` above returns the fuller, larger-bounded (50/50) version of the same data on demand;
 - `unresolvedQuestions` — obligations not yet `satisfied`/`accepted_uncertainty`, with their real `ObligationTemplate.question` text, highest pack-declared `priority` first, bounded to 15;
 - `staleOrConflicted` — up to 15 signals combining any attribute recorded `status: 'conflicted'`, any `Claim.stale`, and any `EvidenceLink.stale`;
-- `view` — the current `WorkspaceViewState` (see `sift_set_view`/`sift_configure_comparison` above for how it is set and why it is session-local today), falling back to `CaseState.view` when no presentation tool has touched it this session.
+- `view` — the current, durably-persisted `WorkspaceViewState` (see `sift_set_view`/`sift_configure_comparison`/`sift_focus_question` above for how it is set), read directly from `CaseState.view`.
 
 Every collection above reports both a (possibly truncated) `items` array and a true `total`, so a caller can distinguish "there is nothing more" from "there is more; call the dedicated tool." `Source.excerpt` is omitted entirely rather than truncated-and-included — the strictest reading of "not full bodies" the underlying task specified. The pre-existing exclusion of private model messages and oversized payloads is unchanged; no chain-of-thought and no secrets enter the projection at any point.
 
 ## Decision Guide
 
-A pack-level Decision Guide is specified (change-set §17/§47, ADR 0006 decision 6) to teach ChatGPT how to collaborate with a particular class of decision — important discovery questions, useful starter fields, important hard constraints, recommended research categories, attributes that should not be inferred without evidence, and recommended default comparison views. **This is specified, not yet implemented**; `PresentationDefinitionSchema` today declares only `optionLabel`, `optionLabelPlural`, and `attributeGroups` (see `packs-and-routing.md` and `pack-authoring.md`).
+A pack-level Decision Guide (change-set §17/§47, ADR 0006 decision 6) teaches ChatGPT how to collaborate with a particular class of decision — domain purpose, discovery strategy, suggested discovery questions, important unknowns, research guidance, custom-field guidance, and presentation guidance. **Status: implemented.** `DecisionGuideSchema` (`packages/contracts/src/packs.ts`) declares exactly these seven fields as a `.strict()`-validated, optional manifest field alongside `PresentationDefinitionSchema` (which still declares only `optionLabel`, `optionLabelPlural`, and `attributeGroups` — the guide is a sibling field, not an addition to that schema); both `car-purchase` and `home-energy-guardian` declare real content for every field (see `packs-and-routing.md`). Omitting the guide entirely cannot change a pack's `compiledHash`, since canonicalization filters `undefined` keys before hashing.
 
 The Decision Guide is explicitly and permanently **declarative data, never executable prompt content, and never an attempt to override host or system instructions**:
 
-- it is delivered through tool descriptions and structured tool output (`sift_get_decision_guide`, once implemented), using progressive disclosure rather than one large guide dumped into every response;
+- it is delivered through tool descriptions and structured tool output (`sift_get_decision_guide`, above), using progressive disclosure rather than one large guide dumped into every response;
 - it must remain data a pack manifest declares, not a prompt string capable of instructing the model to disregard other instructions;
 - it is not, and must never be presented as, a system prompt;
 - tool descriptions and structured tool outputs remain the entire integration mechanism — there is no hidden injection path.
@@ -379,7 +441,9 @@ Any implementation of this capability that allows pack metadata to carry instruc
 
 ## Observability: WebMCP-originated commands
 
-ADR 0006 decision 8 specifies that the command envelope gain an explicit origin marker — alongside the existing `X-Sift-Command-Id`/`Idempotency-Key` headers, a sibling marker (e.g. `X-Sift-Command-Origin`) records that a command was issued by a registered WebMCP tool rather than a direct UI action. **This marker does not exist yet.** It does not create a second command path: every case-scoped tool still calls the identical `SiftCommands` method its matching UI control calls, preserving CLAUDE.md's shared-command-implementation rule; it only tags the existing path so the server-side activity/runtime event stores and the Runtime Inspector's developer view can distinguish and display WebMCP-originated commands (change-set §34, `debugging-and-observability.md`).
+ADR 0006 decision 8 specifies that the command envelope gain an explicit origin marker. **Status: implemented.** Every command-backed tool in this catalog (all WRITE/EXECUTION/PRESENTATION tools) tags its call with `{ origin: 'webmcp' }` in exactly one shared place (`buildCaseScopedCommandTool`'s `execute`, `register-sift-tools.ts`), so no individual tool's call site can forget it. `SiftCommands` sends this as an `X-Sift-Command-Origin` request header — a sibling to the existing `X-Sift-Command-Id`/`Idempotency-Key` headers — and the server records it onto the activity trail's `safeDetails.origin` for every emitted activity event tied to that command.
+
+**This is observability only, and never authorization.** Nothing in the command service, the policy layer, or any route reads `X-Sift-Command-Origin`/`commandOrigin` to make a permission decision — a command with and without the header produces byte-identical case state and an identical `eventSequence` advance. A visible page control that calls the identical `SiftCommands` method directly (outside this module) simply omits the origin option, byte-identical to the pre-marker behavior. Human-only verbs (`reviewProposal`) remain unreachable from WebMCP because the tool catalog never exposes them, independent of this field — sending `X-Sift-Command-Origin: webmcp` grants a caller no capability it did not already have. This does not create a second command path: every case-scoped tool still calls the identical `SiftCommands` method its matching UI control calls, preserving CLAUDE.md's shared-command-implementation rule; it only tags the existing path so the server-side activity/runtime event stores and the Runtime Inspector's developer view can distinguish and display WebMCP-originated commands (change-set §34, `debugging-and-observability.md`).
 
 ## Tool result envelope
 
@@ -434,5 +498,7 @@ Tests must verify:
 - submitted sources remain unverified until source challenge and retain provenance;
 - no tool of any class ever calls `reviewProposal`, and no tool name is approval-shaped;
 - no tool operates on a case other than the active case without an explicit matching `caseId`;
-- a PRESENTATION tool call never advances `eventSequence` and never invalidates a recommendation. For `sift_focus_option`/`sift_focus_evidence`, proven by asserting the underlying store call reaches `updateSelection()` and not `append()`. For `sift_set_view`/`sift_configure_comparison`, proven more strongly, since no backend command exists yet for either to call: no `SiftCommands` method is ever invoked at all, and `criteria`/`recommendation` are asserted byte-for-byte unchanged before and after the call (change-set §53/§54's "show only safety and cargo" ≠ "safety and cargo are the only things I care about");
+- a PRESENTATION tool call never advances `eventSequence` and never invalidates a recommendation. For `sift_focus_option`/`sift_focus_evidence`, proven by asserting the underlying store call reaches `updateSelection()` and not `append()`. For `sift_set_view`/`sift_configure_comparison`/`sift_focus_question`, proven the same way plus more strongly: the call reaches `commands.setView`, which routes through `updateSelection()`, and `criteria`/`recommendation` are asserted byte-for-byte unchanged before and after the call — composed across multiple presentation calls in the same session, not only in isolation (change-set §53/§54's "show only safety and cargo" ≠ "safety and cargo are the only things I care about");
+- a note (`sift_add_note`) never satisfies an obligation, changes readiness, or invalidates the recommendation — proven by asserting no obligation/evidence/recommendation-touching code path is ever reached and no `recommendation.invalidated` event is ever produced by the call, not only by checking the end state;
+- a write claiming `status: 'verified'` from a non-`'user'` origin (`sift_set_option_attribute`) is rejected as an honest `VALIDATION` error, never silently downgraded or retried at a lower status;
 - the exact tool-name-set assertion (count and list) is updated at every tool addition, never loosened to a subset or substring check.

@@ -237,3 +237,15 @@ before the tool set is finalized.
 - The origin-marker addition (Decision 8) is a small, additive change to the existing command
   envelope and client options interfaces; it does not require a second dispatch path or a change to
   how any existing tool calls its underlying `SiftCommands` method.
+
+## Update (2026-08-30)
+
+All eight decisions above are implemented. `docs/specs/webmcp.md` documents the resulting 22-tool
+catalog (`SIFT_WEBMCP_TOOL_NAMES`), including `sift_set_option_attribute`, `sift_get_decision_guide`,
+and `sift_focus_question` (Decisions 4 and 6, and the presentation gap this ADR's Decision 3 implied),
+plus `sift_list_notes`/`sift_add_note` once the companion `CaseNote` persistence design this ADR
+deliberately left unrestated (Decision 1's own caveat) landed separately. The origin marker (Decision
+8) ships as an `X-Sift-Command-Origin` header recorded onto the activity trail's `safeDetails.origin`
+— observability only, as specified, never a permission check. The "Open question" above (the fate of
+`sift_list_packs`/`sift_select_pack`) remains genuinely open: both tools were carried forward
+unchanged, which resolves nothing about their eventual fate one way or the other.
