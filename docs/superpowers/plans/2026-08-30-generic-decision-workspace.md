@@ -114,6 +114,12 @@ B1–B2 first.
       drag is mandatory. Moving an option never silently eliminates it.
 - [ ] **C5. Custom fields render first-class** beside native ones, marked as added for this
       comparison, with no raw `custom.*` id in consumer UI.
+- [ ] **C6. Extract the duplicated evidence-strength predicate.** `meetsEvidenceExpectation`
+      (comparing `AttributeRecord.status` against a definition's declared `evidenceExpectation`)
+      was written in `QuickPickView.tsx` and then copied verbatim into `OptionListView.tsx`. This
+      is the single judgment that decides whether a value counts as "well supported" versus "needs
+      checking", so two copies can drift into telling the user two different things about the same
+      attribute. Extract to one shared, separately-tested module and have both views import it.
 
 `FindingsSheet` is retained as the research surface and is NOT repurposed (ADR 0005).
 
