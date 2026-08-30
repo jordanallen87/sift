@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { axe } from 'jest-axe';
-import type { ObligationState } from '@pax/contracts';
+import type { ObligationState } from '@sift/contracts';
 import { ReadinessPanel, type ReadinessPanelData } from './ReadinessPanel.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 

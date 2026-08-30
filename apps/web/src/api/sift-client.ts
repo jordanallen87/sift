@@ -1,18 +1,18 @@
 /**
- * Same-origin typed HTTP client implementing `PaxCommands`
+ * Same-origin typed HTTP client implementing `SiftCommands`
  * (docs/specs/architecture.md "Shared command client"; the locked file map
  * names this file directly:
- * `apps/web/src/api/pax-client.ts   Same-origin typed HTTP client`).
+ * `apps/web/src/api/sift-client.ts   Same-origin typed HTTP client`).
  *
  * CLAUDE.md's "Non-negotiable product truths" requires that "Visible UI
  * controls and WebMCP callbacks use the same command implementation." This
  * module is that one implementation: every method validates its input
- * against the real `@pax/contracts` Zod schema *before* sending anything
+ * against the real `@sift/contracts` Zod schema *before* sending anything
  * (so a malformed call never reaches the network), POSTs to the real HTTP
  * route, and validates the response against the real `CommandReceipt`/
  * `RunReceipt` schema before returning it. A later task's WebMCP tool
  * callbacks and this task's React components both call through the exact
- * same `PaxCommands` instance obtained from `AppProviders`
+ * same `SiftCommands` instance obtained from `AppProviders`
  * (`apps/web/src/app/AppProviders.tsx`) -- there is no separate WebMCP-only
  * mutation path.
  *
@@ -23,10 +23,10 @@
  *   route, and its result always carries a `runId` -- `RunReceipt`, not the
  *   more general `CommandReceipt`).
  * - every other method -> `POST /api/cases/:caseId/commands/:commandName`,
- *   where `:commandName` is the `PaxCommands` method name itself. This is
+ *   where `:commandName` is the `SiftCommands` method name itself. This is
  *   an inferred mapping: `commands.ts`'s own module comment notes that
  *   `setEvidenceDisposition` and `requestRevision` have "no corresponding
- *   `PaxCommands` method name ... in architecture.md" and that resolving
+ *   `SiftCommands` method name ... in architecture.md" and that resolving
  *   their real route is "an implementation decision for `apps/agent`/
  *   `apps/web`, not a contracts concern." Routing them through the same
  *   generic `/commands/:commandName` shape as the other nine keeps one
@@ -41,7 +41,7 @@
  * client-generated `commandId`"). Since no `commands.ts` input schema
  * carries a `commandId`/idempotency field in its JSON body (by design --
  * those schemas are pure business payloads), this client sends it as the
- * `X-Pax-Command-Id` request header and reuses the same value as the
+ * `X-Sift-Command-Id` request header and reuses the same value as the
  * `Idempotency-Key` header value, rather than inventing a body field the
  * real contracts schema would reject (every command input schema is
  * `.strict()`).
@@ -83,11 +83,11 @@ import {
   type ToolErrorCode,
   type UpdateCriteriaInput,
   type UpsertOptionInput,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import { z } from 'zod';
 
 /**
- * Per-call options every `PaxCommands` method accepts, added after the fact
+ * Per-call options every `SiftCommands` method accepts, added after the fact
  * (see `docs/build-log.md`'s dated integration entry) once the WebMCP tool
  * registration task found this client had no way to honor two behaviors
  * `webmcp.md`'s "Cancellation and concurrency" section requires: "Each
@@ -98,16 +98,16 @@ import { z } from 'zod';
  * as before, with a freshly minted `commandId` and no abort wiring.
  */
 export interface CommandCallOptions {
-  /** Forwarded directly to `fetch`. An already-aborted signal fails fast with a `PaxClientError` carrying `code: 'UNAVAILABLE'`/`retryable: true`, matching webmcp.md's required abort envelope. */
+  /** Forwarded directly to `fetch`. An already-aborted signal fails fast with a `SiftClientError` carrying `code: 'UNAVAILABLE'`/`retryable: true`, matching webmcp.md's required abort envelope. */
   signal?: AbortSignal;
-  /** Overrides the client-generated `commandId`/idempotency key (sent as both `X-Pax-Command-Id` and `Idempotency-Key`). A WebMCP tool callback should derive this from the browser's own tool-call id so a retried call is recognized as the same command rather than double-applied. */
+  /** Overrides the client-generated `commandId`/idempotency key (sent as both `X-Sift-Command-Id` and `Idempotency-Key`). A WebMCP tool callback should derive this from the browser's own tool-call id so a retried call is recognized as the same command rather than double-applied. */
   commandId?: string;
 }
 
 /**
- * The `PaxCommands` interface (docs/specs/architecture.md "Shared command
+ * The `SiftCommands` interface (docs/specs/architecture.md "Shared command
  * client", copied verbatim by method name, parameter, and return type).
- * `@pax/contracts` deliberately exports only the per-method Zod input/output
+ * `@sift/contracts` deliberately exports only the per-method Zod input/output
  * schemas, not this TypeScript interface itself -- it is owned here, the one
  * place that both implements and (later) consumes it.
  *
@@ -119,12 +119,12 @@ export interface CommandCallOptions {
  * `@typescript-eslint/unbound-method` the moment a caller (or a test
  * asserting `expect(commands.startDemo).toHaveBeenCalledWith(...)`)
  * references a member without immediately invoking it. Every implementation
- * of this interface (`createPaxClient` below, and
- * `../test/fake-pax-commands.ts`) is a plain object of closures with no
+ * of this interface (`createSiftClient` below, and
+ * `../test/fake-sift-commands.ts`) is a plain object of closures with no
  * `this` dependency, so the property-arrow form is both accurate and avoids
  * that footgun.
  */
-export interface PaxCommands {
+export interface SiftCommands {
   startDemo: (input: StartDemoInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
   /** Docs/decisions/0003: a normal, non-demo case-creation entry point pinned to any registered pack id -- see `POST /api/cases`. */
   startCase: (input: StartCaseInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
@@ -166,7 +166,7 @@ export interface PaxCommands {
   ) => Promise<CommandReceipt>;
 }
 
-export interface PaxClientErrorOptions {
+export interface SiftClientErrorOptions {
   status: number;
   // `| undefined` is explicit, not redundant: with `exactOptionalPropertyTypes`
   // (tsconfig.base.json) an optional field's value type must include
@@ -180,42 +180,42 @@ export interface PaxClientErrorOptions {
   details?: unknown;
 }
 
-/** Shape of `PaxClientError.details` specifically when `code === 'CONFLICT'` (a 409 response). */
-export interface PaxClientConflictDetails {
+/** Shape of `SiftClientError.details` specifically when `code === 'CONFLICT'` (a 409 response). */
+export interface SiftClientConflictDetails {
   expectedSequence: number;
   actualSequence: number;
   snapshot: CaseState;
 }
 
-/** Thrown by every `PaxCommands` method on local-validation failure, a non-OK HTTP response, or a response that fails to validate against its expected receipt schema. */
-export class PaxClientError extends Error {
+/** Thrown by every `SiftCommands` method on local-validation failure, a non-OK HTTP response, or a response that fails to validate against its expected receipt schema. */
+export class SiftClientError extends Error {
   readonly status: number;
   readonly code?: ToolErrorCode | undefined;
   readonly retryable: boolean;
   readonly details?: unknown;
 
-  constructor(message: string, options: PaxClientErrorOptions) {
+  constructor(message: string, options: SiftClientErrorOptions) {
     super(message);
-    this.name = 'PaxClientError';
+    this.name = 'SiftClientError';
     this.status = options.status;
     this.code = options.code;
     this.retryable = options.retryable;
     this.details = options.details;
   }
 
-  static fromErrorResponse(status: number, payload: unknown): PaxClientError {
+  static fromErrorResponse(status: number, payload: unknown): SiftClientError {
     // Try the more specific 409 conflict shape first: `HttpConflictResponseSchema`
     // is `.strict()` with an extra top-level `snapshot` field `HttpErrorBodySchema`
     // does not declare, so a conflict body fails `HttpErrorBodySchema.safeParse`
     // outright (an unknown key under `.strict()`) and previously fell straight
     // through to the generic fallback below, silently discarding `actualSequence`
     // and -- critically -- the latest `snapshot` webmcp.md requires ("Conflicts
-    // return the latest sequence so ChatGPT can call `pax_get_case_context`
+    // return the latest sequence so ChatGPT can call `sift_get_case_context`
     // before retrying").
     const parsedConflict = HttpConflictResponseSchema.safeParse(payload);
     if (parsedConflict.success) {
       const { error, snapshot } = parsedConflict.data;
-      return new PaxClientError(error.message, {
+      return new SiftClientError(error.message, {
         status,
         code: error.code,
         retryable: error.retryable,
@@ -230,21 +230,21 @@ export class PaxClientError extends Error {
     const parsedBody = HttpErrorBodySchema.safeParse(payload);
     if (parsedBody.success) {
       const { error } = parsedBody.data;
-      return new PaxClientError(error.message, {
+      return new SiftClientError(error.message, {
         status,
         code: error.code,
         retryable: error.retryable,
         details: error.details,
       });
     }
-    return new PaxClientError(`Pax service request failed with status ${status}.`, {
+    return new SiftClientError(`Sift service request failed with status ${status}.`, {
       status,
       retryable: status >= 500,
     });
   }
 }
 
-export interface CreatePaxClientOptions {
+export interface CreateSiftClientOptions {
   /** Same-origin by default (an empty string, so requests resolve against the page's own origin per architecture.md "Deployed browser requests remain same-origin"). Overridable for tests. */
   baseUrl?: string;
   /** Injectable fetch implementation for tests; defaults to the global `fetch`. */
@@ -285,7 +285,7 @@ export interface CreatePaxClientOptions {
 function validate(schema: z.ZodTypeAny, value: unknown): unknown {
   const result = schema.safeParse(value);
   if (!result.success) {
-    throw new PaxClientError('Command input failed local validation.', {
+    throw new SiftClientError('Command input failed local validation.', {
       status: 0,
       code: 'VALIDATION',
       retryable: false,
@@ -309,7 +309,7 @@ async function postJson(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Pax-Command-Id': commandId,
+        'X-Sift-Command-Id': commandId,
         'Idempotency-Key': commandId,
       },
       body: JSON.stringify(body),
@@ -321,7 +321,7 @@ async function postJson(
     // "Cancellation produces `UNAVAILABLE` with `retryable: true`", not a
     // raw, differently-shaped `DOMException` leaking out of this client.
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new PaxClientError('Pax command request was aborted.', {
+      throw new SiftClientError('Sift command request was aborted.', {
         status: 0,
         code: 'UNAVAILABLE',
         retryable: true,
@@ -333,12 +333,12 @@ async function postJson(
   const payload: unknown = await response.json().catch(() => undefined);
 
   if (!response.ok) {
-    throw PaxClientError.fromErrorResponse(response.status, payload);
+    throw SiftClientError.fromErrorResponse(response.status, payload);
   }
 
   const parsed = outputSchema.safeParse(payload);
   if (!parsed.success) {
-    throw new PaxClientError('Pax service returned a response that did not match its contract.', {
+    throw new SiftClientError('Sift service returned a response that did not match its contract.', {
       status: response.status,
       code: 'INTERNAL',
       retryable: false,
@@ -348,8 +348,8 @@ async function postJson(
   return parsed.data;
 }
 
-/** Creates a `PaxCommands` client that sends every command to the real HTTP routes. Structurally complete and independently testable via a mocked `fetch`/MSW ahead of the real server routes landing. */
-export function createPaxClient(options: CreatePaxClientOptions = {}): PaxCommands {
+/** Creates a `SiftCommands` client that sends every command to the real HTTP routes. Structurally complete and independently testable via a mocked `fetch`/MSW ahead of the real server routes landing. */
+export function createSiftClient(options: CreateSiftClientOptions = {}): SiftCommands {
   const baseUrl = options.baseUrl ?? '';
   const fetchImpl = options.fetchImpl ?? fetch;
 
@@ -359,7 +359,7 @@ export function createPaxClient(options: CreatePaxClientOptions = {}): PaxComman
   // schema-driven inference is avoided here. `TInput extends { caseId:
   // string }` is safe to state as a real generic bound in *this* position
   // (a type parameter's own constraint, not a schema argument's type) since
-  // it does not touch zod's generic types at all; every real `PaxCommands`
+  // it does not touch zod's generic types at all; every real `SiftCommands`
   // input is `.strict()`-shaped with a required `caseId: idString()` field
   // (checked directly against commands.ts).
   function genericCommand<TInput extends { caseId: string }, TOutput>(

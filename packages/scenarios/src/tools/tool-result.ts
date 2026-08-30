@@ -16,11 +16,11 @@
  * (`not_found` -- a normal input outcome, not an exception), and an aborted
  * call (`cancelled`, honoring the `AbortSignal` contract the future live-tool
  * path will also need). This mirrors the vocabulary of webmcp.md's
- * `PaxToolResult<T>` envelope (`ok`/`data`/`error.code` including
+ * `SiftToolResult<T>` envelope (`ok`/`data`/`error.code` including
  * `NOT_FOUND` and `UNAVAILABLE` for a cancelled call) at this lower,
  * fixture-tool layer, without importing that browser-facing contract here.
  */
-import type { EvidenceLevel, EvidenceVerdict } from '@pax/contracts';
+import type { EvidenceLevel, EvidenceVerdict } from '@sift/contracts';
 
 export interface ToolEvidenceItem {
   sourceId: string;

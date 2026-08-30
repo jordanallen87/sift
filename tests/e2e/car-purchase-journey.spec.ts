@@ -20,7 +20,7 @@
  * WebMCP is genuinely unavailable in stock Chromium (`WebMcpStatus`'s
  * `adapter.supported()` check, asserted directly below), so this spec
  * exercises the identical command contract a WebMCP tool call would use via
- * `postCommand` (see `pages/pax-page.ts`'s header comment) and then proves
+ * `postCommand` (see `pages/sift-page.ts`'s header comment) and then proves
  * the browser reflects that external mutation live over SSE, with no click
  * and no reload -- the concrete, observable meaning of CLAUDE.md's "shared
  * human-agent control".
@@ -39,9 +39,9 @@ import {
   CAR_PURCHASE_CANDIDATE_IDS,
   CAR_PURCHASE_CRITERION_IDS,
   getCaseState,
-  PaxPage,
+  SiftPage,
   postCommand,
-} from './pages/pax-page.js';
+} from './pages/sift-page.js';
 
 test.describe('Choose our next car -- full demo journey', () => {
   test('launch, investigate, recommend, reweight, custom concern, revise, approve', async ({
@@ -50,7 +50,7 @@ test.describe('Choose our next car -- full demo journey', () => {
     test.setTimeout(120_000);
     await disableAnimations(page);
     const guard = installConsoleGuard(page);
-    const pax = new PaxPage(page);
+    const sift = new SiftPage(page);
     const masks = dynamicScreenshotMasks(page);
     // The real six-node Strands Graph genuinely fans four specialist nodes
     // out in parallel (car-purchase-engine.ts's `drainGraphToActivity`) --
@@ -75,7 +75,7 @@ test.describe('Choose our next car -- full demo journey', () => {
     // `home-energy-guardian-journey.spec.ts` needs no equivalent treatment.
 
     // --- Launch ---
-    await pax.open();
+    await sift.open();
     await assertNoSeriousAxeViolations(page, 'initial load (launcher)');
     await assertRightPaneIntegrity(page, [
       'demo-launcher-car-purchase',
@@ -85,7 +85,7 @@ test.describe('Choose our next car -- full demo journey', () => {
       maxDiffPixelRatio: 0.01,
     });
 
-    const { caseId } = await pax.launchCarPurchase();
+    const { caseId } = await sift.launchCarPurchase();
     expect(caseId).toMatch(/.+/);
 
     // Real WebMCP is genuinely unavailable in this browser -- the page must
@@ -114,7 +114,7 @@ test.describe('Choose our next car -- full demo journey', () => {
     // OptionEditor/OptionComparison content depends on it, and re-toggling
     // it closed and open again between each step would add fragile
     // sequencing with no real coverage benefit.
-    await pax.openDisclosure('compare');
+    await sift.openDisclosure('compare');
 
     for (const candidateId of CAR_PURCHASE_CANDIDATE_IDS) {
       await expect(page.getByTestId(`option-comparison-header-${candidateId}`)).toBeVisible();
@@ -141,10 +141,10 @@ test.describe('Choose our next car -- full demo journey', () => {
     await expect(page.getByTestId('option-editor-cancel')).toBeHidden();
 
     // --- Round 1: real live streaming investigation ---
-    const round1 = await pax.requestInvestigation();
-    // Opened once, same reasoning as "compare" above (ADR 0002's "Pax's
+    const round1 = await sift.requestInvestigation();
+    // Opened once, same reasoning as "compare" above (ADR 0002's "Sift's
     // work so far" row) -- left open for the rest of the journey.
-    await pax.openDisclosure('work-so-far');
+    await sift.openDisclosure('work-so-far');
     // Mid-investigation state: the activity timeline is already populating
     // live from real streamed events (not a static end state).
     await expect(page.getByTestId('activity-timeline')).toBeVisible();
@@ -180,8 +180,8 @@ test.describe('Choose our next car -- full demo journey', () => {
     await expect(page.getByTestId('runtime-inspector')).not.toBeVisible();
     await expect(page.getByTestId('case-workspace')).toBeVisible();
 
-    await pax.waitForInvestigationCompleted(round1.runId);
-    await pax.waitForRecommendationReady();
+    await sift.waitForInvestigationCompleted(round1.runId);
+    await sift.waitForRecommendationReady();
 
     // Recommendation carries a rationale and cited, source-linked evidence.
     await expect(page.getByTestId('recommendation-card-rationale')).not.toBeEmpty();
@@ -224,8 +224,8 @@ test.describe('Choose our next car -- full demo journey', () => {
       }),
     );
 
-    // --- Custom concern: the visible-control equivalent of pax_define_case_attribute ---
-    await pax.submitCustomConcern({
+    // --- Custom concern: the visible-control equivalent of sift_define_case_attribute ---
+    await sift.submitCustomConcern({
       slug: 'dog_crate_fit',
       label: 'Both dog crates fit behind the second row',
       reason:
@@ -245,22 +245,22 @@ test.describe('Choose our next car -- full demo journey', () => {
     ).toBe(true);
 
     // --- Round 2: independently detected from the confirmed concern (car-purchase-engine.ts) ---
-    const round2 = await pax.requestInvestigation();
+    const round2 = await sift.requestInvestigation();
     expect(round2.runId).not.toBe(round1.runId);
-    await pax.waitForInvestigationCompleted(round2.runId);
-    await pax.waitForRecommendationReady();
+    await sift.waitForInvestigationCompleted(round2.runId);
+    await sift.waitForRecommendationReady();
 
     // --- Revised recommendation + human-only approval ---
     await expect(page.getByTestId('approval-card-pending')).toBeVisible();
     await assertNoSeriousAxeViolations(page, 'awaiting human approval');
 
     // Evidence exists for real by this point (both rounds' evidence has
-    // landed), but every evidence card now lives inside the "What Pax
+    // landed), but every evidence card now lives inside the "What Sift
     // found" review Sheet, not inline (round-2 design review) -- opened
     // just for this touch-target check, then closed again before the
     // baseline screenshot below, which must show the normal workspace, not
     // a Sheet overlay on top of it.
-    await pax.openFindingsSheet();
+    await sift.openFindingsSheet();
     await assertPrimaryTouchTargets(page, [
       // The same `evidence-card-disposition-option-*` testid repeats per
       // card; `assertPrimaryTouchTargets` checks the first match, which is
@@ -285,7 +285,7 @@ test.describe('Choose our next car -- full demo journey', () => {
       }),
     );
 
-    await pax.approveProposal();
+    await sift.approveProposal();
     await expect(page.getByTestId('approval-card-settled')).toBeVisible();
     await withVolatileRegionsHidden(page, () =>
       expect(page.getByTestId('case-workspace')).toHaveScreenshot('decided.png', {

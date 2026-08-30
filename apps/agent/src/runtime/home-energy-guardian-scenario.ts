@@ -3,7 +3,7 @@
  * Strands Swarm (`executeHomeEnergySwarm`, `./home-energy-swarm.ts`) through
  * the entire required demo trajectory (docs/specs/demos-and-submission.md
  * "Home Energy Guardian scenario" -> "Required sequence"), accumulating a
- * `ScenarioTrajectory` (`@pax/scenarios`) the scenario test checks every
+ * `ScenarioTrajectory` (`@sift/scenarios`) the scenario test checks every
  * required assertion against.
  *
  * This is the Swarm-hero analog of `car-purchase-scenario.ts`'s
@@ -98,14 +98,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Agent } from '@strands-agents/sdk';
-import type { Clock, IdGenerator } from '@pax/core';
-import { compileHomeEnergyGuardianPack, PackRegistry } from '@pax/packs';
-import type { CaseEvent, CaseState, CompiledDecisionPack } from '@pax/contracts';
+import type { Clock, IdGenerator } from '@sift/core';
+import { compileHomeEnergyGuardianPack, PackRegistry } from '@sift/packs';
+import type { CaseEvent, CaseState, CompiledDecisionPack } from '@sift/contracts';
 import {
   buildHomeEnergyResponseOptionEntities,
   emptyScenarioTrajectory,
   type ScenarioTrajectory,
-} from '@pax/scenarios';
+} from '@sift/scenarios';
 import { CommandService } from '../services/command-service.js';
 import { InMemoryActivityStore } from '../store/activity-store.js';
 import { MemoryCaseStore } from '../store/memory-case-store.js';
@@ -366,7 +366,7 @@ export async function runHomeEnergyGuardianScenario(
     idGenerator: deps.idGenerator,
   });
 
-  // --- 1/2. A deterministic watcher creates the case; Pax routes to Home Energy Guardian without a human choice ---
+  // --- 1/2. A deterministic watcher creates the case; Sift routes to Home Energy Guardian without a human choice ---
   const startResult = commandService.startDemo(deps.idGenerator.next('cmd'), {
     demoId: 'home-energy-guardian',
   });
@@ -511,7 +511,7 @@ export async function runHomeEnergyGuardianScenario(
   trajectory.caseEvents.push(recommendation1Event);
   snapshot = rec1Append.snapshot;
 
-  // --- 10. "Long-term waste matters more than the cheapest immediate option" -> pax_update_criteria (invalidates the round1 recommendation, per command-service.ts's generic, pack-agnostic updateCriteria rule) ---
+  // --- 10. "Long-term waste matters more than the cheapest immediate option" -> sift_update_criteria (invalidates the round1 recommendation, per command-service.ts's generic, pack-agnostic updateCriteria rule) ---
   const beforeCriteria = snapshot.eventSequence;
   const criteriaResult = commandService.updateCriteria(deps.idGenerator.next('cmd'), {
     caseId,
@@ -530,7 +530,7 @@ export async function runHomeEnergyGuardianScenario(
   captureNewEvents(caseStore, caseId, beforeCriteria, trajectory);
   snapshot = criteriaResult.value.snapshot;
 
-  // pax_request_investigation, mirroring the "Energy moment" WebMCP demo pairing (demos-and-submission.md).
+  // sift_request_investigation, mirroring the "Energy moment" WebMCP demo pairing (demos-and-submission.md).
   const investigationResult = runService.requestInvestigation(deps.idGenerator.next('cmd'), {
     caseId,
     obligationId: 'energy.response_options',
@@ -632,7 +632,7 @@ export async function runHomeEnergyGuardianScenario(
   snapshot = rec2Append.snapshot;
 
   // --- 12/13. A genuine session-snapshot save, restart, and restore before the proposal is created (see module header) ---
-  const sessionDataDir = mkdtempSync(join(tmpdir(), 'pax-energy-scenario-session-'));
+  const sessionDataDir = mkdtempSync(join(tmpdir(), 'sift-energy-scenario-session-'));
   try {
     const sessionCtx = {
       traceId: deps.idGenerator.next('trace'),
@@ -695,7 +695,7 @@ export async function runHomeEnergyGuardianScenario(
     rmSync(sessionDataDir, { recursive: true, force: true });
   }
 
-  // --- Pax proposes requesting the inspection; only a human may approve ---
+  // --- Sift proposes requesting the inspection; only a human may approve ---
   const proposalId = deps.idGenerator.next('proposal');
   const proposalEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),

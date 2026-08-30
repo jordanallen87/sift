@@ -40,8 +40,8 @@
  * durable append/replay/live-subscribe.
  */
 import { randomUUID } from 'node:crypto';
-import { PublicActivityEventSchema, type PublicActivityEvent } from '@pax/contracts';
-import type { PaxDatabase } from '../db/connection.js';
+import { PublicActivityEventSchema, type PublicActivityEvent } from '@sift/contracts';
+import type { SiftDatabase } from '../db/connection.js';
 
 export interface ActivitySubscription {
   readonly replay: readonly PublicActivityEvent[];
@@ -154,7 +154,7 @@ function rowToEvent(row: ActivityRow): PublicActivityEvent {
 export class SqliteActivityStore implements ActivityStore {
   private readonly listeners = new Map<string, Set<ActivityListener>>();
 
-  constructor(private readonly database: PaxDatabase) {}
+  constructor(private readonly database: SiftDatabase) {}
 
   append(
     event: Omit<PublicActivityEvent, 'sequence' | 'eventId' | 'schemaVersion'>,

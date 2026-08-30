@@ -11,7 +11,7 @@
  * Not a `.test.ts` file itself, so it is still typechecked and linted like
  * any other source file.
  */
-import type { DecisionPackManifest } from '@pax/contracts';
+import type { DecisionPackManifest } from '@sift/contracts';
 import { createCapabilityCatalog } from '../capability-catalog.js';
 import type { CapabilityCatalog } from '../capability-catalog.js';
 

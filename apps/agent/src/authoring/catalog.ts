@@ -8,7 +8,7 @@
  * `PackRegistry` -- the union of every registered pack's real
  * `resolvedCapabilities` (skills/specialists/tools that actually compiled
  * into an installed pack), never a hand-maintained duplicate list. This
- * calls the real, already-built `@pax/packs` compiler/registry; it does not
+ * calls the real, already-built `@sift/packs` compiler/registry; it does not
  * reimplement capability resolution.
  *
  * `ui_renderer`/`orchestration_template` entries are added as static,
@@ -19,12 +19,12 @@
  * reference), so there is no live registry to derive them from. They are
  * still grounded in real exported constants -- one `ui_renderer` entry per
  * generic `AttributeValue` variant the right-pane renderer already handles
- * (`ATTRIBUTE_VALUE_TYPES`, `@pax/contracts`), and one
+ * (`ATTRIBUTE_VALUE_TYPES`, `@sift/contracts`), and one
  * `orchestration_template` entry per orchestration strategy the compiler
  * actually validates (`ORCHESTRATION_STRATEGIES`) -- not fabricated names.
  */
 import { z } from 'zod';
-import { ATTRIBUTE_VALUE_TYPES, ORCHESTRATION_STRATEGIES } from '@pax/contracts';
+import { ATTRIBUTE_VALUE_TYPES, ORCHESTRATION_STRATEGIES } from '@sift/contracts';
 import {
   CAPABILITY_KINDS,
   createCapabilityCatalog,
@@ -32,7 +32,7 @@ import {
   type CapabilityCatalogEntry,
   type CapabilityKind,
   type PackRegistry,
-} from '@pax/packs';
+} from '@sift/packs';
 
 function uiRendererEntries(): CapabilityCatalogEntry[] {
   return ATTRIBUTE_VALUE_TYPES.map((valueType) => ({

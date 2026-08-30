@@ -4,7 +4,7 @@
  * mutation flows through; nothing else in the product may change
  * `CaseState`.
  *
- * Every `CaseEvent` (`@pax/contracts`) already carries the FULL new value of
+ * Every `CaseEvent` (`@sift/contracts`) already carries the FULL new value of
  * whatever it changes (the complete new `criteria` array, the complete new
  * `ObligationState`, ...) rather than a delta -- computing that new value
  * (calling `addCriterion`, `deriveObligations`, `evaluateReadiness`, etc.) is
@@ -28,7 +28,7 @@
  * event sourcing.
  *
  * Deliberately NOT shared with `instantiateCase` (`create-case.ts`):
- * `CaseCreatedEventSchema.payload` (`@pax/contracts`) is `{ title,
+ * `CaseCreatedEventSchema.payload` (`@sift/contracts`) is `{ title,
  * pack: CasePackPin }` -- the pin only (id/version/hash/reasons), not the
  * full `CompiledDecisionPack`. This function can therefore only ever produce
  * a *minimal* skeleton from a `case.created` event alone: empty obligations,
@@ -44,7 +44,7 @@
  * `instantiateCase` produces directly, not to rely on this minimal skeleton
  * alone as if it were a complete snapshot.
  */
-import type { CaseState, CaseEvent } from '@pax/contracts';
+import type { CaseState, CaseEvent } from '@sift/contracts';
 import { reviewCaseExtension } from './extensions.js';
 import { ValidationFailedError } from './errors.js';
 

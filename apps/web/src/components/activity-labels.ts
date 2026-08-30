@@ -25,8 +25,8 @@
  * a plain, non-jargon description of the underlying event, never the raw
  * `type` string.
  */
-import type { PublicActivityEventType } from '@pax/contracts';
-import { PUBLIC_ACTIVITY_EVENT_TYPES } from '@pax/contracts';
+import type { PublicActivityEventType } from '@sift/contracts';
+import { PUBLIC_ACTIVITY_EVENT_TYPES } from '@sift/contracts';
 
 /**
  * The nine semantic states from `docs/specs/product.md`'s Readiness region
@@ -129,7 +129,7 @@ export interface ActivityLabelEntry {
  * The exhaustive table. `satisfies Record<PublicActivityEventType, ...>`
  * makes an omission a compile error: adding a new
  * `PublicActivityEventType` union member without adding its row here fails
- * `pnpm --filter @pax/web typecheck`, not just a runtime fallback.
+ * `pnpm --filter @sift/web typecheck`, not just a runtime fallback.
  */
 const ACTIVITY_LABELS = {
   'command.accepted': { label: 'Command accepted', tone: 'neutral' },

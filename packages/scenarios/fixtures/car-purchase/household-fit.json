@@ -1,5 +1,5 @@
 {
-  "_provenance": "Fictional demo data. Specification figures below are fixture-authored, plausible approximations for the Pax 'Choose Our Next Car' hackathon scenario and are not sourced from any real manufacturer specification sheet.",
+  "_provenance": "Fictional demo data. Specification figures below are fixture-authored, plausible approximations for the Sift 'Choose Our Next Car' hackathon scenario and are not sourced from any real manufacturer specification sheet.",
   "caseId": "case-demo-car-purchase",
   "householdDogCrateProfile": {
     "note": "Copied from household-profile.json for convenience. Two hard-sided crates, each roughly 36 in (L) x 24 in (W) x 27 in (H), intended to fit behind the second row without folding seats.",

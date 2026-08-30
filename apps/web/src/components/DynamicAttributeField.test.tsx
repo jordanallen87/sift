@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { AttributeDefinition, AttributeValue } from '@pax/contracts';
+import type { AttributeDefinition, AttributeValue } from '@sift/contracts';
 import { DynamicAttributeField, type DynamicAttributeFieldProps } from './DynamicAttributeField.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 

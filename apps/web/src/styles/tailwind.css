@@ -2,9 +2,9 @@
  * Tailwind CSS v4 entry point.
  *
  * Judgment call (recorded in full in docs/build-log.md's entry for this
- * task): Pax uses a *token-first* integration rather than a `@theme` bridge.
+ * task): Sift uses a *token-first* integration rather than a `@theme` bridge.
  * This file intentionally defines no `@theme` block and duplicates no
- * value from tokens.css. Components reach Pax's actual design tokens via
+ * value from tokens.css. Components reach Sift's actual design tokens via
  * Tailwind's arbitrary-value syntax (`bg-[var(--color-surface)]`,
  * `rounded-[var(--radius-xl)]`, `font-[family-name:var(--font-display)]`,
  * ...) -- a literal `var(--...)` reference resolved by the normal CSS
@@ -18,14 +18,14 @@
  * `:root { --color-paper: #EEF1F0 }` definition, depending on generated
  * stylesheet order. Arbitrary-value syntax has no such risk -- it reads
  * the cascade directly -- at the cost of slightly more verbose class names.
- * Ordinary Tailwind utilities with no Pax-specific meaning (`flex`, `gap-3`,
+ * Ordinary Tailwind utilities with no Sift-specific meaning (`flex`, `gap-3`,
  * `p-4`, responsive prefixes, ...) are used directly from Tailwind's default
  * theme; see the docs/build-log.md entry for why the default numeric
  * spacing scale already matches tokens.css's `--space-*` scale pixel for
  * pixel, so no bridging is needed there either.
  *
  * Preflight (Tailwind's own CSS reset) is deliberately NOT imported.
- * apps/web/src/styles/global.css already supplies Pax's own "small,
+ * apps/web/src/styles/global.css already supplies Sift's own "small,
  * deliberate reset" (that file's own description); importing Preflight too
  * would silently re-normalize the same elements a second, more opinionated
  * way. Importing `theme.css` + `utilities.css` directly (skipping
@@ -43,7 +43,7 @@
  * was specific to reusing the exact same name at both layers
  * (`--color-paper: var(--color-paper)`). Every name below is genuinely
  * distinct at each layer -- `--background` etc. are defined once, in
- * tokens.css's `:root` block, as aliases of Pax's own named tokens;
+ * tokens.css's `:root` block, as aliases of Sift's own named tokens;
  * `--color-background` etc. here only re-exposes that already-resolved
  * value to Tailwind's utility generator under shadcn's expected class
  * names (`bg-background`, `text-foreground`, `border-border`, ...), which
@@ -51,11 +51,11 @@
  *
  * Deliberately does NOT bridge `--radius-*`: Tailwind's fixed theme key
  * names for those (`--radius-sm`, `--radius-md`, ...) are the exact same
- * names tokens.css already uses for Pax's own radius scale, so a
+ * names tokens.css already uses for Sift's own radius scale, so a
  * `--radius-md: var(--radius-md)` line here would be the identical
  * self-reference collision this file's own header comment above warns
  * about. Every shadcn component pulled into this codebase has its
- * `rounded-md`/`rounded-lg`/etc. utility classes hand-edited to Pax's
+ * `rounded-md`/`rounded-lg`/etc. utility classes hand-edited to Sift's
  * existing `rounded-[var(--radius-md)]` arbitrary-value convention instead
  * (see each file under `src/components/ui/`) -- one consistent radius
  * mechanism, not two.

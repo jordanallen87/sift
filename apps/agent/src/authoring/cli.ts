@@ -1,6 +1,6 @@
 /**
- * `pnpm pax pack:author` -- pack-authoring.md: "The initial authoring entry
- * point is `pnpm pax pack:author`. A graphical Pack Studio, marketplace,
+ * `pnpm sift pack:author` -- pack-authoring.md: "The initial authoring entry
+ * point is `pnpm sift pack:author`. A graphical Pack Studio, marketplace,
  * arbitrary composition, and multi-tenant publishing are not part of the
  * hackathon build."
  *
@@ -19,7 +19,7 @@
  * -> [pack_publish]`) a real interactive session would. When `--answers` is
  * omitted, it runs a built-in, fully deterministic demonstration using the
  * real `apartment-hunt` compiler/conformance fixture manifest
- * (`@pax/packs`'s `src/fixtures/manifest.js`) plus four scenario files
+ * (`@sift/packs`'s `src/fixtures/manifest.js`) plus four scenario files
  * covering the required success/incomplete_evidence/steering/human_boundary
  * kinds -- so the command is genuinely runnable out of the box, with zero
  * network access, and proves the full pipeline end to end without requiring
@@ -32,9 +32,9 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadConfig, type PaxConfig, type RawEnv } from '../config.js';
-import { PackRegistry } from '@pax/packs';
-import { validCatalog } from '@pax/packs/src/fixtures/manifest.js';
+import { loadConfig, type SiftConfig, type RawEnv } from '../config.js';
+import { PackRegistry } from '@sift/packs';
+import { validCatalog } from '@sift/packs/src/fixtures/manifest.js';
 import { buildInstalledCapabilityCatalog } from './catalog.js';
 import { DEMO_AUTHORING_ANSWERS, type AuthoringAnswers } from './demo-answers.js';
 import type { AuthoringToolContext } from './index.js';
@@ -69,7 +69,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
   return {
     command: argv[0],
     draftId: argValue(argv, '--draft-id') ?? 'apartment-hunt',
-    draftRoot: argValue(argv, '--draft-root') ?? join('.pax-data', 'pack-drafts'),
+    draftRoot: argValue(argv, '--draft-root') ?? join('.sift-data', 'pack-drafts'),
     answersPath: argValue(argv, '--answers'),
     publish: argv.includes('--publish'),
     confirmedBy: argValue(argv, '--confirmed-by'),
@@ -90,7 +90,7 @@ function loadAnswers(answersPath: string | undefined): AuthoringAnswers {
  * registry to query (that lives in the running Express service, out of a
  * standalone CLI's reach), so it unions the same real fixture catalog the
  * compiler/conformance suite already treats as "installed"
- * (`@pax/packs/src/fixtures/manifest.js`'s `validCatalog()`) with whatever
+ * (`@sift/packs/src/fixtures/manifest.js`'s `validCatalog()`) with whatever
  * this CLI session has itself published. A real production deployment would
  * source this from the live application's own capability registry instead.
  */
@@ -113,10 +113,10 @@ export interface RunPackAuthorCliOptions {
   readonly io?: CliIo;
   readonly registry?: PackRegistry;
   readonly clock?: { now(): string };
-  readonly loadConfigFn?: (env: RawEnv) => PaxConfig;
+  readonly loadConfigFn?: (env: RawEnv) => SiftConfig;
 }
 
-/** Runs `pnpm pax pack:author`, returning the process exit code. Fully dependency-injected (env, stdout/stderr, registry, clock) so it is directly unit-testable without spawning a subprocess or touching real `process.env`. */
+/** Runs `pnpm sift pack:author`, returning the process exit code. Fully dependency-injected (env, stdout/stderr, registry, clock) so it is directly unit-testable without spawning a subprocess or touching real `process.env`. */
 export function runPackAuthorCli(
   argv: readonly string[],
   options: RunPackAuthorCliOptions = {},
@@ -126,7 +126,7 @@ export function runPackAuthorCli(
 
   if (args.command !== 'pack:author') {
     io.stderr(
-      `Unknown pax command "${args.command ?? '(none)'}". The only supported command is "pack:author".`,
+      `Unknown sift command "${args.command ?? '(none)'}". The only supported command is "pack:author".`,
     );
     return 1;
   }
@@ -135,8 +135,8 @@ export function runPackAuthorCli(
   const config = load(options.env ?? process.env);
   if (!config.authoringEnabled) {
     io.stderr(
-      'Pack authoring is disabled (PAX_AUTHORING_ENABLED=false). Set PAX_AUTHORING_ENABLED=true to ' +
-        'run "pnpm pax pack:author" locally. It stays disabled in the public hackathon deployment.',
+      'Pack authoring is disabled (SIFT_AUTHORING_ENABLED=false). Set SIFT_AUTHORING_ENABLED=true to ' +
+        'run "pnpm sift pack:author" locally. It stays disabled in the public hackathon deployment.',
     );
     return 1;
   }
@@ -152,7 +152,7 @@ export function runPackAuthorCli(
 
   const answers = loadAnswers(args.answersPath);
 
-  io.stdout(`[pax pack:author] draft "${args.draftId}" at "${ctx.draftRoot}"`);
+  io.stdout(`[sift pack:author] draft "${args.draftId}" at "${ctx.draftRoot}"`);
 
   const catalog = packCatalog(ctx.catalog);
   io.stdout(`[pack_catalog] ${catalog.entries.length} installed capability entries.`);
@@ -197,19 +197,19 @@ export function runPackAuthorCli(
   }
 
   if (!testResult.ok) {
-    io.stderr('[pax pack:author] draft did not pass pack_test; not eligible for publish.');
+    io.stderr('[sift pack:author] draft did not pass pack_test; not eligible for publish.');
     return 1;
   }
 
   if (!args.publish) {
     io.stdout(
-      '[pax pack:author] draft is ready. Rerun with --publish --confirmed-by "<your name>" to publish it.',
+      '[sift pack:author] draft is ready. Rerun with --publish --confirmed-by "<your name>" to publish it.',
     );
     return 0;
   }
 
   if (args.confirmedBy === undefined) {
-    io.stderr('[pax pack:author] --publish requires --confirmed-by "<your name>".');
+    io.stderr('[sift pack:author] --publish requires --confirmed-by "<your name>".');
     return 1;
   }
 

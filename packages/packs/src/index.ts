@@ -1,4 +1,4 @@
-// @pax/packs -- the generic Decision Pack compiler, capability catalog,
+// @sift/packs -- the generic Decision Pack compiler, capability catalog,
 // registry, and conformance runner, plus the built-in Decision Pack
 // manifests. See docs/specs/pack-authoring.md "Compiler and registry" and
 // docs/specs/packs-and-routing.md "Manifest contract" for the

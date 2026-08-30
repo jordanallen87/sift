@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PackRegistry, compilePack } from '@pax/packs';
-import { validCatalog, validManifest } from '@pax/packs/src/fixtures/manifest.js';
+import { PackRegistry, compilePack } from '@sift/packs';
+import { validCatalog, validManifest } from '@sift/packs/src/fixtures/manifest.js';
 import { loadConfig } from '../config.js';
 import { parseCliArgs, runPackAuthorCli } from './cli.js';
 import type { AuthoringAnswers } from './demo-answers.js';
@@ -13,7 +13,7 @@ const FIXED_CLOCK = { now: () => '2026-08-27T00:00:00.000Z' };
 let draftRoot: string;
 
 beforeEach(() => {
-  draftRoot = mkdtempSync(join(tmpdir(), 'pax-cli-'));
+  draftRoot = mkdtempSync(join(tmpdir(), 'sift-cli-'));
 });
 
 afterEach(() => {
@@ -57,7 +57,7 @@ describe('parseCliArgs', () => {
   it('defaults draftId, draftRoot, and publish when omitted', () => {
     const args = parseCliArgs(['pack:author']);
     expect(args.draftId).toBe('apartment-hunt');
-    expect(args.draftRoot).toBe(join('.pax-data', 'pack-drafts'));
+    expect(args.draftRoot).toBe(join('.sift-data', 'pack-drafts'));
     expect(args.publish).toBe(false);
     expect(args.answersPath).toBeUndefined();
   });
@@ -68,13 +68,13 @@ describe('runPackAuthorCli', () => {
     const { io, stderr } = collectIo();
     const code = runPackAuthorCli(['not-a-real-command'], {
       io,
-      env: { PAX_AUTHORING_ENABLED: 'true' },
+      env: { SIFT_AUTHORING_ENABLED: 'true' },
     });
     expect(code).toBe(1);
-    expect(stderr.some((l) => l.includes('Unknown pax command'))).toBe(true);
+    expect(stderr.some((l) => l.includes('Unknown sift command'))).toBe(true);
   });
 
-  it('refuses to run pack:author when PAX_AUTHORING_ENABLED is false (the default)', () => {
+  it('refuses to run pack:author when SIFT_AUTHORING_ENABLED is false (the default)', () => {
     const { io, stderr } = collectIo();
     const code = runPackAuthorCli(['pack:author'], { io, env: {} });
     expect(code).toBe(1);
@@ -86,7 +86,7 @@ describe('runPackAuthorCli', () => {
     const registry = new PackRegistry();
     const code = runPackAuthorCli(['pack:author', '--draft-root', draftRoot], {
       io,
-      env: { PAX_AUTHORING_ENABLED: 'true' },
+      env: { SIFT_AUTHORING_ENABLED: 'true' },
       registry,
       clock: FIXED_CLOCK,
     });
@@ -110,7 +110,7 @@ describe('runPackAuthorCli', () => {
         '--confirmed-by',
         'jordan.allen.tech@gmail.com',
       ],
-      { io, env: { PAX_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
+      { io, env: { SIFT_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
     );
     expect(code).toBe(0);
     expect(stdout.some((l) => l.includes('[pack_publish] published apartment-hunt@1.0.0'))).toBe(
@@ -124,7 +124,7 @@ describe('runPackAuthorCli', () => {
     const registry = new PackRegistry();
     const code = runPackAuthorCli(['pack:author', '--draft-root', draftRoot, '--publish'], {
       io,
-      env: { PAX_AUTHORING_ENABLED: 'true' },
+      env: { SIFT_AUTHORING_ENABLED: 'true' },
       registry,
       clock: FIXED_CLOCK,
     });
@@ -190,25 +190,25 @@ describe('runPackAuthorCli', () => {
         '--answers',
         answersPath,
       ],
-      { io, env: { PAX_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
+      { io, env: { SIFT_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
     );
     expect(code).toBe(0);
     expect(stdout.some((l) => l.includes('[pack_test] PASSED'))).toBe(true);
   });
 
   it('uses the real loadConfig by default when no loadConfigFn override is given', () => {
-    // Proves the CLI actually calls the real @pax/agent config loader, not a stand-in.
-    const config = loadConfig({ PAX_AUTHORING_ENABLED: 'true' });
+    // Proves the CLI actually calls the real @sift/agent config loader, not a stand-in.
+    const config = loadConfig({ SIFT_AUTHORING_ENABLED: 'true' });
     expect(config.authoringEnabled).toBe(true);
   });
 
   it('falls back to console.error and reports "(none)" for the command name when called with no io option and an empty argv', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
-      const code = runPackAuthorCli([], { env: { PAX_AUTHORING_ENABLED: 'true' } });
+      const code = runPackAuthorCli([], { env: { SIFT_AUTHORING_ENABLED: 'true' } });
       expect(code).toBe(1);
       expect(errorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Unknown pax command "(none)"'),
+        expect.stringContaining('Unknown sift command "(none)"'),
       );
     } finally {
       errorSpy.mockRestore();
@@ -216,8 +216,8 @@ describe('runPackAuthorCli', () => {
   });
 
   it('falls back to the real process.env when no env override is given', () => {
-    const original = process.env['PAX_AUTHORING_ENABLED'];
-    process.env['PAX_AUTHORING_ENABLED'] = 'true';
+    const original = process.env['SIFT_AUTHORING_ENABLED'];
+    process.env['SIFT_AUTHORING_ENABLED'] = 'true';
     try {
       const { io, stdout } = collectIo();
       const code = runPackAuthorCli(['pack:author', '--draft-root', draftRoot], {
@@ -228,8 +228,8 @@ describe('runPackAuthorCli', () => {
       expect(code).toBe(0);
       expect(stdout.some((l) => l.includes('[pack_validate] PASSED'))).toBe(true);
     } finally {
-      if (original === undefined) delete process.env['PAX_AUTHORING_ENABLED'];
-      else process.env['PAX_AUTHORING_ENABLED'] = original;
+      if (original === undefined) delete process.env['SIFT_AUTHORING_ENABLED'];
+      else process.env['SIFT_AUTHORING_ENABLED'] = original;
     }
   });
 
@@ -237,7 +237,7 @@ describe('runPackAuthorCli', () => {
     const { io, stdout } = collectIo();
     const code = runPackAuthorCli(['pack:author', '--draft-root', draftRoot], {
       io,
-      env: { PAX_AUTHORING_ENABLED: 'true' },
+      env: { SIFT_AUTHORING_ENABLED: 'true' },
     });
     expect(code).toBe(0);
     expect(stdout.some((l) => l.includes('[pack_validate] PASSED'))).toBe(true);
@@ -248,7 +248,7 @@ describe('runPackAuthorCli', () => {
     const { io: ioEmpty, stdout: stdoutEmpty } = collectIo();
     runPackAuthorCli(['pack:author', '--draft-root', draftRoot], {
       io: ioEmpty,
-      env: { PAX_AUTHORING_ENABLED: 'true' },
+      env: { SIFT_AUTHORING_ENABLED: 'true' },
       registry: new PackRegistry(),
       clock: FIXED_CLOCK,
     });
@@ -266,7 +266,7 @@ describe('runPackAuthorCli', () => {
     const { io: ioOverlap, stdout: stdoutOverlap } = collectIo();
     runPackAuthorCli(['pack:author', '--draft-root', draftRoot], {
       io: ioOverlap,
-      env: { PAX_AUTHORING_ENABLED: 'true' },
+      env: { SIFT_AUTHORING_ENABLED: 'true' },
       registry: overlappingRegistry,
       clock: FIXED_CLOCK,
     });
@@ -292,7 +292,7 @@ describe('runPackAuthorCli', () => {
     const registry = new PackRegistry();
     const code = runPackAuthorCli(
       ['pack:author', '--draft-root', draftRoot, '--draft-id', 'broken', '--answers', answersPath],
-      { io, env: { PAX_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
+      { io, env: { SIFT_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
     );
     expect(code).toBe(1);
     expect(stdout.some((l) => l.includes('[pack_validate] FAILED'))).toBe(true);
@@ -316,7 +316,7 @@ describe('runPackAuthorCli', () => {
     expect(() =>
       runPackAuthorCli(
         ['pack:author', '--draft-root', draftRoot, '--publish', '--confirmed-by', 'jordan'],
-        { io, env: { PAX_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
+        { io, env: { SIFT_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
       ),
     ).toThrow(/already registered with a different compiledHash/);
   });

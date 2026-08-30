@@ -1,9 +1,9 @@
 {
-  "name": "@pax/agent",
+  "name": "@sift/agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pax Express + Strands service and static web host. Persistence and HTTP skeleton ship in this task; Strands routes ship in a later task.",
+  "description": "Sift Express + Strands service and static web host. Persistence and HTTP skeleton ship in this task; Strands routes ship in a later task.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
@@ -13,11 +13,11 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
-    "@pax/catalog": "workspace:*",
-    "@pax/contracts": "workspace:*",
-    "@pax/core": "workspace:*",
-    "@pax/packs": "workspace:*",
-    "@pax/scenarios": "workspace:*",
+    "@sift/catalog": "workspace:*",
+    "@sift/contracts": "workspace:*",
+    "@sift/core": "workspace:*",
+    "@sift/packs": "workspace:*",
+    "@sift/scenarios": "workspace:*",
     "@strands-agents/sdk": "^1.14.0",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.2",

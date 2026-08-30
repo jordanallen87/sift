@@ -17,7 +17,7 @@
  * same `RunStore` to advance a run's status.
  *
  * Unlike `command-service.ts`, `requestInvestigation` never calls
- * `CaseStore.append()` -- no `CaseEvent` variant in `@pax/contracts`
+ * `CaseStore.append()` -- no `CaseEvent` variant in `@sift/contracts`
  * represents "a run was requested" (confirmed: `CaseEventSchema`'s
  * discriminated union has no `run.*` member), so creating a run does not
  * mutate `CaseState` or advance its `eventSequence`. `RunService` still
@@ -36,9 +36,9 @@ import {
   RequestInvestigationInputSchema,
   type RequestInvestigationInput,
   type RunReceipt,
-} from '@pax/contracts';
-import { selectNextObligation, type Clock, type IdGenerator } from '@pax/core';
-import type { PaxDatabase } from '../db/connection.js';
+} from '@sift/contracts';
+import { selectNextObligation, type Clock, type IdGenerator } from '@sift/core';
+import type { SiftDatabase } from '../db/connection.js';
 import { RUN_STATUSES, type RunStatus } from '../db/schema.js';
 import type { ActivityStore } from '../store/activity-store.js';
 import type { CaseStore } from '../store/case-store.js';
@@ -175,7 +175,7 @@ export class MemoryRunStore implements RunStore {
 }
 
 export class SqliteRunStore implements RunStore {
-  constructor(private readonly database: PaxDatabase) {}
+  constructor(private readonly database: SiftDatabase) {}
 
   create(run: RunRecord): void {
     this.database.sqlite

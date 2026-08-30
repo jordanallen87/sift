@@ -4,7 +4,7 @@
  * rationale (including why this lives under `src/fixtures/`).
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { PublicActivityEvent } from '@pax/contracts';
+import type { PublicActivityEvent } from '@sift/contracts';
 import type { ActivityStore } from '../store/activity-store.js';
 
 const now = '2026-08-27T00:00:00.000Z';

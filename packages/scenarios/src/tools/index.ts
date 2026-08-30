@@ -1,4 +1,4 @@
-// @pax/scenarios/tools — deterministic, read-only fixture tools for both
+// @sift/scenarios/tools — deterministic, read-only fixture tools for both
 // Decision Packs: Choose Our Next Car (docs/specs/packs-and-routing.md
 // "Choose Our Next Car Decision Pack" -> "Skills, specialists, and tools":
 // "Fixture tools: listing/offer reader, specification lookup, safety/

@@ -47,8 +47,8 @@ export type ScenarioSeed = z.infer<typeof ScenarioSeedSchema>;
  * Inferred: `ScenarioStep` has no field list. Grounded in testing.md
  * "Scenario tests execute the actual core, pack, Strands adapter, scripted
  * model, interventions, fixture tools, event store, and API in process" --
- * a step is a call to one real `PaxCommands` method with its input. `command`
- * is restricted to the exact method names in architecture.md's `PaxCommands`
+ * a step is a call to one real `SiftCommands` method with its input. `command`
+ * is restricted to the exact method names in architecture.md's `SiftCommands`
  * interface rather than an arbitrary string, so a malformed scenario file
  * fails validation instead of silently no-op'ing at runtime. `input` is a
  * bounded `JsonValue` here (not the specific per-command Zod schema from

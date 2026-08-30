@@ -10,8 +10,8 @@
  * see and click, and their `startDemo` wiring, copy, and `data-testid`s are
  * completely unchanged by that ADR.
  *
- * Both demo options call `startDemo` on the one shared `PaxCommands` client
- * from `usePaxCommands()` (CLAUDE.md "Visible UI controls and WebMCP
+ * Both demo options call `startDemo` on the one shared `SiftCommands` client
+ * from `useSiftCommands()` (CLAUDE.md "Visible UI controls and WebMCP
  * callbacks use the same command implementation") -- there is no separate
  * launcher-only fetch call.
  *
@@ -24,9 +24,9 @@
  * not the launcher, and are out of scope for this component.
  */
 import { useCallback, useState } from 'react';
-import type { CommandReceipt } from '@pax/contracts';
-import type { DemoId } from '@pax/contracts';
-import { usePaxCommands } from '../app/AppProviders.js';
+import type { CommandReceipt } from '@sift/contracts';
+import type { DemoId } from '@sift/contracts';
+import { useSiftCommands } from '../app/AppProviders.js';
 import { CardDescription, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -67,7 +67,7 @@ type LauncherStatus =
   | { kind: 'error'; demoId: DemoId; message: string };
 
 export function DemoLauncher({ onDemoStarted, onCompareVehicles }: DemoLauncherProps) {
-  const commands = usePaxCommands();
+  const commands = useSiftCommands();
   const [status, setStatus] = useState<LauncherStatus>({ kind: 'idle' });
 
   const startDemo = useCallback(
@@ -116,7 +116,7 @@ export function DemoLauncher({ onDemoStarted, onCompareVehicles }: DemoLauncherP
               id="demo-launcher-heading"
               className="font-[family-name:var(--font-display)] text-[length:var(--font-size-xl)] font-semibold text-foreground"
             >
-              Start a Pax case
+              Start a Sift case
             </h1>
             <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
               Compare real vehicles from the bundled catalog, or try a finished example.
@@ -198,7 +198,7 @@ export function DemoLauncher({ onDemoStarted, onCompareVehicles }: DemoLauncherP
             variant="destructive"
             className="flex-col items-start gap-[var(--space-2)]"
           >
-            <AlertDescription>Pax could not start that demo: {status.message}</AlertDescription>
+            <AlertDescription>Sift could not start that demo: {status.message}</AlertDescription>
             <Button
               type="button"
               data-testid="demo-launcher-retry"

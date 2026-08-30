@@ -36,7 +36,7 @@
  *
  * The official TypeScript sample uses `express.raw({ type: '*\/*' })` and
  * decodes the raw bytes itself because its bare-bones Express app has no
- * body parser mounted at all. Pax's `app.ts` already mounts
+ * body parser mounted at all. Sift's `app.ts` already mounts
  * `app.use(express.json())` globally, ahead of every router (including this
  * one) -- by the time a request reaches this route, a JSON-content-typed
  * body has already been parsed into `req.body`, exactly matching AWS's own
@@ -52,7 +52,7 @@
  * the top-level `Content-Type: application/json` is "your agent's business
  * logic" to define -- the `{"prompt": "..."}` shown is a documented
  * *example* convention (matching a `prompt`-centric chat agent), not a
- * mandated field for every AgentCore-deployed service. Pax is not a
+ * mandated field for every AgentCore-deployed service. Sift is not a
  * free-text chat agent at this transport: it is the same typed, deterministic
  * `CommandService`/`RunService` command layer every other HTTP route in this
  * app already dispatches into (docs/specs/architecture.md "Deterministic
@@ -94,7 +94,7 @@
  * `reviewProposal` (approve/reject a `DecisionProposal`) and
  * `reviewCaseExtension` (confirm/reject an agent-proposed case extension) --
  * the same two human-confirmation verbs `docs/specs/webmcp.md`'s twelve-tool
- * catalog already withholds from ChatGPT (`pax_request_revision` is the only
+ * catalog already withholds from ChatGPT (`sift_request_revision` is the only
  * decision-adjacent WebMCP tool, and it can only attach a revision request,
  * never approve -- see `model-context/webmcp-contract.test.ts`'s "No tool
  * can approve or reject a decision proposal"). A `commandName` naming either
@@ -111,8 +111,8 @@
  */
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { CaseStateSchema, CommandReceiptSchema, RunReceiptSchema } from '@pax/contracts';
-import type { Clock } from '@pax/core';
+import { CaseStateSchema, CommandReceiptSchema, RunReceiptSchema } from '@sift/contracts';
+import type { Clock } from '@sift/core';
 import { COMMAND_NAMES, dispatchCommand, type CommandName } from './commands.js';
 import { readCommandId, respondWithServiceResult, sendError } from './http-support.js';
 import { formatZodIssues, type ServiceResult } from '../services/service-result.js';
@@ -164,7 +164,7 @@ const AgentCoreInvocationBodySchema = z
  * "success" }`, per both official sources cited above) for an `ok`
  * `ServiceResult`, and otherwise falls back to `respondWithServiceResult`'s
  * existing validation/not-found/policy/conflict -> HTTP status mapping
- * every other Pax route already uses (AWS's own error-handling contract:
+ * every other Sift route already uses (AWS's own error-handling contract:
  * "the HTTP status code reflects the exception" -- native HTTP, no special
  * success-shaped wrapping expected for errors).
  */
@@ -185,7 +185,7 @@ export function createAgentCoreRouter(deps: AgentCoreRouterDeps): Router {
   // server.ts; once per test elsewhere) -- AWS's HTTP protocol contract
   // explicitly warns against setting `time_of_last_update` to "the current
   // time on every ping" ("prevents the idle session timeout from ever
-  // firing"). Pax's own health status never actually changes after boot --
+  // firing"). Sift's own health status never actually changes after boot --
   // this route always reports `Healthy` (there is no asynchronous
   // `HealthyBusy` state: every `/invocations` call is handled and
   // responded to synchronously within the one request, per the real

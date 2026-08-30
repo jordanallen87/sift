@@ -1,14 +1,14 @@
 /**
  * Semantic page-object wrapper over the real right-pane workspace
  * (docs/superpowers/plans/2026-08-26-pax-hackathon-build.md Task 12:
- * "`PaxPage` exposes semantic methods for launch, investigate, ... review
+ * "`SiftPage` exposes semantic methods for launch, investigate, ... review
  * proposal, ..., and read case context"). Every method drives the exact
  * same visible controls a real user clicks -- there is no shortcut that
- * bypasses `PaxCommands`/the real HTTP routes.
+ * bypasses `SiftCommands`/the real HTTP routes.
  *
  * `postCommand`/`getCaseState` below are the WebMCP-equivalent path: they
  * hit the exact same `/api/cases/:caseId/commands/:commandName` route
- * `apps/web/src/api/pax-client.ts` (and therefore every visible control and
+ * `apps/web/src/api/sift-client.ts` (and therefore every visible control and
  * every WebMCP tool callback) sends every command through
  * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation") -- used for the two real product beats that currently
@@ -73,7 +73,7 @@ function randomCommandId(commandName: string): string {
   return `e2e-${commandName}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Issues one real command through the exact HTTP route `PaxCommands`/WebMCP tools use, with a fresh idempotency key. See this file's header comment for why this is the honest way to exercise a "key WebMCP call" from Playwright. */
+/** Issues one real command through the exact HTTP route `SiftCommands`/WebMCP tools use, with a fresh idempotency key. See this file's header comment for why this is the honest way to exercise a "key WebMCP call" from Playwright. */
 export async function postCommand(
   request: APIRequestContext,
   caseId: string,
@@ -89,7 +89,7 @@ export async function postCommand(
 
 /**
  * Issues a real `POST /api/cases/:caseId/run` request -- the exact same
- * route `PaxCommands.requestInvestigation`/the visible "Request
+ * route `SiftCommands.requestInvestigation`/the visible "Request
  * investigation" button (`App.tsx`'s `handleRequestInvestigation`) both call
  * -- with an explicit `obligationId`. This is the honest way to drive Home
  * Energy Guardian's round-2 investigation from Playwright: confirmed
@@ -102,11 +102,11 @@ export async function postCommand(
  * purely read-only (no per-obligation "investigate" control anywhere in
  * `apps/web/src/components` to target one explicitly). `obligationId` is a
  * real, documented field of the same `RequestInvestigationInput` contract
- * (`pax-client.ts`) the visible control already uses -- this exercises it
+ * (`sift-client.ts`) the visible control already uses -- this exercises it
  * directly rather than bypassing it, exactly like this file's other
  * `post*` helpers (see this file's header comment). See
  * `home-energy-guardian-journey.spec.ts`'s header comment for the full
- * reasoning and `PaxPage.waitForRecommendationRationaleContains` below for
+ * reasoning and `SiftPage.waitForRecommendationRationaleContains` below for
  * why this path also cannot be awaited through `LiveRunStatus`.
  */
 export async function postRunRequest(
@@ -121,7 +121,7 @@ export async function postRunRequest(
   });
 }
 
-/** Reads the real canonical `CaseState` via `GET /api/cases/:caseId` -- the same route the WebMCP `pax_get_case_context` tool's own case data ultimately mirrors. */
+/** Reads the real canonical `CaseState` via `GET /api/cases/:caseId` -- the same route the WebMCP `sift_get_case_context` tool's own case data ultimately mirrors. */
 export async function getCaseState(
   request: APIRequestContext,
   caseId: string,
@@ -133,7 +133,7 @@ export async function getCaseState(
   return (await response.json()) as Record<string, unknown>;
 }
 
-export class PaxPage {
+export class SiftPage {
   constructor(readonly page: Page) {}
 
   async open(): Promise<void> {
@@ -321,13 +321,13 @@ export class PaxPage {
     await expect(details).toHaveJSProperty('open', false);
   }
 
-  /** Opens the "What Pax found" review Sheet -- a trigger row, not a native disclosure (`DisclosureSection`'s `onTriggerClick` mode), since it opens `FindingsSheet` rather than expanding inline. */
+  /** Opens the "What Sift found" review Sheet -- a trigger row, not a native disclosure (`DisclosureSection`'s `onTriggerClick` mode), since it opens `FindingsSheet` rather than expanding inline. */
   async openFindingsSheet(): Promise<void> {
     await this.page.getByTestId('disclosure-findings-summary').click();
     await expect(this.page.getByTestId('findings-sheet')).toBeVisible();
   }
 
-  /** Fills and submits `CustomConcernForm` without asserting the outcome -- used directly by tests that expect a real error (`error-recovery.spec.ts`); `submitCustomConcern` below is the success-asserting convenience wrapper every other spec uses. Opens the "Add something Pax should check" disclosure row first (ADR 0002) -- a no-op once an agent-proposed extension is already pending, since that row opens itself in that case. */
+  /** Fills and submits `CustomConcernForm` without asserting the outcome -- used directly by tests that expect a real error (`error-recovery.spec.ts`); `submitCustomConcern` below is the success-asserting convenience wrapper every other spec uses. Opens the "Add something Sift should check" disclosure row first (ADR 0002) -- a no-op once an agent-proposed extension is already pending, since that row opens itself in that case. */
   async fillAndSubmitCustomConcern(input: CustomConcernInput): Promise<void> {
     await this.openDisclosure('add-concern');
     const form = this.page.getByTestId('custom-concern-form');
@@ -342,7 +342,7 @@ export class PaxPage {
     await form.getByTestId('custom-concern-form-submit').click();
   }
 
-  /** The visible-control equivalent of `pax_define_case_attribute` (`CustomConcernForm.tsx`). A `user`-origin submission is auto-confirmed server-side (`packages/core/src/extensions.ts`), so no separate confirmation step is required afterward. */
+  /** The visible-control equivalent of `sift_define_case_attribute` (`CustomConcernForm.tsx`). A `user`-origin submission is auto-confirmed server-side (`packages/core/src/extensions.ts`), so no separate confirmation step is required afterward. */
   async submitCustomConcern(input: CustomConcernInput): Promise<void> {
     await this.fillAndSubmitCustomConcern(input);
     await expect(

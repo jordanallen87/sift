@@ -8,7 +8,7 @@
  * non-empty, contiguous event batch).
  */
 import { describe, expect, it } from 'vitest';
-import type { CaseEvent } from '@pax/contracts';
+import type { CaseEvent } from '@sift/contracts';
 import { foldEvents } from './case-store.js';
 
 const now = '2026-08-27T00:00:00.000Z';

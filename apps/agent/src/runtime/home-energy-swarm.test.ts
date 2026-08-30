@@ -3,21 +3,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { InvokableTool, ToolContext } from '@strands-agents/sdk';
-import type { Clock, IdGenerator } from '@pax/core';
+import type { Clock, IdGenerator } from '@sift/core';
 import {
   createCapabilityCatalog,
   compileHomeEnergyGuardianPack,
   HOME_ENERGY_GUARDIAN_MANIFEST,
-} from '@pax/packs';
-import type { CapabilityCatalog } from '@pax/packs';
-import type { ExecutionRequest } from '@pax/contracts';
+} from '@sift/packs';
+import type { CapabilityCatalog } from '@sift/packs';
+import type { ExecutionRequest } from '@sift/contracts';
 import {
   BILL_READER_TOOL_ID,
   HOUSEHOLD_EVENT_LOOKUP_TOOL_ID,
   TARIFF_LOOKUP_TOOL_ID,
   USAGE_HISTORY_QUERY_TOOL_ID,
   WEATHER_LOOKUP_TOOL_ID,
-} from '@pax/scenarios';
+} from '@sift/scenarios';
 import { ScriptedModelProvider } from './model-provider.js';
 import {
   CALCULATOR_TOOL_ID,
@@ -69,7 +69,7 @@ function fixedIdGenerator(): IdGenerator {
  * later content task (recorded in the dated docs/build-log.md entry).
  */
 function buildTempSkillsRootDir(): string {
-  const root = mkdtempSync(join(tmpdir(), 'pax-energy-skills-'));
+  const root = mkdtempSync(join(tmpdir(), 'sift-energy-skills-'));
   for (const skill of HOME_ENERGY_GUARDIAN_MANIFEST.skills) {
     const skillDir = join(root, skill.id);
     mkdirSync(skillDir);
@@ -756,7 +756,7 @@ describe('executeHomeEnergySwarm: defensive guards and configuration bounds', ()
       costWeight: ROUND1_COST_WEIGHT,
       conservationWeight: ROUND1_CONSERVATION_WEIGHT,
     });
-    const emptyRoot = mkdtempSync(join(tmpdir(), 'pax-empty-energy-skills-'));
+    const emptyRoot = mkdtempSync(join(tmpdir(), 'sift-empty-energy-skills-'));
     writeFileSync(join(emptyRoot, 'not-a-skill.txt'), 'just a file');
     try {
       await expect(

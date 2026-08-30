@@ -1,4 +1,4 @@
-// @pax/catalog -- bundled vehicle catalog, bounded query functions, and the
+// @sift/catalog -- bundled vehicle catalog, bounded query functions, and the
 // catalog-record-to-pack-option adaptation boundary. See
 // docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md.
 

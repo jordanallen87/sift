@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CaseState } from '@pax/contracts';
+import type { CaseState } from '@sift/contracts';
 import { checkAssertion, checkAssertions } from './assertions.js';
 import { emptyScenarioTrajectory, type ScenarioTrajectory } from './trajectory.js';
 
@@ -161,16 +161,16 @@ describe('checkAssertion', () => {
   it('redaction_canary_absent fails when the canary appears anywhere in the trajectory', () => {
     const clean = emptyScenarioTrajectory();
     expect(
-      checkAssertion(clean, { kind: 'redaction_canary_absent', canary: 'PAX_TEST_SECRET_X' })
+      checkAssertion(clean, { kind: 'redaction_canary_absent', canary: 'SIFT_TEST_SECRET_X' })
         .passed,
     ).toBe(true);
 
     const tainted: ScenarioTrajectory = {
       ...clean,
-      humanActions: [{ action: 'leaked PAX_TEST_SECRET_X somehow' }],
+      humanActions: [{ action: 'leaked SIFT_TEST_SECRET_X somehow' }],
     };
     expect(
-      checkAssertion(tainted, { kind: 'redaction_canary_absent', canary: 'PAX_TEST_SECRET_X' })
+      checkAssertion(tainted, { kind: 'redaction_canary_absent', canary: 'SIFT_TEST_SECRET_X' })
         .passed,
     ).toBe(false);
   });

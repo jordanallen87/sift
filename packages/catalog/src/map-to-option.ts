@@ -2,7 +2,7 @@
  * The one adaptation boundary from a `VehicleCatalogRecord` to the
  * `car-purchase` pack's declared `candidate` option attributes
  * (docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md:
- * "`VehicleCatalogRecord` -> Pax candidate entity / option"). Both
+ * "`VehicleCatalogRecord` -> Sift candidate entity / option"). Both
  * `apps/web`'s catalog/shortlist UI and any future server-side caller
  * import this single function rather than each re-deriving the mapping,
  * satisfying CLAUDE.md's "same command implementation" principle by
@@ -27,7 +27,7 @@
  * powertrain the pack's enum does not include) is left unmapped rather than
  * guessed -- CLAUDE.md "never fabricate a value."
  */
-import type { AttributeValue } from '@pax/contracts';
+import type { AttributeValue } from '@sift/contracts';
 import type { VehicleCatalogRecord } from './schema.js';
 
 export interface MappedOptionAttribute {

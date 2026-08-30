@@ -41,8 +41,12 @@ import {
   type SessionManager,
   type ToolList,
 } from '@strands-agents/sdk';
-import type { Clock, IdGenerator } from '@pax/core';
-import { ExecutionResultSchema, type ExecutionRequest, type ExecutionResult } from '@pax/contracts';
+import type { Clock, IdGenerator } from '@sift/core';
+import {
+  ExecutionResultSchema,
+  type ExecutionRequest,
+  type ExecutionResult,
+} from '@sift/contracts';
 import {
   HOUSEHOLD_FIT_MATRIX_TOOL_ID,
   LISTING_READER_TOOL_ID,
@@ -52,7 +56,7 @@ import {
   lookupHouseholdFit,
   lookupSafetyReliability,
   readListing,
-} from '@pax/scenarios';
+} from '@sift/scenarios';
 import {
   createSequenceCounter,
   normalizeAfterModelCall,
@@ -78,7 +82,7 @@ import {
 import { buildContextInjector, buildSkillsPlugin } from './plugins.js';
 import { restoreCaseSnapshot, saveCaseSnapshot } from './session-adapter.js';
 
-/** `propose_recommendation`'s tool id -- the car pack's one consequential effect (packages/packs/src/car-purchase.ts). Declared here (not imported from `@pax/packs`) because this adapter's fixture-tool wiring is pack-agnostic; the compiled pack is what actually declares which tool ids are consequential, supplied by the caller via `StrandsAdapterDeps.consequentialToolIds`. */
+/** `propose_recommendation`'s tool id -- the car pack's one consequential effect (packages/packs/src/car-purchase.ts). Declared here (not imported from `@sift/packs`) because this adapter's fixture-tool wiring is pack-agnostic; the compiled pack is what actually declares which tool ids are consequential, supplied by the caller via `StrandsAdapterDeps.consequentialToolIds`. */
 export const PROPOSE_RECOMMENDATION_TOOL_ID = 'propose_recommendation';
 
 /** Tool names the SDK/plugins register automatically and that are never part of a compiled pack's declared tool set -- exempt from `ScopeAuthorization`'s allowlist and `BudgetGuard`'s tool-call budget. */
@@ -191,7 +195,7 @@ export interface StrandsAdapterDeps {
 
 function buildOrchestratorSystemPrompt(request: ExecutionRequest): string {
   return [
-    `You are the Pax case orchestrator investigating one obligation for Decision Pack "${request.pack.id}@${request.pack.version}".`,
+    `You are the Sift case orchestrator investigating one obligation for Decision Pack "${request.pack.id}@${request.pack.version}".`,
     `Active obligation: "${request.obligation.id}" -- ${request.obligation.question}`,
     'Use only the tools and skills made available to you. Cite a source id for every claim.',
     'When you have gathered enough evidence, call the structured output tool with a complete result.',

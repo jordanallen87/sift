@@ -6,7 +6,7 @@ import {
   FocusOptionInputSchema,
   GetCaseContextInputSchema,
   ListPacksInputSchema,
-  PaxToolResultSchema,
+  SiftToolResultSchema,
   RequestInvestigationInputSchema,
   RequestRevisionInputSchema,
   ReviewCaseExtensionInputSchema,
@@ -132,7 +132,7 @@ describe('FocusOptionInputSchema / FocusEvidenceInputSchema', () => {
 });
 
 describe('DefineCaseAttributeInputSchema', () => {
-  it('parses a valid case-attribute draft matching pax_define_case_attribute', () => {
+  it('parses a valid case-attribute draft matching sift_define_case_attribute', () => {
     const result = DefineCaseAttributeInputSchema.safeParse({
       caseId: 'case-1',
       expectedSequence: 4,
@@ -414,10 +414,10 @@ describe('CommandReceiptSchema / RunReceiptSchema', () => {
   });
 });
 
-describe('PaxToolResultSchema', () => {
+describe('SiftToolResultSchema', () => {
   it('parses a successful envelope and an honest failure envelope', () => {
     const DataSchema = z.object({ favoredOptionId: z.string() }).strict();
-    const ResultSchema = PaxToolResultSchema(DataSchema);
+    const ResultSchema = SiftToolResultSchema(DataSchema);
 
     expect(
       ResultSchema.safeParse({
@@ -442,7 +442,7 @@ describe('PaxToolResultSchema', () => {
   });
 
   it('rejects an unlisted error code', () => {
-    const ResultSchema = PaxToolResultSchema(z.unknown());
+    const ResultSchema = SiftToolResultSchema(z.unknown());
     expect(
       ResultSchema.safeParse({
         ok: false,

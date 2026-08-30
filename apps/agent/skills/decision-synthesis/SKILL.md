@@ -7,7 +7,7 @@ description: Synthesizes resolved deal, ownership-cost, safety/reliability, and 
 
 ## What this technique does
 
-This is the final obligation in the car pack (`car.shortlist`), run only after the deal, ownership-cost, safety/reliability, and household-fit obligations have each produced their own evidence. It composes that evidence into a recommendation: which candidate(s) should advance to the household's test drive, what could change that result, and what remains to verify. It is the one place a plausible-sounding conclusion is most tempting to produce early — and the one place Pax's fail-closed validation matters most.
+This is the final obligation in the car pack (`car.shortlist`), run only after the deal, ownership-cost, safety/reliability, and household-fit obligations have each produced their own evidence. It composes that evidence into a recommendation: which candidate(s) should advance to the household's test drive, what could change that result, and what remains to verify. It is the one place a plausible-sounding conclusion is most tempting to produce early — and the one place Sift's fail-closed validation matters most.
 
 ## Inputs and tools
 
@@ -24,7 +24,7 @@ If this technique — or the model driving it — produces a plausible recommend
 ```
 Draft withheld
 This answer is plausible, but 3 required questions are still unresolved.
-Pax is continuing the investigation before asking you to decide.
+Sift is continuing the investigation before asking you to decide.
 ```
 
 (The count in that message reflects however many required questions are actually still open for the case at hand — it is not always three.) On rejection, do not simply try to produce the same conclusion again with more confident language; change technique, activate the specialist most likely to close the actual gap, and only re-synthesize once new source-linked evidence has resolved or explicitly recorded uncertainty for what was missing.

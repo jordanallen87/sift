@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { CaseState, CommandReceipt, EntityRecord } from '@pax/contracts';
-import { compilePack, PackRegistry } from '@pax/packs';
+import type { CaseState, CommandReceipt, EntityRecord } from '@sift/contracts';
+import { compilePack, PackRegistry } from '@sift/packs';
 import {
   createRegistryWithSyntheticPack,
   createSequentialIdGenerator,
@@ -1738,19 +1738,19 @@ describe('CommandService', () => {
   // `applyProposalReview`'s `proposal === null` guard (right after the
   // try/catch around `reviewProposalDomain`) is not covered here,
   // deliberately: the method's own comment already documents why --
-  // `reviewProposalDomain` (the real `@pax/core` function under test
+  // `reviewProposalDomain` (the real `@sift/core` function under test
   // throughout this describe block) only ever returns a `CaseState` with a
   // non-null `proposal`; every input that would leave one unset is rejected
   // via a thrown error first (caught above). Not reachable without directly
-  // replacing `@pax/core`'s real `reviewProposal`, which this suite
+  // replacing `@sift/core`'s real `reviewProposal`, which this suite
   // deliberately never does.
   //
   // `applyProposalReview`'s `catch` block's `throw error;` re-throw (the
-  // `isPaxDomainError(error)` false path) is likewise not covered:
+  // `isSiftDomainError(error)` false path) is likewise not covered:
   // `reviewProposalDomain` only ever throws `PolicyViolationError` or
-  // `ValidationFailedError` (both `PaxDomainError` subclasses,
+  // `ValidationFailedError` (both `SiftDomainError` subclasses,
   // packages/core/src/errors.ts) -- confirmed by reading every throw site in
-  // packages/core/src/policy.ts. The `isPaxDomainError(error)` *true*
+  // packages/core/src/policy.ts. The `isSiftDomainError(error)` *true*
   // branch is already covered above ("rejects reviewing a proposal id that
   // does not match the pending one").
 

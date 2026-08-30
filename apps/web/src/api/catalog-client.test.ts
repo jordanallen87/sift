@@ -9,7 +9,7 @@ import {
   searchCatalogVehicles,
 } from './catalog-client.js';
 
-const BASE_URL = 'http://pax.test';
+const BASE_URL = 'http://sift.test';
 const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));

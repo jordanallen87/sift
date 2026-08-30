@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PackRegistry } from '@pax/packs';
-import { validCatalog, validManifest } from '@pax/packs/src/fixtures/manifest.js';
+import { PackRegistry } from '@sift/packs';
+import { validCatalog, validManifest } from '@sift/packs/src/fixtures/manifest.js';
 import { packScaffold } from './scaffold.js';
 import { PackPublishRejectedError, packPublish } from './publish.js';
 import type { AuthoringScenarioFile } from './scenario-coverage.js';
@@ -13,7 +13,7 @@ const FIXED_CLOCK = { now: () => '2026-08-27T00:00:00.000Z' };
 let draftRoot: string;
 
 beforeEach(() => {
-  draftRoot = mkdtempSync(join(tmpdir(), 'pax-authoring-publish-'));
+  draftRoot = mkdtempSync(join(tmpdir(), 'sift-authoring-publish-'));
 });
 
 afterEach(() => {

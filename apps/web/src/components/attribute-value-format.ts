@@ -11,7 +11,7 @@
  * toLocaleString`, `Intl.*`) so output is identical across every test/CI
  * environment's locale -- plain, explicit string composition instead.
  */
-import type { AttributeValue } from '@pax/contracts';
+import type { AttributeValue } from '@sift/contracts';
 
 function formatDurationUnit(unit: string, amount: number): string {
   return amount === 1 ? unit : `${unit}s`;

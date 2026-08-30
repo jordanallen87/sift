@@ -18,7 +18,7 @@ describe('openDatabase', () => {
 
     const database = openDatabase(nestedMissingDir);
     expect(existsSync(nestedMissingDir)).toBe(true);
-    expect(existsSync(join(nestedMissingDir, 'pax.sqlite'))).toBe(true);
+    expect(existsSync(join(nestedMissingDir, 'sift.sqlite'))).toBe(true);
     database.close();
   });
 

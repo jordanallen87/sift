@@ -8,8 +8,12 @@
  * never entities -- see this file's header comment for the full reasoning).
  */
 import { describe, expect, it } from 'vitest';
-import type { Clock, IdGenerator } from '@pax/core';
-import { CAR_PURCHASE_MANIFEST, compileCarPurchasePack, createCapabilityCatalog } from '@pax/packs';
+import type { Clock, IdGenerator } from '@sift/core';
+import {
+  CAR_PURCHASE_MANIFEST,
+  compileCarPurchasePack,
+  createCapabilityCatalog,
+} from '@sift/packs';
 import { notFoundResult, okResult } from './tools/index.js';
 import type {
   lookupHouseholdFit,

@@ -176,7 +176,7 @@ export type OrchestrationDefinition = z.infer<typeof OrchestrationDefinitionSche
  * Inferred: `ToolDeclaration` has no explicit field list. Grounded in
  * architecture.md "Pack manifests declare tools, effects, extension policy,
  * and approval posture" and "Fixture tools are read-only except canonical
- * Pax commands."
+ * Sift commands."
  */
 export const TOOL_EFFECTS = ['read_only', 'consequential'] as const;
 export type ToolEffect = (typeof TOOL_EFFECTS)[number];

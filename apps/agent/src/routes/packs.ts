@@ -9,8 +9,8 @@
  */
 import { Router } from 'express';
 import { z } from 'zod';
-import { CompiledDecisionPackSchema } from '@pax/contracts';
-import type { PackRegistry } from '@pax/packs';
+import { CompiledDecisionPackSchema } from '@sift/contracts';
+import type { PackRegistry } from '@sift/packs';
 
 export interface PacksRouterDeps {
   readonly registry: PackRegistry;

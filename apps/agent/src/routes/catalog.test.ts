@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MAX_SEARCH_RESULTS, type VehicleCatalogRecord } from '@pax/catalog';
+import { MAX_SEARCH_RESULTS, type VehicleCatalogRecord } from '@sift/catalog';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
 

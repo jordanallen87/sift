@@ -1,5 +1,5 @@
 {
-  "_provenance": "Fictional demo data. Household, utility, and account identifiers are invented for the Pax 'Home Energy Guardian' hackathon scenario. No real person, address, or utility account is represented.",
+  "_provenance": "Fictional demo data. Household, utility, and account identifiers are invented for the Sift 'Home Energy Guardian' hackathon scenario. No real person, address, or utility account is represented.",
   "caseId": "case-demo-energy-guardian",
   "householdId": "household-demo-energy-01",
   "displayName": "The Okafor-Bryant household",

@@ -74,7 +74,7 @@ import {
   PublicActivityEventSchema,
   type CaseState,
   type PublicActivityEvent,
-} from '@pax/contracts';
+} from '@sift/contracts';
 
 const DEFAULT_POLL_INTERVAL_MS = 4000;
 const DEFAULT_RECONNECT_DELAY_MS = 1500;
@@ -121,7 +121,7 @@ function defaultCreateEventSource(url: string): EventSourceLike {
 export interface UseCaseEventsOptions {
   /** The active case id, or `null` when no case is open yet -- the hook subscribes to nothing and reports empty state. */
   caseId: string | null;
-  /** Same-origin by default, matching `pax-client.ts`'s own default. Overridable for tests. */
+  /** Same-origin by default, matching `sift-client.ts`'s own default. Overridable for tests. */
   baseUrl?: string;
   /** Injectable fetch implementation for tests; defaults to the global `fetch`. */
   fetchImpl?: typeof fetch;
@@ -166,12 +166,12 @@ async function fetchCaseEventsPoll(
   const url = `${baseUrl}/api/cases/${encodeURIComponent(caseId)}/events?mode=poll&afterSequence=${afterSequence}`;
   const response = await fetchImpl(url);
   if (!response.ok) {
-    throw new Error(`Pax case events request failed with status ${response.status}.`);
+    throw new Error(`Sift case events request failed with status ${response.status}.`);
   }
   const payload: unknown = await response.json();
   const parsed = CaseEventsPollResponseSchema.safeParse(payload);
   if (!parsed.success) {
-    throw new Error('Pax case events response did not match its contract.');
+    throw new Error('Sift case events response did not match its contract.');
   }
   return parsed.data;
 }

@@ -5,7 +5,7 @@
  * service/route from `CommandService`/`routes/commands.ts`.
  */
 import { Router } from 'express';
-import { RunReceiptSchema } from '@pax/contracts';
+import { RunReceiptSchema } from '@sift/contracts';
 import type { RunService } from '../services/run-service.js';
 import { readCommandId, respondWithServiceResult } from './http-support.js';
 

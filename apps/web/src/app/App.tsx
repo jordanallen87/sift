@@ -15,10 +15,10 @@
  * This pass wires the entire workspace to real data: `useCaseEvents` (the
  * real SSE/poll-fallback subscription) supplies the canonical `CaseState`
  * snapshot and ordered `PublicActivityEvent[]` every region below renders
- * from; `registerPaxTools` mounts the full WebMCP catalog only while a case
+ * from; `registerSiftTools` mounts the full WebMCP catalog only while a case
  * is active, re-registering its case-scoped tools whenever the active case
- * changes; every visible control calls through the one shared `PaxCommands`
- * instance from `usePaxCommands()` -- there is no parallel mutation path
+ * changes; every visible control calls through the one shared `SiftCommands`
+ * instance from `useSiftCommands()` -- there is no parallel mutation path
  * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation").
  *
@@ -26,12 +26,12 @@
  * "answer-first, everything else one tap away"): case header,
  * `WorkspaceStatusHeader` (a pure-presentation next-step banner + progress
  * tracker over `deriveWorkspaceStatus`, added in the round-2 design-review
- * pass -- product feedback: "I have no clue where to start"), what Pax is
+ * pass -- product feedback: "I have no clue where to start"), what Sift is
  * doing, our pick (recommendation + approval, always expanded), then four
  * closed-by-default `DisclosureSection` rows -- compare the options, what
- * Pax found, still checking, Pax's work so far -- and a fifth disclosure
+ * Sift found, still checking, Sift's work so far -- and a fifth disclosure
  * for adding a concern that opens itself only when an agent-proposed case
- * extension is awaiting confirmation. The "What Pax found" row is a
+ * extension is awaiting confirmation. The "What Sift found" row is a
  * trigger, not a native disclosure (`DisclosureSection`'s `onTriggerClick`):
  * it opens `FindingsSheet`, a dedicated List/Table/Kanban review surface,
  * instead of expanding a wall of evidence cards inline -- also round-2
@@ -47,7 +47,7 @@
  * activity event that carries a `runId`.
  *
  * `readiness` is computed by calling the REAL `evaluateReadiness` from
- * `@pax/core` directly (this task added `@pax/core` as a runtime dependency
+ * `@sift/core` directly (this task added `@sift/core` as a runtime dependency
  * of `apps/web` -- see `apps/web/package.json` and `ReadinessPanel.tsx`'s own
  * forward-looking doc comment, which named this exact moment: "the moment a
  * later task wires it in"). This app never re-implements readiness,
@@ -63,10 +63,10 @@ import {
   type CompiledDecisionPack,
   type EvidenceDisposition,
   type PublicActivityEvent,
-} from '@pax/contracts';
-import { evaluateReadiness } from '@pax/core';
+} from '@sift/contracts';
+import { evaluateReadiness } from '@sift/core';
 import { Button } from '@/components/ui/button';
-import { PaxClientError } from '../api/pax-client.js';
+import { SiftClientError } from '../api/sift-client.js';
 import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active-case-storage.js';
 import { DemoLauncher } from '../components/DemoLauncher.js';
 import { VehicleCatalogFlow } from '../components/VehicleCatalogFlow.js';
@@ -87,12 +87,12 @@ import { LiveRunStatus, type LiveRunStatusReceipt } from '../components/LiveRunS
 import { WebMcpStatus } from '../components/WebMcpStatus.js';
 import { ErrorState } from '../components/ErrorState.js';
 import { RuntimeInspector } from '../components/RuntimeInspector.js';
-import { useApiConfig, usePaxCommands, useWebMcpAdapter } from './AppProviders.js';
+import { useApiConfig, useSiftCommands, useWebMcpAdapter } from './AppProviders.js';
 import { useCaseEvents, type CaseEventsConnectionState } from '../hooks/use-case-events.js';
 import {
-  registerPaxTools,
-  type PaxToolRegistrationHandle,
-} from '../model-context/register-pax-tools.js';
+  registerSiftTools,
+  type SiftToolRegistrationHandle,
+} from '../model-context/register-sift-tools.js';
 
 // Matches the real server contract exactly (`apps/agent/src/routes/packs.ts`
 // `ListPacksResponseSchema`: `{ packs: CompiledDecisionPack[] }`, a `.strict()`
@@ -180,7 +180,7 @@ function mapConnectionState(state: CaseEventsConnectionState): CaseHeaderConnect
 }
 
 export function App() {
-  const commands = usePaxCommands();
+  const commands = useSiftCommands();
   const apiConfig = useApiConfig();
   const webMcpAdapter = useWebMcpAdapter();
 
@@ -236,12 +236,12 @@ export function App() {
   }, []);
 
   // Installed Decision Pack catalog -- fetched once (independent of the
-  // active case) and reused both for the `pax_list_packs` WebMCP tool and
+  // active case) and reused both for the `sift_list_packs` WebMCP tool and
   // `OptionComparison`'s pack presentation metadata. `GET /api/packs` has no
-  // dedicated `PaxCommands` method (it is a read-only route, per
+  // dedicated `SiftCommands` method (it is a read-only route, per
   // architecture.md's "HTTP service" list); a transient failure here
   // degrades gracefully -- `OptionComparison` falls back to one flat
-  // attribute group and `pax_list_packs` simply reports zero installed
+  // attribute group and `sift_list_packs` simply reports zero installed
   // packs rather than blocking the rest of the workspace.
   useEffect(() => {
     let cancelled = false;
@@ -323,7 +323,7 @@ export function App() {
   const installedPacksRef = useRef(installedPacks);
   installedPacksRef.current = installedPacks;
 
-  const [toolHandle, setToolHandle] = useState<PaxToolRegistrationHandle | null>(null);
+  const [toolHandle, setToolHandle] = useState<SiftToolRegistrationHandle | null>(null);
   // A parallel ref, disposed directly from the cleanup function below rather
   // than through `setToolHandle`'s functional-updater form: React does not
   // guarantee a state updater callback passed to a setter invoked *during
@@ -332,11 +332,11 @@ export function App() {
   // make `disposeAll()` unreliable on unmount specifically, exactly the
   // lifecycle moment webmcp.md's "Abort the previous registration
   // controller whenever ... the component unmounts" most needs to hold.
-  const toolHandleRef = useRef<PaxToolRegistrationHandle | null>(null);
+  const toolHandleRef = useRef<SiftToolRegistrationHandle | null>(null);
 
   useEffect(() => {
     let disposed = false;
-    registerPaxTools({
+    registerSiftTools({
       adapter: webMcpAdapter,
       commands,
       getActiveCase: () => snapshotRef.current,
@@ -429,7 +429,7 @@ export function App() {
       // after confirming a case-specific concern). architecture.md's
       // conflict envelope exists precisely so a caller can recover without
       // asking the human to do anything: "Conflicts return the latest
-      // sequence so ChatGPT can call pax_get_case_context before retrying."
+      // sequence so ChatGPT can call sift_get_case_context before retrying."
       // This performs that same recovery for the visible control -- one
       // automatic retry using the server-reported `actualSequence` -- before
       // ever surfacing an error to the human.
@@ -445,7 +445,11 @@ export function App() {
             setLastRunReceipt({ commandId: receipt.commandId, runId: receipt.runId });
           })
           .catch((caught: unknown) => {
-            if (!alreadyRetried && caught instanceof PaxClientError && caught.code === 'CONFLICT') {
+            if (
+              !alreadyRetried &&
+              caught instanceof SiftClientError &&
+              caught.code === 'CONFLICT'
+            ) {
               const details = caught.details as { actualSequence?: unknown } | undefined;
               if (typeof details?.actualSequence === 'number') {
                 attempt(details.actualSequence, true);
@@ -610,7 +614,7 @@ export function App() {
   const workSoFarLive = runRequestPending || isRunActive;
   const addConcernMeta = pendingExtension !== null ? '1 needs your review' : undefined;
 
-  // "What Pax found" urgency signal (round-2 design review): a real count
+  // "What Sift found" urgency signal (round-2 design review): a real count
   // of findings that are not fully verified or have aged past their
   // validity window -- never a fabricated "unread" count. Deliberately
   // excludes `evidence.conflicted` correlation, which the public activity
@@ -699,7 +703,7 @@ export function App() {
         aria-labelledby="current-focus-heading"
         className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
       >
-        <h2 id="current-focus-heading">What Pax is doing</h2>
+        <h2 id="current-focus-heading">What Sift is doing</h2>
         {activeFocus !== null ? (
           <div data-testid="current-focus-detail" className="flex flex-col gap-[var(--space-1)]">
             <p
@@ -777,7 +781,7 @@ export function App() {
 
       {/* Region 3, "Our pick" (ADR 0002): the recommendation and the
               human decision controls, grouped as one always-visible hero
-              directly below "What Pax is doing" -- the first substantial
+              directly below "What Sift is doing" -- the first substantial
               content a user reaches, deliberately never a disclosure row. */}
       <div
         ref={recommendationHeroRef}
@@ -823,7 +827,7 @@ export function App() {
 
       <DisclosureSection
         testId="findings"
-        title="What Pax found"
+        title="What Sift found"
         meta={
           flaggedFindingsCount > 0
             ? `${flaggedFindingsCount} need${flaggedFindingsCount === 1 ? 's' : ''} a look`
@@ -848,7 +852,7 @@ export function App() {
 
       <DisclosureSection
         testId="work-so-far"
-        title="Pax's work so far"
+        title="Sift's work so far"
         meta={`${events.length} step${events.length === 1 ? '' : 's'}`}
         live={workSoFarLive}
       >
@@ -861,7 +865,7 @@ export function App() {
 
       <DisclosureSection
         testId="add-concern"
-        title="Add something Pax should check"
+        title="Add something Sift should check"
         meta={addConcernMeta}
         defaultOpen={pendingExtension !== null}
       >

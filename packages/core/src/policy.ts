@@ -13,7 +13,7 @@
  * reasoning):
  *
  * 1. `decision`'s real shape is `ReviewProposalInput`
- *    (`@pax/contracts` `commands.ts`) -- `{ caseId, proposalId, actor,
+ *    (`@sift/contracts` `commands.ts`) -- `{ caseId, proposalId, actor,
  *    decision: 'approve'|'reject'|'request_revision', instructions?,
  *    reason?, expectedSequence }` -- not the placeholder
  *    `{ actor, proposalId, outcome, instructions }` shape sketched in the
@@ -45,7 +45,7 @@ import type {
   DecisionProposal,
   ReviewProposalDecision,
   ReviewProposalInput,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import { PolicyViolationError, ValidationFailedError } from './errors.js';
 
 /** Injected time source. Every `packages/core` timestamp must come from here -- never `Date.now()` or `new Date()`. */

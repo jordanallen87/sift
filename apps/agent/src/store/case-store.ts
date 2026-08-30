@@ -5,7 +5,7 @@
  * "Case-event append and snapshot replacement occur in one transaction.
  * `(case_id, sequence)` and idempotency keys are unique.").
  *
- * Every canonical mutation in Pax flows through `append()`. It is the one
+ * Every canonical mutation in Sift flows through `append()`. It is the one
  * place command-service.ts hands a command handler's already-decided
  * `CaseEvent`(s) to durable storage; nothing else in `apps/agent` is allowed
  * to write to the `cases`/`case_events`/`idempotency_keys` tables directly.
@@ -27,7 +27,7 @@
  *    insert in one transaction, closing the race window a separate
  *    check-then-append-then-record sequence would leave open. `append()`
  *    does not persist a full `CommandReceipt` object under the idempotency
- *    key (that HTTP/WebMCP-shaped type is `@pax/contracts`'s concern, not
+ *    key (that HTTP/WebMCP-shaped type is `@sift/contracts`'s concern, not
  *    this store's) — it records just enough (`commandName`, the
  *    `acceptedSequence` the original apply produced) for a duplicate call to
  *    be answered with the *current* snapshot (which is at least as fresh as,
@@ -38,12 +38,12 @@
  *
  * 2. `AppendOptions.seedSnapshot` exists to close a real gap between
  *    `applyCaseEvent` and `instantiateCase` (see `reducer.ts`'s own header
- *    comment in `@pax/core`): `CaseEventSchema`'s `case.created` payload
+ *    comment in `@sift/core`): `CaseEventSchema`'s `case.created` payload
  *    carries only a case's title and pack pin, never the full compiled
  *    pack, so folding a `case.created` event (plus the `criteria.updated`/
  *    `obligation.updated` events a creation command also appends) through
  *    `applyCaseEvent` alone can never populate `attributeDefinitions` --
- *    no `CaseEvent` variant in the current `@pax/contracts` taxonomy ever
+ *    no `CaseEvent` variant in the current `@sift/contracts` taxonomy ever
  *    touches that field. `reducer.ts` explicitly defers this reconciliation
  *    to "whichever later command-service layer persists case creation".
  *    This store is that layer: when `command-service.ts`'s `startDemo`
@@ -64,8 +64,8 @@
  *    `expectedSequence` against a case that *does* exist is `conflict`
  *    (`409`, carrying the real latest snapshot per architecture.md).
  */
-import type { CaseEvent, CaseState } from '@pax/contracts';
-import { applyCaseEvent } from '@pax/core';
+import type { CaseEvent, CaseState } from '@sift/contracts';
+import { applyCaseEvent } from '@sift/core';
 
 export interface AppendIdempotency {
   readonly commandId: string;
@@ -112,12 +112,12 @@ export type AppendResult =
  *
  * Judgment call (real, confirmed gap): unlike `attributeDefinitions` (see
  * `seedSnapshot` above, patched only once at creation),
- * `CaseEventSchema`'s discriminated union (`@pax/contracts`) has *no* event
+ * `CaseEventSchema`'s discriminated union (`@sift/contracts`) has *no* event
  * variant that ever touches these fields at all -- `applyCaseEvent`'s
  * `switch` has no case that sets `selectedOptionId`, `selectedEvidenceId`,
  * `activeFocus`, or `sources` for any of its twelve event types.
- * `focusOption`/`focusEvidence` (webmcp.md `pax_focus_option`/
- * `pax_focus_evidence`) and `submitSource`'s source record itself (distinct
+ * `focusOption`/`focusEvidence` (webmcp.md `sift_focus_option`/
+ * `sift_focus_evidence`) and `submitSource`'s source record itself (distinct
  * from the `evidence.accepted` event(s) a submission may *also* produce when
  * it can be linked to an active obligation -- `command-service.ts` calls
  * both `append()` and `updateSelection()` for that case) are real, specified

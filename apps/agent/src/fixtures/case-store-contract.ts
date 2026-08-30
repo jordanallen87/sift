@@ -16,7 +16,7 @@
  * `*.test.ts` file.
  */
 import { describe, expect, it } from 'vitest';
-import type { CaseEvent, CaseState } from '@pax/contracts';
+import type { CaseEvent, CaseState } from '@sift/contracts';
 import type { CaseStore } from '../store/case-store.js';
 
 const now = '2026-08-27T00:00:00.000Z';

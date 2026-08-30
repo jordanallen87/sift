@@ -3,7 +3,7 @@
  * (docs/specs/strands-runtime.md "Sessions and snapshots": "Local:
  * `SessionManager` with `LocalFileStorage` imported from
  * `@strands-agents/sdk/storage` (not the deprecated root-level `FileStorage`
- * export) under `.pax-data/sessions`").
+ * export) under `.sift-data/sessions`").
  *
  * Verified directly against the installed package (see the dated
  * docs/build-log.md entry for this task): the task prompt's example wired
@@ -27,7 +27,7 @@ import {
   type RuntimeEvent,
 } from './event-normalizer.js';
 
-/** `.pax-data/sessions` locally (`dataDir` matches `config.ts`'s `PAX_DATA_DIR`, mirroring `db/connection.ts`'s own `dataDir`-relative resolution). */
+/** `.sift-data/sessions` locally (`dataDir` matches `config.ts`'s `SIFT_DATA_DIR`, mirroring `db/connection.ts`'s own `dataDir`-relative resolution). */
 export function localSessionsDir(dataDir: string): string {
   return join(dataDir, 'sessions');
 }

@@ -28,13 +28,13 @@ afterEach(() => {
 });
 
 function tempDataDir(): string {
-  dir = mkdtempSync(join(tmpdir(), 'pax-session-adapter-test-'));
+  dir = mkdtempSync(join(tmpdir(), 'sift-session-adapter-test-'));
   return dir;
 }
 
 describe('localSessionsDir', () => {
   it('is <dataDir>/sessions', () => {
-    expect(localSessionsDir('.pax-data')).toBe(join('.pax-data', 'sessions'));
+    expect(localSessionsDir('.sift-data')).toBe(join('.sift-data', 'sessions'));
   });
 });
 

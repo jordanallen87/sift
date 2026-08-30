@@ -14,8 +14,8 @@
  * populates every node's `contexts` entry it visits.
  */
 import { describe, expect, it } from 'vitest';
-import { emptyScenarioTrajectory } from '@pax/scenarios';
-import type { ExecutionResult } from '@pax/contracts';
+import { emptyScenarioTrajectory } from '@sift/scenarios';
+import type { ExecutionResult } from '@sift/contracts';
 import type { RuntimeEvent } from './event-normalizer.js';
 import type { HomeEnergySwarmResult } from './home-energy-swarm.js';
 import { collectLimitations, drainSwarm } from './home-energy-guardian-scenario.js';

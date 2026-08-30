@@ -287,7 +287,7 @@ export const CriterionSchema = z
     id: safeString(200),
     label: safeString(200),
     kind: z.enum(CRITERION_KINDS),
-    // webmcp.md `pax_update_criteria`: "Weights must be integers from 0
+    // webmcp.md `sift_update_criteria`: "Weights must be integers from 0
     // through 100 and are normalized for comparison." Applied here too since
     // it is the same field.
     weight: z.number().int().min(0).max(100),

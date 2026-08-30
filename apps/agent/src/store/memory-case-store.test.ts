@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CaseEvent } from '@pax/contracts';
+import type { CaseEvent } from '@sift/contracts';
 import { MemoryCaseStore } from './memory-case-store.js';
 import { runCaseStoreContractTests } from '../fixtures/case-store-contract.js';
 

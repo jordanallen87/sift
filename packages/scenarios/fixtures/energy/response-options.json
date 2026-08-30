@@ -1,5 +1,5 @@
 {
-  "_provenance": "Fictional demo data. Cost and effort figures are fixture-authored, rough planning estimates for the Pax 'Home Energy Guardian' hackathon scenario and do not describe any real service pricing.",
+  "_provenance": "Fictional demo data. Cost and effort figures are fixture-authored, rough planning estimates for the Sift 'Home Energy Guardian' hackathon scenario and do not describe any real service pricing.",
   "caseId": "case-demo-energy-guardian",
   "options": [
     {
@@ -31,7 +31,7 @@
       "estimatedTimeToInsight": "1-2 weeks to schedule, half-day on-site visit",
       "addressesRootCause": false,
       "requiresConsequentialAction": true,
-      "consequentialActionNote": "Scheduling the audit itself is a real-world appointment; this fixture only supports Pax proposing the option, not booking it."
+      "consequentialActionNote": "Scheduling the audit itself is a real-world appointment; this fixture only supports Sift proposing the option, not booking it."
     },
     {
       "optionId": "request-hvac-inspection",

@@ -1,7 +1,7 @@
 /**
  * `POST /api/cases/:caseId/commands/:commandName`
  * (docs/specs/architecture.md "HTTP service"), dispatching to
- * `CommandService`. Covers every `PaxCommands` verb except `startDemo`
+ * `CommandService`. Covers every `SiftCommands` verb except `startDemo`
  * (its own `POST /api/cases/demo` route, `routes/cases.ts`) and
  * `requestInvestigation` (its own `POST /api/cases/:caseId/run` route,
  * `routes/runs.ts` -- see `services/run-service.ts` for why that one is not
@@ -15,7 +15,7 @@
  * could drift from this one.
  */
 import { Router } from 'express';
-import type { CommandReceipt } from '@pax/contracts';
+import type { CommandReceipt } from '@sift/contracts';
 import type { CommandService } from '../services/command-service.js';
 import type { ServiceResult } from '../services/service-result.js';
 import { readCommandId, respondWithServiceResult, sendError } from './http-support.js';

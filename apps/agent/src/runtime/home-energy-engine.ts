@@ -46,7 +46,7 @@
  *     `loadSnapshotOrThrow`/`extractCitedSourceIds`/`buildExecutionRequestFor`
  *     helpers -- read-only imports, genuinely reused rather than
  *     copy-pasted (none of those five functions reference anything
- *     car-purchase-specific; they operate purely on `@pax/contracts`
+ *     car-purchase-specific; they operate purely on `@sift/contracts`
  *     types, `CaseStore`, and `ActivityStore`, exactly like this file's own
  *     `foldHomeEnergyRound1`/`foldHomeEnergyRound2` need);
  *  5. on completion, records the round's recommendation, and (round 2 only,
@@ -70,7 +70,7 @@
  * `energy.conservation` criterion weights and calls it `round2` exactly when
  * `energy.conservation`'s weight now exceeds `energy.cost`'s -- the direct,
  * persisted trace of that reweight, independent of which caller performed
- * it (visible UI control or a WebMCP `pax_update_criteria` call, per
+ * it (visible UI control or a WebMCP `sift_update_criteria` call, per
  * CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation"). A freshly started case (pack defaults: both weighted 50)
  * is `round1`.
@@ -102,14 +102,14 @@ import type {
   ExecutionResult,
   PublicActivityEventType,
   PublicActivityPhase,
-} from '@pax/contracts';
-import type { Clock, IdGenerator } from '@pax/core';
+} from '@sift/contracts';
+import type { Clock, IdGenerator } from '@sift/core';
 import {
   createCapabilityCatalog,
   HOME_ENERGY_GUARDIAN_MANIFEST,
   type PackRegistry,
-} from '@pax/packs';
-import { emptyScenarioTrajectory } from '@pax/scenarios';
+} from '@sift/packs';
+import { emptyScenarioTrajectory } from '@sift/scenarios';
 import type { RunStatus } from '../db/schema.js';
 import type { InvestigationEngine, RunStore } from '../services/run-service.js';
 import type { ActivityStore } from '../store/activity-store.js';
@@ -232,7 +232,7 @@ function appendActivity(
 /**
  * Translates one normalized `RuntimeEvent` from the live Swarm run into the
  * matching public `ActivityStore` event, where the normal workspace's
- * public vocabulary (`@pax/contracts` `PUBLIC_ACTIVITY_EVENT_TYPES`) has
+ * public vocabulary (`@sift/contracts` `PUBLIC_ACTIVITY_EVENT_TYPES`) has
  * one. `category: 'swarm'`'s `swarm.node_started`/`swarm.node_completed`
  * map onto the same `specialist.started`/`specialist.completed` public
  * types `car-purchase-engine.ts` derives from its own Graph's
@@ -737,7 +737,7 @@ export function foldHomeEnergyRound2(
     return snapshot;
   }
 
-  // Pax proposes; only a human may approve via the separate `reviewProposal`
+  // Sift proposes; only a human may approve via the separate `reviewProposal`
   // command (never called here -- see this file's header comment).
   const proposalEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
@@ -841,7 +841,7 @@ async function runOneInvestigation(
     // durable writes are attempted best-effort.
     const message = error instanceof Error ? error.message : String(error);
     console.error(
-      `[pax] home-energy-engine: run "${params.runId}" for case "${params.caseId}" failed: ${message}`,
+      `[sift] home-energy-engine: run "${params.runId}" for case "${params.caseId}" failed: ${message}`,
     );
     try {
       deps.runStore.updateStatus(params.runId, {
@@ -851,7 +851,7 @@ async function runOneInvestigation(
       });
     } catch (updateError) {
       console.error(
-        `[pax] home-energy-engine: failed to record run "${params.runId}" as failed:`,
+        `[sift] home-energy-engine: failed to record run "${params.runId}" as failed:`,
         updateError,
       );
     }
@@ -865,7 +865,7 @@ async function runOneInvestigation(
       });
     } catch (activityError) {
       console.error(
-        `[pax] home-energy-engine: failed to append a run.failed activity event for run "${params.runId}":`,
+        `[sift] home-energy-engine: failed to append a run.failed activity event for run "${params.runId}":`,
         activityError,
       );
     }

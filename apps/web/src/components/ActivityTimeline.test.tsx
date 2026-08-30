@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { PublicActivityEvent } from '@pax/contracts';
+import type { PublicActivityEvent } from '@sift/contracts';
 import { ActivityTimeline } from './ActivityTimeline.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 

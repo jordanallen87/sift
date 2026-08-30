@@ -15,7 +15,7 @@
  * terminology" table or its "Required visible states" list, never invented
  * ad hoc -- see the inline comments on `CASE_STATUS_LABEL` below.
  */
-import type { CaseState } from '@pax/contracts';
+import type { CaseState } from '@sift/contracts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { HelpButton } from './HelpButton.js';
@@ -195,7 +195,7 @@ export function CaseHeader({
       >
         {pack.selectedBy === 'user'
           ? 'You selected this Decision Pack.'
-          : 'Pax selected this Decision Pack automatically.'}
+          : 'Sift selected this Decision Pack automatically.'}
         {pack.reasons.length > 0 ? ` ${pack.reasons.join(' ')}` : null}
       </p>
     </header>

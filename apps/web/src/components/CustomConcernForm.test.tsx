@@ -4,11 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { CustomConcernForm } from './CustomConcernForm.js';
 import { AppProviders } from '../app/AppProviders.js';
-import { createFakePaxCommands, buildFakeCommandReceipt } from '../test/fake-pax-commands.js';
+import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-sift-commands.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
-function renderForm(commandsOverrides: Parameters<typeof createFakePaxCommands>[0] = {}) {
-  const commands = createFakePaxCommands(commandsOverrides);
+function renderForm(commandsOverrides: Parameters<typeof createFakeSiftCommands>[0] = {}) {
+  const commands = createFakeSiftCommands(commandsOverrides);
   const utils = render(
     <AppProviders commandsClient={commands}>
       <CustomConcernForm caseId="case-1" expectedSequence={7} applicableKinds={['car']} />
@@ -18,7 +18,7 @@ function renderForm(commandsOverrides: Parameters<typeof createFakePaxCommands>[
 }
 
 describe('CustomConcernForm', () => {
-  it('renders the form fields required by pax_define_case_attribute', () => {
+  it('renders the form fields required by sift_define_case_attribute', () => {
     renderForm();
     expect(screen.getByLabelText(/concern id/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/label/i)).toBeInTheDocument();
@@ -197,7 +197,7 @@ describe('CustomConcernForm', () => {
   });
 
   it('renders at 390px width with no fixed-width overflow risk', () => {
-    const commands = createFakePaxCommands();
+    const commands = createFakeSiftCommands();
     const { overflowRisks } = renderAtNarrowWidth(
       <AppProviders commandsClient={commands}>
         <CustomConcernForm caseId="case-1" expectedSequence={1} applicableKinds={['car']} />

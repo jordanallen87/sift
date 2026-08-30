@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CommandReceipt, RunReceipt } from '@pax/contracts';
+import type { CommandReceipt, RunReceipt } from '@sift/contracts';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
 

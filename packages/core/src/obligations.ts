@@ -8,7 +8,7 @@
  * `priority`, `acceptedUncertaintyAllowed`), and docs/specs/strands-runtime.md's
  * "Engine loop" ("select highest-value unresolved obligation").
  *
- * Pure module: every function is a plain data transform over `@pax/contracts`
+ * Pure module: every function is a plain data transform over `@sift/contracts`
  * types plus the injected `Clock` port (imported from `./evidence.js`, a
  * sibling file in this same task). It imports nothing from
  * `attributes.ts`/`extensions.ts`/`criteria.ts` or
@@ -21,7 +21,7 @@ import type {
   ObligationState,
   ObligationTemplate,
   Source,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import type { Clock } from './evidence.js';
 import { meetsRequiredEvidenceLevel } from './evidence.js';
 

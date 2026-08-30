@@ -3,7 +3,7 @@
  * "Workspace layout") -- the evidence/claims/staleness slice of that region.
  *
  * Renders one `EvidenceItemData`: an `EvidenceLink` joined with its
- * optional `Claim` and `Source` (all three real `@pax/contracts` shapes --
+ * optional `Claim` and `Source` (all three real `@sift/contracts` shapes --
  * see `packages/contracts/src/case.ts`). Purely presentational: it never
  * decides verdict, staleness, or conflict -- those are canonical, core-owned
  * facts (CLAUDE.md "The deterministic core ... owns ... evidence
@@ -11,17 +11,17 @@
  *
  * `onSetDisposition` (added in the live-wiring pass, docs/build-log.md's
  * dated entry): the visible-control equivalent of the
- * `pax_set_evidence_disposition` WebMCP tool (webmcp.md), added as a purely
+ * `sift_set_evidence_disposition` WebMCP tool (webmcp.md), added as a purely
  * optional prop so every existing caller/test keeps working unchanged --
  * the controls render only when a caller supplies the callback, following
  * the exact same optional-callback pattern `ApprovalCard.tsx`'s `onReview`
  * already establishes. The caller (`App.tsx`) owns actually invoking
- * `commands.setEvidenceDisposition` on the shared `PaxCommands` instance;
+ * `commands.setEvidenceDisposition` on the shared `SiftCommands` instance;
  * this component only reports the human's choice and typed reason.
  */
 import { useEffect, useState } from 'react';
-import { EVIDENCE_DISPOSITIONS } from '@pax/contracts';
-import type { Claim, EvidenceDisposition, EvidenceLink, Source } from '@pax/contracts';
+import { EVIDENCE_DISPOSITIONS } from '@sift/contracts';
+import type { Claim, EvidenceDisposition, EvidenceLink, Source } from '@sift/contracts';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -238,8 +238,8 @@ export function EvidenceCard({
           className="text-[length:var(--font-size-sm)]"
           style={{ color: STATUS_TONE_META.stale.ink }}
         >
-          This evidence has aged past its validity window and may be out of date. Pax will reconfirm
-          it before relying on it again.
+          This evidence has aged past its validity window and may be out of date. Sift will
+          reconfirm it before relying on it again.
         </p>
       ) : null}
 

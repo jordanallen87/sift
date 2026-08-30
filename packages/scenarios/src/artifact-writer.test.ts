@@ -14,7 +14,7 @@ afterEach(() => {
   }
 });
 function tempDir(): string {
-  dir = mkdtempSync(join(tmpdir(), 'pax-scenario-artifacts-'));
+  dir = mkdtempSync(join(tmpdir(), 'sift-scenario-artifacts-'));
   return dir;
 }
 

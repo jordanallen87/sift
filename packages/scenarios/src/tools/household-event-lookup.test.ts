@@ -115,7 +115,7 @@ describe('lookupHouseholdEvents -- no-events-at-all edge case (via fixtureBaseDi
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'pax-household-event-lookup-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'sift-household-event-lookup-'));
   });
 
   afterEach(() => {

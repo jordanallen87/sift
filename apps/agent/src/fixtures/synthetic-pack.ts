@@ -2,28 +2,28 @@
  * Shared test-only fixtures for `command-service.test.ts`, `run-service.test.ts`
  * (indirectly, via `MemoryCaseStore`), and the HTTP route integration tests:
  * a small synthetic, fully-valid Decision Pack manifest compiled and
- * registered directly with a real `PackRegistry` (`@pax/packs`), per this
+ * registered directly with a real `PackRegistry` (`@sift/packs`), per this
  * task's explicit scope note -- "you do not need the real car-purchase pack
  * manifest to exist yet ... build and test the command service against a
  * synthetic test pack registered directly with `PackRegistry` in your own
  * tests" -- rather than depending on `packages/packs`' own internal
  * `src/fixtures/manifest.ts` (that file is that package's private test
- * support, not a published `@pax/packs` export, and a sibling task owns the
+ * support, not a published `@sift/packs` export, and a sibling task owns the
  * real `car-purchase.ts` manifest concurrently).
  *
  * Registered under `identity.id: 'car-purchase'` specifically so it also
  * satisfies `StartDemoInputSchema`'s closed `demoId` enum
- * (`['car-purchase', 'home-energy-guardian']`, `@pax/contracts`
+ * (`['car-purchase', 'home-energy-guardian']`, `@sift/contracts`
  * `commands.ts`) without needing to widen that already-committed schema.
  */
-import type { DecisionPackManifest } from '@pax/contracts';
+import type { DecisionPackManifest } from '@sift/contracts';
 import {
   compilePack,
   createCapabilityCatalog,
   PackRegistry,
   type CapabilityCatalog,
-} from '@pax/packs';
-import type { Clock, IdGenerator } from '@pax/core';
+} from '@sift/packs';
+import type { Clock, IdGenerator } from '@sift/core';
 
 export const FIXED_NOW = '2026-08-27T00:00:00.000Z';
 

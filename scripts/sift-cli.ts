@@ -1,16 +1,16 @@
 #!/usr/bin/env tsx
 /**
- * `pnpm pax <command> [...args]` -- the top-level `pax` CLI entry point
- * pnpm's own argument-forwarding convention makes `pnpm pax pack:author`
+ * `pnpm sift <command> [...args]` -- the top-level `sift` CLI entry point
+ * pnpm's own argument-forwarding convention makes `pnpm sift pack:author`
  * work directly (docs/specs/pack-authoring.md: "The initial authoring entry
- * point is `pnpm pax pack:author`").
+ * point is `pnpm sift pack:author`").
  *
  * This file is a thin dispatcher only, matching this repo's existing
  * `scripts/*.ts` convention (`verify.ts`, `check-source.ts`): the real,
  * tested logic lives in `apps/agent/src/authoring/cli.ts`
  * (`runPackAuthorCli`), which this file imports directly. `apps/agent`'s own
  * package.json declares every dependency that module needs
- * (`@pax/contracts`, `@pax/core`, `@pax/packs`, `zod`, ...); Node resolves
+ * (`@sift/contracts`, `@sift/core`, `@sift/packs`, `zod`, ...); Node resolves
  * them relative to that file's own location regardless of which script
  * imported it, so this cross-package import works the same way any other
  * relative TypeScript import in this monorepo does.

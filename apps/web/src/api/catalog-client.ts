@@ -2,8 +2,8 @@
  * Typed, validated fetch functions for the read-only `GET /api/catalog/*`
  * routes (`apps/agent/src/routes/catalog.ts`,
  * docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md). Mirrors
- * `pax-client.ts`'s own validate-before-and-after-the-network-call
- * discipline, but for plain `GET` reads rather than `PaxCommands` mutations
+ * `sift-client.ts`'s own validate-before-and-after-the-network-call
+ * discipline, but for plain `GET` reads rather than `SiftCommands` mutations
  * -- there is no command envelope, idempotency key, or `CommandReceipt`
  * here, matching architecture.md's "Catalog API / query layer" being a
  * separate, read-only boundary from the command layer.
@@ -13,7 +13,7 @@
  * (`AppProviders.tsx`'s `ApiConfig`), so the same test-injection seam covers
  * this module without inventing a new one.
  */
-import { VehicleCatalogRecordSchema, type VehicleCatalogRecord } from '@pax/catalog/browser';
+import { VehicleCatalogRecordSchema, type VehicleCatalogRecord } from '@sift/catalog/browser';
 import { z } from 'zod';
 
 export interface CatalogClientOptions {

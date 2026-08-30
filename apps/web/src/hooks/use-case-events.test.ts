@@ -2,12 +2,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import type { CaseState, PublicActivityEvent } from '@pax/contracts';
+import type { CaseState, PublicActivityEvent } from '@sift/contracts';
 import { buildFixtureCaseState } from '../test/fixtures.js';
 import { FakeEventSource, createFakeEventSource } from '../test/fake-event-source.js';
 import { useCaseEvents } from './use-case-events.js';
 
-const BASE_URL = 'http://pax.test';
+const BASE_URL = 'http://sift.test';
 const CASE_ID = 'case-1';
 
 const server = setupServer();

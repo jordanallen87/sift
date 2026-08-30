@@ -17,10 +17,10 @@ import type {
   CommandReceipt,
   ExecutionResult,
   RunReceipt,
-} from '@pax/contracts';
-import type { Clock, IdGenerator } from '@pax/core';
-import { compileCarPurchasePack, PackRegistry } from '@pax/packs';
-import { buildCarPurchaseCandidateEntities } from '@pax/scenarios';
+} from '@sift/contracts';
+import type { Clock, IdGenerator } from '@sift/core';
+import { compileCarPurchasePack, PackRegistry } from '@sift/packs';
+import { buildCarPurchaseCandidateEntities } from '@sift/scenarios';
 import type { MultiAgentResult } from '@strands-agents/sdk/multiagent';
 import { createTestDatabase, type TestDatabase } from '../db/connection.js';
 import { applyMigrations } from '../db/migrate.js';
@@ -74,7 +74,7 @@ function requireSnapshot(receipt: CommandReceipt): CaseState {
 
 /**
  * Seeds the four real candidate `EntityRecord`s (`candidate-rav4`/`-crv`/
- * `-cx5`/`-outback`, computed from the real fixture tools via `@pax/
+ * `-cx5`/`-outback`, computed from the real fixture tools via `@sift/
  * scenarios`' `buildCarPurchaseCandidateEntities` -- the same authoritative
  * fixture data `car-purchase-scenario.ts` itself seeds from) onto an
  * already-`startDemo`'d case, via real `option.upserted` `CaseEvent`s.

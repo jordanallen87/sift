@@ -1,6 +1,6 @@
 /**
  * Model provider selection: a real `BedrockModel` for live runs
- * (`PAX_MODEL_ID`/`AWS_REGION`, docs/specs/strands-runtime.md "Models and
+ * (`SIFT_MODEL_ID`/`AWS_REGION`, docs/specs/strands-runtime.md "Models and
  * configuration") and a deterministic `ScriptedModelProvider` test double
  * for CI ("Deterministic tests use a scripted `ModelProvider` test double
  * and never call Bedrock").
@@ -37,7 +37,7 @@ import {
   type StreamOptions,
   type Usage,
 } from '@strands-agents/sdk';
-import type { IdGenerator } from '@pax/core';
+import type { IdGenerator } from '@sift/core';
 
 /** One scripted tool call within a `ScriptedTurn`. `toolUseId` is auto-generated (via the injected `IdGenerator`) when omitted. */
 export interface ScriptedToolCall {
@@ -87,7 +87,7 @@ export class ScriptedModelProvider extends Model<BaseModelConfig> {
     super();
     this.beats = new Map(Object.entries(config.beats));
     this.idGenerator = config.idGenerator ?? defaultIdGenerator();
-    this.config = { modelId: config.modelId ?? 'pax-scripted-model' };
+    this.config = { modelId: config.modelId ?? 'sift-scripted-model' };
   }
 
   /** Selects which beat's response queue the next `stream()` call draws from. Must be called before every conceptual step that invokes the agent. */
@@ -173,7 +173,7 @@ export interface BedrockModelOptions {
   awsRegion: string;
 }
 
-/** Builds a real `BedrockModel` from Pax's validated config (`PAX_MODEL_ID`/`AWS_REGION` -- strands-runtime.md "Models and configuration"). Never used by a deterministic test. */
+/** Builds a real `BedrockModel` from Sift's validated config (`SIFT_MODEL_ID`/`AWS_REGION` -- strands-runtime.md "Models and configuration"). Never used by a deterministic test. */
 export function createBedrockModel(options: BedrockModelOptions): BedrockModel {
   return new BedrockModel({ modelId: options.modelId, region: options.awsRegion });
 }

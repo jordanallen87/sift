@@ -93,7 +93,7 @@ describe('CaseHeader', () => {
     const { rerender } = render(
       <CaseHeader {...buildProps({ pack: buildProps().pack, status: 'draft' })} />,
     );
-    expect(screen.getByTestId('case-header-pack-explanation')).toHaveTextContent(/pax selected/i);
+    expect(screen.getByTestId('case-header-pack-explanation')).toHaveTextContent(/sift selected/i);
 
     rerender(
       <CaseHeader

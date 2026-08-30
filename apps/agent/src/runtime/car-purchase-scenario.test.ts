@@ -9,10 +9,14 @@
  * run never takes.
  */
 import { describe, expect, it } from 'vitest';
-import type { Clock, IdGenerator } from '@pax/core';
-import { createCapabilityCatalog, compileCarPurchasePack, CAR_PURCHASE_MANIFEST } from '@pax/packs';
-import { buildCarPurchaseSeedEvents } from '@pax/scenarios';
-import type { CaseEvent, CaseState, Claim, EvidenceLink, ExecutionResult } from '@pax/contracts';
+import type { Clock, IdGenerator } from '@sift/core';
+import {
+  createCapabilityCatalog,
+  compileCarPurchasePack,
+  CAR_PURCHASE_MANIFEST,
+} from '@sift/packs';
+import { buildCarPurchaseSeedEvents } from '@sift/scenarios';
+import type { CaseEvent, CaseState, Claim, EvidenceLink, ExecutionResult } from '@sift/contracts';
 import { InMemoryActivityStore } from '../store/activity-store.js';
 import { MemoryCaseStore } from '../store/memory-case-store.js';
 import type { CaseStore } from '../store/case-store.js';
@@ -29,7 +33,7 @@ import {
   publisherFor,
   type CarPurchaseScenarioDeps,
 } from './car-purchase-scenario.js';
-import { emptyScenarioTrajectory } from '@pax/scenarios';
+import { emptyScenarioTrajectory } from '@sift/scenarios';
 
 /**
  * A `CaseStore` whose `load()` always answers with a deliberately stale

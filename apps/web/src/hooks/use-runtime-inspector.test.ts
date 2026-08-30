@@ -2,10 +2,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import type { RuntimeDebugEvent } from '@pax/contracts';
+import type { RuntimeDebugEvent } from '@sift/contracts';
 import { useRuntimeInspector } from './use-runtime-inspector.js';
 
-const BASE_URL = 'http://pax.test';
+const BASE_URL = 'http://sift.test';
 const RUN_ID = 'run-1';
 
 const server = setupServer();

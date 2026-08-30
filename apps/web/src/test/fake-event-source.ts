@@ -3,7 +3,7 @@
  * factored out of `use-case-events.test.ts` so `App.test.tsx` (and any
  * later test needing to drive the live SSE stream) can reuse the exact same
  * fake rather than a second hand-rolled copy -- the same reuse discipline
- * `fake-pax-commands.ts` already establishes for `PaxCommands`.
+ * `fake-sift-commands.ts` already establishes for `SiftCommands`.
  *
  * Captures every instance ever created (`FakeEventSource.instances`) so a
  * test can find the specific connection a component opened and drive its
@@ -11,7 +11,7 @@
  * connection (webmcp.md's "in-memory adapter" pattern, applied to SSE).
  */
 import type { EventSourceLike, EventSourceLikeMessageEvent } from '../hooks/use-case-events.js';
-import type { PublicActivityEvent } from '@pax/contracts';
+import type { PublicActivityEvent } from '@sift/contracts';
 
 export class FakeEventSource implements EventSourceLike {
   static instances: FakeEventSource[] = [];

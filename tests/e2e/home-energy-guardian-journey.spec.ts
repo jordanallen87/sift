@@ -6,7 +6,7 @@
  * reference trajectory). Runs identically across all four configured
  * viewport projects (`playwright.config.ts`), mirroring
  * `car-purchase-journey.spec.ts` exactly in structure and command-route
- * discipline (see that file's and `pages/pax-page.ts`'s header comments for
+ * discipline (see that file's and `pages/sift-page.ts`'s header comments for
  * the shared rules this spec also follows: no shortcut around the real HTTP
  * routes, `postCommand`/`postRunRequest` exercise the identical contract a
  * WebMCP tool call or a visible control would use).
@@ -45,7 +45,7 @@
  * visible control itself calls -- genuinely the same command
  * implementation, not a bypass of it (CLAUDE.md "Visible UI controls and
  * WebMCP callbacks use the same command implementation") -- see
- * `pax-page.ts`'s `postRunRequest`/`waitForRecommendationRationaleContains`
+ * `sift-page.ts`'s `postRunRequest`/`waitForRecommendationRationaleContains`
  * for the full mechanics.
  */
 import { expect, test } from '@playwright/test';
@@ -63,17 +63,17 @@ import {
   HOME_ENERGY_CRITERION_IDS,
   HOME_ENERGY_RESPONSE_OPTION_IDS,
   HOME_ENERGY_RESPONSE_OPTIONS_OBLIGATION_ID,
-  PaxPage,
+  SiftPage,
   postCommand,
   postRunRequest,
-} from './pages/pax-page.js';
+} from './pages/sift-page.js';
 
 test.describe('Home Energy Guardian -- full demo journey', () => {
   test('launch, investigate, recommend, reweight, revise, approve', async ({ page }) => {
     test.setTimeout(120_000);
     await disableAnimations(page);
     const guard = installConsoleGuard(page);
-    const pax = new PaxPage(page);
+    const sift = new SiftPage(page);
     // A plain `mask` (timestamp rows + generated-id spans) is sufficient
     // for every screenshot below -- unlike `car-purchase-journey.spec.ts`
     // (see that spec's own header comment for the full causal chain, plus
@@ -86,7 +86,7 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     const masks = dynamicScreenshotMasks(page);
 
     // --- Launch ---
-    await pax.open();
+    await sift.open();
     await assertNoSeriousAxeViolations(page, 'initial load (launcher)');
     await assertRightPaneIntegrity(page, [
       'demo-launcher-car-purchase',
@@ -97,7 +97,7 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
       maxDiffPixelRatio: 0.01,
     });
 
-    const { caseId } = await pax.launchHomeEnergyGuardian();
+    const { caseId } = await sift.launchHomeEnergyGuardian();
     expect(caseId).toMatch(/.+/);
 
     // Real WebMCP is genuinely unavailable in this browser -- the page must
@@ -124,7 +124,7 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     // Opened once here and left open for the rest of the journey (ADR
     // 0002's "Compare the options" row) -- every later step that reaches
     // OptionEditor/OptionComparison content depends on it.
-    await pax.openDisclosure('compare');
+    await sift.openDisclosure('compare');
 
     for (const optionId of HOME_ENERGY_RESPONSE_OPTION_IDS) {
       await expect(page.getByTestId(`option-comparison-header-${optionId}`)).toBeVisible();
@@ -151,17 +151,17 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     await expect(page.getByTestId('option-editor-cancel')).toBeHidden();
 
     // --- Round 1: real live streaming investigation, driven by the visible control ---
-    const round1 = await pax.requestInvestigation();
+    const round1 = await sift.requestInvestigation();
     // Opened only for this one visibility proof, then closed again --
     // unlike car-purchase-journey.spec.ts, the bounded Swarm's two-round
     // trajectory produces a genuinely large activity count (confirmed
     // directly: a "decided" baseline with this row left open ran past
-    // 17,000px), so this journey keeps "Pax's work so far" closed by
+    // 17,000px), so this journey keeps "Sift's work so far" closed by
     // default for every later screenshot, matching the calm, legible
     // baseline every other region already keeps.
-    await pax.openDisclosure('work-so-far');
+    await sift.openDisclosure('work-so-far');
     await expect(page.getByTestId('activity-timeline')).toBeVisible();
-    await pax.closeDisclosure('work-so-far');
+    await sift.closeDisclosure('work-so-far');
     await assertNoSeriousAxeViolations(page, 'mid-investigation');
     await assertRightPaneIntegrity(page, [
       'request-investigation',
@@ -194,8 +194,8 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     await expect(page.getByTestId('runtime-inspector')).not.toBeVisible();
     await expect(page.getByTestId('case-workspace')).toBeVisible();
 
-    await pax.waitForInvestigationCompleted(round1.runId);
-    await pax.waitForRecommendationReady();
+    await sift.waitForInvestigationCompleted(round1.runId);
+    await sift.waitForRecommendationReady();
 
     // Recommendation carries a rationale and cited, source-linked evidence,
     // and (per the real proven scenario trajectory) favors monitoring for
@@ -259,7 +259,7 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     expect(round2Body.runId).not.toBe(round1.runId);
 
     // --- Revised recommendation, reflected live purely from streamed CaseState ---
-    await pax.waitForRecommendationRationaleContains('request-hvac-inspection');
+    await sift.waitForRecommendationRationaleContains('request-hvac-inspection');
 
     const round2State = await getCaseState(page.request, caseId);
     expect(
@@ -271,12 +271,12 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     await assertNoSeriousAxeViolations(page, 'awaiting human approval');
 
     // Evidence exists for real by this point (both rounds' evidence has
-    // landed), but every evidence card now lives inside the "What Pax
+    // landed), but every evidence card now lives inside the "What Sift
     // found" review Sheet, not inline (round-2 design review) -- opened
     // just for this touch-target check, then closed again before the
     // baseline screenshot below, which must show the normal workspace, not
     // a Sheet overlay on top of it.
-    await pax.openFindingsSheet();
+    await sift.openFindingsSheet();
     await assertPrimaryTouchTargets(page, [
       // The same `evidence-card-disposition-option-*` testid repeats per
       // card; `assertPrimaryTouchTargets` checks the first match, which is
@@ -300,7 +300,7 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
       maxDiffPixelRatio: 0.01,
     });
 
-    await pax.approveProposal();
+    await sift.approveProposal();
     await expect(page.getByTestId('approval-card-settled')).toBeVisible();
     await expect(page.getByTestId('case-workspace')).toHaveScreenshot('decided.png', {
       mask: masks,

@@ -94,28 +94,28 @@ describe('InMemoryModelContextAdapter', () => {
 
   it('replaces the previous registration when the same tool name registers again', async () => {
     const adapter = new InMemoryModelContextAdapter();
-    const first = buildTool('pax_focus_option', { execute: vi.fn().mockResolvedValue('first') });
-    const second = buildTool('pax_focus_option', { execute: vi.fn().mockResolvedValue('second') });
+    const first = buildTool('sift_focus_option', { execute: vi.fn().mockResolvedValue('first') });
+    const second = buildTool('sift_focus_option', { execute: vi.fn().mockResolvedValue('second') });
 
     await adapter.registerTool(first);
     await adapter.registerTool(second);
 
-    expect(adapter.registeredToolNames).toEqual(['pax_focus_option']);
-    await expect(adapter.invoke('pax_focus_option', {})).resolves.toBe('second');
+    expect(adapter.registeredToolNames).toEqual(['sift_focus_option']);
+    await expect(adapter.invoke('sift_focus_option', {})).resolves.toBe('second');
   });
 
   it("does not let an old registration's abort remove a newer registration under the same name", async () => {
     const adapter = new InMemoryModelContextAdapter();
     const firstController = new AbortController();
-    const first = buildTool('pax_focus_option');
-    const second = buildTool('pax_focus_option');
+    const first = buildTool('sift_focus_option');
+    const second = buildTool('sift_focus_option');
 
     await adapter.registerTool(first, { signal: firstController.signal });
     await adapter.registerTool(second);
 
     firstController.abort();
 
-    expect(adapter.getRegisteredTool('pax_focus_option')).toBe(second);
+    expect(adapter.getRegisteredTool('sift_focus_option')).toBe(second);
   });
 });
 
@@ -131,7 +131,7 @@ describe('BrowserModelContextAdapter', () => {
 
   it('rejects registerTool when unsupported, without throwing synchronously or breaking the app', async () => {
     const adapter = new BrowserModelContextAdapter();
-    await expect(adapter.registerTool(buildTool('pax_get_case_context'))).rejects.toThrow(
+    await expect(adapter.registerTool(buildTool('sift_get_case_context'))).rejects.toThrow(
       /WebMCP unavailable/i,
     );
   });
@@ -144,7 +144,7 @@ describe('BrowserModelContextAdapter', () => {
     const adapter = new BrowserModelContextAdapter();
     expect(adapter.supported()).toBe(true);
 
-    const tool = buildTool('pax_get_case_context');
+    const tool = buildTool('sift_get_case_context');
     const controller = new AbortController();
     await adapter.registerTool(tool, { signal: controller.signal });
 

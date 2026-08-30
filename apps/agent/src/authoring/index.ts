@@ -3,7 +3,7 @@
  * (docs/specs/pack-authoring.md "`pack-authoring` Strands skill"):
  * `pack_catalog`, `pack_scaffold`, `pack_validate`, `pack_test`, `pack_diff`,
  * `pack_publish`. See each sibling module's header comment for how it is
- * bounded and which real `@pax/packs`/`@pax/core` function it wraps rather
+ * bounded and which real `@sift/packs`/`@sift/core` function it wraps rather
  * than reimplements.
  */
 export {
@@ -74,8 +74,8 @@ export {
   type ScenarioCoverageResult,
 } from './scenario-coverage.js';
 
-import type { Clock } from '@pax/core';
-import type { CapabilityCatalog, PackRegistry } from '@pax/packs';
+import type { Clock } from '@sift/core';
+import type { CapabilityCatalog, PackRegistry } from '@sift/packs';
 
 /**
  * Shared dependency bundle every bounded authoring tool needs: where drafts

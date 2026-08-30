@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DemoScenarioSchema, ScenarioAssertionSchema, ScenarioStepSchema } from './scenario.js';
 
 describe('ScenarioStepSchema', () => {
-  it('parses a valid step naming a real PaxCommands method', () => {
+  it('parses a valid step naming a real SiftCommands method', () => {
     const result = ScenarioStepSchema.safeParse({
       command: 'upsertOption',
       input: {
@@ -15,7 +15,7 @@ describe('ScenarioStepSchema', () => {
     expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
   });
 
-  it('rejects a command name that is not a real PaxCommands method', () => {
+  it('rejects a command name that is not a real SiftCommands method', () => {
     expect(ScenarioStepSchema.safeParse({ command: 'deleteCase', input: {} }).success).toBe(false);
   });
 });

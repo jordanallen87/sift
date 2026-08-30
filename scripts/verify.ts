@@ -297,7 +297,7 @@ export async function runVerification(
 
 function renderSummaryMarkdown(report: VerificationReport): string {
   const lines: string[] = [];
-  lines.push(`# Pax verification report — ${report.status.toUpperCase()}`);
+  lines.push(`# Sift verification report — ${report.status.toUpperCase()}`);
   lines.push('');
   lines.push(`- Run ID: \`${report.runId}\``);
   lines.push(`- Git SHA: \`${report.gitSha ?? 'unknown'}\``);
@@ -346,20 +346,20 @@ function writeReport(report: VerificationReport, runDir: string, latestDir: stri
 }
 
 function printConsoleSummary(report: VerificationReport): void {
-  console.log(`\n[pax] verify: ${report.status.toUpperCase()} (run ${report.runId})`);
+  console.log(`\n[sift] verify: ${report.status.toUpperCase()} (run ${report.runId})`);
   for (const stage of report.stages) {
     const marker = stage.status === 'passed' ? 'PASS' : stage.status === 'failed' ? 'FAIL' : 'SKIP';
     console.log(`  [${marker}] ${stage.stage}${stage.note ? ` — ${stage.note}` : ''}`);
   }
   if (report.failures.length > 0) {
-    console.log('\n[pax] Failures:');
+    console.log('\n[sift] Failures:');
     for (const failure of report.failures) {
       console.log(
         `  - ${failure.stage} (${failure.fingerprint}): rerun with \`${failure.focusedRerunCommand}\``,
       );
     }
   }
-  console.log(`\n[pax] Report: artifacts/verification/latest/report.json`);
+  console.log(`\n[sift] Report: artifacts/verification/latest/report.json`);
 }
 
 function isMain(): boolean {

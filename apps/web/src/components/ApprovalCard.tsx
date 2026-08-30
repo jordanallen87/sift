@@ -28,7 +28,7 @@
  * field at all, so there is no prop an integrating caller could pass to
  * override or spoof it, and `onReview`'s own parameter type pins
  * `actor: 'human'` as a literal (not the general `Actor` union from
- * `@pax/contracts`, which also allows `'agent'`). Every call site inside
+ * `@sift/contracts`, which also allows `'agent'`). Every call site inside
  * this file constructs that literal directly; grep this file for `actor:`
  * to see there is exactly one value it can ever be. See
  * `ApprovalCard.test.tsx`'s "human-only approval" describe block, which
@@ -37,7 +37,7 @@
  * `ApprovalCardProps` has no `actor` key at all.
  */
 import { useState } from 'react';
-import type { DecisionProposal, ReviewProposalDecision } from '@pax/contracts';
+import type { DecisionProposal, ReviewProposalDecision } from '@sift/contracts';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -230,7 +230,7 @@ export function ApprovalCard({
                 htmlFor="approval-card-revision-instructions"
                 className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
               >
-                What should Pax revise?
+                What should Sift revise?
               </Label>
               <Textarea
                 id="approval-card-revision-instructions"

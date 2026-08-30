@@ -1,5 +1,5 @@
 {
-  "_provenance": "Fictional demo data. Dealer names, fees, and finance terms are invented for the Pax 'Choose Our Next Car' hackathon scenario and do not describe any real dealer or transaction.",
+  "_provenance": "Fictional demo data. Dealer names, fees, and finance terms are invented for the Sift 'Choose Our Next Car' hackathon scenario and do not describe any real dealer or transaction.",
   "caseId": "case-demo-car-purchase",
   "sharedTaxAndFeeAssumptions": {
     "salesTaxRate": 0.07,

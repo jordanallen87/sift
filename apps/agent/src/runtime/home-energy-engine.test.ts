@@ -17,10 +17,10 @@ import type {
   CommandReceipt,
   ExecutionResult,
   RunReceipt,
-} from '@pax/contracts';
-import type { Clock, IdGenerator } from '@pax/core';
-import { compileHomeEnergyGuardianPack, PackRegistry } from '@pax/packs';
-import { buildHomeEnergyResponseOptionEntities } from '@pax/scenarios';
+} from '@sift/contracts';
+import type { Clock, IdGenerator } from '@sift/core';
+import { compileHomeEnergyGuardianPack, PackRegistry } from '@sift/packs';
+import { buildHomeEnergyResponseOptionEntities } from '@sift/scenarios';
 import { createTestDatabase, type TestDatabase } from '../db/connection.js';
 import { applyMigrations } from '../db/migrate.js';
 import { CommandService } from '../services/command-service.js';
@@ -316,8 +316,8 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
 
     // --- POST .../run again, explicitly against energy.response_options
     // (already "satisfied" from round1, so it is not auto-selectable) --
-    // mirrors the "Energy moment" WebMCP demo's pax_update_criteria +
-    // pax_request_investigation pairing. ---
+    // mirrors the "Energy moment" WebMCP demo's sift_update_criteria +
+    // sift_request_investigation pairing. ---
     const run2Result = runService.requestInvestigation('cmd-run-2', {
       caseId,
       obligationId: 'energy.response_options',

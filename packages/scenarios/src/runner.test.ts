@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ScenarioStep } from '@pax/contracts';
+import type { ScenarioStep } from '@sift/contracts';
 import { runScenarioSteps, type ScenarioCommandExecutor } from './runner.js';
 
 function step(command: ScenarioStep['command']): ScenarioStep {

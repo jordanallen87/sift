@@ -1,5 +1,5 @@
 /**
- * Builds the Pax Express `Application`.
+ * Builds the Sift Express `Application`.
  *
  * Extends the health-only skeleton with the full HTTP service described in
  * docs/specs/architecture.md ("HTTP service"): `GET /api/packs`,
@@ -35,15 +35,15 @@
  * ("the `/api/debug/runs/*` Runtime Inspector routes are separate, later
  * work") for its Overview + Timeline slice; `runStore`/`runtimeEventStore`
  * are the two additional dependencies it needs, and `debugEnabled`
- * (`PAX_DEBUG_ENABLED`, config.ts) gates it exactly like
+ * (`SIFT_DEBUG_ENABLED`, config.ts) gates it exactly like
  * debugging-and-observability.md requires ("Disabling debug mode returns
  * `404` for all debug endpoints").
  *
  * --- Static web app hosting (docs/specs/architecture.md "Deployment":
- * "Express serves the Vite production build and the Pax API from the same
+ * "Express serves the Vite production build and the Sift API from the same
  * origin") ---
  *
- * Registered last, after every `/api/*`/`/health` route: `@pax/web`'s built
+ * Registered last, after every `/api/*`/`/health` route: `@sift/web`'s built
  * `dist/` (`apps/web/vite.config.ts`'s own `build.outDir: 'dist'`) is served
  * as static assets via a single `express.static(WEB_DIST_DIR)` -- default
  * options, so `GET /` serves `dist/index.html` (Express's normal directory-
@@ -70,7 +70,7 @@
  *
  * Guarded by `existsSync`: `apps/web/dist` does not exist in every context
  * `buildApp` runs in (e.g. `app.test.ts`'s HTTP integration tests never run
- * `pnpm --filter @pax/web build` first) -- when it is missing, this block is
+ * `pnpm --filter @sift/web build` first) -- when it is missing, this block is
  * skipped entirely rather than mounting `express.static` against a
  * nonexistent root, so every existing `/api/*`-only test keeps working
  * unchanged.
@@ -78,9 +78,9 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
-import type { PackRegistry } from '@pax/packs';
-import type { Clock } from '@pax/core';
-import type { PaxDatabase } from './db/connection.js';
+import type { PackRegistry } from '@sift/packs';
+import type { Clock } from '@sift/core';
+import type { SiftDatabase } from './db/connection.js';
 import { createAgentCoreRouter } from './routes/agentcore.js';
 import { createHealthRouter } from './routes/health.js';
 import { createCasesRouter } from './routes/cases.js';
@@ -98,7 +98,7 @@ import type { CaseStore } from './store/case-store.js';
 import type { RuntimeEventStore } from './store/runtime-event-store.js';
 
 export interface BuildAppDeps {
-  database: PaxDatabase;
+  database: SiftDatabase;
   caseStore: CaseStore;
   activityStore: ActivityStore;
   registry: PackRegistry;
@@ -108,9 +108,9 @@ export interface BuildAppDeps {
   runStore: RunStore;
   /** Backs `GET /api/debug/runs/:runId`'s Overview/Timeline event data. */
   runtimeEventStore: RuntimeEventStore;
-  /** `PAX_DEBUG_ENABLED` (config.ts). Defaults to `true`; `false` makes every `/api/debug/*` route respond `404`. */
+  /** `SIFT_DEBUG_ENABLED` (config.ts). Defaults to `true`; `false` makes every `/api/debug/*` route respond `404`. */
   debugEnabled?: boolean;
-  /** Sources `GET /ping`'s `time_of_last_update` (`routes/agentcore.ts`) -- every Pax timestamp comes from an injected `Clock`, never `Date.now()` directly (CLAUDE.md). */
+  /** Sources `GET /ping`'s `time_of_last_update` (`routes/agentcore.ts`) -- every Sift timestamp comes from an injected `Clock`, never `Date.now()` directly (CLAUDE.md). */
   clock: Clock;
   /** Passed through to `createEventsRouter` — overridable in tests so an SSE test does not need to wait out a real 15s heartbeat interval. */
   sseHeartbeatIntervalMs?: number;
@@ -179,7 +179,7 @@ export function buildApp(deps: BuildAppDeps): Application {
   // parameters) -- `_next` must stay declared even though this handler
   // never calls it (there is nothing further downstream to delegate to).
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('[pax] unhandled request error:', err);
+    console.error('[sift] unhandled request error:', err);
     sendError(res, 500, 'INTERNAL', 'An unexpected internal error occurred.', false);
   });
 

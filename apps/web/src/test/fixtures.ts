@@ -1,11 +1,11 @@
 /**
  * Minimal, schema-valid `CaseState` / `CompiledDecisionPack` builders shared
  * by `model-context/*.test.ts`. Every field is populated with the smallest
- * value its real `@pax/contracts` Zod schema accepts (mostly empty arrays
+ * value its real `@sift/contracts` Zod schema accepts (mostly empty arrays
  * and `null`s) so these fixtures stay valid as those schemas evolve, rather
  * than hand-copying a large literal that silently drifts out of sync.
  */
-import type { CaseState, CompiledDecisionPack, ObligationState } from '@pax/contracts';
+import type { CaseState, CompiledDecisionPack, ObligationState } from '@sift/contracts';
 
 const FIXED_TIMESTAMP = '2026-01-01T00:00:00.000Z';
 

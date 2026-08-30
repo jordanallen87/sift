@@ -7,7 +7,7 @@
  */
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CommandReceipt, HttpErrorBody } from '@pax/contracts';
+import type { CommandReceipt, HttpErrorBody } from '@sift/contracts';
 import { COMMAND_NAMES } from './commands.js';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';

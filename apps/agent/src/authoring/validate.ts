@@ -1,12 +1,12 @@
 /**
  * `pack_validate`: "run schema, reference, security, and graph/bounds
  * validation" (docs/specs/pack-authoring.md). A thin, bounded wrapper around
- * the real, already-built `compilePack` (`@pax/packs`) -- schema, dangling
+ * the real, already-built `compilePack` (`@sift/packs`) -- schema, dangling
  * reference, capability-allowlist, and orchestration-bounds checks all come
  * directly from `compilePack`'s own 11-step pipeline (pack-authoring.md
  * "Compiler and registry"). The one check this wrapper adds on top is the
  * "security" leg: `compilePack` only ever sees `pack.json`'s parsed JSON, so
- * its `safeString` Zod refinements (`@pax/contracts`) already reject
+ * its `safeString` Zod refinements (`@sift/contracts`) already reject
  * HTML/script-shaped text inside manifest fields -- but `README.md` and
  * every `skills/<id>/SKILL.md` are raw Markdown files that never pass
  * through the manifest schema at all. `scanDraftForExecutableContent`
@@ -18,21 +18,21 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { Clock } from '@pax/core';
+import type { Clock } from '@sift/core';
 import {
   DecisionPackManifestSchema,
   type CompiledDecisionPack,
   type DecisionPackManifest,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import {
   PackCompilationError,
   compilePack,
   type CapabilityCatalog,
   type PackCompilationIssue,
-} from '@pax/packs';
+} from '@sift/packs';
 import { draftDirFor, matchesBundleShape, walkDraftFiles } from './scaffold.js';
 
-// Same pattern already used verbatim by `@pax/contracts`'s `case.ts`,
+// Same pattern already used verbatim by `@sift/contracts`'s `case.ts`,
 // `extensions.ts`, and `scenario.ts` `safeString` refinements.
 const HTML_OR_EXECUTABLE_PATTERN = /<\/?[a-zA-Z!]|javascript:|on[a-zA-Z]+\s*=\s*["']/;
 

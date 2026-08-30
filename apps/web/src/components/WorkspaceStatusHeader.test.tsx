@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { DecisionProposal, Recommendation } from '@pax/contracts';
+import type { DecisionProposal, Recommendation } from '@sift/contracts';
 import { WorkspaceStatusHeader } from './WorkspaceStatusHeader.js';
 import { deriveWorkspaceStatus, type WorkspaceStatusInput } from './workspace-status.js';
 
@@ -100,7 +100,7 @@ describe('WorkspaceStatusHeader', () => {
 
     expect(screen.getByTestId('workspace-next-step')).toHaveAttribute('data-tone', 'ready');
     expect(screen.getByTestId('workspace-next-step-text')).toHaveTextContent(
-      'Pax has a pick ready. Review it and approve, or send Pax back to look further.',
+      'Sift has a pick ready. Review it and approve, or send Sift back to look further.',
     );
     expect(screen.getByTestId('workspace-next-step-action')).toHaveTextContent('Go to Our pick');
   });
@@ -111,7 +111,7 @@ describe('WorkspaceStatusHeader', () => {
 
     expect(screen.getByTestId('workspace-next-step')).toHaveAttribute('data-tone', 'active');
     expect(screen.getByTestId('workspace-next-step-text')).toHaveTextContent(
-      'Pax is investigating in the background. Nothing needed from you right now.',
+      'Sift is investigating in the background. Nothing needed from you right now.',
     );
     expect(screen.queryByTestId('workspace-next-step-action')).not.toBeInTheDocument();
   });
@@ -122,7 +122,7 @@ describe('WorkspaceStatusHeader', () => {
 
     expect(screen.getByTestId('workspace-next-step')).toHaveAttribute('data-tone', 'accepted');
     expect(screen.getByTestId('workspace-next-step-text')).toHaveTextContent(
-      '3 findings may need a closer look before Pax can finish.',
+      '3 findings may need a closer look before Sift can finish.',
     );
     expect(screen.getByTestId('workspace-next-step-action')).toHaveTextContent('Review findings');
   });
@@ -138,7 +138,7 @@ describe('WorkspaceStatusHeader', () => {
 
     expect(screen.getByTestId('workspace-next-step')).toHaveAttribute('data-tone', 'calm');
     expect(screen.getByTestId('workspace-next-step-text')).toHaveTextContent(
-      "You're all caught up. Pax will let you know if anything changes.",
+      "You're all caught up. Sift will let you know if anything changes.",
     );
     expect(screen.queryByTestId('workspace-next-step-action')).not.toBeInTheDocument();
     expect(screen.getByTestId('tracker-stage-decided')).toHaveAttribute('data-state', 'done');

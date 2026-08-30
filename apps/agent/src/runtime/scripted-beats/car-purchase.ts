@@ -56,7 +56,7 @@
  * seeded entity data, matching CLAUDE.md's "the deterministic core, not an
  * LLM, owns ... readiness."
  */
-import type { ExecutionResult } from '@pax/contracts';
+import type { ExecutionResult } from '@sift/contracts';
 import { PROPOSE_RECOMMENDATION_TOOL_ID } from '../strands-adapter.js';
 import { ScriptedModelProvider, type ScriptedTurn } from '../model-provider.js';
 import { CAR_PURCHASE_GRAPH_NODE_IDS, type CarPurchaseGraphNodeId } from '../car-purchase-graph.js';
@@ -67,7 +67,7 @@ export type CarPurchaseScenarioBeat = (typeof CAR_PURCHASE_SCENARIO_BEATS)[numbe
 /**
  * The synthesized `case_extension`-origin obligation id for the household's
  * two-dog-crate concern (`../car-purchase-scenario.js` derives the real
- * `ObligationTemplate` this id names, via `@pax/core`'s `deriveObligations`
+ * `ObligationTemplate` this id names, via `@sift/core`'s `deriveObligations`
  * -- see that file's module header for the full "userConcern template" gap
  * this works around). `household-fit-analyst`'s round-2 result below targets
  * this id, not the pack's own `car.household_fit`, since round 2's job is to

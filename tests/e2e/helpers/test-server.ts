@@ -1,5 +1,5 @@
 /**
- * Boots the real production Pax server for `pnpm test:e2e`
+ * Boots the real production Sift server for `pnpm test:e2e`
  * (docs/specs/testing.md "Browser E2E tests": "Playwright starts the real
  * web and agent services with deterministic fixtures").
  *
@@ -15,13 +15,13 @@
  * real `car-purchase` engine. That engine's model provider is *always* the
  * scripted, deterministic one (`car-purchase-engine.ts`'s own header
  * comment: `buildCarPurchaseScriptedProviders()` is unconditional, not
- * gated by `PAX_EXECUTION_TARGET` or any live-model flag), so this whole
+ * gated by `SIFT_EXECUTION_TARGET` or any live-model flag), so this whole
  * suite genuinely runs offline and deterministically without a test-only
  * server branch or a mocked model anywhere in this process.
  *
- * Isolation: every invocation gets a fresh temporary `PAX_DATA_DIR`
+ * Isolation: every invocation gets a fresh temporary `SIFT_DATA_DIR`
  * (`mkdtempSync`), so `pnpm test:e2e` never touches a developer's real
- * `.pax-data/pax.sqlite` and two separate runs never see each other's
+ * `.sift-data/sift.sqlite` and two separate runs never see each other's
  * cases. All four Playwright viewport projects and every spec file share
  * this one server process/database for the run (matching how Playwright's
  * `webServer` is started once per `playwright test` invocation, not once
@@ -39,7 +39,7 @@ import { startServer } from '../../../apps/agent/src/server.js';
 const PORT = 8080;
 
 async function main(): Promise<void> {
-  const dataDir = mkdtempSync(join(tmpdir(), 'pax-e2e-'));
+  const dataDir = mkdtempSync(join(tmpdir(), 'sift-e2e-'));
 
   // Best-effort cleanup: an OS temp directory left behind after a killed
   // process is clutter, not a correctness problem, so failures here are
@@ -63,13 +63,13 @@ async function main(): Promise<void> {
   const address = server.address();
   const boundPort = address !== null && typeof address !== 'string' ? address.port : PORT;
   console.log(
-    `[pax:e2e] test server listening on port ${boundPort} ` +
+    `[sift:e2e] test server listening on port ${boundPort} ` +
       `(dataDir=${dataDir}, migrationsApplied=${migration.applied.length}, ` +
       `migrationsAlreadyApplied=${migration.alreadyApplied.length})`,
   );
 }
 
 main().catch((error: unknown) => {
-  console.error('[pax:e2e] failed to start the test server:', error);
+  console.error('[sift:e2e] failed to start the test server:', error);
   process.exitCode = 1;
 });

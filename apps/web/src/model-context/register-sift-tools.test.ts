@@ -1,5 +1,5 @@
 /**
- * Behavioral tests for every registered Pax WebMCP tool's `execute` callback
+ * Behavioral tests for every registered Sift WebMCP tool's `execute` callback
  * (docs/specs/webmcp.md "Tool catalog", "Tool result envelope",
  * "Cancellation and concurrency"). Catalog-shape/contract assertions
  * (exact names/descriptions/JSON schemas, registration-lifecycle mechanics,
@@ -7,13 +7,13 @@
  * dedicated `webmcp-contract.test.ts` instead of being duplicated here.
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { PaxCommands } from '../api/pax-client.js';
-import { PaxClientError } from '../api/pax-client.js';
+import type { SiftCommands } from '../api/sift-client.js';
+import { SiftClientError } from '../api/sift-client.js';
 import {
   buildFakeCommandReceipt,
   buildFakeRunReceipt,
-  createFakePaxCommands,
-} from '../test/fake-pax-commands.js';
+  createFakeSiftCommands,
+} from '../test/fake-sift-commands.js';
 import {
   buildFixtureCaseState,
   buildFixtureCompiledPack,
@@ -21,10 +21,10 @@ import {
 } from '../test/fixtures.js';
 import { InMemoryModelContextAdapter } from './adapter.js';
 import {
-  GLOBAL_PAX_TOOL_NAMES,
-  registerPaxTools,
-  type PaxWebMcpToolName,
-} from './register-pax-tools.js';
+  GLOBAL_SIFT_TOOL_NAMES,
+  registerSiftTools,
+  type SiftWebMcpToolName,
+} from './register-sift-tools.js';
 
 interface AnyToolResult<TData = unknown> {
   ok: boolean;
@@ -59,11 +59,11 @@ async function invokeTool<TData = unknown>(
 
 async function setUpWithActiveCase(
   caseId: string,
-  overrides: Partial<PaxCommands> = {},
-): Promise<{ adapter: InMemoryModelContextAdapter; commands: PaxCommands }> {
+  overrides: Partial<SiftCommands> = {},
+): Promise<{ adapter: InMemoryModelContextAdapter; commands: SiftCommands }> {
   const adapter = new InMemoryModelContextAdapter();
-  const commands = createFakePaxCommands(overrides);
-  const handle = await registerPaxTools({
+  const commands = createFakeSiftCommands(overrides);
+  const handle = await registerSiftTools({
     adapter,
     commands,
     getActiveCase: () => null,
@@ -73,30 +73,30 @@ async function setUpWithActiveCase(
   return { adapter, commands };
 }
 
-describe('registerPaxTools: registration lifecycle', () => {
+describe('registerSiftTools: registration lifecycle', () => {
   it('registers only the two global read tools when no case is ever activated', async () => {
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => null,
       listPacks: () => [],
     });
 
-    expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_PAX_TOOL_NAMES].sort());
+    expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_SIFT_TOOL_NAMES].sort());
   });
 
   it('registers the ten case-scoped tools once an active case is set', async () => {
     const { adapter } = await setUpWithActiveCase('case-1');
     expect(adapter.registeredToolNames).toHaveLength(12);
-    expect(adapter.registeredToolNames).toContain('pax_select_pack');
-    expect(adapter.registeredToolNames).toContain('pax_request_revision');
+    expect(adapter.registeredToolNames).toContain('sift_select_pack');
+    expect(adapter.registeredToolNames).toContain('sift_request_revision');
   });
 
   it('aborts the previous case-scoped generation when the active case changes', async () => {
     const adapter = new InMemoryModelContextAdapter();
-    const commands = createFakePaxCommands();
-    const handle = await registerPaxTools({
+    const commands = createFakeSiftCommands();
+    const handle = await registerSiftTools({
       adapter,
       commands,
       getActiveCase: () => null,
@@ -104,10 +104,10 @@ describe('registerPaxTools: registration lifecycle', () => {
     });
 
     await handle.setActiveCase('case-1');
-    const generationOne = adapter.getRegisteredTool('pax_focus_evidence');
+    const generationOne = adapter.getRegisteredTool('sift_focus_evidence');
 
     await handle.setActiveCase('case-2');
-    const generationTwo = adapter.getRegisteredTool('pax_focus_evidence');
+    const generationTwo = adapter.getRegisteredTool('sift_focus_evidence');
 
     expect(generationOne).toBeDefined();
     expect(generationTwo).toBeDefined();
@@ -115,7 +115,7 @@ describe('registerPaxTools: registration lifecycle', () => {
 
     // The currently-registered tool is scoped to case-2 now; a caseId that
     // was valid under the old (now-superseded) generation is rejected.
-    const result = await invokeTool(adapter, 'pax_focus_evidence', {
+    const result = await invokeTool(adapter, 'sift_focus_evidence', {
       caseId: 'case-1',
       evidenceId: 'ev-1',
       expectedSequence: 1,
@@ -125,8 +125,8 @@ describe('registerPaxTools: registration lifecycle', () => {
 
   it('setActiveCase(null) unregisters the case-scoped tools, leaving only the two global tools', async () => {
     const adapter = new InMemoryModelContextAdapter();
-    const commands = createFakePaxCommands();
-    const handle = await registerPaxTools({
+    const commands = createFakeSiftCommands();
+    const handle = await registerSiftTools({
       adapter,
       commands,
       getActiveCase: () => null,
@@ -137,13 +137,13 @@ describe('registerPaxTools: registration lifecycle', () => {
     expect(adapter.registeredToolNames).toHaveLength(12);
 
     await handle.setActiveCase(null);
-    expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_PAX_TOOL_NAMES].sort());
+    expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_SIFT_TOOL_NAMES].sort());
   });
 
   it('disposeAll unregisters every tool, global read tools included', async () => {
     const adapter = new InMemoryModelContextAdapter();
-    const commands = createFakePaxCommands();
-    const handle = await registerPaxTools({
+    const commands = createFakeSiftCommands();
+    const handle = await registerSiftTools({
       adapter,
       commands,
       getActiveCase: () => null,
@@ -163,9 +163,9 @@ describe('registerPaxTools: registration lifecycle', () => {
       registerTool,
     };
 
-    const handle = await registerPaxTools({
+    const handle = await registerSiftTools({
       adapter: unsupportedAdapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => null,
       listPacks: () => [],
     });
@@ -178,32 +178,32 @@ describe('registerPaxTools: registration lifecycle', () => {
 });
 
 interface CaseToolFixture {
-  toolName: PaxWebMcpToolName;
-  commandMethod: keyof PaxCommands;
+  toolName: SiftWebMcpToolName;
+  commandMethod: keyof SiftCommands;
   buildInput: (caseId: string) => Record<string, unknown>;
   expectedFocusTarget?: (input: Record<string, unknown>) => string | undefined;
 }
 
 const CASE_TOOL_FIXTURES: CaseToolFixture[] = [
   {
-    toolName: 'pax_select_pack',
+    toolName: 'sift_select_pack',
     commandMethod: 'selectPack',
     buildInput: (caseId) => ({ caseId, packId: 'car-purchase', expectedSequence: 1 }),
   },
   {
-    toolName: 'pax_focus_evidence',
+    toolName: 'sift_focus_evidence',
     commandMethod: 'focusEvidence',
     buildInput: (caseId) => ({ caseId, evidenceId: 'ev-1', expectedSequence: 1 }),
     expectedFocusTarget: (input) => input['evidenceId'] as string,
   },
   {
-    toolName: 'pax_focus_option',
+    toolName: 'sift_focus_option',
     commandMethod: 'focusOption',
     buildInput: (caseId) => ({ caseId, optionId: 'opt-1', expectedSequence: 1 }),
     expectedFocusTarget: (input) => input['optionId'] as string,
   },
   {
-    toolName: 'pax_upsert_option',
+    toolName: 'sift_upsert_option',
     commandMethod: 'upsertOption',
     buildInput: (caseId) => ({
       caseId,
@@ -223,7 +223,7 @@ const CASE_TOOL_FIXTURES: CaseToolFixture[] = [
     expectedFocusTarget: (input) => input['optionId'] as string,
   },
   {
-    toolName: 'pax_update_criteria',
+    toolName: 'sift_update_criteria',
     commandMethod: 'updateCriteria',
     buildInput: (caseId) => ({
       caseId,
@@ -232,7 +232,7 @@ const CASE_TOOL_FIXTURES: CaseToolFixture[] = [
     }),
   },
   {
-    toolName: 'pax_define_case_attribute',
+    toolName: 'sift_define_case_attribute',
     commandMethod: 'defineCaseAttribute',
     buildInput: (caseId) => ({
       caseId,
@@ -249,7 +249,7 @@ const CASE_TOOL_FIXTURES: CaseToolFixture[] = [
     }),
   },
   {
-    toolName: 'pax_submit_source',
+    toolName: 'sift_submit_source',
     commandMethod: 'submitSource',
     buildInput: (caseId) => ({
       caseId,
@@ -263,7 +263,7 @@ const CASE_TOOL_FIXTURES: CaseToolFixture[] = [
     }),
   },
   {
-    toolName: 'pax_set_evidence_disposition',
+    toolName: 'sift_set_evidence_disposition',
     commandMethod: 'setEvidenceDisposition',
     buildInput: (caseId) => ({
       caseId,
@@ -275,12 +275,12 @@ const CASE_TOOL_FIXTURES: CaseToolFixture[] = [
     expectedFocusTarget: (input) => input['evidenceId'] as string,
   },
   {
-    toolName: 'pax_request_investigation',
+    toolName: 'sift_request_investigation',
     commandMethod: 'requestInvestigation',
     buildInput: (caseId) => ({ caseId, expectedSequence: 1 }),
   },
   {
-    toolName: 'pax_request_revision',
+    toolName: 'sift_request_revision',
     commandMethod: 'requestRevision',
     buildInput: (caseId) => ({
       caseId,
@@ -295,8 +295,8 @@ const CASE_TOOL_FIXTURES: CaseToolFixture[] = [
 describe.each(CASE_TOOL_FIXTURES)(
   '$toolName',
   ({ toolName, commandMethod, buildInput, expectedFocusTarget }) => {
-    it('calls the shared PaxCommands method and returns an honest success envelope', async () => {
-      const isRunTool = toolName === 'pax_request_investigation';
+    it('calls the shared SiftCommands method and returns an honest success envelope', async () => {
+      const isRunTool = toolName === 'sift_request_investigation';
       const receipt = isRunTool
         ? buildFakeRunReceipt({ caseId: 'case-1', acceptedSequence: 5, runId: 'run-9' })
         : buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 5 });
@@ -323,7 +323,7 @@ describe.each(CASE_TOOL_FIXTURES)(
       }
     });
 
-    it('rejects a caseId that is not the active case, without calling PaxCommands', async () => {
+    it('rejects a caseId that is not the active case, without calling SiftCommands', async () => {
       const commandMock = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
       const { adapter } = await setUpWithActiveCase('case-1', {
         [commandMethod]: commandMock,
@@ -337,7 +337,7 @@ describe.each(CASE_TOOL_FIXTURES)(
       expect(commandMock).not.toHaveBeenCalled();
     });
 
-    it('returns VALIDATION and never calls PaxCommands for malformed input', async () => {
+    it('returns VALIDATION and never calls SiftCommands for malformed input', async () => {
       const commandMock = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
       const { adapter } = await setUpWithActiveCase('case-1', {
         [commandMethod]: commandMock,
@@ -358,7 +358,7 @@ describe.each(CASE_TOOL_FIXTURES)(
   },
 );
 
-describe('pax_upsert_option: optionId-dependent ui.focusTarget', () => {
+describe('sift_upsert_option: optionId-dependent ui.focusTarget', () => {
   it('omits ui.focusTarget when optionId is not given (creating a brand-new option)', async () => {
     const receipt = buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 5 });
     const commandMock = vi.fn().mockResolvedValue(receipt);
@@ -375,7 +375,7 @@ describe('pax_upsert_option: optionId-dependent ui.focusTarget', () => {
         ],
       },
     };
-    const result = await invokeTool(adapter, 'pax_upsert_option', input);
+    const result = await invokeTool(adapter, 'sift_upsert_option', input);
 
     expect(result.ok).toBe(true);
     expect(result.ui.changed).toBe(true);
@@ -384,11 +384,11 @@ describe('pax_upsert_option: optionId-dependent ui.focusTarget', () => {
   });
 });
 
-describe('error envelope mapping (shared plumbing exercised through pax_select_pack)', () => {
+describe('error envelope mapping (shared plumbing exercised through sift_select_pack)', () => {
   it('maps a POLICY rejection to an honest, unsuccessful envelope', async () => {
     const { adapter } = await setUpWithActiveCase('case-1', {
       selectPack: vi.fn().mockRejectedValue(
-        new PaxClientError('Case already has evidence and cannot be reinterpreted.', {
+        new SiftClientError('Case already has evidence and cannot be reinterpreted.', {
           status: 409,
           code: 'POLICY',
           retryable: false,
@@ -396,7 +396,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
       ),
     });
 
-    const result = await invokeTool(adapter, 'pax_select_pack', {
+    const result = await invokeTool(adapter, 'sift_select_pack', {
       caseId: 'case-1',
       packId: 'home-energy-guardian',
       expectedSequence: 1,
@@ -410,7 +410,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
   it('maps a CONFLICT rejection and surfaces the latest sequence when the error carries one', async () => {
     const { adapter } = await setUpWithActiveCase('case-1', {
       selectPack: vi.fn().mockRejectedValue(
-        new PaxClientError('Stale expectedSequence.', {
+        new SiftClientError('Stale expectedSequence.', {
           status: 409,
           code: 'CONFLICT',
           retryable: true,
@@ -419,7 +419,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
       ),
     });
 
-    const result = await invokeTool(adapter, 'pax_select_pack', {
+    const result = await invokeTool(adapter, 'sift_select_pack', {
       caseId: 'case-1',
       packId: 'home-energy-guardian',
       expectedSequence: 1,
@@ -433,7 +433,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
   it('maps a NOT_FOUND rejection honestly', async () => {
     const { adapter } = await setUpWithActiveCase('case-1', {
       selectPack: vi.fn().mockRejectedValue(
-        new PaxClientError('Pack not found.', {
+        new SiftClientError('Pack not found.', {
           status: 404,
           code: 'NOT_FOUND',
           retryable: false,
@@ -441,7 +441,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
       ),
     });
 
-    const result = await invokeTool(adapter, 'pax_select_pack', {
+    const result = await invokeTool(adapter, 'sift_select_pack', {
       caseId: 'case-1',
       packId: 'not-a-real-pack',
       expectedSequence: 1,
@@ -450,17 +450,17 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
     expect(result.error).toEqual({ code: 'NOT_FOUND', retryable: false });
   });
 
-  it('maps a PaxClientError that carries no code (the documented pax-client.ts parsing gap for an as-yet-unparsed error shape) to INTERNAL rather than an undefined code', async () => {
+  it('maps a SiftClientError that carries no code (the documented sift-client.ts parsing gap for an as-yet-unparsed error shape) to INTERNAL rather than an undefined code', async () => {
     const { adapter } = await setUpWithActiveCase('case-1', {
       selectPack: vi.fn().mockRejectedValue(
-        new PaxClientError('Something went wrong.', {
+        new SiftClientError('Something went wrong.', {
           status: 500,
           retryable: false,
         }),
       ),
     });
 
-    const result = await invokeTool(adapter, 'pax_select_pack', {
+    const result = await invokeTool(adapter, 'sift_select_pack', {
       caseId: 'case-1',
       packId: 'car-purchase',
       expectedSequence: 1,
@@ -476,7 +476,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
       selectPack: vi.fn().mockRejectedValue(new Error('unexpected server error')),
     });
 
-    const result = await invokeTool(adapter, 'pax_select_pack', {
+    const result = await invokeTool(adapter, 'sift_select_pack', {
       caseId: 'case-1',
       packId: 'car-purchase',
       expectedSequence: 1,
@@ -486,7 +486,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
     expect(result.error).toEqual({ code: 'INTERNAL', retryable: false });
   });
 
-  it('maps a pre-aborted call to UNAVAILABLE/retryable:true without ever calling PaxCommands', async () => {
+  it('maps a pre-aborted call to UNAVAILABLE/retryable:true without ever calling SiftCommands', async () => {
     const commandMock = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
     const { adapter } = await setUpWithActiveCase('case-1', { selectPack: commandMock });
 
@@ -495,7 +495,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
 
     const result = await invokeTool(
       adapter,
-      'pax_select_pack',
+      'sift_select_pack',
       { caseId: 'case-1', packId: 'car-purchase', expectedSequence: 1 },
       { signal: controller.signal },
     );
@@ -517,7 +517,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
     const controller = new AbortController();
     const resultPromise = invokeTool(
       adapter,
-      'pax_select_pack',
+      'sift_select_pack',
       { caseId: 'case-1', packId: 'car-purchase', expectedSequence: 1 },
       { signal: controller.signal },
     );
@@ -546,7 +546,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
     const controller = new AbortController();
     const result = await invokeTool(
       adapter,
-      'pax_select_pack',
+      'sift_select_pack',
       { caseId: 'case-1', packId: 'car-purchase', expectedSequence: 1 },
       { signal: controller.signal },
     );
@@ -564,7 +564,7 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
         .mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1', snapshot })),
     });
 
-    const result = await invokeTool(adapter, 'pax_select_pack', {
+    const result = await invokeTool(adapter, 'sift_select_pack', {
       caseId: 'case-1',
       packId: 'car-purchase',
       expectedSequence: 1,
@@ -575,17 +575,17 @@ describe('error envelope mapping (shared plumbing exercised through pax_select_p
   });
 });
 
-describe('pax_get_case_context', () => {
+describe('sift_get_case_context', () => {
   it('reports no active case honestly when none exists, without inventing data', async () => {
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => null,
       listPacks: () => [],
     });
 
-    const result = await invokeTool(adapter, 'pax_get_case_context', {});
+    const result = await invokeTool(adapter, 'sift_get_case_context', {});
 
     expect(result).toEqual({
       ok: true,
@@ -602,9 +602,9 @@ describe('pax_get_case_context', () => {
       eventSequence: 42,
     });
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => caseState,
       listPacks: () => [],
     });
@@ -614,7 +614,7 @@ describe('pax_get_case_context', () => {
       pack: { id: string; version: string; compiledHash: string };
       selectedEvidenceId: string | null;
       selectedOptionId: string | null;
-    }>(adapter, 'pax_get_case_context', {});
+    }>(adapter, 'sift_get_case_context', {});
 
     expect(result.ok).toBe(true);
     expect(result.caseId).toBe('case-1');
@@ -639,16 +639,16 @@ describe('pax_get_case_context', () => {
       ],
     });
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => caseState,
       listPacks: () => [],
     });
 
     const result = await invokeTool<{ readiness: Record<string, number> }>(
       adapter,
-      'pax_get_case_context',
+      'sift_get_case_context',
       {},
     );
 
@@ -672,16 +672,16 @@ describe('pax_get_case_context', () => {
       },
     });
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => caseState,
       listPacks: () => [],
     });
 
     const result = await invokeTool<{ pendingHumanAction: unknown }>(
       adapter,
-      'pax_get_case_context',
+      'sift_get_case_context',
       {},
     );
 
@@ -691,12 +691,12 @@ describe('pax_get_case_context', () => {
     });
   });
 
-  it('reflects a selection made through pax_focus_evidence once the caller applies the resulting state (state sync itself is a later task)', async () => {
+  it('reflects a selection made through sift_focus_evidence once the caller applies the resulting state (state sync itself is a later task)', async () => {
     let caseState = buildFixtureCaseState({ selectedEvidenceId: null });
     const adapter = new InMemoryModelContextAdapter();
-    const handle = await registerPaxTools({
+    const handle = await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands({
+      commands: createFakeSiftCommands({
         focusEvidence: vi.fn().mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1' })),
       }),
       getActiveCase: () => caseState,
@@ -704,14 +704,14 @@ describe('pax_get_case_context', () => {
     });
     await handle.setActiveCase('case-1');
 
-    const focusResult = await invokeTool(adapter, 'pax_focus_evidence', {
+    const focusResult = await invokeTool(adapter, 'sift_focus_evidence', {
       caseId: 'case-1',
       evidenceId: 'ev-2',
       expectedSequence: 1,
     });
     expect(focusResult.ok).toBe(true);
 
-    // This registration layer calls PaxCommands and reports an honest
+    // This registration layer calls SiftCommands and reports an honest
     // envelope; it does not itself own live case-state sync (a later
     // event-stream task's responsibility). The test applies the resulting
     // change the way a real SSE-driven cache would, then confirms the read
@@ -720,7 +720,7 @@ describe('pax_get_case_context', () => {
 
     const contextResult = await invokeTool<{ selectedEvidenceId: string | null }>(
       adapter,
-      'pax_get_case_context',
+      'sift_get_case_context',
       {},
     );
     expect(contextResult.data?.selectedEvidenceId).toBe('ev-2');
@@ -736,16 +736,16 @@ describe('pax_get_case_context', () => {
       },
     });
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => caseState,
       listPacks: () => [],
     });
 
     const result = await invokeTool<{ activeRun: { runId: string } | null }>(
       adapter,
-      'pax_get_case_context',
+      'sift_get_case_context',
       {},
     );
 
@@ -761,16 +761,16 @@ describe('pax_get_case_context', () => {
       },
     });
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => caseState,
       listPacks: () => [],
     });
 
     const result = await invokeTool<{ activeRun: { runId: string } | null }>(
       adapter,
-      'pax_get_case_context',
+      'sift_get_case_context',
       {},
     );
 
@@ -780,32 +780,32 @@ describe('pax_get_case_context', () => {
   it('returns VALIDATION for a non-empty input without reading case state', async () => {
     const getActiveCase = vi.fn().mockReturnValue(null);
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase,
       listPacks: () => [],
     });
 
-    const result = await invokeTool(adapter, 'pax_get_case_context', { unexpected: true });
+    const result = await invokeTool(adapter, 'sift_get_case_context', { unexpected: true });
 
     expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
     expect(getActiveCase).not.toHaveBeenCalled();
   });
 });
 
-describe('pax_list_packs', () => {
+describe('sift_list_packs', () => {
   it('projects installed packs to description, version, hash, and activation signals', async () => {
     const pack = buildFixtureCompiledPack();
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => null,
       listPacks: () => [pack],
     });
 
-    const result = await invokeTool(adapter, 'pax_list_packs', {});
+    const result = await invokeTool(adapter, 'sift_list_packs', {});
 
     expect(result.ok).toBe(true);
     expect(result.data).toEqual([
@@ -823,14 +823,14 @@ describe('pax_list_packs', () => {
   it('supports an async listPacks accessor', async () => {
     const pack = buildFixtureCompiledPack();
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => null,
       listPacks: () => Promise.resolve([pack]),
     });
 
-    const result = await invokeTool<unknown[]>(adapter, 'pax_list_packs', {});
+    const result = await invokeTool<unknown[]>(adapter, 'sift_list_packs', {});
 
     expect(result.data).toHaveLength(1);
   });
@@ -838,14 +838,14 @@ describe('pax_list_packs', () => {
   it('returns VALIDATION and never calls listPacks for malformed input (ListPacksInputSchema is `.strict().object({})`, so any field at all is rejected)', async () => {
     const listPacks = vi.fn().mockReturnValue([]);
     const adapter = new InMemoryModelContextAdapter();
-    await registerPaxTools({
+    await registerSiftTools({
       adapter,
-      commands: createFakePaxCommands(),
+      commands: createFakeSiftCommands(),
       getActiveCase: () => null,
       listPacks,
     });
 
-    const result = await invokeTool(adapter, 'pax_list_packs', { thisFieldDoesNotExist: true });
+    const result = await invokeTool(adapter, 'sift_list_packs', { thisFieldDoesNotExist: true });
 
     expect(result.ok).toBe(false);
     expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
@@ -855,11 +855,11 @@ describe('pax_list_packs', () => {
 
 describe('callback-vs-envelope equivalence', () => {
   // A true visible-control-equivalence test (rendering a real UI control and
-  // asserting it dispatches the identical PaxCommands call) is explicitly
+  // asserting it dispatches the identical SiftCommands call) is explicitly
   // out of scope for this pass: no visible control calls these commands yet
   // (a later integration task wires that, per this task's brief). This
   // test instead proves the in-scope half: calling a command directly
-  // through the shared `PaxCommands` client and calling the same command
+  // through the shared `SiftCommands` client and calling the same command
   // through its WebMCP tool produce envelopes built from the exact same
   // `CommandReceipt` -- there is no second, divergent path.
   it('builds the tool envelope from the same CommandReceipt fields the shared client returns', async () => {
@@ -869,7 +869,7 @@ describe('callback-vs-envelope equivalence', () => {
     const input = { caseId: 'case-1', packId: 'car-purchase', expectedSequence: 1 };
 
     const directReceipt = await commands.selectPack(input);
-    const toolResult = await invokeTool(adapter, 'pax_select_pack', input);
+    const toolResult = await invokeTool(adapter, 'sift_select_pack', input);
 
     expect(toolResult.commandId).toBe(directReceipt.commandId);
     expect(toolResult.caseId).toBe(directReceipt.caseId);
@@ -886,8 +886,8 @@ describe('no tool can approve or reject a decision proposal', () => {
     for (const fixture of CASE_TOOL_FIXTURES) {
       await invokeTool(adapter, fixture.toolName, fixture.buildInput('case-1'));
     }
-    await invokeTool(adapter, 'pax_get_case_context', {});
-    await invokeTool(adapter, 'pax_list_packs', {});
+    await invokeTool(adapter, 'sift_get_case_context', {});
+    await invokeTool(adapter, 'sift_list_packs', {});
 
     expect(commands.reviewProposal).not.toHaveBeenCalled();
     expect(reviewProposal).not.toHaveBeenCalled();

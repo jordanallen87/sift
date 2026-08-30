@@ -54,7 +54,7 @@ import type {
   RoutingCandidate,
   RoutingDecision,
   RoutingInput,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import { RoutingRejectionError } from './errors.js';
 
 /**

@@ -36,8 +36,8 @@
  *
  * `InterventionEvent` (the `type`/`handler`/`runId`/`obligationId`/`stage`/
  * `subject`/`reason`/`timestamp` shape) is defined here, verbatim from
- * strands-runtime.md's "Interventions and steering" section: it is Pax's
- * own normalized intervention record, not a `@pax/contracts` schema (that
+ * strands-runtime.md's "Interventions and steering" section: it is Sift's
+ * own normalized intervention record, not a `@sift/contracts` schema (that
  * package is complete and read-only for this task) and not a Strands SDK
  * type. `event-normalizer.ts` imports it from here to build the
  * corresponding `RuntimeDebugEvent`.
@@ -52,7 +52,7 @@ import {
   type JSONValue,
   type Message,
 } from '@strands-agents/sdk';
-import type { Clock } from '@pax/core';
+import type { Clock } from '@sift/core';
 
 // --- InterventionEvent (strands-runtime.md "Interventions and steering", verbatim) ---
 

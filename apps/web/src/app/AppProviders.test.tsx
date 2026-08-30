@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, renderHook, screen } from '@testing-library/react';
-import { AppProviders, useApiConfig, usePaxCommands, useWebMcpAdapter } from './AppProviders.js';
-import { createFakePaxCommands } from '../test/fake-pax-commands.js';
+import { AppProviders, useApiConfig, useSiftCommands, useWebMcpAdapter } from './AppProviders.js';
+import { createFakeSiftCommands } from '../test/fake-sift-commands.js';
 import {
   BrowserModelContextAdapter,
   InMemoryModelContextAdapter,
@@ -18,8 +18,8 @@ describe('AppProviders', () => {
     expect(screen.getByText('child content')).toBeInTheDocument();
   });
 
-  it('provides a default PaxCommands client to descendants when no override is given', () => {
-    const { result } = renderHook(() => usePaxCommands(), {
+  it('provides a default SiftCommands client to descendants when no override is given', () => {
+    const { result } = renderHook(() => useSiftCommands(), {
       wrapper: ({ children }) => <AppProviders>{children}</AppProviders>,
     });
 
@@ -27,10 +27,10 @@ describe('AppProviders', () => {
     expect(typeof result.current.requestInvestigation).toBe('function');
   });
 
-  it('lets a test inject a fake PaxCommands client that descendants receive by identity', () => {
-    const fakeClient = createFakePaxCommands();
+  it('lets a test inject a fake SiftCommands client that descendants receive by identity', () => {
+    const fakeClient = createFakeSiftCommands();
 
-    const { result } = renderHook(() => usePaxCommands(), {
+    const { result } = renderHook(() => useSiftCommands(), {
       wrapper: ({ children }) => (
         <AppProviders commandsClient={fakeClient}>{children}</AppProviders>
       ),
@@ -39,10 +39,10 @@ describe('AppProviders', () => {
     expect(result.current).toBe(fakeClient);
   });
 
-  it('throws a clear error when usePaxCommands is called outside AppProviders', () => {
+  it('throws a clear error when useSiftCommands is called outside AppProviders', () => {
     const { result } = renderHook(() => {
       try {
-        return { error: null, value: usePaxCommands() };
+        return { error: null, value: useSiftCommands() };
       } catch (error) {
         return { error, value: null };
       }
@@ -60,7 +60,7 @@ describe('AppProviders', () => {
   });
 
   it('lets a test inject caseEventsConfig overrides that descendants receive by identity', () => {
-    const config = { baseUrl: 'http://pax.test' };
+    const config = { baseUrl: 'http://sift.test' };
     const { result } = renderHook(() => useApiConfig(), {
       wrapper: ({ children }) => <AppProviders caseEventsConfig={config}>{children}</AppProviders>,
     });

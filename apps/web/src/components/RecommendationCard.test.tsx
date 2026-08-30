@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { axe } from 'jest-axe';
-import type { Recommendation, Source } from '@pax/contracts';
+import type { Recommendation, Source } from '@sift/contracts';
 import { RecommendationCard } from './RecommendationCard.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
@@ -59,7 +59,7 @@ describe('RecommendationCard', () => {
       'This answer is plausible, but 3 required questions are still unresolved.',
     );
     expect(withheld).toHaveTextContent(
-      'Pax is continuing the investigation before asking you to decide.',
+      'Sift is continuing the investigation before asking you to decide.',
     );
   });
 

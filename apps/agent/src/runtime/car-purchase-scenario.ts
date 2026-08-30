@@ -5,7 +5,7 @@
  * (`car-purchase-graph.js`) through the entire required demo trajectory
  * (docs/specs/demos-and-submission.md "Choose Our Next Car scenario" ->
  * "Required sequence"), accumulating a `ScenarioTrajectory`
- * (`@pax/scenarios`) the scenario test checks every required assertion
+ * (`@sift/scenarios`) the scenario test checks every required assertion
  * against.
  *
  * This is the "minimal version this scenario needs" of a scenario runner
@@ -33,14 +33,14 @@
  *
  * 1. No `CaseEvent` ever creates the first pending `DecisionProposal` (only
  *    `proposal.reviewed` *reviews* an existing one). Fixed by adding
- *    `proposal.proposed` to `@pax/contracts`'s `CaseEvent` union and folding
+ *    `proposal.proposed` to `@sift/contracts`'s `CaseEvent` union and folding
  *    it in `packages/core`'s `applyCaseEvent`, exactly like
  *    `recommendation.ready` folds a `Recommendation` -- see `events.ts`'s
  *    own comment on that schema for the full reasoning.
  * 2. `defineCaseAttribute`/`updateCriteria` do not derive the case
  *    obligation pack-authoring.md's "userConcern template" describes (a
  *    documented, deliberately deferred gap in `command-service.ts`'s own
- *    header comment). This engine derives it directly via `@pax/core`'s
+ *    header comment). This engine derives it directly via `@sift/core`'s
  *    `deriveObligations` with a synthesized `case_extension`-origin
  *    `ObligationTemplate`, then appends the resulting `obligation.updated`
  *    event itself -- `command-service.ts` is not modified.
@@ -68,13 +68,13 @@ import {
   type CaseExtensionObligationTemplate,
   type Clock,
   type IdGenerator,
-} from '@pax/core';
+} from '@sift/core';
 import {
   createCapabilityCatalog,
   compileCarPurchasePack,
   CAR_PURCHASE_MANIFEST,
   PackRegistry,
-} from '@pax/packs';
+} from '@sift/packs';
 import type {
   CaseEvent,
   CaseState,
@@ -85,12 +85,12 @@ import type {
   ExecutionResult,
   ObligationTemplate,
   Source,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import {
   buildCarPurchaseSeedEvents,
   emptyScenarioTrajectory,
   type ScenarioTrajectory,
-} from '@pax/scenarios';
+} from '@sift/scenarios';
 import { CommandService } from '../services/command-service.js';
 import { InMemoryActivityStore, type ActivityStore } from '../store/activity-store.js';
 import type { CaseStore } from '../store/case-store.js';
@@ -165,7 +165,7 @@ export function publisherFor(sourceId: string): string {
   if (sourceId.startsWith('source-listing-'))
     return 'Example vehicle listing aggregator (fictional)';
   if (sourceId.startsWith('source-dealer-offer-')) return 'Dealer written offer (fictional)';
-  if (sourceId.startsWith('source-ownership-calculator-')) return 'Pax ownership cost calculator';
+  if (sourceId.startsWith('source-ownership-calculator-')) return 'Sift ownership cost calculator';
   if (sourceId.startsWith('source-household-fit-'))
     return 'Manufacturer specification sheet (fictional)';
   return 'Fixture source (fictional)';
@@ -179,7 +179,7 @@ export function publisherFor(sourceId: string): string {
  * fixture-mode sources are pre-vetted for this demo (CLAUDE.md's "fixture
  * mode must execute the complete product" posture), which also makes E1-\>E2
  * evidence synthesis (`achievedEvidenceLevel`'s "one authoritative source"
- * rule, `@pax/core` `evidence.ts`) deterministic and independent of whether
+ * rule, `@sift/core` `evidence.ts`) deterministic and independent of whether
  * two sources happen to share a publisher (a dealer's own listing and its
  * own written offer genuinely are not independent sources in the "two
  * independent sources" sense, even though they are two distinct documents).
@@ -271,7 +271,7 @@ export interface FoldOptions {
  * recomputes and (if changed) appends the obligation's new status via
  * `obligation.updated` -- mirroring strands-runtime.md's engine loop
  * ("validate structured result; append evidence and activity events;
- * recompute readiness") using the real `@pax/core` functions that own each
+ * recompute readiness") using the real `@sift/core` functions that own each
  * rule.
  */
 export function foldExecutionResult(
@@ -767,7 +767,7 @@ export async function runCarPurchaseScenario(
   trajectory.humanActions.push({ action: 'focus_option:candidate-rav4' });
   snapshot = focusResult.value.snapshot ?? snapshot;
 
-  // --- 6. WebMCP: pax_get_case_context (read-only; selection already matches) then pax_request_investigation ---
+  // --- 6. WebMCP: sift_get_case_context (read-only; selection already matches) then sift_request_investigation ---
   const contextSnapshot = caseStore.load(caseId);
   if (contextSnapshot?.selectedOptionId !== 'candidate-rav4') {
     throw new Error('car-purchase-scenario: WebMCP case context does not match the page selection');
@@ -784,7 +784,7 @@ export async function runCarPurchaseScenario(
   }
   trajectory.humanActions.push({ action: 'request_investigation:car.deal_normalization' });
 
-  // --- 8. "Driving comfort matters more than fuel economy" -> pax_update_criteria ---
+  // --- 8. "Driving comfort matters more than fuel economy" -> sift_update_criteria ---
   const beforeComfort = snapshot.eventSequence;
   const comfortResult = commandService.updateCriteria(deps.idGenerator.next('cmd'), {
     caseId,
@@ -803,7 +803,7 @@ export async function runCarPurchaseScenario(
   captureNewEvents(caseStore, caseId, beforeComfort, trajectory);
   snapshot = comfortResult.value.snapshot;
 
-  // --- 9. Two dog crates -> pax_define_case_attribute + pax_update_criteria ---
+  // --- 9. Two dog crates -> sift_define_case_attribute + sift_update_criteria ---
   const beforeDefine = snapshot.eventSequence;
   const defineResult = commandService.defineCaseAttribute(
     deps.idGenerator.next('cmd'),
@@ -1151,7 +1151,7 @@ export async function runCarPurchaseScenario(
   trajectory.caseEvents.push(recommendation2Event);
   snapshot = rec2Append.snapshot;
 
-  // --- 12/13. Pax proposes advancing candidate-crv + candidate-outback; only a human may approve ---
+  // --- 12/13. Sift proposes advancing candidate-crv + candidate-outback; only a human may approve ---
   const proposalId = deps.idGenerator.next('proposal');
   const proposalEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),

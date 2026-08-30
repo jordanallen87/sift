@@ -18,7 +18,7 @@ describe('HelpButton', () => {
     await user.click(screen.getByTestId('help-button'));
 
     const sheet = await screen.findByTestId('help-sheet');
-    expect(within(sheet).getByText('How Pax works')).toBeInTheDocument();
+    expect(within(sheet).getByText('How Sift works')).toBeInTheDocument();
     expect(within(sheet).getByText(/Compare vehicles/)).toBeInTheDocument();
     expect(within(sheet).getByText(/Request investigation/)).toBeInTheDocument();
     expect(within(sheet).getByText(/Inspect run/)).toBeInTheDocument();

@@ -462,7 +462,7 @@ describe('loadFixture (disk I/O + caching)', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'pax-fixture-loader-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'sift-fixture-loader-'));
   });
 
   afterEach(() => {

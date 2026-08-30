@@ -15,7 +15,7 @@
 import { expect, test } from '@playwright/test';
 import { installConsoleGuard } from './helpers/console-guard.js';
 import { disableAnimations } from './helpers/layout-assertions.js';
-import { PaxPage } from './pages/pax-page.js';
+import { SiftPage } from './pages/sift-page.js';
 
 test.describe('reload persistence', () => {
   test('a mid-case reload restores case state from the server, not local state', async ({
@@ -23,13 +23,13 @@ test.describe('reload persistence', () => {
   }) => {
     await disableAnimations(page);
     const guard = installConsoleGuard(page);
-    const pax = new PaxPage(page);
+    const sift = new SiftPage(page);
 
-    await pax.open();
-    const { caseId } = await pax.launchCarPurchase();
-    const round1 = await pax.requestInvestigation();
-    await pax.waitForInvestigationCompleted(round1.runId);
-    await pax.waitForRecommendationReady();
+    await sift.open();
+    const { caseId } = await sift.launchCarPurchase();
+    const round1 = await sift.requestInvestigation();
+    await sift.waitForInvestigationCompleted(round1.runId);
+    await sift.waitForRecommendationReady();
 
     const titleBefore = await page.getByTestId('case-header-title').textContent();
     const badgeBefore = await page.getByTestId('case-header-pack-badge').textContent();
@@ -65,9 +65,9 @@ test.describe('reload persistence', () => {
 
     // The activity backlog also came back from the server (not just the
     // canonical snapshot) -- the poll-fallback/initial-load endpoint
-    // returns both together. "Pax's work so far" is a closed-by-default
+    // returns both together. "Sift's work so far" is a closed-by-default
     // disclosure row (ADR 0002), so it's opened before this check.
-    await pax.openDisclosure('work-so-far');
+    await sift.openDisclosure('work-so-far');
     await expect(page.getByTestId('activity-timeline-list')).toBeVisible();
     const activityItemCount = await page
       .getByTestId('activity-timeline-list')
@@ -93,16 +93,16 @@ test.describe('reload persistence', () => {
       (url, status) => url.includes('/api/cases/case-does-not-exist') && status === 404,
     );
 
-    const pax = new PaxPage(page);
-    await pax.open();
+    const sift = new SiftPage(page);
+    await sift.open();
 
     await page.evaluate(() => {
-      localStorage.setItem('pax:activeCaseId', 'case-does-not-exist');
+      localStorage.setItem('sift:activeCaseId', 'case-does-not-exist');
     });
     await page.reload();
 
     await expect(page.getByTestId('demo-launcher')).toBeVisible({ timeout: 15_000 });
-    const stored = await page.evaluate(() => localStorage.getItem('pax:activeCaseId'));
+    const stored = await page.evaluate(() => localStorage.getItem('sift:activeCaseId'));
     expect(stored).toBeNull();
 
     guard.assertClean();

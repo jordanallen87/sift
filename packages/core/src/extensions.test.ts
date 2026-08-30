@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import type { CaseAttributeDefinition, CaseExtension } from '@pax/contracts';
+import type { CaseAttributeDefinition, CaseExtension } from '@sift/contracts';
 import {
   createCaseAttributeDefinition,
   createCaseExtension,

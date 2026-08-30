@@ -1,6 +1,6 @@
 /**
  * Human confirm/reject review of one agent-proposed `CaseExtension`
- * (`packages/contracts/src/extensions.ts`). webmcp.md `pax_define_case_attribute`:
+ * (`packages/contracts/src/extensions.ts`). webmcp.md `sift_define_case_attribute`:
  * "an extension autonomously proposed by a runtime agent uses an internal
  * proposal event and remains pending until the user confirms it through the
  * visible UI" -- this card *is* that visible UI. `packages/core/src/
@@ -9,15 +9,15 @@
  * authority": "Agent-proposed case extensions remain explicitly unconfirmed
  * until a human accepts them").
  *
- * Calls `commands.reviewCaseExtension` on the shared `PaxCommands` instance
+ * Calls `commands.reviewCaseExtension` on the shared `SiftCommands` instance
  * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation"). There is no separate agent-side confirmation path --
  * `docs/specs/architecture.md`'s human-only authority boundary applies here
  * exactly as it does to `ApprovalCard.tsx`'s proposal review.
  */
 import { useState } from 'react';
-import type { CaseExtension } from '@pax/contracts';
-import { usePaxCommands } from '../app/AppProviders.js';
+import type { CaseExtension } from '@sift/contracts';
+import { useSiftCommands } from '../app/AppProviders.js';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -42,7 +42,7 @@ export function CaseExtensionReviewCard({
   expectedSequence,
   extension,
 }: CaseExtensionReviewCardProps) {
-  const commands = usePaxCommands();
+  const commands = useSiftCommands();
   const [note, setNote] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);

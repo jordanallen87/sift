@@ -1,6 +1,6 @@
 /**
  * The declarative `DemoScenario` for "Choose Our Next Car"
- * (docs/specs/testing.md "Scenario tests", `@pax/contracts` `scenario.ts`).
+ * (docs/specs/testing.md "Scenario tests", `@sift/contracts` `scenario.ts`).
  *
  * `steps` documents the human/WebMCP-facing command sequence
  * (docs/specs/demos-and-submission.md "Required sequence") in the
@@ -16,7 +16,7 @@
  * arbitrary pack is explicit, later follow-up work.
  *
  * `assertions` is what the scenario test actively checks (via
- * `@pax/scenarios`'s `checkAssertions`) against the real trajectory
+ * `@sift/scenarios`'s `checkAssertions`) against the real trajectory
  * `runCarPurchaseScenario` produces. Every kind here uses a stable,
  * predictable id (a specialist id, a pack-declared obligation id, a fixed
  * candidate id, ...) rather than a counter-generated one; a small number of
@@ -50,7 +50,7 @@ export const CAR_PURCHASE_DEMO_SCENARIO: DemoScenario = {
     {
       command: 'requestInvestigation',
       input: { caseId: 'case-1', obligationId: 'car.deal_normalization', expectedSequence: 0 },
-      description: 'ChatGPT calls pax_get_case_context, then requests focused deal investigation.',
+      description: 'ChatGPT calls sift_get_case_context, then requests focused deal investigation.',
     },
     {
       command: 'updateCriteria',
@@ -80,7 +80,7 @@ export const CAR_PURCHASE_DEMO_SCENARIO: DemoScenario = {
             'The household needs two dog travel crates to fit behind the second row without folding either seat.',
         },
       },
-      description: 'ChatGPT calls pax_define_case_attribute for the two-dog-crate requirement.',
+      description: 'ChatGPT calls sift_define_case_attribute for the two-dog-crate requirement.',
     },
     {
       command: 'reviewCaseExtension',
@@ -106,7 +106,7 @@ export const CAR_PURCHASE_DEMO_SCENARIO: DemoScenario = {
           },
         ],
       },
-      description: 'ChatGPT calls pax_update_criteria to add the new dog-crate criterion.',
+      description: 'ChatGPT calls sift_update_criteria to add the new dog-crate criterion.',
     },
     {
       command: 'reviewProposal',

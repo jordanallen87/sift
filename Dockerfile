@@ -1,6 +1,6 @@
-# Pax production image (docs/specs/architecture.md "Deployment": one
-# Railway service serves both the built @pax/web static bundle and the
-# @pax/agent API/Strands runtime from a single origin on port 8080).
+# Sift production image (docs/specs/architecture.md "Deployment": one
+# Railway service serves both the built @sift/web static bundle and the
+# @sift/agent API/Strands runtime from a single origin on port 8080).
 #
 # Single-stage, not multi-stage: `better-sqlite3` is a native addon compiled
 # against this image's own glibc/Node ABI at `pnpm install` time, and
@@ -48,7 +48,7 @@ COPY . .
 
 # Builds the static bundle `apps/agent/src/app.ts`'s `express.static` serves
 # from `apps/web/dist` (resolved relative to that source file at runtime).
-RUN pnpm --filter @pax/web build
+RUN pnpm --filter @sift/web build
 
 RUN chmod +x docker-entrypoint.sh
 
@@ -82,4 +82,4 @@ ENTRYPOINT ["./docker-entrypoint.sh"]
 # Migrations run automatically and idempotently at every boot
 # (`server.ts`'s own header comment: "safe on every boot, including every
 # Railway restart/redeploy") -- no separate migration step in this image.
-CMD ["pnpm", "--filter", "@pax/agent", "start"]
+CMD ["pnpm", "--filter", "@sift/agent", "start"]

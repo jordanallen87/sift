@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { CaseExtension } from '@pax/contracts';
+import type { CaseExtension } from '@sift/contracts';
 import { CaseExtensionReviewCard } from './CaseExtensionReviewCard.js';
 import { AppProviders } from '../app/AppProviders.js';
-import { createFakePaxCommands, buildFakeCommandReceipt } from '../test/fake-pax-commands.js';
+import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-sift-commands.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
 function buildExtension(overrides: Partial<CaseExtension> = {}): CaseExtension {
@@ -34,9 +34,9 @@ function buildExtension(overrides: Partial<CaseExtension> = {}): CaseExtension {
 
 function renderCard(
   props: Partial<React.ComponentProps<typeof CaseExtensionReviewCard>> = {},
-  commandsOverrides: Parameters<typeof createFakePaxCommands>[0] = {},
+  commandsOverrides: Parameters<typeof createFakeSiftCommands>[0] = {},
 ) {
-  const commands = createFakePaxCommands(commandsOverrides);
+  const commands = createFakeSiftCommands(commandsOverrides);
   const utils = render(
     <AppProviders commandsClient={commands}>
       <CaseExtensionReviewCard
@@ -207,7 +207,7 @@ describe('CaseExtensionReviewCard', () => {
   });
 
   it('renders at 390px width with no fixed-width overflow risk', () => {
-    const commands = createFakePaxCommands();
+    const commands = createFakeSiftCommands();
     const { overflowRisks } = renderAtNarrowWidth(
       <AppProviders commandsClient={commands}>
         <CaseExtensionReviewCard

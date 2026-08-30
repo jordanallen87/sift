@@ -64,14 +64,14 @@
  *    evidenceResults, limitations, suggestedStatus -- the exact
  *    `ExecutionResult` vocabulary) through the handoff schema's
  *    `context: Record<string, unknown>` field instead, matching
- *    strands-runtime.md verbatim: "Pax's evidence delta, obligation ID, and
+ *    strands-runtime.md verbatim: "Sift's evidence delta, obligation ID, and
  *    limitations travel inside the serialized JSON `context` field of that
  *    handoff schema; the event normalizer reads `context` to emit
  *    `swarm.handoff` with `from`, `to`, `reason`, and `evidenceDelta`."
  *    `extractHandoffContext` below parses that `context` value against the
  *    real, already-validated `ExecutionResultSchema` (read-only import from
- *    `@pax/contracts`) even though the Swarm itself never enforces that
- *    shape -- Pax's own event normalizer is what holds specialists to the
+ *    `@sift/contracts`) even though the Swarm itself never enforces that
+ *    shape -- Sift's own event normalizer is what holds specialists to the
  *    spec's evidence vocabulary.
  *
  * 2. **`decision-synthesizer`'s `GoalLoop` validator must read a tool-call
@@ -97,7 +97,7 @@
  *    declared id are identical (`car-purchase.ts` follows the same
  *    identical-id convention for `ownership-calculator`, etc). Since
  *    `ScopeAuthorization` and tool-name filtering are driven entirely by
- *    the *compiled pack's* declared tool id (strands-runtime.md: "Pax
+ *    the *compiled pack's* declared tool id (strands-runtime.md: "Sift
  *    intersects: compiled-pack-declared tools ∩ specialist-declared tools
  *    ∩ server registry tools ∩ current policy allowance"), this Strands
  *    `tool()` wrapper is named `'calculator'` (the pack's id), not
@@ -162,14 +162,14 @@ import {
   type MultiAgentResult,
 } from '@strands-agents/sdk/multiagent';
 import type { Validator } from '@strands-agents/sdk/vended-plugins/goal';
-import type { Clock, IdGenerator } from '@pax/core';
+import type { Clock, IdGenerator } from '@sift/core';
 import {
   ExecutionResultSchema,
   type CompiledDecisionPack,
   type ExecutionRequest,
   type ExecutionResult,
   type RuntimeDebugEvent,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import {
   BILL_READER_TOOL_ID,
   HOUSEHOLD_EVENT_LOOKUP_TOOL_ID,
@@ -182,7 +182,7 @@ import {
   lookupWeather,
   queryUsageHistory,
   readCurrentBill,
-} from '@pax/scenarios';
+} from '@sift/scenarios';
 import {
   BudgetGuard,
   ConsequenceGuard,
@@ -448,7 +448,7 @@ export interface HomeEnergySwarmResult {
   /** The `propose_inspection` tool call `decision-synthesizer` made, captured from its `beforeToolCall` hook -- undefined if it never called the tool. */
   readonly proposedInspection: { optionId: string; rationale: string } | undefined;
   readonly goalLoopResult: HomeEnergySwarmGoalLoopResult | undefined;
-  /** `true` when the Swarm's own hard repetitive-handoff safety net tripped (strands-runtime.md: "returns a `FAILED` multi-agent result when tripped; it does not redirect gracefully"). Should never be `true` in the deterministic demo trajectory -- Pax's own `RetrySteering` must trip first. */
+  /** `true` when the Swarm's own hard repetitive-handoff safety net tripped (strands-runtime.md: "returns a `FAILED` multi-agent result when tripped; it does not redirect gracefully"). Should never be `true` in the deterministic demo trajectory -- Sift's own `RetrySteering` must trip first. */
   readonly repetitiveHandoffDetected: boolean;
 }
 
@@ -727,7 +727,7 @@ function buildSystemPrompt(
   roleDescription: string,
 ): string {
   return [
-    `You are "${nodeId}", a Pax Strands specialist in the "${request.pack.id}@${request.pack.version}" Swarm. ${roleDescription}`,
+    `You are "${nodeId}", a Sift Strands specialist in the "${request.pack.id}@${request.pack.version}" Swarm. ${roleDescription}`,
     `Active obligation: "${request.obligation.id}" -- ${request.obligation.question}`,
     'Use only the tools made available to you. Cite a source id for every claim.',
     'When you have gathered enough evidence for this obligation, call the structured output tool. Set agentId to the specialist who should investigate next (omit it only if you are ending the run), a message describing what you found and why that specialist should go next, and a context object carrying obligationId, disposition, claims, evidenceResults, limitations, and suggestedStatus.',

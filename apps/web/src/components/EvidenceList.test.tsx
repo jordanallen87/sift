@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { EvidenceLink } from '@pax/contracts';
+import type { EvidenceLink } from '@sift/contracts';
 import { EvidenceList } from './EvidenceList.js';
 import type { EvidenceItemData } from './EvidenceCard.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';

@@ -14,9 +14,9 @@
  * non-removable criterion per that section's "Extensions" bullet.
  */
 import { describe, expect, it } from 'vitest';
-import type { Clock } from '@pax/core';
-import { removeCriterion, reweightCriterion } from '@pax/core';
-import type { EvidenceLevel } from '@pax/contracts';
+import type { Clock } from '@sift/core';
+import { removeCriterion, reweightCriterion } from '@sift/core';
+import type { EvidenceLevel } from '@sift/contracts';
 import {
   HOME_ENERGY_GUARDIAN_MANIFEST,
   compileHomeEnergyGuardianPack,
@@ -331,7 +331,7 @@ describe('orchestration (strands-runtime.md "Energy Swarm")', () => {
     expect(orchestration.nodeTimeoutMs).toBeLessThanOrEqual(orchestration.totalTimeoutMs);
   });
 
-  it("configures the repetitive-handoff window wider than Pax's own three-call RetrySteering threshold", () => {
+  it("configures the repetitive-handoff window wider than Sift's own three-call RetrySteering threshold", () => {
     const { orchestration } = HOME_ENERGY_GUARDIAN_MANIFEST;
     expect(orchestration.repetitiveHandoffDetectionWindow).toBeGreaterThan(3);
   });

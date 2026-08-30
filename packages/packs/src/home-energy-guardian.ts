@@ -43,8 +43,8 @@
  */
 import type { CapabilityCatalog } from './capability-catalog.js';
 import { compilePack } from './compiler.js';
-import type { Clock } from '@pax/core';
-import type { CompiledDecisionPack, DecisionPackManifest } from '@pax/contracts';
+import type { Clock } from '@sift/core';
+import type { CompiledDecisionPack, DecisionPackManifest } from '@sift/contracts';
 
 export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
   schemaVersion: '1.0',
@@ -982,8 +982,8 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
   //
   // `repetitiveHandoffDetectionWindow: 8`/`repetitiveHandoffMinUniqueAgents: 3`:
   // strands-runtime.md "Energy Swarm" requires these to be "wider than
-  // Pax's three-call [`RetrySteering` no-progress] threshold ... so it
-  // functions only as an outer safety net" -- Pax's own soft steering must
+  // Sift's three-call [`RetrySteering` no-progress] threshold ... so it
+  // functions only as an outer safety net" -- Sift's own soft steering must
   // trip strictly before the Swarm's own hard `FAILED`-result repetitive-
   // handoff detection would. `8`/`3` satisfy that (`8 > 3`, and requiring
   // only 3 of the 6 available specialists to appear across an 8-handoff

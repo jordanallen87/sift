@@ -13,7 +13,7 @@ import {
 let draftRoot: string;
 
 beforeEach(() => {
-  draftRoot = mkdtempSync(join(tmpdir(), 'pax-authoring-scaffold-'));
+  draftRoot = mkdtempSync(join(tmpdir(), 'sift-authoring-scaffold-'));
 });
 
 afterEach(() => {

@@ -21,7 +21,7 @@ describe('startServer', () => {
   });
 
   it('runs migrations, then listens and actually serves GET /health over a real socket', async () => {
-    dataDir = mkdtempSync(join(tmpdir(), 'pax-server-test-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'sift-server-test-'));
     started = await startServer({ port: 0, dataDir });
 
     const address = started.server.address();
@@ -38,7 +38,7 @@ describe('startServer', () => {
   });
 
   it('is safe to run twice against the same data directory (idempotent migrations on every boot)', async () => {
-    dataDir = mkdtempSync(join(tmpdir(), 'pax-server-test-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'sift-server-test-'));
     const first = await startServer({ port: 0, dataDir });
     await new Promise<void>((resolve) => first.server.close(() => resolve()));
     first.database.close();
@@ -49,20 +49,20 @@ describe('startServer', () => {
   });
 
   it('falls back to config.dataDir and to a PORT read from the environment when neither StartServerOptions field is given (every other test above always passes both explicitly)', async () => {
-    dataDir = mkdtempSync(join(tmpdir(), 'pax-server-test-'));
-    const previousDataDir = process.env['PAX_DATA_DIR'];
+    dataDir = mkdtempSync(join(tmpdir(), 'sift-server-test-'));
+    const previousDataDir = process.env['SIFT_DATA_DIR'];
     const previousPort = process.env['PORT'];
     // PORT=0 (not omitted) so this still binds a real ephemeral OS-assigned
     // port -- a fixed, non-zero PORT would risk colliding with another
     // process's own listener (this repo runs several agents' vitest suites
     // concurrently right now).
-    process.env['PAX_DATA_DIR'] = dataDir;
+    process.env['SIFT_DATA_DIR'] = dataDir;
     process.env['PORT'] = '0';
     try {
       started = await startServer({});
     } finally {
-      if (previousDataDir === undefined) delete process.env['PAX_DATA_DIR'];
-      else process.env['PAX_DATA_DIR'] = previousDataDir;
+      if (previousDataDir === undefined) delete process.env['SIFT_DATA_DIR'];
+      else process.env['SIFT_DATA_DIR'] = previousDataDir;
       if (previousPort === undefined) delete process.env['PORT'];
       else process.env['PORT'] = previousPort;
     }
@@ -85,14 +85,14 @@ describe('startServer', () => {
   // not merely theoretical, risk).
 
   it("runs the real CLI entrypoint (isMain() true) when invoked directly as the main module via tsx, logging its bound port -- startServer() alone (every test above) never exercises server.ts's own top-level `if (isMain())` block", async () => {
-    const dataDirForCli = mkdtempSync(join(tmpdir(), 'pax-server-cli-test-'));
+    const dataDirForCli = mkdtempSync(join(tmpdir(), 'sift-server-cli-test-'));
     const repoRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), '../../..');
     const tsxBin = join(repoRoot, 'node_modules', '.bin', 'tsx');
     const serverEntry = join(repoRoot, 'apps', 'agent', 'src', 'server.ts');
 
     const child = spawn(tsxBin, [serverEntry], {
       cwd: join(repoRoot, 'apps', 'agent'),
-      env: { ...process.env, PORT: '0', PAX_DATA_DIR: dataDirForCli },
+      env: { ...process.env, PORT: '0', SIFT_DATA_DIR: dataDirForCli },
     });
 
     let stdout = '';
@@ -114,7 +114,7 @@ describe('startServer', () => {
           );
         }, 15_000);
         child.stdout?.on('data', () => {
-          if (/\[pax\] agent listening on port \d+/.test(stdout)) {
+          if (/\[sift\] agent listening on port \d+/.test(stdout)) {
             clearTimeout(timer);
             resolveWait();
           }
@@ -130,7 +130,7 @@ describe('startServer', () => {
       });
 
       expect(stdout).toMatch(
-        /\[pax\] agent listening on port \d+ \(executionTarget=local, dataDir=.*, migrationsApplied=\d+, migrationsAlreadyApplied=\d+\)/,
+        /\[sift\] agent listening on port \d+ \(executionTarget=local, dataDir=.*, migrationsApplied=\d+, migrationsAlreadyApplied=\d+\)/,
       );
     } finally {
       child.kill('SIGTERM');

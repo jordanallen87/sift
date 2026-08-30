@@ -13,8 +13,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Agent, JsonBlock, TextBlock, type ToolResultBlock } from '@strands-agents/sdk';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PackRegistry } from '@pax/packs';
-import { validCatalog, validManifest } from '@pax/packs/src/fixtures/manifest.js';
+import { PackRegistry } from '@sift/packs';
+import { validCatalog, validManifest } from '@sift/packs/src/fixtures/manifest.js';
 import { ScriptedModelProvider } from '../runtime/model-provider.js';
 import type { AuthoringToolContext } from './index.js';
 import { buildInstalledCapabilityCatalog } from './catalog.js';
@@ -33,7 +33,7 @@ let registry: PackRegistry;
 let ctx: AuthoringToolContext;
 
 beforeEach(() => {
-  draftRoot = mkdtempSync(join(tmpdir(), 'pax-authoring-agent-'));
+  draftRoot = mkdtempSync(join(tmpdir(), 'sift-authoring-agent-'));
   registry = new PackRegistry();
   ctx = {
     draftRoot,
@@ -65,7 +65,7 @@ function toolResultTexts(agent: Agent): string[] {
     });
 }
 
-describe('PAX_AUTHORING_ENABLED gating', () => {
+describe('SIFT_AUTHORING_ENABLED gating', () => {
   it('refuses to construct the agent at all when authoring is disabled (the default)', () => {
     expect(() =>
       buildPackAuthoringAgent({

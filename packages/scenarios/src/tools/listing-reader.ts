@@ -29,7 +29,7 @@
  * gap explicitly, so a downstream Strands adapter and the UI both see the
  * conflict rather than a silently normalized number.
  */
-import type { EvidenceLevel } from '@pax/contracts';
+import type { EvidenceLevel } from '@sift/contracts';
 import { loadFixture, type CandidateListing, type DealerOffer } from './fixture-loader.js';
 import {
   cancelledResult,

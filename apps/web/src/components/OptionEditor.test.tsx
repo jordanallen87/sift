@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { AttributeDefinition, EntityRecord } from '@pax/contracts';
+import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
 import { OptionEditor } from './OptionEditor.js';
 import { AppProviders } from '../app/AppProviders.js';
-import { createFakePaxCommands, buildFakeCommandReceipt } from '../test/fake-pax-commands.js';
+import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-sift-commands.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
 const ATTRIBUTE_DEFINITIONS: AttributeDefinition[] = [
@@ -56,9 +56,9 @@ function buildEntity(overrides: Partial<EntityRecord> = {}): EntityRecord {
 
 function renderEditor(
   overrides: Partial<React.ComponentProps<typeof OptionEditor>> = {},
-  commandsOverrides: Parameters<typeof createFakePaxCommands>[0] = {},
+  commandsOverrides: Parameters<typeof createFakeSiftCommands>[0] = {},
 ) {
-  const commands = createFakePaxCommands(commandsOverrides);
+  const commands = createFakeSiftCommands(commandsOverrides);
   const utils = render(
     <AppProviders commandsClient={commands}>
       <OptionEditor
@@ -95,7 +95,7 @@ describe('OptionEditor', () => {
     expect(screen.getByTestId('dynamic-attribute-field-mileage')).toBeInTheDocument();
   });
 
-  it('saves a new option by calling upsertOption on the shared PaxCommands client', async () => {
+  it('saves a new option by calling upsertOption on the shared SiftCommands client', async () => {
     const receipt = buildFakeCommandReceipt({ caseId: 'case-1' });
     const user = userEvent.setup();
     const { commands } = renderEditor({}, { upsertOption: vi.fn().mockResolvedValue(receipt) });
@@ -260,7 +260,7 @@ describe('OptionEditor', () => {
   });
 
   it('renders at 390px width with no fixed-width overflow risk', () => {
-    const commands = createFakePaxCommands();
+    const commands = createFakeSiftCommands();
     const { overflowRisks } = renderAtNarrowWidth(
       <AppProviders commandsClient={commands}>
         <OptionEditor

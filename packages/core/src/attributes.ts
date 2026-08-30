@@ -4,7 +4,7 @@
  * docs/specs/pack-authoring.md "Typed core with extensible domain data" and
  * docs/specs/packs-and-routing.md "Flexible attributes and criteria".
  *
- * `@pax/contracts` already enforces the `AttributeRecord` asserted/unknown
+ * `@sift/contracts` already enforces the `AttributeRecord` asserted/unknown
  * cross-field rule and every `AttributeValue` variant's shape at the schema
  * boundary. This module adds the *domain-logic* behavior built on top of
  * those schemas: normalizing an untyped raw value against a declared
@@ -27,7 +27,7 @@ import {
   type AttributeStatus,
   type AttributeValue,
   type AttributeValueType,
-} from '@pax/contracts';
+} from '@sift/contracts';
 
 // --- Shared injected ports ---
 //

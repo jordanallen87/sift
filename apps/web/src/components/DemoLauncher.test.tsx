@@ -4,11 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { DemoLauncher } from './DemoLauncher.js';
 import { AppProviders } from '../app/AppProviders.js';
-import { createFakePaxCommands, buildFakeCommandReceipt } from '../test/fake-pax-commands.js';
+import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-sift-commands.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
-function renderLauncher(overrides: Parameters<typeof createFakePaxCommands>[0] = {}, props = {}) {
-  const commands = createFakePaxCommands(overrides);
+function renderLauncher(overrides: Parameters<typeof createFakeSiftCommands>[0] = {}, props = {}) {
+  const commands = createFakeSiftCommands(overrides);
   const utils = render(
     <AppProviders commandsClient={commands}>
       <DemoLauncher {...props} />
@@ -135,7 +135,7 @@ describe('DemoLauncher', () => {
   });
 
   it('renders at 390px width with no fixed-width overflow risk', () => {
-    const commands = createFakePaxCommands();
+    const commands = createFakeSiftCommands();
     const { overflowRisks } = renderAtNarrowWidth(
       <AppProviders commandsClient={commands}>
         <DemoLauncher />

@@ -3,7 +3,7 @@
  * `Idempotency-Key` header convention (`commandId`, per
  * `services/command-service.ts`'s header comment) and translating a
  * `services/service-result.ts` `ServiceResult` into the real HTTP error
- * envelope from `@pax/contracts/src/http.ts`
+ * envelope from `@sift/contracts/src/http.ts`
  * (`HttpErrorBodySchema`/`HttpConflictResponseSchema`).
  *
  * Status code mapping (docs/specs/architecture.md "Command and event flow":
@@ -26,7 +26,7 @@ import {
   HttpConflictResponseSchema,
   HttpErrorBodySchema,
   type JsonValue,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import type { ServiceResult } from '../services/service-result.js';
 
 const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';

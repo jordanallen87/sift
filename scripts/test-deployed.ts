@@ -4,7 +4,7 @@
  * opt-in, real-network check against a live Railway deployment. Never part
  * of `pnpm verify`/`pnpm verify:release` (both must run without network
  * access) -- this is additive release evidence, run manually or in a
- * deploy-time CI step, against `PAX_DEPLOYED_URL`.
+ * deploy-time CI step, against `SIFT_DEPLOYED_URL`.
  *
  * testing.md's exact required behavior: "It creates a fixture case, records
  * its case/run IDs, confirms inspector availability, triggers a Railway
@@ -35,14 +35,14 @@ const results: CheckResult[] = [];
 function record(name: string, status: CheckResult['status'], detail: string): void {
   results.push({ name, status, detail });
   const marker = status === 'pass' ? 'PASS' : status === 'fail' ? 'FAIL' : 'SKIP';
-  console.log(`[pax] test:deployed [${marker}] ${name} — ${detail}`);
+  console.log(`[sift] test:deployed [${marker}] ${name} — ${detail}`);
 }
 
 async function main(): Promise<void> {
-  const baseUrl = process.env['PAX_DEPLOYED_URL'];
+  const baseUrl = process.env['SIFT_DEPLOYED_URL'];
   if (baseUrl === undefined || baseUrl.trim() === '') {
     console.error(
-      '[pax] test:deployed: PAX_DEPLOYED_URL is not set. This is an opt-in check against a ' +
+      '[sift] test:deployed: SIFT_DEPLOYED_URL is not set. This is an opt-in check against a ' +
         'real, already-deployed instance (docs/specs/testing.md) -- set it to the deployed ' +
         'origin (e.g. https://pax-hackathon-production.up.railway.app) and rerun.',
     );
@@ -151,7 +151,7 @@ async function main(): Promise<void> {
   // --- CORS from the public web origin (same-origin deployment: a
   // cross-origin preflight against a foreign Origin should NOT be allowed,
   // since architecture.md's "Deployment" makes the browser app and API
-  // same-origin by design and PAX_PUBLIC_ORIGIN is unset in this
+  // same-origin by design and SIFT_PUBLIC_ORIGIN is unset in this
   // deployment -- proving that is the honest CORS check here). ---
   const corsProbe = await fetch(`${url}/health`, {
     headers: { Origin: 'https://an-unrelated-origin.example' },
@@ -169,7 +169,7 @@ async function main(): Promise<void> {
 
   // --- AgentCore /ping and /invocations (routes/agentcore.ts) --- the
   // routes themselves are always real and live regardless of
-  // PAX_EXECUTION_TARGET (that flag only decides whether Strands execution
+  // SIFT_EXECUTION_TARGET (that flag only decides whether Strands execution
   // is proxied to a deployed Bedrock AgentCore runtime, per config.ts and
   // strands-runtime.md's "Models and configuration"; the HTTP transport is
   // real either way). testing.md's test:deployed spec wants "one AgentCore
@@ -269,7 +269,7 @@ async function main(): Promise<void> {
         ? 'FAIL'
         : 'SKIP';
   console.log(
-    `[pax] test:deployed [${marker}] ${redeployOutcome.name} — ${redeployOutcome.detail}`,
+    `[sift] test:deployed [${marker}] ${redeployOutcome.name} — ${redeployOutcome.detail}`,
   );
 
   printSummaryAndExit();
@@ -392,7 +392,7 @@ function printSummaryAndExit(): void {
   const passed = results.filter((r) => r.status === 'pass');
   const skipped = results.filter((r) => r.status === 'skip');
   console.log(
-    `\n[pax] test:deployed: ${failed.length === 0 ? 'PASSED' : 'FAILED'} ` +
+    `\n[sift] test:deployed: ${failed.length === 0 ? 'PASSED' : 'FAILED'} ` +
       `(${passed.length} passed, ${skipped.length} skipped, ${failed.length} failed)`,
   );
   process.exit(failed.length === 0 ? 0 : 1);

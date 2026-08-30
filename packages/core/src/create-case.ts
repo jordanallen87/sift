@@ -12,7 +12,7 @@
  * payload only carries the case's *pack pin*, not the full compiled pack, so
  * it cannot derive any of the above from the event alone.
  *
- * Inferred: `title` is not part of `ScenarioSeedSchema` (`@pax/contracts`
+ * Inferred: `title` is not part of `ScenarioSeedSchema` (`@sift/contracts`
  * `scenario.ts`: `{ demoId, fixtureBundleId, clockIso }` only) and
  * architecture.md's `instantiateCase(pack, seed): CaseState` signature takes
  * no separate title argument. Grounded in `pack.identity.name` (e.g. "Choose
@@ -28,7 +28,7 @@
  * parameter rather than silently hardcoded to `{ selectedBy: 'user', reasons:
  * [] }`, which would be factually wrong for every router-selected case.
  */
-import type { CaseState, CompiledDecisionPack } from '@pax/contracts';
+import type { CaseState, CompiledDecisionPack } from '@sift/contracts';
 import { deriveObligations } from './obligations.js';
 import type { Clock, IdGenerator } from './ports.js';
 

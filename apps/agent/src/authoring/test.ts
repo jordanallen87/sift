@@ -1,7 +1,7 @@
 /**
  * `pack_test`: "run deterministic conformance and scenario tests"
  * (docs/specs/pack-authoring.md). A thin, bounded wrapper around the real,
- * already-built `runPackConformance` (`@pax/packs`) plus a structural check
+ * already-built `runPackConformance` (`@sift/packs`) plus a structural check
  * that every `evaluation.scenarioIds` entry has a matching, well-formed
  * `scenarios/<scenario-id>.json` file on disk covering the four required
  * outcome kinds (`scenario-coverage.ts`).
@@ -23,8 +23,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { Clock } from '@pax/core';
-import { runPackConformance, type CapabilityCatalog, type PackConformanceReport } from '@pax/packs';
+import type { Clock } from '@sift/core';
+import {
+  runPackConformance,
+  type CapabilityCatalog,
+  type PackConformanceReport,
+} from '@sift/packs';
 import { draftDirFor } from './scaffold.js';
 import {
   AuthoringScenarioFileSchema,

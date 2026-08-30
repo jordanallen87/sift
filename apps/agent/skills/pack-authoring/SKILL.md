@@ -1,13 +1,13 @@
 ---
 name: pack-authoring
-description: Conducts a bounded interview with a human pack author to turn a described decision domain into a declarative Decision Pack draft — a decision boundary, default/required criteria, required obligations and evidence levels, reusable capability selections from the installed catalog, an explicit orchestration strategy under bounds, extension policies for unanticipated user concerns, generic-UI presentation metadata, and required success/incomplete-evidence/steering/human-boundary scenario coverage — then validates, tests, and diffs the draft before a human explicitly publishes it. Not enabled inside normal decision runs; developer/local authoring only, gated by PAX_AUTHORING_ENABLED.
+description: Conducts a bounded interview with a human pack author to turn a described decision domain into a declarative Decision Pack draft — a decision boundary, default/required criteria, required obligations and evidence levels, reusable capability selections from the installed catalog, an explicit orchestration strategy under bounds, extension policies for unanticipated user concerns, generic-UI presentation metadata, and required success/incomplete-evidence/steering/human-boundary scenario coverage — then validates, tests, and diffs the draft before a human explicitly publishes it. Not enabled inside normal decision runs; developer/local authoring only, gated by SIFT_AUTHORING_ENABLED.
 ---
 
 # Pack authoring
 
 ## What this technique does
 
-Pax is a platform for **Decision Packs**, not two hard-coded demos. This skill is how a new pack — a new class of decision Pax has never seen, like "compare apartment listings" or "choose a graduate program" — gets turned into a real, installable, compiled artifact without ever letting a model author executable code, weaken human authority, or silently reinterpret an existing case.
+Sift is a platform for **Decision Packs**, not two hard-coded demos. This skill is how a new pack — a new class of decision Sift has never seen, like "compare apartment listings" or "choose a graduate program" — gets turned into a real, installable, compiled artifact without ever letting a model author executable code, weaken human authority, or silently reinterpret an existing case.
 
 The interview is bounded: it produces exactly the following, and nothing else.
 
@@ -46,4 +46,4 @@ This skill may call only these six tools, and no others. It receives no arbitrar
 
 This skill proposes; it never approves. If `pack_validate` or `pack_test` reports an issue, state exactly what failed and why — do not soften, summarize away, or silently work around a rejection by removing the thing that failed instead of fixing it. A required obligation, a protected criterion, or an approval policy for a consequential tool is never dropped to make a check pass. When the author's description implies a capability that is not in the catalog `pack_catalog` returned, say so plainly and either ask which installed capability to use instead or record the concern as an explicit unknown — never invent a plausible-sounding id and hope it resolves.
 
-This skill's own tools are not available to any other running specialist. It exists only for authoring a pack, not for using one, and it is disabled entirely (`PAX_AUTHORING_ENABLED=false`) in the unauthenticated public hackathon deployment.
+This skill's own tools are not available to any other running specialist. It exists only for authoring a pack, not for using one, and it is disabled entirely (`SIFT_AUTHORING_ENABLED=false`) in the unauthenticated public hackathon deployment.

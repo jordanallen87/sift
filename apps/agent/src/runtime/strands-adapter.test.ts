@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Clock, IdGenerator } from '@pax/core';
-import type { ExecutionRequest, ExecutionResult } from '@pax/contracts';
+import type { Clock, IdGenerator } from '@sift/core';
+import type { ExecutionRequest, ExecutionResult } from '@sift/contracts';
 import { ScriptedModelProvider } from './model-provider.js';
 import { buildLocalSessionManager } from './session-adapter.js';
 import {
@@ -31,7 +31,7 @@ afterEach(() => {
   }
 });
 function tempDataDir(): string {
-  dir = mkdtempSync(join(tmpdir(), 'pax-strands-adapter-test-'));
+  dir = mkdtempSync(join(tmpdir(), 'sift-strands-adapter-test-'));
   return dir;
 }
 

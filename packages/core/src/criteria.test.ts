@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import type { Criterion } from '@pax/contracts';
+import type { Criterion } from '@sift/contracts';
 import {
   addCriterion,
   criterionNeedsEvidenceQuestion,

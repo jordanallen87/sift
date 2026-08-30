@@ -1,14 +1,14 @@
 /**
  * `checkAssertion`/`checkAssertions`: evaluates every `ScenarioAssertion`
- * kind (`@pax/contracts` `scenario.ts`, docs/specs/testing.md "Scenario
+ * kind (`@sift/contracts` `scenario.ts`, docs/specs/testing.md "Scenario
  * tests") against an observed `ScenarioTrajectory` (`trajectory.ts`) plus
  * its `finalCaseState`.
  *
  * Pure and apps-agnostic -- see `trajectory.ts`'s header for why this file
  * never imports `@strands-agents/sdk` or an `apps/agent` module.
  */
-import { evaluateReadiness } from '@pax/core';
-import type { ScenarioAssertion } from '@pax/contracts';
+import { evaluateReadiness } from '@sift/core';
+import type { ScenarioAssertion } from '@sift/contracts';
 import type { ScenarioTrajectory } from './trajectory.js';
 
 export interface AssertionCheckResult {

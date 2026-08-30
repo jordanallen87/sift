@@ -7,9 +7,9 @@
  * integration test consumes it.
  */
 import { describe, expect, it } from 'vitest';
-import { ExecutionResultSchema } from '@pax/contracts';
+import { ExecutionResultSchema } from '@sift/contracts';
 import { CAR_PURCHASE_GRAPH_NODE_IDS } from '../car-purchase-graph.js';
-import { CAR_PURCHASE_CANDIDATE_IDS } from '@pax/scenarios';
+import { CAR_PURCHASE_CANDIDATE_IDS } from '@sift/scenarios';
 import {
   buildCarPurchaseScriptedProviders,
   CAR_PURCHASE_SCRIPTED_EXECUTION_RESULTS,

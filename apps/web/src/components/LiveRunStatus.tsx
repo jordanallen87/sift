@@ -17,7 +17,7 @@
  * has an established `runId` on its own events).
  */
 import { getActivityLabel, STATUS_TONE_META } from './activity-labels.js';
-import type { PublicActivityEvent, PublicActivityPhase } from '@pax/contracts';
+import type { PublicActivityEvent, PublicActivityPhase } from '@sift/contracts';
 import { Badge } from '@/components/ui/badge';
 
 export interface LiveRunStatusReceipt {

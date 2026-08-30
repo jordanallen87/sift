@@ -3,7 +3,7 @@
  * iterator (docs/specs/testing.md "Scenario tests").
  *
  * Deliberately minimal, per this task's brief: a full generic runner would
- * also resolve each `ScenarioStep.command` against a real `PaxCommands`
+ * also resolve each `ScenarioStep.command` against a real `SiftCommands`
  * implementation, thread `expectedSequence` between steps, and manage
  * fixture-tool/model lifecycle per pack -- none of that is generic across
  * Decision Packs yet (only `car-purchase` has a real Strands adapter/Graph
@@ -22,7 +22,7 @@
  * (one non-car-purchase-specific engine driving arbitrary packs) is
  * documented, explicit follow-up work, not built here.
  */
-import type { ScenarioStep } from '@pax/contracts';
+import type { ScenarioStep } from '@sift/contracts';
 
 export interface ScenarioCommandExecutor {
   /** Executes one `ScenarioStep`, in order. */

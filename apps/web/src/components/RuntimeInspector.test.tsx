@@ -4,11 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import type { RuntimeDebugEvent } from '@pax/contracts';
+import type { RuntimeDebugEvent } from '@sift/contracts';
 import { RuntimeInspector } from './RuntimeInspector.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
-const BASE_URL = 'http://pax.test';
+const BASE_URL = 'http://sift.test';
 const RUN_ID = 'run-1';
 
 const server = setupServer();

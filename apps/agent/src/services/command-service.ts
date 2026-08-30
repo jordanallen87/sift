@@ -1,5 +1,5 @@
 /**
- * `CommandService`: one method per `PaxCommands` verb except
+ * `CommandService`: one method per `SiftCommands` verb except
  * `requestInvestigation` (docs/specs/architecture.md "Shared command
  * client"; `run-service.ts` owns `requestInvestigation` -- see that file's
  * header comment for why it is a genuinely separate concern, not merely a
@@ -7,16 +7,16 @@
  *
  * Every method follows the same shape (docs/specs/architecture.md "Command
  * and event flow"):
- *  1. validate the raw input against its real `@pax/contracts` Zod schema;
+ *  1. validate the raw input against its real `@sift/contracts` Zod schema;
  *  2. load the case and check `expectedSequence` (optimistic concurrency);
- *  3. derive the resulting `CaseEvent`(s) using the appropriate `@pax/core`
+ *  3. derive the resulting `CaseEvent`(s) using the appropriate `@sift/core`
  *     pure function;
  *  4. call `CaseStore.append()` with idempotency-key deduplication;
  *  5. derive and append the matching `PublicActivityEvent`(s);
  *  6. return a `CommandReceipt`-shaped `ServiceResult`.
  *
  * `commandId` (the idempotency key) is a caller-supplied parameter, not a
- * field on any `@pax/contracts` `*Input` schema -- none of them carry one
+ * field on any `@sift/contracts` `*Input` schema -- none of them carry one
  * (confirmed: `apps/agent/src/db/schema.ts`'s own header comment reaches the
  * same conclusion for the DB layer: "the client-generated `commandId` *is*
  * the idempotency key ... that is the only identifier the contracts
@@ -24,7 +24,7 @@
  * `Idempotency-Key` header, a well-established REST convention, rather than
  * this module inventing an ad hoc envelope schema.
  *
- * --- Real, confirmed gaps in the current `@pax/contracts` `CaseEvent`
+ * --- Real, confirmed gaps in the current `@sift/contracts` `CaseEvent`
  * taxonomy this module works around, all documented in depth in
  * `store/case-store.ts` (`AppendOptions.seedSnapshot`, `SelectionPatch`) ---
  *
@@ -38,7 +38,7 @@
  *
  *  - `updateCriteria`/`defineCaseAttribute` do not derive a case obligation
  *    for a newly-added user concern needing an evidence question
- *    (`criterionNeedsEvidenceQuestion` in `@pax/core`'s `criteria.ts` is a
+ *    (`criterionNeedsEvidenceQuestion` in `@sift/core`'s `criteria.ts` is a
  *    pure predicate only; resolving a pack's `extensionPolicy.
  *    userConcernTemplateId` into a concrete `ObligationTemplate` is not
  *    named among this task's explicit deliverables, and
@@ -88,13 +88,13 @@ import {
   type PublicActivityEvent,
   type ReviewProposalInput,
   type Source,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import {
   addCriterion,
   createAttributeRecord,
   defineCaseExtension,
   instantiateCase,
-  isPaxDomainError,
+  isSiftDomainError,
   PolicyViolationError,
   removeCriterion,
   renameCriterion,
@@ -104,8 +104,8 @@ import {
   type Clock,
   type IdGenerator,
   type PackSelection,
-} from '@pax/core';
-import type { PackRegistry } from '@pax/packs';
+} from '@sift/core';
+import type { PackRegistry } from '@sift/packs';
 import type { ActivityStore } from '../store/activity-store.js';
 import type { AppendResult, CaseStore } from '../store/case-store.js';
 import {
@@ -540,7 +540,7 @@ export class CommandService {
     // Rebuilt as a plain object (rather than passing `input.definition`
     // through as-is) because Zod's inferred type for an `.optional()` field
     // is `T | undefined` (the key's *value* may be explicitly `undefined`),
-    // while `CaseAttributeDraft` (`@pax/core`) declares `unit?: string` in
+    // while `CaseAttributeDraft` (`@sift/core`) declares `unit?: string` in
     // the stricter `exactOptionalPropertyTypes` sense (the key must be
     // *omitted*, never present with value `undefined`) -- conditionally
     // spreading each optional field reconciles the two.
@@ -1029,7 +1029,7 @@ export class CommandService {
       if (error instanceof PolicyViolationError) {
         return policyFailure(error.message);
       }
-      if (isPaxDomainError(error)) {
+      if (isSiftDomainError(error)) {
         return validationFailure(error.message);
       }
       throw error;

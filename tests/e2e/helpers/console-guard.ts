@@ -4,7 +4,7 @@
  * verification": "Fail on page exceptions, unexpected console errors,
  * failed API calls, or hydration warnings").
  *
- * On "hydration warnings": `@pax/web` is a plain client-rendered Vite/React
+ * On "hydration warnings": `@sift/web` is a plain client-rendered Vite/React
  * SPA (`apps/web/src/main.tsx` calls `createRoot(...).render(...)`, never
  * `hydrateRoot`) -- there is no server-rendered markup for the client to
  * reconcile against, so there is no hydration step and no distinct

@@ -4,7 +4,7 @@
  * `AttributeDefinition`'s `valueType`. Used by `OptionEditor.tsx` to collect
  * each attribute of a manually-entered option, matching pack-authoring.md's
  * "Typed core with extensible domain data": the same ten-variant
- * `AttributeValue` union the WebMCP `pax_upsert_option` tool accepts is what
+ * `AttributeValue` union the WebMCP `sift_upsert_option` tool accepts is what
  * this field produces, so a value entered through the visible form and one
  * supplied by ChatGPT are structurally identical.
  *
@@ -25,7 +25,7 @@
  * recipe `ui/input.tsx` uses so they read as the same family of control.
  */
 import type { ChangeEvent } from 'react';
-import type { AttributeDefinition, AttributeValue, DurationUnit } from '@pax/contracts';
+import type { AttributeDefinition, AttributeValue, DurationUnit } from '@sift/contracts';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';

@@ -4,7 +4,7 @@
  * questions the project owner flagged as missing after seeing the live
  * product: "where do I start" and "what do I do next."
  *
- * Deliberately NOT a literal checkout-style stepper: Pax investigates on
+ * Deliberately NOT a literal checkout-style stepper: Sift investigates on
  * its own and only truly gates on human approval, so a stage can revert
  * from `done` back to `current` (e.g. new criteria invalidate a ready
  * recommendation) without that being a bug -- the same way a delivery
@@ -23,7 +23,7 @@
  * wrongly report "You're all caught up" on a case nobody had looked into
  * yet -- caught by visually inspecting a regenerated Playwright baseline,
  * not by a unit test (see this task's dated build-log entry). `recommendation
- * === null` is the honest signal for "Pax hasn't produced anything yet."
+ * === null` is the honest signal for "Sift hasn't produced anything yet."
  *
  * `flaggedFindingsCount` intentionally counts only non-passing verdict or
  * staleness (`evidenceLink.verdict !== 'pass' || evidenceLink.stale`), not
@@ -33,7 +33,7 @@
  * counting them here would silently overclaim a signal that never fires
  * in production today. A disclosed, deliberate scope cut, not an oversight.
  */
-import type { DecisionProposal, Recommendation } from '@pax/contracts';
+import type { DecisionProposal, Recommendation } from '@sift/contracts';
 
 export const WORKSPACE_STAGES = ['started', 'investigating', 'pick-ready', 'decided'] as const;
 export type WorkspaceStage = (typeof WORKSPACE_STAGES)[number];
@@ -116,19 +116,19 @@ export function deriveWorkspaceStatus(input: WorkspaceStatusInput): WorkspaceSta
     proposal !== null && proposal.status === 'pending'
       ? {
           tone: 'ready',
-          text: 'Pax has a pick ready. Review it and approve, or send Pax back to look further.',
+          text: 'Sift has a pick ready. Review it and approve, or send Sift back to look further.',
           action: { label: 'Go to Our pick' },
         }
       : flaggedFindingsCount > 0
         ? {
             tone: 'accepted',
-            text: `${flaggedFindingsCount} ${pluralFinding(flaggedFindingsCount)} may need a closer look before Pax can finish.`,
+            text: `${flaggedFindingsCount} ${pluralFinding(flaggedFindingsCount)} may need a closer look before Sift can finish.`,
             action: { label: 'Review findings' },
           }
         : isRunActive
           ? {
               tone: 'active',
-              text: 'Pax is investigating in the background. Nothing needed from you right now.',
+              text: 'Sift is investigating in the background. Nothing needed from you right now.',
             }
           : recommendation === null
             ? {
@@ -138,7 +138,7 @@ export function deriveWorkspaceStatus(input: WorkspaceStatusInput): WorkspaceSta
               }
             : {
                 tone: 'calm',
-                text: "You're all caught up. Pax will let you know if anything changes.",
+                text: "You're all caught up. Sift will let you know if anything changes.",
               };
 
   return { stages, nextStep };

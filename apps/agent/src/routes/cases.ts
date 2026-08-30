@@ -14,7 +14,7 @@
  * see that ADR's "Decision" §3.
  */
 import { Router } from 'express';
-import { CaseStateSchema } from '@pax/contracts';
+import { CaseStateSchema } from '@sift/contracts';
 import type { CommandService } from '../services/command-service.js';
 import type { CaseStore } from '../store/case-store.js';
 import { readCommandId, respondWithServiceResult, sendError } from './http-support.js';

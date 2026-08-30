@@ -1,5 +1,5 @@
 {
-  "_provenance": "Fictional demo data. Fuel prices, insurance figures, and depreciation curves are invented, round-number approximations for the Pax 'Choose Our Next Car' hackathon scenario and are not sourced from any real insurer, retailer, or market report.",
+  "_provenance": "Fictional demo data. Fuel prices, insurance figures, and depreciation curves are invented, round-number approximations for the Sift 'Choose Our Next Car' hackathon scenario and are not sourced from any real insurer, retailer, or market report.",
   "caseId": "case-demo-car-purchase",
   "sharedAssumptions": {
     "note": "These assumptions are held constant across all four candidates so the resulting 5-year ownership estimates are comparable apples-to-apples. They are planning defaults for the ownership-cost calculator, separate from the actual per-candidate dealer financing offers recorded in dealer-offers.json.",

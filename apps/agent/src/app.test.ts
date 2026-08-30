@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { HttpErrorBody } from '@pax/contracts';
-import { PackRegistry } from '@pax/packs';
+import type { HttpErrorBody } from '@sift/contracts';
+import { PackRegistry } from '@sift/packs';
 import { buildApp, type BuildAppDeps } from './app.js';
 import { createTestDatabase, type TestDatabase } from './db/connection.js';
 import { applyMigrations } from './db/migrate.js';
@@ -96,11 +96,11 @@ describe('buildApp', () => {
   it('mounts express.static and serves the built web app when webDistDir exists (the existsSync true branch)', async () => {
     test = createTestDatabase();
     applyMigrations(test.sqlite);
-    const webDistDir = mkdtempSync(join(tmpdir(), 'pax-agent-test-web-dist-'));
+    const webDistDir = mkdtempSync(join(tmpdir(), 'sift-agent-test-web-dist-'));
     try {
       writeFileSync(
         join(webDistDir, 'index.html'),
-        '<html><body>pax web dist marker</body></html>',
+        '<html><body>sift web dist marker</body></html>',
       );
       const app = buildApp({ ...testDeps(test), webDistDir });
 
@@ -108,7 +108,7 @@ describe('buildApp', () => {
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toContain('text/html');
-      expect(response.text).toContain('pax web dist marker');
+      expect(response.text).toContain('sift web dist marker');
     } finally {
       rmSync(webDistDir, { recursive: true, force: true });
     }

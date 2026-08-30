@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { Claim, EvidenceDisposition, EvidenceLink, Source } from '@pax/contracts';
+import type { Claim, EvidenceDisposition, EvidenceLink, Source } from '@sift/contracts';
 import { FindingsSheet } from './FindingsSheet.js';
 import type { EvidenceItemData } from './EvidenceCard.js';
 
@@ -139,13 +139,13 @@ describe('FindingsSheet', () => {
   it('does not render its content when closed', () => {
     render(<FindingsSheet open={false} onOpenChange={vi.fn()} items={buildMixedItems()} />);
     expect(screen.queryByTestId('findings-sheet')).not.toBeInTheDocument();
-    expect(screen.queryByText('What Pax found')).not.toBeInTheDocument();
+    expect(screen.queryByText('What Sift found')).not.toBeInTheDocument();
   });
 
-  it('renders its content, titled "What Pax found", when open', () => {
+  it('renders its content, titled "What Sift found", when open', () => {
     render(<FindingsSheet open onOpenChange={vi.fn()} items={buildMixedItems()} />);
     expect(screen.getByTestId('findings-sheet')).toBeInTheDocument();
-    expect(screen.getByText('What Pax found')).toBeInTheDocument();
+    expect(screen.getByText('What Sift found')).toBeInTheDocument();
   });
 
   it('renders the empty state instead of chips/tabs when there is no evidence yet', () => {

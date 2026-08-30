@@ -31,7 +31,7 @@
  * secondary detail" idea are reused; none of that file's collection-system
  * primitives, entity-detail wiring, or Strata19-specific types are copied.
  */
-import type { JsonValue, PublicActivityEvent } from '@pax/contracts';
+import type { JsonValue, PublicActivityEvent } from '@sift/contracts';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { STATUS_TONE_META, getActivityLabel } from './activity-labels.js';
@@ -155,7 +155,7 @@ export function ActivityTimeline({
       aria-labelledby="activity-timeline-heading"
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
-      <h2 id="activity-timeline-heading">Pax&apos;s work so far</h2>
+      <h2 id="activity-timeline-heading">Sift&apos;s work so far</h2>
 
       {error ? (
         <Alert role="alert" data-testid="activity-timeline-error" variant="destructive">
@@ -180,7 +180,7 @@ export function ActivityTimeline({
             data-testid="activity-timeline-empty"
             className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
           >
-            No case is open yet. Activity will appear here as Pax works.
+            No case is open yet. Activity will appear here as Sift works.
           </p>
         )
       ) : ordered.length === 0 ? (

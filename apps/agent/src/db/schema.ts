@@ -17,7 +17,7 @@
  *
  * `packages/core` (`applyCaseEvent`, `evaluateReadiness`, ...) is a separate,
  * not-yet-landed workstream. This module has no dependency on it — it only
- * needs the stable envelope shapes from `@pax/contracts` for documentation
+ * needs the stable envelope shapes from `@sift/contracts` for documentation
  * comments; the columns themselves are plain SQLite types.
  */
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
@@ -31,7 +31,7 @@ import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqli
 // claims, sources, evidenceLinks, recommendation, proposal, activeFocus,
 // selection ids) is stored as one JSON snapshot blob in `snapshot` — a
 // later command-service task serializes/deserializes it against
-// `CaseStateSchema` from `@pax/contracts` at the read/write boundary.
+// `CaseStateSchema` from `@sift/contracts` at the read/write boundary.
 export const cases = sqliteTable('cases', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
@@ -153,7 +153,7 @@ export const runs = sqliteTable(
 // Judgment call: architecture.md's command flow describes a command as
 // carrying "an idempotency key and client-generated `commandId`"
 // (architecture.md "Command and event flow" step 1), but no schema in
-// `@pax/contracts` (`CommandReceipt`, `RunReceipt`, or any `*Input` schema)
+// `@sift/contracts` (`CommandReceipt`, `RunReceipt`, or any `*Input` schema)
 // has a field separate from `commandId` for this. Modeled as apposition —
 // the client-generated `commandId` *is* the idempotency key — since that is
 // the only identifier the contracts actually carry; a later task that finds

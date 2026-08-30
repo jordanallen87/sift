@@ -7,7 +7,7 @@
  * own bookkeeping table (`__drizzle_migrations` by default, columns
  * `id`/`hash`/`created_at`, created via raw SQL outside of Drizzle's own
  * schema builder) — architecture.md instead names `schema_migrations` as
- * one of the seven *required* Pax tables, which this repo needs to define
+ * one of the seven *required* Sift tables, which this repo needs to define
  * (with its own real, task-controlled columns) in `schema.ts` exactly like
  * every other table. Rather than run two different migration ledgers (a
  * Drizzle-owned one for bookkeeping and a separately-hand-maintained
@@ -29,7 +29,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type Database from 'better-sqlite3';
-import { openDatabase, type PaxDatabase } from './connection.js';
+import { openDatabase, type SiftDatabase } from './connection.js';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 // This file lives at apps/agent/src/db/migrate.ts (or the mirrored
@@ -143,7 +143,7 @@ export interface MigrateOptions {
 }
 
 export interface MigrateOutcome {
-  database: PaxDatabase;
+  database: SiftDatabase;
   result: MigrateResult;
 }
 

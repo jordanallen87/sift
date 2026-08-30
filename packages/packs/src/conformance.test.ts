@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Clock } from '@pax/core';
-import type { CompiledDecisionPack } from '@pax/contracts';
+import type { Clock } from '@sift/core';
+import type { CompiledDecisionPack } from '@sift/contracts';
 import { compilePack } from './compiler.js';
 import { createCapabilityCatalog } from './capability-catalog.js';
 import { PACK_CONFORMANCE_CHECK_IDS, runPackConformance } from './conformance.js';

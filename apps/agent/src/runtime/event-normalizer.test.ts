@@ -66,7 +66,7 @@ describe('hashContent', () => {
   });
 
   it('returns a lowercase 64-character hex SHA-256 digest', () => {
-    expect(hashContent('pax')).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashContent('sift')).toMatch(/^[0-9a-f]{64}$/);
   });
 });
 
@@ -78,7 +78,7 @@ describe('redactValue', () => {
     expect(redactions[0]?.path).toBe('authorization');
   });
 
-  it('does not redact Pax correlation fields such as sessionId', () => {
+  it('does not redact Sift correlation fields such as sessionId', () => {
     const { value, redactions } = redactValue({ sessionId: 'session-abc', caseId: 'case-1' });
     expect(value).toEqual({ sessionId: 'session-abc', caseId: 'case-1' });
     expect(redactions).toHaveLength(0);
@@ -86,7 +86,7 @@ describe('redactValue', () => {
 
   it('redacts a seeded secret canary embedded in a string value regardless of key name', () => {
     const { value, redactions } = redactValue({
-      note: 'the key is PAX_TEST_SECRET_abc123 -- do not log',
+      note: 'the key is SIFT_TEST_SECRET_abc123 -- do not log',
     });
     expect(value).toEqual({ note: 'the key is [REDACTED] -- do not log' });
     expect(redactions.length).toBeGreaterThan(0);

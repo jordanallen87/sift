@@ -1,14 +1,14 @@
 /**
- * The built-in, fully deterministic demonstration answer set `pnpm pax
+ * The built-in, fully deterministic demonstration answer set `pnpm sift
  * pack:author` runs when no `--answers <path>` is given (see `cli.ts`'s
  * module comment for the judgment call this implements). Grounded in the
  * real `apartment-hunt` compiler/conformance fixture manifest
- * (`@pax/packs`'s `src/fixtures/manifest.js`), which is exactly the
+ * (`@sift/packs`'s `src/fixtures/manifest.js`), which is exactly the
  * "compact `apartment-hunt` authoring fixture" pack-authoring.md's
  * "Hackathon proof" section names -- not a separately invented demo pack.
  */
-import { validManifest } from '@pax/packs/src/fixtures/manifest.js';
-import type { DecisionPackManifest } from '@pax/contracts';
+import { validManifest } from '@sift/packs/src/fixtures/manifest.js';
+import type { DecisionPackManifest } from '@sift/contracts';
 import type { AuthoringScenarioFile } from './scenario-coverage.js';
 
 export interface AuthoringAnswers {

@@ -69,14 +69,14 @@ import {
   type MultiAgentResult,
 } from '@strands-agents/sdk/multiagent';
 import type { Validator } from '@strands-agents/sdk/vended-plugins/goal';
-import type { Clock, IdGenerator } from '@pax/core';
+import type { Clock, IdGenerator } from '@sift/core';
 import {
   ExecutionResultSchema,
   type CompiledDecisionPack,
   type ExecutionRequest,
   type ExecutionResult,
   type RuntimeDebugEvent,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import {
   buildCarPurchaseFixtureTools,
   PROPOSE_RECOMMENDATION_TOOL_ID,
@@ -225,7 +225,7 @@ function buildSystemPrompt(
   roleDescription: string,
 ): string {
   return [
-    `You are "${nodeId}", a Pax Strands specialist in the "${request.pack.id}@${request.pack.version}" Graph. ${roleDescription}`,
+    `You are "${nodeId}", a Sift Strands specialist in the "${request.pack.id}@${request.pack.version}" Graph. ${roleDescription}`,
     `Active obligation: "${request.obligation.id}" -- ${request.obligation.question}`,
     'Use only the tools made available to you. Cite a source id for every claim.',
     'When you have gathered enough evidence, call the structured output tool with a complete ExecutionResult.',

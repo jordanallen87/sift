@@ -1,18 +1,18 @@
 /**
- * `PaxCommands` input/output schemas (docs/specs/architecture.md "Shared
+ * `SiftCommands` input/output schemas (docs/specs/architecture.md "Shared
  * command client") and the WebMCP tool input catalog
  * (docs/specs/webmcp.md "Tool catalog").
  *
- * Where a WebMCP tool's input is identical in shape to a `PaxCommands`
- * input, this module defines the `PaxCommands` schema once and exports the
+ * Where a WebMCP tool's input is identical in shape to a `SiftCommands`
+ * input, this module defines the `SiftCommands` schema once and exports the
  * WebMCP tool schema as an alias of it (documented at each alias), instead
  * of duplicating the shape. Two WebMCP tools --
- * `pax_set_evidence_disposition` and `pax_request_revision` -- have no
- * corresponding method in architecture.md's `PaxCommands` interface; their
+ * `sift_set_evidence_disposition` and `sift_request_revision` -- have no
+ * corresponding method in architecture.md's `SiftCommands` interface; their
  * schemas are defined independently, grounded directly in webmcp.md. This is
  * a real gap between architecture.md's interface listing and webmcp.md's
- * tool catalog, not a shape I invented -- resolving *which* `PaxCommands`
- * method (if any) a later task wires `pax_set_evidence_disposition` through
+ * tool catalog, not a shape I invented -- resolving *which* `SiftCommands`
+ * method (if any) a later task wires `sift_set_evidence_disposition` through
  * is an implementation decision for `apps/agent`/`apps/web`, not a contracts
  * concern.
  */
@@ -80,7 +80,7 @@ export const StartCaseInputSchema = z
   .strict();
 export type StartCaseInput = z.infer<typeof StartCaseInputSchema>;
 
-// --- SelectPackInput (webmcp.md `pax_select_pack`) ---
+// --- SelectPackInput (webmcp.md `sift_select_pack`) ---
 
 export const SelectPackInputSchema = z
   .object({
@@ -92,9 +92,9 @@ export const SelectPackInputSchema = z
 export type SelectPackInput = z.infer<typeof SelectPackInputSchema>;
 
 /** Identical shape to `SelectPackInput`; the WebMCP tool and the visible pack picker call the same command. */
-export const PaxSelectPackToolInputSchema = SelectPackInputSchema;
+export const SiftSelectPackToolInputSchema = SelectPackInputSchema;
 
-// --- UpsertOptionInput (webmcp.md `pax_upsert_option`) ---
+// --- UpsertOptionInput (webmcp.md `sift_upsert_option`) ---
 
 const OptionAttributeInputSchema = z
   .object({
@@ -122,9 +122,9 @@ export const UpsertOptionInputSchema = z
 export type UpsertOptionInput = z.infer<typeof UpsertOptionInputSchema>;
 
 /** Identical shape to `UpsertOptionInput`. */
-export const PaxUpsertOptionToolInputSchema = UpsertOptionInputSchema;
+export const SiftUpsertOptionToolInputSchema = UpsertOptionInputSchema;
 
-// --- FocusOptionInput (webmcp.md `pax_focus_option`) ---
+// --- FocusOptionInput (webmcp.md `sift_focus_option`) ---
 
 export const FocusOptionInputSchema = z
   .object({
@@ -136,9 +136,9 @@ export const FocusOptionInputSchema = z
 export type FocusOptionInput = z.infer<typeof FocusOptionInputSchema>;
 
 /** Identical shape to `FocusOptionInput`. */
-export const PaxFocusOptionToolInputSchema = FocusOptionInputSchema;
+export const SiftFocusOptionToolInputSchema = FocusOptionInputSchema;
 
-// --- DefineCaseAttributeInput (webmcp.md `pax_define_case_attribute`) ---
+// --- DefineCaseAttributeInput (webmcp.md `sift_define_case_attribute`) ---
 // Deliberately narrower than `CaseAttributeDefinitionSchema` (attributes.ts):
 // `required`, `sensitive`, `origin`, `confirmation`, `proposedBy`, and
 // `createdAt` are assigned by the command handler, not supplied by the
@@ -168,12 +168,12 @@ export const DefineCaseAttributeInputSchema = z
 export type DefineCaseAttributeInput = z.infer<typeof DefineCaseAttributeInputSchema>;
 
 /** Identical shape to `DefineCaseAttributeInput`. */
-export const PaxDefineCaseAttributeToolInputSchema = DefineCaseAttributeInputSchema;
+export const SiftDefineCaseAttributeToolInputSchema = DefineCaseAttributeInputSchema;
 
 // --- ReviewCaseExtensionInput ---
-// Inferred: named in architecture.md's `PaxCommands` interface with no field
+// Inferred: named in architecture.md's `SiftCommands` interface with no field
 // list. Grounded in extensions.ts's `CaseExtensionReviewDecisionSchema` and
-// webmcp.md's `pax_set_evidence_disposition`/`pax_request_revision` shape
+// webmcp.md's `sift_set_evidence_disposition`/`sift_request_revision` shape
 // convention (id + optional free-text reason + expectedSequence).
 
 export const ReviewCaseExtensionInputSchema = z
@@ -187,7 +187,7 @@ export const ReviewCaseExtensionInputSchema = z
   .strict();
 export type ReviewCaseExtensionInput = z.infer<typeof ReviewCaseExtensionInputSchema>;
 
-// --- FocusEvidenceInput (webmcp.md `pax_focus_evidence`) ---
+// --- FocusEvidenceInput (webmcp.md `sift_focus_evidence`) ---
 
 export const FocusEvidenceInputSchema = z
   .object({
@@ -199,9 +199,9 @@ export const FocusEvidenceInputSchema = z
 export type FocusEvidenceInput = z.infer<typeof FocusEvidenceInputSchema>;
 
 /** Identical shape to `FocusEvidenceInput`. */
-export const PaxFocusEvidenceToolInputSchema = FocusEvidenceInputSchema;
+export const SiftFocusEvidenceToolInputSchema = FocusEvidenceInputSchema;
 
-// --- UpdateCriteriaInput (webmcp.md `pax_update_criteria`) ---
+// --- UpdateCriteriaInput (webmcp.md `sift_update_criteria`) ---
 
 const CriterionAddOperationSchema = z
   .object({
@@ -255,9 +255,9 @@ export const UpdateCriteriaInputSchema = z
 export type UpdateCriteriaInput = z.infer<typeof UpdateCriteriaInputSchema>;
 
 /** Identical shape to `UpdateCriteriaInput`. */
-export const PaxUpdateCriteriaToolInputSchema = UpdateCriteriaInputSchema;
+export const SiftUpdateCriteriaToolInputSchema = UpdateCriteriaInputSchema;
 
-// --- SubmitSourceInput (webmcp.md `pax_submit_source`) ---
+// --- SubmitSourceInput (webmcp.md `sift_submit_source`) ---
 
 const SourceClaimInputSchema = z
   .object({
@@ -288,10 +288,10 @@ export const SubmitSourceInputSchema = z
 export type SubmitSourceInput = z.infer<typeof SubmitSourceInputSchema>;
 
 /** Identical shape to `SubmitSourceInput`. */
-export const PaxSubmitSourceToolInputSchema = SubmitSourceInputSchema;
+export const SiftSubmitSourceToolInputSchema = SubmitSourceInputSchema;
 
-// --- pax_set_evidence_disposition ---
-// No corresponding `PaxCommands` method name exists in architecture.md; see
+// --- sift_set_evidence_disposition ---
+// No corresponding `SiftCommands` method name exists in architecture.md; see
 // the module-level comment. Shape matches webmcp.md exactly.
 
 export const SetEvidenceDispositionInputSchema = z
@@ -305,7 +305,7 @@ export const SetEvidenceDispositionInputSchema = z
   .strict();
 export type SetEvidenceDispositionInput = z.infer<typeof SetEvidenceDispositionInputSchema>;
 
-// --- RequestInvestigationInput (webmcp.md `pax_request_investigation`) ---
+// --- RequestInvestigationInput (webmcp.md `sift_request_investigation`) ---
 
 export const RequestInvestigationInputSchema = z
   .object({
@@ -317,10 +317,10 @@ export const RequestInvestigationInputSchema = z
 export type RequestInvestigationInput = z.infer<typeof RequestInvestigationInputSchema>;
 
 /** Identical shape to `RequestInvestigationInput`. */
-export const PaxRequestInvestigationToolInputSchema = RequestInvestigationInputSchema;
+export const SiftRequestInvestigationToolInputSchema = RequestInvestigationInputSchema;
 
-// --- pax_request_revision ---
-// No corresponding `PaxCommands` method name exists in architecture.md; see
+// --- sift_request_revision ---
+// No corresponding `SiftCommands` method name exists in architecture.md; see
 // the module-level comment. Shape matches webmcp.md exactly (no `actor`/
 // `decision` fields -- unlike `ReviewProposalInput` below, this tool can only
 // ever attach a revision request; "It cannot approve or reject the
@@ -337,11 +337,11 @@ export const RequestRevisionInputSchema = z
 export type RequestRevisionInput = z.infer<typeof RequestRevisionInputSchema>;
 
 // --- ReviewProposalInput ---
-// Inferred: named in architecture.md's `PaxCommands` interface with no field
+// Inferred: named in architecture.md's `SiftCommands` interface with no field
 // list. Grounded in `reviewProposal(caseState, decision): CaseState`
 // (architecture.md "Deterministic core"), "`reviewProposal` rejects requests
 // whose `actor` is not `human`" (architecture.md "Security and authority"),
-// and webmcp.md's `pax_request_revision` (which webmcp exposes as a
+// and webmcp.md's `sift_request_revision` (which webmcp exposes as a
 // standalone, narrower tool -- see `RequestRevisionInputSchema` above -- but
 // which a later task's command-service implementation is expected to route
 // through this same `reviewProposal` command, per CLAUDE.md's "Visible UI
@@ -418,7 +418,7 @@ export const RunReceiptSchema = CommandReceiptSchema.extend({
 }).strict();
 export type RunReceipt = z.infer<typeof RunReceiptSchema>;
 
-// --- PaxToolResult<T> (webmcp.md "Tool result envelope") ---
+// --- SiftToolResult<T> (webmcp.md "Tool result envelope") ---
 
 export const TOOL_ERROR_CODES = [
   'VALIDATION',
@@ -430,23 +430,23 @@ export const TOOL_ERROR_CODES = [
 ] as const;
 export type ToolErrorCode = (typeof TOOL_ERROR_CODES)[number];
 
-export const PaxToolUiSchema = z
+export const SiftToolUiSchema = z
   .object({
     changed: z.boolean(),
     focusTarget: idString().optional(),
   })
   .strict();
-export type PaxToolUi = z.infer<typeof PaxToolUiSchema>;
+export type SiftToolUi = z.infer<typeof SiftToolUiSchema>;
 
-export const PaxToolErrorSchema = z
+export const SiftToolErrorSchema = z
   .object({
     code: z.enum(TOOL_ERROR_CODES),
     retryable: z.boolean(),
   })
   .strict();
-export type PaxToolError = z.infer<typeof PaxToolErrorSchema>;
+export type SiftToolError = z.infer<typeof SiftToolErrorSchema>;
 
-export interface PaxToolResult<T> {
+export interface SiftToolResult<T> {
   ok: boolean;
   message: string;
   data?: T;
@@ -454,11 +454,11 @@ export interface PaxToolResult<T> {
   runId?: string;
   caseId?: string;
   sequence?: number;
-  ui: PaxToolUi;
-  error?: PaxToolError;
+  ui: SiftToolUi;
+  error?: SiftToolError;
 }
 
-export function PaxToolResultSchema<DataSchema extends z.ZodTypeAny>(dataSchema: DataSchema) {
+export function SiftToolResultSchema<DataSchema extends z.ZodTypeAny>(dataSchema: DataSchema) {
   return z
     .object({
       ok: z.boolean(),
@@ -468,8 +468,8 @@ export function PaxToolResultSchema<DataSchema extends z.ZodTypeAny>(dataSchema:
       runId: idString().optional(),
       caseId: idString().optional(),
       sequence: z.number().int().min(0).optional(),
-      ui: PaxToolUiSchema,
-      error: PaxToolErrorSchema.optional(),
+      ui: SiftToolUiSchema,
+      error: SiftToolErrorSchema.optional(),
     })
     .strict();
 }

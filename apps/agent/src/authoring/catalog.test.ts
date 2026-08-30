@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PackRegistry, compilePack } from '@pax/packs';
-import { validCatalog, validManifest } from '@pax/packs/src/fixtures/manifest.js';
+import { PackRegistry, compilePack } from '@sift/packs';
+import { validCatalog, validManifest } from '@sift/packs/src/fixtures/manifest.js';
 import { buildInstalledCapabilityCatalog, packCatalog } from './catalog.js';
 
 const FIXED_CLOCK = { now: () => '2026-08-27T00:00:00.000Z' };

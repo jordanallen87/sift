@@ -1,10 +1,10 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import type { StartCaseInput, StartDemoInput } from '@pax/contracts';
-import { createPaxClient, PaxClientError } from './pax-client.js';
+import type { StartCaseInput, StartDemoInput } from '@sift/contracts';
+import { createSiftClient, SiftClientError } from './sift-client.js';
 
-const BASE_URL = 'http://pax.test';
+const BASE_URL = 'http://sift.test';
 
 const server = setupServer();
 
@@ -26,7 +26,7 @@ const baseReceipt = {
   acceptedSequence: 1,
 };
 
-describe('createPaxClient', () => {
+describe('createSiftClient', () => {
   it('posts startDemo to /api/cases/demo and returns a validated CommandReceipt', async () => {
     let capturedBody: unknown;
     server.use(
@@ -36,7 +36,7 @@ describe('createPaxClient', () => {
       }),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     const receipt = await client.startDemo({ demoId: 'car-purchase' });
 
     expect(receipt).toEqual(baseReceipt);
@@ -50,7 +50,7 @@ describe('createPaxClient', () => {
       }),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     const invalidInput = { demoId: 'not-a-real-demo' } as unknown as StartDemoInput;
 
     await expect(client.startDemo(invalidInput)).rejects.toMatchObject({
@@ -67,7 +67,7 @@ describe('createPaxClient', () => {
       }),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     const receipt = await client.startCase({ packId: 'car-purchase' });
 
     expect(receipt).toEqual(baseReceipt);
@@ -81,7 +81,7 @@ describe('createPaxClient', () => {
       }),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     const invalidInput = {} as unknown as StartCaseInput;
 
     await expect(client.startCase(invalidInput)).rejects.toMatchObject({
@@ -96,7 +96,7 @@ describe('createPaxClient', () => {
       ),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     const receipt = await client.requestInvestigation({ caseId: 'case-1', expectedSequence: 1 });
 
     expect(receipt.runId).toBe('run-1');
@@ -150,14 +150,14 @@ describe('createPaxClient', () => {
       ),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     const method = client[methodName] as (value: typeof input) => Promise<unknown>;
     const receipt = await method(input);
 
     expect(receipt).toEqual(baseReceipt);
   });
 
-  it('throws a PaxClientError carrying the parsed error code and status on a non-OK response', async () => {
+  it('throws a SiftClientError carrying the parsed error code and status on a non-OK response', async () => {
     server.use(
       http.post(`${BASE_URL}/api/cases/case-1/commands/selectPack`, () =>
         HttpResponse.json(
@@ -167,7 +167,7 @@ describe('createPaxClient', () => {
       ),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
 
     await expect(
       client.selectPack({ caseId: 'case-1', packId: 'car-purchase', expectedSequence: 0 }),
@@ -178,14 +178,14 @@ describe('createPaxClient', () => {
     });
   });
 
-  it('falls back to a generic PaxClientError when a non-OK response body does not match the error contract', async () => {
+  it('falls back to a generic SiftClientError when a non-OK response body does not match the error contract', async () => {
     server.use(
       http.post(`${BASE_URL}/api/cases/case-1/commands/selectPack`, () =>
         HttpResponse.text('internal server error', { status: 500 }),
       ),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
 
     await expect(
       client.selectPack({ caseId: 'case-1', packId: 'car-purchase', expectedSequence: 0 }),
@@ -196,15 +196,15 @@ describe('createPaxClient', () => {
     });
   });
 
-  it('rejects with a PaxClientError when the server returns a malformed receipt', async () => {
+  it('rejects with a SiftClientError when the server returns a malformed receipt', async () => {
     server.use(
       http.post(`${BASE_URL}/api/cases/demo`, () => HttpResponse.json({ not: 'a receipt' })),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
 
     await expect(client.startDemo({ demoId: 'car-purchase' })).rejects.toBeInstanceOf(
-      PaxClientError,
+      SiftClientError,
     );
   });
 
@@ -212,12 +212,12 @@ describe('createPaxClient', () => {
     const seenIds: string[] = [];
     server.use(
       http.post(`${BASE_URL}/api/cases/demo`, ({ request }) => {
-        seenIds.push(request.headers.get('x-pax-command-id') ?? '');
+        seenIds.push(request.headers.get('x-sift-command-id') ?? '');
         return HttpResponse.json(baseReceipt);
       }),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     await client.startDemo({ demoId: 'car-purchase' });
     await client.startDemo({ demoId: 'car-purchase' });
 
@@ -231,27 +231,27 @@ describe('createPaxClient', () => {
     let seenIdempotencyKey: string | null = null;
     server.use(
       http.post(`${BASE_URL}/api/cases/demo`, ({ request }) => {
-        seenCommandId = request.headers.get('x-pax-command-id');
+        seenCommandId = request.headers.get('x-sift-command-id');
         seenIdempotencyKey = request.headers.get('idempotency-key');
         return HttpResponse.json(baseReceipt);
       }),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     await client.startDemo({ demoId: 'car-purchase' }, { commandId: 'tool-call-42' });
 
     expect(seenCommandId).toBe('tool-call-42');
     expect(seenIdempotencyKey).toBe('tool-call-42');
   });
 
-  it('rejects with an UNAVAILABLE/retryable PaxClientError when the signal is already aborted', async () => {
+  it('rejects with an UNAVAILABLE/retryable SiftClientError when the signal is already aborted', async () => {
     server.use(
       http.post(`${BASE_URL}/api/cases/demo`, () => {
         throw new Error('an already-aborted request must never reach the network');
       }),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     const controller = new AbortController();
     controller.abort();
 
@@ -260,7 +260,7 @@ describe('createPaxClient', () => {
     ).rejects.toMatchObject({ code: 'UNAVAILABLE', retryable: true });
   });
 
-  it('rejects with an UNAVAILABLE/retryable PaxClientError when the signal aborts mid-request', async () => {
+  it('rejects with an UNAVAILABLE/retryable SiftClientError when the signal aborts mid-request', async () => {
     server.use(
       http.post(`${BASE_URL}/api/cases/demo`, async () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
@@ -268,7 +268,7 @@ describe('createPaxClient', () => {
       }),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     const controller = new AbortController();
     const pending = client.startDemo({ demoId: 'car-purchase' }, { signal: controller.signal });
     controller.abort();
@@ -283,7 +283,7 @@ describe('createPaxClient', () => {
       }),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
     const controller = new AbortController();
     controller.abort();
 
@@ -296,7 +296,7 @@ describe('createPaxClient', () => {
   });
 
   it('propagates a non-abort fetch failure as-is rather than mislabeling it UNAVAILABLE', async () => {
-    const client = createPaxClient({
+    const client = createSiftClient({
       baseUrl: BASE_URL,
       fetchImpl: () => Promise.reject(new TypeError('Failed to fetch')),
     });
@@ -352,7 +352,7 @@ describe('createPaxClient', () => {
       ),
     );
 
-    const client = createPaxClient({ baseUrl: BASE_URL });
+    const client = createSiftClient({ baseUrl: BASE_URL });
 
     await expect(
       client.focusOption({ caseId: 'case-1', optionId: 'candidate-rav4', expectedSequence: 1 }),

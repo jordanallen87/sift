@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-// Root Vitest configuration. Pax uses Vitest's `test.projects` (the current
+// Root Vitest configuration. Sift uses Vitest's `test.projects` (the current
 // replacement for the deprecated `vitest.workspace.ts` file — see
 // https://vitest.dev/guide/projects and the installed vitest@4 type
 // declarations, which no longer export `defineWorkspace`) to run every

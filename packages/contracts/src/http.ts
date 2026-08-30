@@ -6,7 +6,7 @@
  * packages/contracts" and describes optimistic concurrency: "A stale
  * `eventSequence` produces HTTP `409` with the latest snapshot; clients
  * refresh rather than replaying an unexamined mutation." webmcp.md's
- * `PaxToolResult.error.code` vocabulary (`VALIDATION`/`NOT_FOUND`/
+ * `SiftToolResult.error.code` vocabulary (`VALIDATION`/`NOT_FOUND`/
  * `CONFLICT`/`POLICY`/`UNAVAILABLE`/`INTERNAL`) is reused verbatim here
  * (imported from commands.ts's `TOOL_ERROR_CODES`) rather than inventing a
  * parallel HTTP-only vocabulary, since both are the same command-service

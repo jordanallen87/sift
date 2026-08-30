@@ -45,7 +45,7 @@
  * "for every built-in and authoring fixture pack", not merely trusted from
  * compile time.
  */
-import type { CompiledDecisionPack } from '@pax/contracts';
+import type { CompiledDecisionPack } from '@sift/contracts';
 import {
   checkApprovalPolicies,
   checkExtensionPolicy,

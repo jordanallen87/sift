@@ -1,9 +1,9 @@
 {
-  "name": "pax",
+  "name": "sift",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pax: a real-time, source-linked decision workspace. Dual-hackathon monorepo root.",
+  "description": "Sift: a real-time, source-linked decision workspace. Dual-hackathon monorepo root.",
   "engines": {
     "node": ">=20"
   },
@@ -18,7 +18,7 @@
     "test:integration": "vitest run apps/agent/src/routes apps/agent/src/store apps/agent/src/db apps/agent/src/app.test.ts apps/agent/src/runtime/strands-adapter.test.ts apps/agent/src/runtime/event-normalizer.test.ts apps/agent/src/runtime/interventions.test.ts apps/agent/src/runtime/plugins.test.ts apps/agent/src/runtime/model-provider.test.ts apps/agent/src/runtime/session-adapter.test.ts apps/agent/src/runtime/car-purchase-engine.test.ts apps/agent/src/runtime/home-energy-engine.test.ts",
     "test:contract": "vitest run apps/web/src/model-context/webmcp-contract.test.ts apps/agent/src/routes/agentcore.test.ts",
     "test:scenario": "vitest run --project tests",
-    "test:e2e": "pnpm --filter @pax/web build && playwright test",
+    "test:e2e": "pnpm --filter @sift/web build && playwright test",
     "test:observability": "tsx scripts/stage-not-implemented.ts test:observability",
     "test:mutation": "stryker run",
     "test:live": "tsx scripts/stage-not-implemented.ts test:live",
@@ -26,7 +26,7 @@
     "test:submission": "tsx scripts/test-submission.ts",
     "check:source": "tsx scripts/check-source.ts",
     "docs:diagram": "tsx scripts/generate-diagram.ts",
-    "pax": "tsx scripts/pax-cli.ts",
+    "sift": "tsx scripts/sift-cli.ts",
     "verify": "tsx scripts/verify.ts",
     "verify:release": "tsx scripts/verify-release.ts"
   },

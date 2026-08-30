@@ -4,7 +4,7 @@ import {
   AttributeValueSchema,
   type AttributeDefinition,
   type AttributeValue,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import {
   attributeValueStatusInvariantError,
   compareAttributeValues,

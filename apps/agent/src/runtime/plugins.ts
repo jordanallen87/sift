@@ -23,7 +23,7 @@ import {
 import { AgentSkills, type AgentSkillsConfig } from '@strands-agents/sdk/vended-plugins/skills';
 import { ContextInjector } from '@strands-agents/sdk/vended-plugins/context-injector';
 import { GoalLoop, type Validator } from '@strands-agents/sdk/vended-plugins/goal';
-import type { ExecutionRequest } from '@pax/contracts';
+import type { ExecutionRequest } from '@sift/contracts';
 import {
   hashContent,
   normalizeContextInjection,
@@ -109,12 +109,12 @@ export function projectCaseContext(request: ExecutionRequest): CaseContextProjec
 
 /**
  * Renders the projection as the text injected before each model call.
- * Field values ultimately come from `@pax/contracts`-validated `safeString`
+ * Field values ultimately come from `@sift/contracts`-validated `safeString`
  * fields, which already reject HTML-tag-shaped content upstream, so no
  * additional XML escaping is applied here.
  */
 export function renderCaseContextText(projection: CaseContextProjection): string {
-  const lines: string[] = ['<pax_case_context>'];
+  const lines: string[] = ['<sift_case_context>'];
   const obligation = projection.activeObligation;
   lines.push(
     `<active_obligation id="${obligation.id}" status="${obligation.status}" required_evidence_level="${obligation.requiredEvidenceLevel}" category="${obligation.category}">${obligation.question}</active_obligation>`,
@@ -141,7 +141,7 @@ export function renderCaseContextText(projection: CaseContextProjection): string
     );
   }
   lines.push('</confirmed_extensions>');
-  lines.push('</pax_case_context>');
+  lines.push('</sift_case_context>');
   return lines.join('\n');
 }
 
@@ -154,7 +154,7 @@ export interface ContextInjectorDeps {
 /**
  * Builds a real `ContextInjector` whose `renderContent` projects the given
  * `ExecutionRequest` (not the SDK's own conversation-derived
- * `InjectionContext` -- Pax's context is case-state-driven, not
+ * `InjectionContext` -- Sift's context is case-state-driven, not
  * conversation-state-driven) and emits a normalized `context.injected`
  * event carrying only field names and a content hash, never the rendered
  * text itself.
@@ -164,7 +164,7 @@ export function buildContextInjector(
   deps: ContextInjectorDeps,
 ): ContextInjector {
   return new ContextInjector({
-    name: 'pax:context-injector',
+    name: 'sift:context-injector',
     trigger: 'everyTurn',
     renderContent: () => {
       const projection = projectCaseContext(request);
@@ -246,7 +246,7 @@ export function buildDecisionSynthesizerAgent(
   const goalLoop = new GoalLoop({
     goal: config.validator,
     maxAttempts: config.maxAttempts ?? 2,
-    name: 'pax:decision-synthesizer-goal',
+    name: 'sift:decision-synthesizer-goal',
   });
   const agent = new Agent({
     id: 'decision-synthesizer',

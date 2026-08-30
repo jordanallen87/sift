@@ -6,18 +6,18 @@
  * docs/specs/packs-and-routing.md "Flexible attributes and criteria".
  *
  * No filesystem, network, or wall-clock access, and no generated IDs:
- * webmcp.md `pax_update_criteria`'s `add` operation always supplies the new
+ * webmcp.md `sift_update_criteria`'s `add` operation always supplies the new
  * criterion's `id` itself (see `CriterionAddOperationSchema` in
  * `packages/contracts/src/commands.ts`), so this module needs no injected
- * `IdGenerator`/`Clock` port — `Criterion` (`@pax/contracts`) also carries
+ * `IdGenerator`/`Clock` port — `Criterion` (`@sift/contracts`) also carries
  * no timestamp field.
  */
-import { CriterionSchema, type Criterion, type CriterionOrigin } from '@pax/contracts';
+import { CriterionSchema, type Criterion, type CriterionOrigin } from '@sift/contracts';
 import { fail, ok, type DomainResult } from './attributes.js';
 
 /**
  * The author-facing shape of a new criterion, matching webmcp.md
- * `pax_update_criteria`'s `add` operation's `criterion` field exactly.
+ * `sift_update_criteria`'s `add` operation's `criterion` field exactly.
  */
 export interface CriterionAddInput {
   readonly id: string;
@@ -86,7 +86,7 @@ function formatIssues(issues: readonly { path: PropertyKey[]; message: string }[
 /**
  * Removes (excludes) a criterion. Documented judgment call: this sets
  * `status: 'excluded'` rather than deleting the entry from the array.
- * `Criterion.status` (`@pax/contracts`) is exactly `'active' | 'excluded'`
+ * `Criterion.status` (`@sift/contracts`) is exactly `'active' | 'excluded'`
  * for this purpose, matching the same non-destructive convention
  * `EvidenceLink.disposition`'s `'excluded'` state uses elsewhere in the case
  * model (architecture.md: an evidence exclusion "does not delete the

@@ -172,7 +172,7 @@ function resolvePuppeteerConfigFile(): string | undefined {
   }
 
   console.log(`[generate-diagram] Using cached Chrome executable: ${executablePath}`);
-  const configDir = mkdtempSync(join(tmpdir(), 'pax-mmdc-'));
+  const configDir = mkdtempSync(join(tmpdir(), 'sift-mmdc-'));
   const configPath = join(configDir, 'puppeteer-config.json');
   writeFileSync(
     configPath,

@@ -1,7 +1,7 @@
 /*
- * Pax design tokens.
+ * Sift design tokens.
  *
- * Design world: a calm claims-examiner's desk, not a SaaS dashboard. Pax
+ * Design world: a calm claims-examiner's desk, not a SaaS dashboard. Sift
  * turns an unstructured question into a case: evidence is gathered, sources
  * are cited, obligations are tracked to readiness, and a human signs off.
  * The palette and type system below are built around that "case dossier"
@@ -78,9 +78,9 @@
    * shadcn's component registry (ui.shadcn.com) and every component pulled
    * from it via `npx shadcn add` expect this exact variable set, referenced
    * through Tailwind's `@theme inline` in tailwind.css (`bg-background`,
-   * `text-foreground`, `bg-card`, ...). Defined here as aliases of Pax's
+   * `text-foreground`, `bg-card`, ...). Defined here as aliases of Sift's
    * own named tokens above rather than duplicate literal values, so the two
-   * systems can never drift out of sync -- Pax's tokens remain the single
+   * systems can never drift out of sync -- Sift's tokens remain the single
    * source of truth; this block only translates their names.
    * ------------------------------------------------------------------- */
   --background: var(--color-paper);

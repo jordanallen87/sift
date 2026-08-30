@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AttributeValue } from '@pax/contracts';
+import type { AttributeValue } from '@sift/contracts';
 import { formatAttributeValue } from './attribute-value-format.js';
 
 describe('formatAttributeValue', () => {

@@ -11,10 +11,10 @@
  * method returns; a genuine internal error (a bug, an unexpected thrown
  * exception from a dependency) is left to propagate as a real thrown
  * `Error` for Express's error-handling middleware to turn into a `500`, per
- * the same convention `@pax/core`'s own `PaxDomainError` taxonomy uses
+ * the same convention `@sift/core`'s own `SiftDomainError` taxonomy uses
  * (thrown, not returned).
  */
-import type { CaseState } from '@pax/contracts';
+import type { CaseState } from '@sift/contracts';
 
 export interface OkOutcome<T> {
   readonly status: 'ok';
@@ -77,7 +77,7 @@ export function policyFailure(message: string): PolicyOutcome {
   return { status: 'policy', message };
 }
 
-/** Formats Zod issues the same way `@pax/core`'s domain modules do (`path.join('.')`: message`), for a uniform `ValidationOutcome.issues` shape. */
+/** Formats Zod issues the same way `@sift/core`'s domain modules do (`path.join('.')`: message`), for a uniform `ValidationOutcome.issues` shape. */
 export function formatZodIssues(
   issues: readonly { path: PropertyKey[]; message: string }[],
 ): string[] {

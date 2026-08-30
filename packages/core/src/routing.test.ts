@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { CompiledDecisionPackSchema } from '@pax/contracts';
-import type { CompiledDecisionPack, PackActivation, RoutingInput } from '@pax/contracts';
+import { CompiledDecisionPackSchema } from '@sift/contracts';
+import type { CompiledDecisionPack, PackActivation, RoutingInput } from '@sift/contracts';
 import { resolveSelectedPack, routePack } from './routing.js';
 import type { SemanticRoutingCandidate } from './routing.js';
 import { RoutingRejectionError } from './errors.js';

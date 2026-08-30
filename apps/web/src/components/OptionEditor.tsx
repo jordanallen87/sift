@@ -6,14 +6,14 @@
  * offer details"), one `DynamicAttributeField` per pack-declared or
  * case-defined (`custom.*`) attribute applicable to this option kind.
  *
- * Calls `commands.upsertOption` on the exact same `PaxCommands` instance the
- * `pax_upsert_option` WebMCP tool calls (CLAUDE.md "Visible UI controls and
+ * Calls `commands.upsertOption` on the exact same `SiftCommands` instance the
+ * `sift_upsert_option` WebMCP tool calls (CLAUDE.md "Visible UI controls and
  * WebMCP callbacks use the same command implementation") -- there is no
  * parallel save path.
  */
 import { useMemo, useState } from 'react';
-import type { AttributeDefinition, AttributeValue, EntityRecord } from '@pax/contracts';
-import { usePaxCommands } from '../app/AppProviders.js';
+import type { AttributeDefinition, AttributeValue, EntityRecord } from '@sift/contracts';
+import { useSiftCommands } from '../app/AppProviders.js';
 import { DynamicAttributeField } from './DynamicAttributeField.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -59,7 +59,7 @@ export function OptionEditor({
   options,
   maxOptions = 5,
 }: OptionEditorProps) {
-  const commands = usePaxCommands();
+  const commands = useSiftCommands();
   const [form, setForm] = useState<FormState>(blankForm());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

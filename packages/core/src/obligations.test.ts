@@ -6,7 +6,7 @@ import type {
   ObligationState,
   ObligationTemplate,
   Source,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import {
   advanceObligation,
   deriveObligations,

@@ -30,27 +30,27 @@ describe('loadCatalog', () => {
   });
 
   it('throws CatalogLoadError for a missing file', () => {
-    tempDir = mkdtempSync(join(tmpdir(), 'pax-catalog-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'sift-catalog-'));
     const missingPath = join(tempDir, 'does-not-exist.json');
     expect(() => loadCatalog(missingPath)).toThrow(CatalogLoadError);
   });
 
   it('throws CatalogLoadError for malformed JSON', () => {
-    tempDir = mkdtempSync(join(tmpdir(), 'pax-catalog-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'sift-catalog-'));
     const filePath = join(tempDir, 'catalog.json');
     writeFileSync(filePath, '{ not valid json', 'utf8');
     expect(() => loadCatalog(filePath)).toThrow(CatalogLoadError);
   });
 
   it('throws CatalogLoadError for JSON that fails schema validation', () => {
-    tempDir = mkdtempSync(join(tmpdir(), 'pax-catalog-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'sift-catalog-'));
     const filePath = join(tempDir, 'catalog.json');
     writeFileSync(filePath, JSON.stringify([{ id: 'x' }]), 'utf8');
     expect(() => loadCatalog(filePath)).toThrow(CatalogLoadError);
   });
 
   it('throws CatalogLoadError for a file exceeding the defensive byte bound', () => {
-    tempDir = mkdtempSync(join(tmpdir(), 'pax-catalog-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'sift-catalog-'));
     const filePath = join(tempDir, 'catalog.json');
     // A single oversized JSON array literal -- never actually JSON.parse'd,
     // since the byte-size guard runs first.

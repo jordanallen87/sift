@@ -18,14 +18,14 @@
  *
  *   Draft withheld
  *   This answer is plausible, but 3 required questions are still unresolved.
- *   Pax is continuing the investigation before asking you to decide.
+ *   Sift is continuing the investigation before asking you to decide.
  *
  * This is a distinct state from a plain "no recommendation yet" empty
  * state: `withheld` means a draft was actually produced and rejected by
  * GoalLoop/readiness validation (draft.withheld PublicActivityEvent),
  * whereas a bare empty state means no attempt has happened yet.
  */
-import type { Recommendation, Source } from '@pax/contracts';
+import type { Recommendation, Source } from '@sift/contracts';
 import { Badge } from '@/components/ui/badge';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 
@@ -101,7 +101,7 @@ export function RecommendationCard({
               )} ${pluralIsAre(withheld.unresolvedRequiredCount)} still unresolved.`}
             </p>
             <p style={{ color: STATUS_TONE_META.blocked.ink }}>
-              Pax is continuing the investigation before asking you to decide.
+              Sift is continuing the investigation before asking you to decide.
             </p>
           </div>
         ) : (
@@ -109,7 +109,7 @@ export function RecommendationCard({
             data-testid="recommendation-card-empty"
             className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
           >
-            No recommendation yet. Pax will propose one once enough evidence is gathered.
+            No recommendation yet. Sift will propose one once enough evidence is gathered.
           </p>
         )
       ) : (
@@ -141,7 +141,7 @@ export function RecommendationCard({
               className="list-item-enter text-[length:var(--font-size-sm)]"
               style={{ color: STATUS_TONE_META.stale.ink }}
             >
-              New evidence or a criteria change has invalidated this recommendation. Pax is
+              New evidence or a criteria change has invalidated this recommendation. Sift is
               recomputing it -- the content below may no longer reflect the current case.
             </p>
           ) : null}

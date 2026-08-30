@@ -1,5 +1,5 @@
 {
-  "_provenance": "Fictional demo data. All listings, dealers, VINs, and URLs are invented for the Pax 'Choose Our Next Car' hackathon scenario and do not reference real inventory, dealers, or vehicles.",
+  "_provenance": "Fictional demo data. All listings, dealers, VINs, and URLs are invented for the Sift 'Choose Our Next Car' hackathon scenario and do not reference real inventory, dealers, or vehicles.",
   "caseId": "case-demo-car-purchase",
   "candidates": [
     {

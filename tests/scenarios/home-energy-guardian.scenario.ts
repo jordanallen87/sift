@@ -1,6 +1,6 @@
 /**
  * The declarative `DemoScenario` for "Home Energy Guardian"
- * (docs/specs/testing.md "Scenario tests", `@pax/contracts` `scenario.ts`),
+ * (docs/specs/testing.md "Scenario tests", `@sift/contracts` `scenario.ts`),
  * the Swarm-hero analog of `car-purchase.scenario.ts`.
  *
  * `steps` documents the human/WebMCP-facing command sequence
@@ -16,7 +16,7 @@
  * mirroring `car-purchase.scenario.ts`'s own documented scope.
  *
  * `assertions` is what the scenario test actively checks (via
- * `@pax/scenarios`'s `checkAssertions`) against the real trajectory
+ * `@sift/scenarios`'s `checkAssertions`) against the real trajectory
  * `runHomeEnergyGuardianScenario` produces. Every kind here uses a stable,
  * predictable id (a specialist id, a pack-declared obligation id, a fixed
  * response-option id, ...) rather than a counter-generated one; the one
@@ -57,7 +57,7 @@ export const HOME_ENERGY_GUARDIAN_DEMO_SCENARIO: DemoScenario = {
     {
       command: 'requestInvestigation',
       input: { caseId: 'case-1', obligationId: 'energy.response_options', expectedSequence: 0 },
-      description: 'ChatGPT calls pax_update_criteria, then pax_request_investigation.',
+      description: 'ChatGPT calls sift_update_criteria, then sift_request_investigation.',
     },
     {
       command: 'reviewProposal',

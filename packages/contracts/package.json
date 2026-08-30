@@ -1,9 +1,9 @@
 {
-  "name": "@pax/contracts",
+  "name": "@sift/contracts",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Zod schemas and shared API/event types for Pax: attributes, case state, commands, events, packs, Strands runtime, scenarios, and HTTP envelopes.",
+  "description": "Zod schemas and shared API/event types for Sift: attributes, case state, commands, events, packs, Strands runtime, scenarios, and HTTP envelopes.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {

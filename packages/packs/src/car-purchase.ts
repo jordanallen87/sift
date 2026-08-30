@@ -27,8 +27,8 @@
  */
 import type { CapabilityCatalog } from './capability-catalog.js';
 import { compilePack } from './compiler.js';
-import type { Clock } from '@pax/core';
-import type { CompiledDecisionPack, DecisionPackManifest } from '@pax/contracts';
+import type { Clock } from '@sift/core';
+import type { CompiledDecisionPack, DecisionPackManifest } from '@sift/contracts';
 
 export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
   schemaVersion: '1.0',
@@ -472,7 +472,7 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
   // brief's "household priorities from household-profile.json" maps
   // precisely to that fixture's `weightedPreferences.criteria` (weights
   // sum to 1.0 there; `Criterion.weight` here is an integer 0-100, so each
-  // weight is *100, matching webmcp.md `pax_update_criteria`'s "Weights
+  // weight is *100, matching webmcp.md `sift_update_criteria`'s "Weights
   // must be integers from 0 through 100"). Judgment call: the household
   // profile's separate `mustHaves` list (AWD, adaptive cruise, etc.) is
   // NOT mirrored into `criteria.defaults` here -- those are this specific
@@ -568,7 +568,7 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
   // may remain genuinely unresolved even after `source-challenger` review)
   // and `car.household_fit` (household-fit.json's `explicitUnknowns` are
   // designed to resolve only via test drive or physical measurement, per
-  // packs-and-routing.md's required adaptive moment "Pax creates a
+  // packs-and-routing.md's required adaptive moment "Sift creates a
   // test-drive question instead of fabricating a comfort score"). The
   // other four are deterministic pass/fail or arithmetic obligations with
   // no legitimate partial-credit disposition, so acceptedUncertaintyAllowed:

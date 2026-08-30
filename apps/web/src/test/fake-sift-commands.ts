@@ -1,5 +1,5 @@
 /**
- * A fully-stubbed `PaxCommands` implementation for component tests. Backs
+ * A fully-stubbed `SiftCommands` implementation for component tests. Backs
  * `AppProviders`'s "test-injectable override point" (locked file map:
  * `apps/web/src/app/AppProviders.tsx  Query, event, command, and test
  * providers") so component tests -- and later Playwright tests through the
@@ -7,8 +7,8 @@
  * instead of mocking `fetch`/MSW for every component test.
  */
 import { vi } from 'vitest';
-import type { CommandReceipt, RunReceipt } from '@pax/contracts';
-import type { PaxCommands } from '../api/pax-client.js';
+import type { CommandReceipt, RunReceipt } from '@sift/contracts';
+import type { SiftCommands } from '../api/sift-client.js';
 
 export function buildFakeCommandReceipt(overrides: Partial<CommandReceipt> = {}): CommandReceipt {
   return {
@@ -28,7 +28,7 @@ export function buildFakeRunReceipt(overrides: Partial<RunReceipt> = {}): RunRec
 }
 
 /** Every method resolves to a fake receipt by default; pass `overrides` (e.g. `{ startDemo: vi.fn().mockRejectedValue(...) }`) to script a specific test's behavior. */
-export function createFakePaxCommands(overrides: Partial<PaxCommands> = {}): PaxCommands {
+export function createFakeSiftCommands(overrides: Partial<SiftCommands> = {}): SiftCommands {
   const defaultReceipt = buildFakeCommandReceipt();
   const defaultRunReceipt = buildFakeRunReceipt();
 

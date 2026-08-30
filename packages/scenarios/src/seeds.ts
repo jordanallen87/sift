@@ -3,7 +3,7 @@
  * `EntityRecord`s the "Choose Our Next Car" demo compares, plus the full
  * seed `CaseEvent` sequence a fresh demo case needs.
  *
- * `instantiateCase` (`@pax/core`) alone only ever seeds pack-declared state
+ * `instantiateCase` (`@sift/core`) alone only ever seeds pack-declared state
  * (`pack`, `criteria`, `obligations`, `attributeDefinitions`) -- it always
  * seeds `entities: []` (see that file's own header comment). This module is
  * the "whatever glue is needed to load the car-purchase fixtures into
@@ -30,7 +30,7 @@
  *    itself has one and the car-purchase pack manifest declares
  *    `car.standard_features` as `required: true`. This module reads that one
  *    field directly from `loadFixture('candidate-listings')` (a real,
- *    already-exported `@pax/scenarios` function, not a private tool
+ *    already-exported `@sift/scenarios` function, not a private tool
  *    internal) rather than leaving a required pack attribute permanently
  *    unseeded.
  * 2. `household-fit-matrix.ts`'s `KNOWN_SPEC_FIELDS` definition ids
@@ -52,8 +52,8 @@
  * `household-fit-matrix`'s own `unknown.rear_cargo_crate_compatibility` /
  * `unknown.driving_comfort` -- CLAUDE.md: "It may never ... fabricate."
  */
-import type { Clock, IdGenerator } from '@pax/core';
-import { createAttributeRecord, instantiateCase, type PackSelection } from '@pax/core';
+import type { Clock, IdGenerator } from '@sift/core';
+import { createAttributeRecord, instantiateCase, type PackSelection } from '@sift/core';
 import type {
   AttributeRecord,
   AttributeValue,
@@ -61,7 +61,7 @@ import type {
   CaseState,
   CompiledDecisionPack,
   EntityRecord,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import {
   calculateOwnershipCost,
   loadFixture,

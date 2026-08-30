@@ -11,7 +11,7 @@
  * Every subtype carries:
  * - a stable, machine-readable `code` (a caller such as the HTTP layer or
  *   the WebMCP adapter maps this to a `ToolErrorCode`
- *   (`@pax/contracts` `commands.ts`) or an HTTP status without ever string
+ *   (`@sift/contracts` `commands.ts`) or an HTTP status without ever string
  *   matching `message`, which is free to change for readability);
  * - a human-readable `message` (standard `Error.message`);
  * - optional bounded, JSON-safe `details` for logs/telemetry. Per
@@ -19,9 +19,9 @@
  *   place credentials, authorization headers, cookies, secret canaries, raw
  *   private reasoning, or unredacted user-entered notes into `details`.
  */
-import type { JsonValue } from '@pax/contracts';
+import type { JsonValue } from '@sift/contracts';
 
-export interface PaxDomainErrorOptions {
+export interface SiftDomainErrorOptions {
   /** Bounded JSON-safe context for logs/telemetry. See the redaction rules above. */
   details?: Readonly<Record<string, JsonValue>>;
   /** The underlying error this one wraps, if any (forwarded to `Error`'s `cause`). */
@@ -33,11 +33,11 @@ export interface PaxDomainErrorOptions {
  * can never be thrown directly -- every throw site must pick a specific,
  * meaningful subtype.
  */
-export abstract class PaxDomainError extends Error {
+export abstract class SiftDomainError extends Error {
   abstract readonly code: string;
   readonly details: Readonly<Record<string, JsonValue>> | undefined;
 
-  constructor(message: string, options?: PaxDomainErrorOptions) {
+  constructor(message: string, options?: SiftDomainErrorOptions) {
     super(message, options?.cause === undefined ? undefined : { cause: options.cause });
     this.name = new.target.name;
     this.details = options?.details;
@@ -56,7 +56,7 @@ export abstract class PaxDomainError extends Error {
  * `human`"). Also covers a runtime model attempting a change
  * `isModelPermittedChange` (see `policy.ts`) marks as out of bounds.
  */
-export class PolicyViolationError extends PaxDomainError {
+export class PolicyViolationError extends SiftDomainError {
   readonly code = 'POLICY_VIOLATION' as const;
 }
 
@@ -66,7 +66,7 @@ export class PolicyViolationError extends PaxDomainError {
  * (docs/specs/packs-and-routing.md routing algorithm step 8: "Reject any
  * candidate ID, version, or hash absent from the compiled registry.").
  */
-export class RoutingRejectionError extends PaxDomainError {
+export class RoutingRejectionError extends SiftDomainError {
   readonly code = 'ROUTING_REJECTED' as const;
 }
 
@@ -77,11 +77,11 @@ export class RoutingRejectionError extends PaxDomainError {
  * proposal, or a `request_revision` decision missing its required
  * `instructions`.
  */
-export class ValidationFailedError extends PaxDomainError {
+export class ValidationFailedError extends SiftDomainError {
   readonly code = 'VALIDATION_FAILED' as const;
 }
 
-/** Narrows `value` to `PaxDomainError`, for callers that need to branch on the shared taxonomy without knowing every subtype. */
-export function isPaxDomainError(value: unknown): value is PaxDomainError {
-  return value instanceof PaxDomainError;
+/** Narrows `value` to `SiftDomainError`, for callers that need to branch on the shared taxonomy without knowing every subtype. */
+export function isSiftDomainError(value: unknown): value is SiftDomainError {
+  return value instanceof SiftDomainError;
 }

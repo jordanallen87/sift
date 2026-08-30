@@ -18,7 +18,7 @@
  */
 import { Router } from 'express';
 import { z } from 'zod';
-import { CaseStateSchema, PublicActivityEventSchema } from '@pax/contracts';
+import { CaseStateSchema, PublicActivityEventSchema } from '@sift/contracts';
 import type { ActivityStore } from '../store/activity-store.js';
 import type { CaseStore } from '../store/case-store.js';
 import { sendError } from './http-support.js';

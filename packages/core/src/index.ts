@@ -1,4 +1,4 @@
-// @pax/core — pure Pax case reducer, routing, obligations, evidence,
+// @sift/core — pure Sift case reducer, routing, obligations, evidence,
 // readiness, and policy engine. No React, Express, Strands, model provider,
 // filesystem, or ambient Date.now()/Math.random()/crypto.randomUUID() calls;
 // see docs/specs/architecture.md ("No file in packages/core may import
@@ -12,13 +12,13 @@
 
 // Shared domain error taxonomy (errors.ts).
 export {
-  PaxDomainError,
+  SiftDomainError,
   PolicyViolationError,
   RoutingRejectionError,
   ValidationFailedError,
-  isPaxDomainError,
+  isSiftDomainError,
 } from './errors.js';
-export type { PaxDomainErrorOptions } from './errors.js';
+export type { SiftDomainErrorOptions } from './errors.js';
 
 // Decision Pack routing (routing.ts): docs/specs/packs-and-routing.md
 // "Routing algorithm".
@@ -158,13 +158,13 @@ export { evaluateReadiness } from './readiness.js';
 
 // Reducer integration layer (reducer.ts, create-case.ts), added while
 // building `apps/agent`'s case store/command service. Commit 1a2d980
-// ("feat: wire pax core into applyCaseEvent/instantiateCase") introduced
+// ("feat: wire sift core into applyCaseEvent/instantiateCase") introduced
 // both modules but never added their barrel re-exports here — every other
 // `packages/core` module is re-exported from this file, and `apps/agent`
 // (per docs/specs/architecture.md "Deterministic core") can only reach
-// `applyCaseEvent`/`instantiateCase` through `@pax/core`'s public surface
+// `applyCaseEvent`/`instantiateCase` through `@sift/core`'s public surface
 // (`main`/`types` both point at this file), not by deep-importing
-// `@pax/core/src/reducer.js` directly. Additive fix, following this file's
+// `@sift/core/src/reducer.js` directly. Additive fix, following this file's
 // own stated pattern ("each adds only its own module's re-exports here
 // rather than overwriting others'").
 export { applyCaseEvent } from './reducer.js';

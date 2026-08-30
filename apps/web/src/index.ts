@@ -1,4 +1,4 @@
-// @pax/web -- barrel export of this task's composition roots. `apps/web` is
+// @sift/web -- barrel export of this task's composition roots. `apps/web` is
 // a leaf application (its Vite entry is `src/main.tsx`, not this file); this
 // barrel exists for anything that needs to import a piece of the app by
 // package name/path rather than mounting it (e.g. a later Playwright helper
@@ -6,17 +6,17 @@
 export { App } from './app/App.js';
 export {
   AppProviders,
-  usePaxCommands,
+  useSiftCommands,
   useApiConfig,
   useWebMcpAdapter,
 } from './app/AppProviders.js';
 export type { AppProvidersProps, ApiConfig } from './app/AppProviders.js';
-export { createPaxClient, PaxClientError } from './api/pax-client.js';
+export { createSiftClient, SiftClientError } from './api/sift-client.js';
 export type {
-  PaxCommands,
-  CreatePaxClientOptions,
-  PaxClientErrorOptions,
-} from './api/pax-client.js';
+  SiftCommands,
+  CreateSiftClientOptions,
+  SiftClientErrorOptions,
+} from './api/sift-client.js';
 export { DemoLauncher } from './components/DemoLauncher.js';
 export type { DemoLauncherProps } from './components/DemoLauncher.js';
 export { CaseHeader } from './components/CaseHeader.js';

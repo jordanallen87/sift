@@ -15,7 +15,7 @@ describe('checkSource', () => {
   });
 
   it('flags `.only(` left in a fixture test file', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(
       join(dir, 'sample.test.ts'),
       [
@@ -40,7 +40,7 @@ describe('checkSource', () => {
   });
 
   it('flags a TODO left in production source', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(
       join(dir, 'thing.ts'),
       ['export function thing(): number {', '  // TODO: finish this', '  return 1;', '}', ''].join(
@@ -55,7 +55,7 @@ describe('checkSource', () => {
   });
 
   it('flags a credential-looking assignment', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(
       join(dir, 'config.ts'),
       "export const API_KEY = 'sk-live-a1B2c3D4e5F6g7H8i9J0kL';\n",
@@ -68,7 +68,7 @@ describe('checkSource', () => {
   });
 
   it('does not flag a charset/alphabet-definition string with no repeated characters', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(
       join(dir, 'fixtures.test.ts'),
       "const safeText = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_'.split('');\n",
@@ -80,7 +80,7 @@ describe('checkSource', () => {
   });
 
   it('does not flag a long, all-lowercase, multi-segment kebab-case fixture id', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(
       join(dir, 'fixture.test.ts'),
       "expect(item?.sourceId).toBe('source-household-event-event-thermostat-failure-2026-07');\n",
@@ -92,7 +92,7 @@ describe('checkSource', () => {
   });
 
   it('still flags a hyphenated token that mixes case (not a plain kebab-case identifier)', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(
       join(dir, 'config.ts'),
       "export const SECRET = 'aZ9k-Q2mP-7xR4-tW1n-L8vB-3cJ6h-F5dS0';\n",
@@ -105,7 +105,7 @@ describe('checkSource', () => {
   });
 
   it('still flags a high-entropy token that happens to contain repeated characters', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(
       join(dir, 'config.ts'),
       "export const SECRET = 'aZ9kQ2mP7xR4tW1nL8vB3cJ6hF5dS0ga';\n",
@@ -118,7 +118,7 @@ describe('checkSource', () => {
   });
 
   it('does not flag an obvious placeholder credential value', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(join(dir, 'config.ts'), "export const API_TOKEN = 'your-api-token-here';\n");
 
     const result = checkSource({ rootDir: dir });
@@ -127,7 +127,7 @@ describe('checkSource', () => {
   });
 
   it('passes on a clean fixture', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(
       join(dir, 'clean.ts'),
       ['export function add(a: number, b: number): number {', '  return a + b;', '}', ''].join(
@@ -143,7 +143,7 @@ describe('checkSource', () => {
   });
 
   it('ignores excluded directories such as node_modules and dist', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-check-source-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(join(dir, 'clean.ts'), 'export {};\n');
 
     const nested = join(dir, 'node_modules', 'some-pkg');

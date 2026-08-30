@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PUBLIC_ACTIVITY_EVENT_TYPES } from '@pax/contracts';
+import { PUBLIC_ACTIVITY_EVENT_TYPES } from '@sift/contracts';
 import { getActivityLabel, STATUS_TONE_META, STATUS_TONES } from './activity-labels.js';
 
 describe('activity-labels', () => {

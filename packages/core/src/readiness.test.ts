@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import type { CaseExtension, CaseState, Criterion, ObligationState } from '@pax/contracts';
+import type { CaseExtension, CaseState, Criterion, ObligationState } from '@sift/contracts';
 import { evaluateReadiness } from './readiness.js';
 
 function caseExtension(overrides: Partial<CaseExtension> = {}): CaseExtension {

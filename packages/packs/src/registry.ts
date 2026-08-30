@@ -21,10 +21,10 @@
  * case's `packId`/`packVersion`/`compiledPackHash` triple trusts to be
  * immutable.
  */
-import type { CompiledDecisionPack } from '@pax/contracts';
-import { PaxDomainError } from '@pax/core';
+import type { CompiledDecisionPack } from '@sift/contracts';
+import { SiftDomainError } from '@sift/core';
 
-export class PackRegistryConflictError extends PaxDomainError {
+export class PackRegistryConflictError extends SiftDomainError {
   readonly code = 'PACK_REGISTRY_CONFLICT' as const;
 }
 

@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { openDatabase, type PaxDatabase } from './connection.js';
+import { openDatabase, type SiftDatabase } from './connection.js';
 import { applyMigrations, migrate, MigrationIntegrityError } from './migrate.js';
 
 const REQUIRED_TABLES = [
@@ -15,7 +15,7 @@ const REQUIRED_TABLES = [
   'schema_migrations',
 ];
 
-function tableNames(database: PaxDatabase): string[] {
+function tableNames(database: SiftDatabase): string[] {
   const rows = database.sqlite
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
     .all() as { name: string }[];
@@ -23,7 +23,7 @@ function tableNames(database: PaxDatabase): string[] {
 }
 
 describe('applyMigrations', () => {
-  let database: PaxDatabase | undefined;
+  let database: SiftDatabase | undefined;
   let dir: string | undefined;
 
   afterEach(() => {
@@ -34,7 +34,7 @@ describe('applyMigrations', () => {
   });
 
   it('creates all seven required tables from a fresh connection', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-migrate-test-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-migrate-test-'));
     database = openDatabase(dir);
 
     const result = applyMigrations(database.sqlite);
@@ -47,7 +47,7 @@ describe('applyMigrations', () => {
   });
 
   it('is a no-op the second time it runs against the same database', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-migrate-test-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-migrate-test-'));
     database = openDatabase(dir);
 
     const first = applyMigrations(database.sqlite);
@@ -62,8 +62,8 @@ describe('applyMigrations', () => {
   });
 
   it('throws MigrationIntegrityError when an already-applied migration file is edited afterward', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-migrate-test-'));
-    const migrationsDir = mkdtempSync(join(tmpdir(), 'pax-migrate-files-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-migrate-test-'));
+    const migrationsDir = mkdtempSync(join(tmpdir(), 'sift-migrate-files-'));
     // A real (if minimal) migration: it must create `schema_migrations`
     // itself, exactly like the generated `0001_initial.sql` does, since a
     // fresh database has no ledger table yet — the first-ever migration is
@@ -103,7 +103,7 @@ CREATE TABLE schema_migrations (
 
 describe('migrate', () => {
   let dir: string | undefined;
-  let database: PaxDatabase | undefined;
+  let database: SiftDatabase | undefined;
 
   afterEach(() => {
     database?.close();
@@ -113,7 +113,7 @@ describe('migrate', () => {
   });
 
   it('creates a missing/nested data directory and applies migrations rather than crashing', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-migrate-boot-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-migrate-boot-'));
     const nestedDataDir = join(dir, 'deeply', 'nested', 'data');
     expect(existsSync(nestedDataDir)).toBe(false);
 
@@ -128,7 +128,7 @@ describe('migrate', () => {
   });
 
   it('is idempotent and safe to call repeatedly (as on every service boot)', () => {
-    dir = mkdtempSync(join(tmpdir(), 'pax-migrate-boot-'));
+    dir = mkdtempSync(join(tmpdir(), 'sift-migrate-boot-'));
 
     const firstBoot = migrate(dir);
     firstBoot.database.close();

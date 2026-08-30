@@ -30,7 +30,7 @@
  * `resolveCapabilityReferences` only ever resolves `skill`/`specialist`/
  * `tool` references, the three kinds a manifest can actually name.
  */
-import type { DecisionPackManifest } from '@pax/contracts';
+import type { DecisionPackManifest } from '@sift/contracts';
 
 export const CAPABILITY_KINDS = [
   'skill',

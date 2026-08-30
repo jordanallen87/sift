@@ -16,8 +16,8 @@
  * process and an in-memory `Map<caseId, Set<listener>>` is sufficient and
  * far simpler than a durable pub/sub layer.
  */
-import { CaseEventSchema, CaseStateSchema, type CaseEvent, type CaseState } from '@pax/contracts';
-import type { PaxDatabase } from '../db/connection.js';
+import { CaseEventSchema, CaseStateSchema, type CaseEvent, type CaseState } from '@sift/contracts';
+import type { SiftDatabase } from '../db/connection.js';
 import {
   foldEvents,
   type AppendIdempotency,
@@ -70,7 +70,7 @@ function rowToCaseEvent(row: CaseEventRow): CaseEvent {
 export class SqliteCaseStore implements CaseStore {
   private readonly listeners = new Map<string, Set<CaseEventListener>>();
 
-  constructor(private readonly database: PaxDatabase) {}
+  constructor(private readonly database: SiftDatabase) {}
 
   load(caseId: string): CaseState | undefined {
     const row = this.database.sqlite

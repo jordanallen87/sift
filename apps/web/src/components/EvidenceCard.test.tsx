@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { Claim, EvidenceLink, Source } from '@pax/contracts';
+import type { Claim, EvidenceLink, Source } from '@sift/contracts';
 import { EvidenceCard, type EvidenceItemData } from './EvidenceCard.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
@@ -175,7 +175,7 @@ describe('EvidenceCard', () => {
     expect(overflowRisks).toEqual([]);
   });
 
-  describe('disposition controls (webmcp.md pax_set_evidence_disposition, visible-control equivalent -- one segmented control, not three buttons)', () => {
+  describe('disposition controls (webmcp.md sift_set_evidence_disposition, visible-control equivalent -- one segmented control, not three buttons)', () => {
     it('renders no disposition control when onSetDisposition is not provided (backward compatible)', () => {
       render(<EvidenceCard item={buildItem()} />);
       expect(screen.queryByTestId('evidence-card-disposition-control')).not.toBeInTheDocument();

@@ -1,7 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CommandReceipt, RuntimeDebugEvent } from '@pax/contracts';
+import type { CommandReceipt, RuntimeDebugEvent } from '@sift/contracts';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
 import { createDebugRouter } from './debug.js';
@@ -68,7 +68,7 @@ describe('GET /api/debug/runs/:runId', () => {
     expect(response.status).toBe(404);
   });
 
-  it('returns 404 for every debug route when PAX_DEBUG_ENABLED is false', async () => {
+  it('returns 404 for every debug route when SIFT_DEBUG_ENABLED is false', async () => {
     harness = createHttpTestHarness({ debugEnabled: false });
     const { caseId } = await startDemo();
     seedRun(caseId, 'run-1');

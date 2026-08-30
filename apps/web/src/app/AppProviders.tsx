@@ -3,8 +3,8 @@
  * `apps/web/src/app/AppProviders.tsx  Query, event, command, and test
  * providers`).
  *
- * A single shared `PaxCommands` client, reachable from any descendant via
- * `usePaxCommands()`, with a `commandsClient` override prop so component
+ * A single shared `SiftCommands` client, reachable from any descendant via
+ * `useSiftCommands()`, with a `commandsClient` override prop so component
  * tests (and later Playwright tests through the same seam) can substitute
  * a fake client without hitting the network (CLAUDE.md "Non-negotiable
  * product truths": "Visible UI controls and WebMCP callbacks use the same
@@ -15,7 +15,7 @@
  * wiring) adds the two remaining test-injection seams the rest of the live
  * workspace needs: `caseEventsConfig` (the same `baseUrl`/`fetchImpl`/
  * `createEventSource` overrides `useCaseEvents` itself accepts, plus reused
- * by the plain `GET /api/packs` fetch backing the WebMCP `pax_list_packs`
+ * by the plain `GET /api/packs` fetch backing the WebMCP `sift_list_packs`
  * tool and `OptionComparison`'s presentation metadata) and `webMcpAdapter`
  * (defaults to the real `BrowserModelContextAdapter`; tests substitute
  * `InMemoryModelContextAdapter`). Both follow the exact same pattern as
@@ -23,11 +23,11 @@
  * plumbing.
  */
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { createPaxClient, type PaxCommands } from '../api/pax-client.js';
+import { createSiftClient, type SiftCommands } from '../api/sift-client.js';
 import { BrowserModelContextAdapter, type ModelContextAdapter } from '../model-context/adapter.js';
 import type { CreateEventSource } from '../hooks/use-case-events.js';
 
-const PaxCommandsContext = createContext<PaxCommands | null>(null);
+const SiftCommandsContext = createContext<SiftCommands | null>(null);
 
 /** Same-origin API config shared by `useCaseEvents` and the plain `GET /api/packs` fetch -- every field optional so a caller (or test) only overrides what it needs to. */
 export interface ApiConfig {
@@ -41,8 +41,8 @@ const WebMcpAdapterContext = createContext<ModelContextAdapter | null>(null);
 
 export interface AppProvidersProps {
   children: ReactNode;
-  /** Test-injectable override -- substitutes a fake `PaxCommands` implementation without hitting the network. Defaults to the real same-origin HTTP client. */
-  commandsClient?: PaxCommands;
+  /** Test-injectable override -- substitutes a fake `SiftCommands` implementation without hitting the network. Defaults to the real same-origin HTTP client. */
+  commandsClient?: SiftCommands;
   /** Test-injectable overrides for the live case-event stream and packs fetch. Defaults to same-origin `fetch`/`EventSource`. */
   caseEventsConfig?: ApiConfig;
   /** Test-injectable `ModelContextAdapter` override. Defaults to the real `BrowserModelContextAdapter`. */
@@ -55,24 +55,24 @@ export function AppProviders({
   caseEventsConfig,
   webMcpAdapter,
 }: AppProvidersProps) {
-  const client = useMemo(() => commandsClient ?? createPaxClient(), [commandsClient]);
+  const client = useMemo(() => commandsClient ?? createSiftClient(), [commandsClient]);
   const apiConfig = useMemo(() => caseEventsConfig ?? {}, [caseEventsConfig]);
   const adapter = useMemo(() => webMcpAdapter ?? new BrowserModelContextAdapter(), [webMcpAdapter]);
 
   return (
-    <PaxCommandsContext.Provider value={client}>
+    <SiftCommandsContext.Provider value={client}>
       <ApiConfigContext.Provider value={apiConfig}>
         <WebMcpAdapterContext.Provider value={adapter}>{children}</WebMcpAdapterContext.Provider>
       </ApiConfigContext.Provider>
-    </PaxCommandsContext.Provider>
+    </SiftCommandsContext.Provider>
   );
 }
 
-/** The shared `PaxCommands` client every visible control and, later, every WebMCP tool callback sends commands through. Throws if called outside `<AppProviders>`. */
-export function usePaxCommands(): PaxCommands {
-  const client = useContext(PaxCommandsContext);
+/** The shared `SiftCommands` client every visible control and, later, every WebMCP tool callback sends commands through. Throws if called outside `<AppProviders>`. */
+export function useSiftCommands(): SiftCommands {
+  const client = useContext(SiftCommandsContext);
   if (client === null) {
-    throw new Error('usePaxCommands must be called within <AppProviders>.');
+    throw new Error('useSiftCommands must be called within <AppProviders>.');
   }
   return client;
 }
@@ -82,7 +82,7 @@ export function useApiConfig(): ApiConfig {
   return useContext(ApiConfigContext);
 }
 
-/** The shared `ModelContextAdapter` WebMCP tool registration uses. Throws if called outside `<AppProviders>`, matching `usePaxCommands()`. */
+/** The shared `ModelContextAdapter` WebMCP tool registration uses. Throws if called outside `<AppProviders>`, matching `useSiftCommands()`. */
 export function useWebMcpAdapter(): ModelContextAdapter {
   const adapter = useContext(WebMcpAdapterContext);
   if (adapter === null) {

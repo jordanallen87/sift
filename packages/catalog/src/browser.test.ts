@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mapCatalogRecordToOption, VehicleCatalogRecordSchema } from './browser.js';
 
-describe('@pax/catalog/browser entry point', () => {
+describe('@sift/catalog/browser entry point', () => {
   it('exports a working VehicleCatalogRecordSchema', () => {
     const result = VehicleCatalogRecordSchema.safeParse({
       id: 'veh-1',

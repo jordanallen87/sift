@@ -54,7 +54,7 @@ export function HelpButton() {
       </SheetTrigger>
       <SheetContent data-testid="help-sheet" side="bottom">
         <SheetHeader>
-          <SheetTitle>How Pax works</SheetTitle>
+          <SheetTitle>How Sift works</SheetTitle>
           <SheetDescription>
             A real-time, source-linked decision workspace. You and a bounded agent work in the same
             case together -- it investigates open questions, but only you can approve a

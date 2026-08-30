@@ -29,7 +29,7 @@
  * server-side filter end-to-end) plus free-text is deferred too.
  */
 import { useState } from 'react';
-import type { RuntimeDebugCategory, RuntimeDebugLevel } from '@pax/contracts';
+import type { RuntimeDebugCategory, RuntimeDebugLevel } from '@sift/contracts';
 import {
   RUNTIME_DEBUG_CATEGORIES,
   RUNTIME_DEBUG_LEVELS,

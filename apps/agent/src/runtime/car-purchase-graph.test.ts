@@ -3,9 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import type { Clock, IdGenerator } from '@pax/core';
-import { createCapabilityCatalog, compileCarPurchasePack, CAR_PURCHASE_MANIFEST } from '@pax/packs';
-import type { ExecutionRequest, ExecutionResult } from '@pax/contracts';
+import type { Clock, IdGenerator } from '@sift/core';
+import {
+  createCapabilityCatalog,
+  compileCarPurchasePack,
+  CAR_PURCHASE_MANIFEST,
+} from '@sift/packs';
+import type { ExecutionRequest, ExecutionResult } from '@sift/contracts';
 import { PROPOSE_RECOMMENDATION_TOOL_ID } from './strands-adapter.js';
 import { ScriptedModelProvider } from './model-provider.js';
 import {
@@ -621,7 +625,7 @@ describe('executeCarPurchaseGraph', () => {
 
   it('throws before any node runs when skillsRootDir has no skill subdirectories', async () => {
     const deps = buildDeps();
-    const emptyRoot = mkdtempSync(join(tmpdir(), 'pax-empty-skills-'));
+    const emptyRoot = mkdtempSync(join(tmpdir(), 'sift-empty-skills-'));
     writeFileSync(join(emptyRoot, 'not-a-skill.txt'), 'just a file, not a skill directory');
     try {
       await expect(

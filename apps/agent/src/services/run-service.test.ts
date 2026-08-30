@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { CaseEvent } from '@pax/contracts';
-import type { Clock, IdGenerator } from '@pax/core';
+import type { CaseEvent } from '@sift/contracts';
+import type { Clock, IdGenerator } from '@sift/core';
 import { createTestDatabase, type TestDatabase } from '../db/connection.js';
 import { applyMigrations } from '../db/migrate.js';
 import { InMemoryActivityStore } from '../store/activity-store.js';

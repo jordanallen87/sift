@@ -1,5 +1,5 @@
 {
-  "_provenance": "Fictional demo data. Weather station identity and degree-day figures are invented for the Pax 'Home Energy Guardian' hackathon scenario and do not describe any real weather station or climate record.",
+  "_provenance": "Fictional demo data. Weather station identity and degree-day figures are invented for the Sift 'Home Energy Guardian' hackathon scenario and do not describe any real weather station or climate record.",
   "caseId": "case-demo-energy-guardian",
   "weatherStation": {
     "stationId": "station-northfield-regional",

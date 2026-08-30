@@ -117,7 +117,7 @@ describe('calculateEnergyAnalysis -- rate-schedules edge case with no tariff eff
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'pax-energy-calculator-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'sift-energy-calculator-'));
   });
 
   afterEach(() => {
@@ -306,7 +306,7 @@ describe('evaluateResponseOptions -- maxRoughCostAmongOptions 0 edge case (via f
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'pax-energy-calculator-response-options-'));
+    tempDir = mkdtempSync(join(tmpdir(), 'sift-energy-calculator-response-options-'));
   });
 
   afterEach(() => {

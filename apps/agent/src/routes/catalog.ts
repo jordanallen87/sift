@@ -1,8 +1,8 @@
 /**
  * `GET /api/catalog/*` (docs/decisions/0003-vehicle-catalog-and-normal-case-
- * creation.md): the browser's only access to `@pax/catalog`'s bundled
+ * creation.md): the browser's only access to `@sift/catalog`'s bundled
  * vehicle data. `apps/web` has no filesystem access and never imports
- * `@pax/catalog` directly (`packages/catalog/src/query.ts`'s own header
+ * `@sift/catalog` directly (`packages/catalog/src/query.ts`'s own header
  * comment) -- these routes are the one boundary that calls its synchronous,
  * already-bounded query functions and serializes the result. No store, no
  * command dispatch, no idempotency key: every route here is read-only and
@@ -30,7 +30,7 @@ import {
   searchVehicles,
   VehicleCatalogRecordSchema,
   VehicleCatalogRecordListSchema,
-} from '@pax/catalog';
+} from '@sift/catalog';
 import { sendError } from './http-support.js';
 
 const ListYearsResponseSchema = z.object({ years: z.array(z.number().int()) }).strict();

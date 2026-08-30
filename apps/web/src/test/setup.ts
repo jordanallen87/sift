@@ -1,5 +1,5 @@
 /**
- * Global Vitest setup for `@pax/web` component tests (docs/specs/testing.md
+ * Global Vitest setup for `@sift/web` component tests (docs/specs/testing.md
  * "Component tests": "React Testing Library verifies every visible state
  * ... axe checks run on the launcher, active workspace, pending
  * confirmation, error, and decided states.").

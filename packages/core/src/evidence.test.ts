@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import type { Claim, EvidenceLink, ObligationState, Source } from '@pax/contracts';
+import type { Claim, EvidenceLink, ObligationState, Source } from '@sift/contracts';
 import {
   achievedEvidenceLevel,
   evidenceLevelRank,

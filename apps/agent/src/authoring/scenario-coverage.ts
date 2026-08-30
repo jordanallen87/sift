@@ -5,11 +5,11 @@
  * incomplete-evidence, steering, and human-boundary scenario").
  *
  * Judgment call: this is deliberately NOT `DemoScenarioSchema`
- * (`@pax/contracts` `scenario.ts`). `DemoScenarioSchema.seed.demoId` is
+ * (`@sift/contracts` `scenario.ts`). `DemoScenarioSchema.seed.demoId` is
  * `z.enum(DEMO_IDS)` where `DEMO_IDS = ['car-purchase',
  * 'home-energy-guardian']` (`commands.ts`) -- a closed enum of only the two
  * hero packs. A freshly authored pack (e.g. `apartment-hunt`, or any pack a
- * user authors through `pnpm pax pack:author`) can never have a `demoId`
+ * user authors through `pnpm sift pack:author`) can never have a `demoId`
  * from that set, so a `scenarios/<scenario-id>.json` file belonging to an
  * authored pack structurally cannot validate against `DemoScenarioSchema` --
  * that schema is scoped to the demo-launcher/scenario-runner system for the
@@ -21,7 +21,7 @@
  * `steps`/`assertions` shape rather than redefining them.
  */
 import { z } from 'zod';
-import { ScenarioAssertionSchema, ScenarioStepSchema } from '@pax/contracts';
+import { ScenarioAssertionSchema, ScenarioStepSchema } from '@sift/contracts';
 
 /** The four scenario outcome categories pack-authoring.md's authoring interview requires at least one of each. */
 export const AUTHORING_SCENARIO_KINDS = [

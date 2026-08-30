@@ -19,7 +19,7 @@
  * `ObligationState.status` field, never re-derives it, so this file has the
  * smallest possible blast radius of anything that could make it wrong.
  */
-import type { CaseState, ObligationState } from '@pax/contracts';
+import type { CaseState, ObligationState } from '@sift/contracts';
 
 // NOTE: this file's original comment block below documented a genuine gap --
 // `CaseState` had no `caseExtensions` array, so confirmation state for an

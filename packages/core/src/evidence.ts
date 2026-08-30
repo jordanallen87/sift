@@ -9,12 +9,12 @@
  * independence, staleness, fail-closed verdicts, and convergence").
  *
  * This module is pure: every function is a plain data transform over
- * `@pax/contracts` types plus the injected `Clock` port declared below. It
+ * `@sift/contracts` types plus the injected `Clock` port declared below. It
  * imports nothing from `attributes.ts`/`extensions.ts`/`criteria.ts` or
  * `routing.ts`/`policy.ts`/`errors.ts` (sibling files owned by two other
  * concurrent build tasks).
  */
-import type { Claim, EvidenceLevel, EvidenceLink, ObligationState, Source } from '@pax/contracts';
+import type { Claim, EvidenceLevel, EvidenceLink, ObligationState, Source } from '@sift/contracts';
 
 /**
  * Minimal injected time port. `packages/core` may never call `Date.now()`
@@ -75,7 +75,7 @@ const RANK_TO_EVIDENCE_LEVEL: Record<0 | 1 | 2 | 3, EvidenceLevel> = {
  * has no dedicated `authoritative` flag. This treats
  * `Source.verification === 'verified'` as the authoritative signal: a source
  * that has already passed the product's own challenge/verification workflow
- * (webmcp.md `pax_set_evidence_disposition`; the `source-challenger`
+ * (webmcp.md `sift_set_evidence_disposition`; the `source-challenger`
  * specialist in packs-and-routing.md) is exactly the kind of source strong
  * enough to satisfy E2 on its own. `Source.origin` (`fixture` /
  * `user_submitted` / `agent_discovered`) describes provenance, not
@@ -307,7 +307,7 @@ export interface StalenessContext {
  * Data-driven staleness/dependency-invalidation propagation
  * (docs/specs/testing.md: "custom-criterion obligation derivation and
  * dependency invalidation"). Walks only the explicit schema-level references
- * available on `@pax/contracts` types -- never a hardcoded per-obligation
+ * available on `@sift/contracts` types -- never a hardcoded per-obligation
  * table:
  *
  * - `source` trigger: every `EvidenceLink.sourceId` match, and every `Claim`

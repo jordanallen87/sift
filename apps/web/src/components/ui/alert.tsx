@@ -4,7 +4,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 // Flat by design: no border. The destructive variant gets its own tinted
-// fill (Pax's own --color-status-error-bg) so it still reads unmistakably
+// fill (Sift's own --color-status-error-bg) so it still reads unmistakably
 // as an alert rather than a plain card, purely through background color.
 const alertVariants = cva(
   'relative grid w-full grid-cols-[0_1fr] items-start gap-y-0.5 rounded-[var(--radius-lg)] px-4 py-3 text-sm has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] has-[>svg]:gap-x-3 [&>svg]:size-4 [&>svg]:translate-y-0.5 [&>svg]:text-current',

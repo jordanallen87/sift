@@ -88,7 +88,7 @@
  * once it has already independently decided a round-2 run is underway:
  * `ensureDogCrateObligation` derives and durably appends
  * `case.custom.dog_crate_fit` (reusing `dogCrateObligationTemplate` and
- * `@pax/core`'s `deriveObligations`, exactly like `car-purchase-scenario.ts`
+ * `@sift/core`'s `deriveObligations`, exactly like `car-purchase-scenario.ts`
  * does inline) if it is not already present, before folding round 2's
  * `household-fit-analyst` result against it. It deliberately does not also
  * add `linkedCriterionId`/`linkedObligationId` back onto the `CaseExtension`
@@ -103,15 +103,15 @@ import type {
   EvidenceLink,
   PublicActivityEventType,
   PublicActivityPhase,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import {
   deriveObligations,
   type CaseExtensionObligationTemplate,
   type Clock,
   type IdGenerator,
-} from '@pax/core';
-import type { PackRegistry } from '@pax/packs';
-import { emptyScenarioTrajectory } from '@pax/scenarios';
+} from '@sift/core';
+import type { PackRegistry } from '@sift/packs';
+import { emptyScenarioTrajectory } from '@sift/scenarios';
 import type { RunStatus } from '../db/schema.js';
 import type { InvestigationEngine, RunStore } from '../services/run-service.js';
 import type { ActivityStore } from '../store/activity-store.js';
@@ -257,7 +257,7 @@ function appendActivity(
 /**
  * Translates one normalized `RuntimeEvent` (`event-normalizer.ts`) from the
  * live Graph run into the matching public `ActivityStore` event, if the
- * normal workspace's public vocabulary (`@pax/contracts`
+ * normal workspace's public vocabulary (`@sift/contracts`
  * `PUBLIC_ACTIVITY_EVENT_TYPES`) has one. `model`/`context`/`goal`/
  * `session`/`error`-category events (and `intervention.proceed`/`.deny`/
  * `.transform`) have no direct public counterpart today; they remain
@@ -798,7 +798,7 @@ export function foldRound2(
     summary: `Revised recommendation ready${favoredOptionId !== null ? `: favoring "${favoredOptionId}"` : ''}.`,
   });
 
-  // Pax proposes; only a human may approve via the separate `reviewProposal`
+  // Sift proposes; only a human may approve via the separate `reviewProposal`
   // command (never called here -- see this file's header comment).
   const proposalEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
@@ -930,7 +930,7 @@ async function runOneInvestigation(
     // `runs` and `activity_events` foreign keys unsatisfiable, in which case
     // this console line is the only surviving trace.
     console.error(
-      `[pax] car-purchase-engine: run "${params.runId}" for case "${params.caseId}" failed: ${message}`,
+      `[sift] car-purchase-engine: run "${params.runId}" for case "${params.caseId}" failed: ${message}`,
     );
     try {
       deps.runStore.updateStatus(params.runId, {
@@ -940,7 +940,7 @@ async function runOneInvestigation(
       });
     } catch (updateError) {
       console.error(
-        `[pax] car-purchase-engine: failed to record run "${params.runId}" as failed:`,
+        `[sift] car-purchase-engine: failed to record run "${params.runId}" as failed:`,
         updateError,
       );
     }
@@ -954,7 +954,7 @@ async function runOneInvestigation(
       });
     } catch (activityError) {
       console.error(
-        `[pax] car-purchase-engine: failed to append a run.failed activity event for run "${params.runId}":`,
+        `[sift] car-purchase-engine: failed to append a run.failed activity event for run "${params.runId}":`,
         activityError,
       );
     }

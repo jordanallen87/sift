@@ -9,7 +9,7 @@
  *
  * Every field beyond `id`/`year`/`make`/`model` is nullable rather than
  * optional-and-absent: the source EPA data genuinely does not know a trim,
- * cylinder count, or transmission for every record, and Pax's own
+ * cylinder count, or transmission for every record, and Sift's own
  * "unknown stays unknown, never fabricated" philosophy
  * (docs/specs/product.md) extends to this catalog layer too. `null` is a
  * deliberate, present value meaning "the source did not report this",

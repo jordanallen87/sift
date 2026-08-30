@@ -13,13 +13,13 @@
  * single collapsed pass/fail.
  */
 import { Router } from 'express';
-import type { PaxDatabase } from '../db/connection.js';
+import type { SiftDatabase } from '../db/connection.js';
 
 export interface HealthRouterDeps {
-  database: PaxDatabase;
+  database: SiftDatabase;
 }
 
-function isDatabaseAlive(database: PaxDatabase): boolean {
+function isDatabaseAlive(database: SiftDatabase): boolean {
   try {
     // A real query against the live connection: `SELECT 1` fails once the
     // underlying `better-sqlite3` handle is closed or otherwise unusable,

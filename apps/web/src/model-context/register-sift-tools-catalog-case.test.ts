@@ -1,6 +1,6 @@
 /**
  * PAX-P28 (docs/specs/README.md): proves the WebMCP tool layer
- * (`register-pax-tools.ts`) behaves correctly when `getActiveCase()` returns
+ * (`register-sift-tools.ts`) behaves correctly when `getActiveCase()` returns
  * a `CaseState` shaped like a REAL catalog-built case
  * (docs/decisions/0003-vehicle-catalog-and-normal-case-creation.md) --
  * mostly-partial entity attributes (only the fields a vehicle catalog can
@@ -8,24 +8,24 @@
  * combined MPG), generated `option-N` entity ids rather than the
  * deterministic demo's literal `candidate-rav4`/etc. fixture ids, and no
  * recommendation/proposal yet -- rather than the fully-populated, four-
- * fixture-candidate `CaseState` every other `register-pax-tools.test.ts`
+ * fixture-candidate `CaseState` every other `register-sift-tools.test.ts`
  * case builds via `buildFixtureCaseState`'s empty-array defaults or the
  * demo's own seed data. `case-context.ts`'s `buildCaseContextSummary`
  * projects `CaseState` generically with no demo-specific branching
  * (confirmed by reading it), so this is a coverage gap the ADR itself calls
  * out, not new production behavior -- this file adds the missing proof, it
- * does not change `register-pax-tools.ts` or `case-context.ts`.
+ * does not change `register-sift-tools.ts` or `case-context.ts`.
  *
  * A new file rather than a new `describe` block appended to the existing
- * (already ~900-line) `register-pax-tools.test.ts`, to avoid merge-conflict
+ * (already ~900-line) `register-sift-tools.test.ts`, to avoid merge-conflict
  * risk with other concurrent work on that file. Every testing idiom below
  * (the `AnyToolResult`/`invokeTool` wrapper, `setUpWithActiveCase`, the fake
- * `PaxCommands`/`InMemoryModelContextAdapter` construction) is copied
+ * `SiftCommands`/`InMemoryModelContextAdapter` construction) is copied
  * verbatim from that file's own conventions rather than inventing a new
  * pattern.
  *
  * Deliberately hand-builds catalog-style `EntityRecord`s instead of
- * importing `@pax/catalog`'s `mapCatalogRecordToOption` -- `apps/agent`'s
+ * importing `@sift/catalog`'s `mapCatalogRecordToOption` -- `apps/agent`'s
  * `catalog-case-integration.test.ts` already proves that real mapping
  * function's output end to end through the real HTTP/store pipeline; this
  * file only needs `CaseState` fixtures *shaped like* that output (partial
@@ -41,16 +41,16 @@ import type {
   CaseState,
   Criterion,
   EntityRecord,
-} from '@pax/contracts';
-import type { PaxCommands } from '../api/pax-client.js';
+} from '@sift/contracts';
+import type { SiftCommands } from '../api/sift-client.js';
 import {
   buildFakeCommandReceipt,
   buildFakeRunReceipt,
-  createFakePaxCommands,
-} from '../test/fake-pax-commands.js';
+  createFakeSiftCommands,
+} from '../test/fake-sift-commands.js';
 import { buildFixtureCaseState } from '../test/fixtures.js';
 import { InMemoryModelContextAdapter } from './adapter.js';
-import { registerPaxTools } from './register-pax-tools.js';
+import { registerSiftTools } from './register-sift-tools.js';
 
 interface AnyToolResult<TData = unknown> {
   ok: boolean;
@@ -64,7 +64,7 @@ interface AnyToolResult<TData = unknown> {
   error?: { code: string; retryable: boolean };
 }
 
-/** Same explicitly-generic wrapper as `register-pax-tools.test.ts`'s own -- see that file's comment for why a typed helper is used instead of casting `unknown` at each call site. */
+/** Same explicitly-generic wrapper as `register-sift-tools.test.ts`'s own -- see that file's comment for why a typed helper is used instead of casting `unknown` at each call site. */
 async function invokeTool<TData = unknown>(
   adapter: InMemoryModelContextAdapter,
   name: string,
@@ -75,11 +75,11 @@ async function invokeTool<TData = unknown>(
 
 async function setUpWithActiveCase(
   caseId: string,
-  overrides: Partial<PaxCommands> = {},
-): Promise<{ adapter: InMemoryModelContextAdapter; commands: PaxCommands }> {
+  overrides: Partial<SiftCommands> = {},
+): Promise<{ adapter: InMemoryModelContextAdapter; commands: SiftCommands }> {
   const adapter = new InMemoryModelContextAdapter();
-  const commands = createFakePaxCommands(overrides);
-  const handle = await registerPaxTools({
+  const commands = createFakeSiftCommands(overrides);
+  const handle = await registerSiftTools({
     adapter,
     commands,
     getActiveCase: () => null,
@@ -209,20 +209,20 @@ function buildCatalogCaseState(overrides: Partial<CaseState> = {}): CaseState {
 }
 
 describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)', () => {
-  describe('pax_get_case_context', () => {
+  describe('sift_get_case_context', () => {
     it('reflects the partial-attribute catalog-built entities honestly: present fields exact, absent fields simply absent', async () => {
       const caseState = buildCatalogCaseState();
       const adapter = new InMemoryModelContextAdapter();
-      await registerPaxTools({
+      await registerSiftTools({
         adapter,
-        commands: createFakePaxCommands(),
+        commands: createFakeSiftCommands(),
         getActiveCase: () => caseState,
         listPacks: () => [],
       });
 
       const result = await invokeTool<{ options: EntityRecord[]; recommendation: unknown }>(
         adapter,
-        'pax_get_case_context',
+        'sift_get_case_context',
         {},
       );
 
@@ -253,7 +253,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
     });
   });
 
-  describe('pax_focus_option', () => {
+  describe('sift_focus_option', () => {
     it('focuses one of the catalog-built entities by its generated id', async () => {
       const focusOption = vi
         .fn()
@@ -262,7 +262,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
         focusOption,
       });
 
-      const result = await invokeTool(adapter, 'pax_focus_option', {
+      const result = await invokeTool(adapter, 'sift_focus_option', {
         caseId: 'case-catalog-1',
         optionId: 'option-2',
         expectedSequence: 5,
@@ -278,7 +278,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
     });
   });
 
-  describe('pax_upsert_option', () => {
+  describe('sift_upsert_option', () => {
     it('adds a further catalog-style candidate (partial attributes) without error', async () => {
       const receipt = buildFakeCommandReceipt({ caseId: 'case-catalog-1', acceptedSequence: 6 });
       const upsertOption = vi.fn().mockResolvedValue(receipt);
@@ -301,7 +301,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
         },
       };
 
-      const result = await invokeTool(adapter, 'pax_upsert_option', input);
+      const result = await invokeTool(adapter, 'sift_upsert_option', input);
 
       expect(result.ok).toBe(true);
       expect(result.ui.changed).toBe(true);
@@ -309,7 +309,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
     });
   });
 
-  describe('pax_update_criteria', () => {
+  describe('sift_update_criteria', () => {
     it('reweights a real default criterion against a catalog-built case without error', async () => {
       const receipt = buildFakeCommandReceipt({ caseId: 'case-catalog-1', acceptedSequence: 6 });
       const updateCriteria = vi.fn().mockResolvedValue(receipt);
@@ -323,7 +323,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
         ],
       };
 
-      const result = await invokeTool(adapter, 'pax_update_criteria', input);
+      const result = await invokeTool(adapter, 'sift_update_criteria', input);
 
       expect(result.ok).toBe(true);
       expect(result.ui.changed).toBe(true);
@@ -331,7 +331,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
     });
   });
 
-  describe('pax_define_case_attribute', () => {
+  describe('sift_define_case_attribute', () => {
     it('defines a custom.* extension against a catalog-built case without error', async () => {
       const receipt = buildFakeCommandReceipt({ caseId: 'case-catalog-1', acceptedSequence: 6 });
       const defineCaseAttribute = vi.fn().mockResolvedValue(receipt);
@@ -353,7 +353,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
         },
       };
 
-      const result = await invokeTool(adapter, 'pax_define_case_attribute', input);
+      const result = await invokeTool(adapter, 'sift_define_case_attribute', input);
 
       expect(result.ok).toBe(true);
       expect(result.ui.changed).toBe(true);
@@ -361,8 +361,8 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
     });
   });
 
-  describe('pax_request_investigation', () => {
-    it('succeeds at the acceptance level against a catalog-built case -- the tool call itself never fails synchronously; a later run failure (proven in apps/agent) is engine-side, not a register-pax-tools.ts decision', async () => {
+  describe('sift_request_investigation', () => {
+    it('succeeds at the acceptance level against a catalog-built case -- the tool call itself never fails synchronously; a later run failure (proven in apps/agent) is engine-side, not a register-sift-tools.ts decision', async () => {
       const runReceipt = buildFakeRunReceipt({
         caseId: 'case-catalog-1',
         acceptedSequence: 5,
@@ -374,7 +374,7 @@ describe('WebMCP tool layer against a catalog-built car-purchase case (PAX-P28)'
       });
 
       const input = { caseId: 'case-catalog-1', expectedSequence: 5 };
-      const result = await invokeTool(adapter, 'pax_request_investigation', input);
+      const result = await invokeTool(adapter, 'sift_request_investigation', input);
 
       expect(result.ok).toBe(true);
       expect(result.runId).toBe('run-catalog-1');

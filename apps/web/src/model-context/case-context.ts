@@ -1,11 +1,11 @@
 /**
  * Read-side projections for the two global WebMCP read tools
- * (`pax_get_case_context`, `pax_list_packs`; docs/specs/webmcp.md "Tool
- * catalog"). Kept out of `register-pax-tools.ts` so the projection logic --
+ * (`sift_get_case_context`, `sift_list_packs`; docs/specs/webmcp.md "Tool
+ * catalog"). Kept out of `register-sift-tools.ts` so the projection logic --
  * which fields a case context summary carries, which it must omit -- is
  * separately readable from the registration/dispatch plumbing.
  *
- * `pax_get_case_context`'s effect text (webmcp.md) lists exactly what it
+ * `sift_get_case_context`'s effect text (webmcp.md) lists exactly what it
  * returns: "the active case summary, selected pack ID/version/hash,
  * pack-defined and case-defined criteria/attributes, options, readiness
  * counts, current focus, selected option/evidence, recommendation, active
@@ -32,7 +32,7 @@ import {
   type ObligationStatus,
   type PackActivation,
   type Recommendation,
-} from '@pax/contracts';
+} from '@sift/contracts';
 
 export type ReadinessCounts = Record<ObligationStatus, number> & { total: number };
 
@@ -70,7 +70,7 @@ function countObligationsByStatus(obligations: CaseState['obligations']): Readin
   return { ...counts, total: obligations.length };
 }
 
-/** Projects full canonical `CaseState` down to exactly the fields `pax_get_case_context` is specified to return. */
+/** Projects full canonical `CaseState` down to exactly the fields `sift_get_case_context` is specified to return. */
 export function buildCaseContextSummary(caseState: CaseState): CaseContextSummary {
   return {
     caseId: caseState.id,
@@ -107,7 +107,7 @@ export interface PackSummary {
   activation: PackActivation;
 }
 
-/** Projects a full `CompiledDecisionPack` manifest down to `pax_list_packs`'s specified return shape: "descriptions, versions, hashes, and activation signals." */
+/** Projects a full `CompiledDecisionPack` manifest down to `sift_list_packs`'s specified return shape: "descriptions, versions, hashes, and activation signals." */
 export function buildPackSummary(pack: CompiledDecisionPack): PackSummary {
   return {
     packId: pack.identity.id,

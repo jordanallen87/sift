@@ -19,9 +19,9 @@
  * passing validation, or anything else can route around it.
  */
 import { z } from 'zod';
-import type { Clock } from '@pax/core';
-import type { CapabilityCatalog, PackRegistry } from '@pax/packs';
-import type { CompiledDecisionPack } from '@pax/contracts';
+import type { Clock } from '@sift/core';
+import type { CapabilityCatalog, PackRegistry } from '@sift/packs';
+import type { CompiledDecisionPack } from '@sift/contracts';
 import { packTest } from './test.js';
 
 export const PackPublishInputSchema = z

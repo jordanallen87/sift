@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DecisionProposal, Recommendation } from '@pax/contracts';
+import type { DecisionProposal, Recommendation } from '@sift/contracts';
 import { deriveWorkspaceStatus, type WorkspaceStatusInput } from './workspace-status.js';
 
 function buildRecommendation(overrides: Partial<Recommendation> = {}): Recommendation {
@@ -66,9 +66,9 @@ describe('deriveWorkspaceStatus', () => {
 
   it('singular vs plural finding count in the flagged-findings next step', () => {
     const one = deriveWorkspaceStatus(buildInput({ flaggedFindingsCount: 1 }));
-    expect(one.nextStep.text).toBe('1 finding may need a closer look before Pax can finish.');
+    expect(one.nextStep.text).toBe('1 finding may need a closer look before Sift can finish.');
     const three = deriveWorkspaceStatus(buildInput({ flaggedFindingsCount: 3 }));
-    expect(three.nextStep.text).toBe('3 findings may need a closer look before Pax can finish.');
+    expect(three.nextStep.text).toBe('3 findings may need a closer look before Sift can finish.');
     expect(three.nextStep.action).toEqual({ label: 'Review findings' });
   });
 
@@ -97,7 +97,7 @@ describe('deriveWorkspaceStatus', () => {
     );
     expect(status.nextStep).toEqual({
       tone: 'calm',
-      text: "You're all caught up. Pax will let you know if anything changes.",
+      text: "You're all caught up. Sift will let you know if anything changes.",
     });
     expect(stageState(status, 'decided')).toBe('done');
   });

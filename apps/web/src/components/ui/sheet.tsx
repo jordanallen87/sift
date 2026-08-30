@@ -1,14 +1,14 @@
 /**
- * Pax's Sheet primitive — a bottom sheet that slides up over the workspace
+ * Sift's Sheet primitive — a bottom sheet that slides up over the workspace
  * rather than navigating to a new page. Two callers this task adds: the
- * Findings review ("What Pax found") and the Runtime Inspector ("Inspect
+ * Findings review ("What Sift found") and the Runtime Inspector ("Inspect
  * run"), both reached from a still-visible, non-navigating trigger (ADR
  * 0002 follow-up: "Inspect run becomes the same sheet mechanism, not a new
  * page").
  *
  * Radix's Dialog primitive underneath supplies focus trapping, Escape-to-
  * close, `aria-modal`, and scroll locking for free -- this file only
- * layers Pax's own motion and surface tokens on top, matching
+ * layers Sift's own motion and surface tokens on top, matching
  * `docs/design-system.md`'s "Shadow is reserved for things that float
  * above the page with nothing behind them in normal flow" (a sheet is
  * exactly that case, unlike the flat Button/Card primitives).

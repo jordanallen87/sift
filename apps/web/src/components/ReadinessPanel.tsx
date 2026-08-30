@@ -5,18 +5,18 @@
  *
  * `evaluateReadiness(caseState): ReadinessResult`
  * (`packages/core/src/readiness.ts`) is "the single most safety-critical
- * function" in Pax -- CLAUDE.md: "The deterministic core, not an LLM, owns
+ * function" in Sift -- CLAUDE.md: "The deterministic core, not an LLM, owns
  * case state, evidence validity, readiness, and human authority." This
  * component only ever *renders* an already-computed `ReadinessResult`-shaped
  * prop; it recomputes nothing and owns no readiness logic of its own.
  *
  * `ReadinessPanelData` is a deliberate structural duplicate of
  * `packages/core/src/readiness.ts`'s `ReadinessResult` interface, not an
- * import of it: `apps/web` depends only on `@pax/contracts` today (see
+ * import of it: `apps/web` depends only on `@sift/contracts` today (see
  * `CaseHeader.tsx`/`DemoLauncher.tsx`), and this task's brief frames the
  * prop as "`ReadinessResult`-shaped", not as the real core type. Because
  * both are structural interfaces built from the same `ObligationState`
- * shape, a real `ReadinessResult` value from `@pax/core` is assignable here
+ * shape, a real `ReadinessResult` value from `@sift/core` is assignable here
  * without adaptation the moment a later task wires it in.
  *
  * Adapted from `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/inline/renderers/ReadinessStateCard.tsx`'s
@@ -31,7 +31,7 @@
  * not.
  */
 import type { ReactNode } from 'react';
-import type { ObligationState } from '@pax/contracts';
+import type { ObligationState } from '@sift/contracts';
 import { Badge } from '@/components/ui/badge';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 

@@ -1,5 +1,5 @@
 /**
- * Vite configuration for `@pax/web` (docs/specs/architecture.md "Runtime
+ * Vite configuration for `@sift/web` (docs/specs/architecture.md "Runtime
  * components" -> "Browser application"; the locked file map calls this out
  * explicitly in docs/superpowers/plans/2026-08-26-pax-hackathon-build.md
  * Task 9).
@@ -9,7 +9,7 @@
  * 1. Dev-only `/api` proxy to the Express agent service, so the browser app
  *    can call same-origin-shaped `/api/...` paths in development exactly as
  *    it will in production (architecture.md "Deployment": "Express serves
- *    the Vite production build and the Pax API from the same origin ...
+ *    the Vite production build and the Sift API from the same origin ...
  *    Deployed browser requests remain same-origin"). The proxy target port
  *    (8080) matches `apps/agent/src/server.ts`'s `DEFAULT_PORT` -- the local
  *    Express dev server's default listen port.

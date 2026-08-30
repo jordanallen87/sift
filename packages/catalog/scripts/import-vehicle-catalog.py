@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Transform the raw EPA fueleconomy.gov vehicles.csv bulk export into a
-bounded, curated Pax vehicle catalog JSON file. Source data is a US
+bounded, curated Sift vehicle catalog JSON file. Source data is a US
 government work (EPA / DOE fueleconomy.gov), public domain under 17 U.S.C.
 Sec. 105 -- no license restriction on reuse or redistribution. See
 docs/reuse-attribution.md for the full attribution entry.
 
-This is a one-time, offline transform, not part of the Pax build or a
+This is a one-time, offline transform, not part of the Sift build or a
 runtime dependency of the product (CLAUDE.md "Fixture mode must execute the
 complete product without network access after installation"). It is checked
 in for reproducibility and transparency about how the checked-in

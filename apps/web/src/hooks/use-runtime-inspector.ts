@@ -27,7 +27,7 @@ import {
   type RuntimeDebugCategory,
   type RuntimeDebugEvent,
   type RuntimeDebugLevel,
-} from '@pax/contracts';
+} from '@sift/contracts';
 
 export interface RuntimeOverview {
   runId: string;

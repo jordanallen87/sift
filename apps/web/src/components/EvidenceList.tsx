@@ -11,7 +11,7 @@
  * currently being changed as busy, not the whole list.
  */
 import { EvidenceCard, type EvidenceItemData } from './EvidenceCard.js';
-import type { EvidenceDisposition } from '@pax/contracts';
+import type { EvidenceDisposition } from '@sift/contracts';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export interface EvidenceListProps {
@@ -44,7 +44,7 @@ export function EvidenceList({
       // every other top-level region in App.tsx's workspace column.
       className="flex flex-col gap-[var(--space-3)]"
     >
-      <h2 id="evidence-list-heading">What Pax found</h2>
+      <h2 id="evidence-list-heading">What Sift found</h2>
 
       {error ? (
         <Alert role="alert" data-testid="evidence-list-error" variant="destructive">
@@ -70,7 +70,7 @@ export function EvidenceList({
             data-testid="evidence-list-empty"
             className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
           >
-            No case is open yet. Evidence will appear here as Pax investigates.
+            No case is open yet. Evidence will appear here as Sift investigates.
           </p>
         )
       ) : items.length === 0 ? (

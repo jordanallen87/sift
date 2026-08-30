@@ -7,7 +7,7 @@ description: Compares candidate specifications against the household's stated ne
 
 ## What this technique does
 
-This technique is the concrete mechanism behind Pax's promise that an unresolved question is shown as unresolved rather than quietly answered with a plausible-sounding guess. It has two genuinely different jobs, and conflating them is the one failure this skill exists to prevent:
+This technique is the concrete mechanism behind Sift's promise that an unresolved question is shown as unresolved rather than quietly answered with a plausible-sounding guess. It has two genuinely different jobs, and conflating them is the one failure this skill exists to prevent:
 
 1. **Specification-derived facts** — cargo volume, cargo width/length, rear door opening width, second-row legroom, ground clearance — are read directly from a manufacturer specification sheet and reported as sourced facts with normal comparison semantics (higher or lower is better, as the pack defines).
 2. **Genuinely subjective or physically unverifiable questions** — whether two dog crates of known dimensions actually clear the wheel wells, seatback contour, and load-floor step without folding a seat; how comfortable the ride and seating are for this household's daily commute — **cannot** be derived from any specification sheet, no matter how favorable the numbers look. These must be recorded as explicit unknowns, never inferred.

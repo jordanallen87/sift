@@ -1,5 +1,5 @@
 {
-  "_provenance": "Fictional demo data. Utility name, tariff IDs, and rates are invented for the Pax 'Home Energy Guardian' hackathon scenario and do not describe any real utility, account, or rate filing.",
+  "_provenance": "Fictional demo data. Utility name, tariff IDs, and rates are invented for the Sift 'Home Energy Guardian' hackathon scenario and do not describe any real utility, account, or rate filing.",
   "caseId": "case-demo-energy-guardian",
   "utilityName": "Cedar Valley Power & Light (fictional)",
   "serviceAddressNote": "Fictional single-family residence, electric service only. No real address is represented.",

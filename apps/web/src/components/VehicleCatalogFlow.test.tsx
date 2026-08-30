@@ -4,14 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import type { VehicleCatalogRecord } from '@pax/catalog/browser';
+import type { VehicleCatalogRecord } from '@sift/catalog/browser';
 import {
   VehicleCatalogFlow,
   MAX_SHORTLIST_SIZE,
   MIN_SHORTLIST_SIZE,
 } from './VehicleCatalogFlow.js';
 import { AppProviders } from '../app/AppProviders.js';
-import { createFakePaxCommands, buildFakeCommandReceipt } from '../test/fake-pax-commands.js';
+import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-sift-commands.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
 const server = setupServer();
@@ -73,10 +73,10 @@ function installCatalogHandlers(
 }
 
 function renderFlow(
-  commandOverrides: Parameters<typeof createFakePaxCommands>[0] = {},
+  commandOverrides: Parameters<typeof createFakeSiftCommands>[0] = {},
   props = {},
 ) {
-  const commands = createFakePaxCommands(commandOverrides);
+  const commands = createFakeSiftCommands(commandOverrides);
   const utils = render(
     <AppProviders commandsClient={commands}>
       <VehicleCatalogFlow {...props} />
@@ -321,7 +321,7 @@ describe('VehicleCatalogFlow', () => {
 
   it('renders at 390px width with no fixed-width overflow risk', () => {
     installCatalogHandlers();
-    const commands = createFakePaxCommands();
+    const commands = createFakeSiftCommands();
     const { overflowRisks } = renderAtNarrowWidth(
       <AppProviders commandsClient={commands}>
         <VehicleCatalogFlow />

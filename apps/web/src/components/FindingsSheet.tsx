@@ -1,5 +1,5 @@
 /**
- * The "What Pax found" review surface (docs/specs/product.md "Workspace
+ * The "What Sift found" review surface (docs/specs/product.md "Workspace
  * layout" region 4, evidence half), reached from the closed-by-default
  * `DisclosureSection` row. Unlike `EvidenceList`'s always-inline rendering,
  * this is a controlled `Sheet` with three tab views over the same
@@ -27,7 +27,7 @@ import {
   EVIDENCE_DISPOSITIONS,
   type EvidenceDisposition,
   type EvidenceVerdict,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import { EvidenceCard, type EvidenceItemData } from './EvidenceCard.js';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 import { Badge } from '@/components/ui/badge';
@@ -135,9 +135,9 @@ export function FindingsSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent data-testid="findings-sheet">
         <SheetHeader>
-          <SheetTitle>What Pax found</SheetTitle>
+          <SheetTitle>What Sift found</SheetTitle>
           <SheetDescription className="visually-hidden">
-            Review the evidence Pax has gathered for this case.
+            Review the evidence Sift has gathered for this case.
           </SheetDescription>
         </SheetHeader>
         <SheetBody>

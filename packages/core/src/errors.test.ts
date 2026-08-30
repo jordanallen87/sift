@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PaxDomainError,
+  SiftDomainError,
   PolicyViolationError,
   RoutingRejectionError,
   ValidationFailedError,
-  isPaxDomainError,
+  isSiftDomainError,
 } from './errors.js';
 
-describe('PaxDomainError taxonomy', () => {
+describe('SiftDomainError taxonomy', () => {
   it('gives PolicyViolationError a stable machine-readable code and human-readable message', () => {
     const error = new PolicyViolationError('Only a human actor may approve a decision.');
 
     expect(error).toBeInstanceOf(Error);
-    expect(error).toBeInstanceOf(PaxDomainError);
+    expect(error).toBeInstanceOf(SiftDomainError);
     expect(error).toBeInstanceOf(PolicyViolationError);
     expect(error.code).toBe('POLICY_VIOLATION');
     expect(error.message).toBe('Only a human actor may approve a decision.');
@@ -22,7 +22,7 @@ describe('PaxDomainError taxonomy', () => {
   it('gives RoutingRejectionError a stable machine-readable code', () => {
     const error = new RoutingRejectionError('Candidate pack is absent from the compiled registry.');
 
-    expect(error).toBeInstanceOf(PaxDomainError);
+    expect(error).toBeInstanceOf(SiftDomainError);
     expect(error.code).toBe('ROUTING_REJECTED');
     expect(error.name).toBe('RoutingRejectionError');
   });
@@ -30,7 +30,7 @@ describe('PaxDomainError taxonomy', () => {
   it('gives ValidationFailedError a stable machine-readable code', () => {
     const error = new ValidationFailedError('Input failed validation.');
 
-    expect(error).toBeInstanceOf(PaxDomainError);
+    expect(error).toBeInstanceOf(SiftDomainError);
     expect(error.code).toBe('VALIDATION_FAILED');
     expect(error.name).toBe('ValidationFailedError');
   });
@@ -74,17 +74,17 @@ describe('PaxDomainError taxonomy', () => {
     expect(error.cause).toBe(cause);
   });
 
-  it('identifies PaxDomainError instances via isPaxDomainError', () => {
-    expect(isPaxDomainError(new PolicyViolationError('x'))).toBe(true);
-    expect(isPaxDomainError(new RoutingRejectionError('x'))).toBe(true);
-    expect(isPaxDomainError(new ValidationFailedError('x'))).toBe(true);
+  it('identifies SiftDomainError instances via isSiftDomainError', () => {
+    expect(isSiftDomainError(new PolicyViolationError('x'))).toBe(true);
+    expect(isSiftDomainError(new RoutingRejectionError('x'))).toBe(true);
+    expect(isSiftDomainError(new ValidationFailedError('x'))).toBe(true);
   });
 
-  it('rejects non-PaxDomainError values via isPaxDomainError', () => {
-    expect(isPaxDomainError(new Error('plain error'))).toBe(false);
-    expect(isPaxDomainError('a string')).toBe(false);
-    expect(isPaxDomainError(null)).toBe(false);
-    expect(isPaxDomainError(undefined)).toBe(false);
-    expect(isPaxDomainError({ code: 'POLICY_VIOLATION' })).toBe(false);
+  it('rejects non-SiftDomainError values via isSiftDomainError', () => {
+    expect(isSiftDomainError(new Error('plain error'))).toBe(false);
+    expect(isSiftDomainError('a string')).toBe(false);
+    expect(isSiftDomainError(null)).toBe(false);
+    expect(isSiftDomainError(undefined)).toBe(false);
+    expect(isSiftDomainError({ code: 'POLICY_VIOLATION' })).toBe(false);
   });
 });

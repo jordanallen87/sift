@@ -13,7 +13,7 @@
  * it, keeping this store's aliasing behavior consistent with the SQLite
  * implementation (which round-trips every snapshot through JSON).
  */
-import type { CaseEvent, CaseState } from '@pax/contracts';
+import type { CaseEvent, CaseState } from '@sift/contracts';
 import {
   foldEvents,
   type AppendIdempotency,

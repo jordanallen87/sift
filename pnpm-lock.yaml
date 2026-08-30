@@ -65,19 +65,19 @@ importers:
 
   apps/agent:
     dependencies:
-      '@pax/catalog':
+      '@sift/catalog':
         specifier: workspace:*
         version: link:../../packages/catalog
-      '@pax/contracts':
+      '@sift/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@pax/core':
+      '@sift/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@pax/packs':
+      '@sift/packs':
         specifier: workspace:*
         version: link:../../packages/packs
-      '@pax/scenarios':
+      '@sift/scenarios':
         specifier: workspace:*
         version: link:../../packages/scenarios
       '@strands-agents/sdk':
@@ -123,13 +123,13 @@ importers:
       '@fontsource/public-sans':
         specifier: ^5.3.0
         version: 5.3.0
-      '@pax/catalog':
+      '@sift/catalog':
         specifier: workspace:*
         version: link:../../packages/catalog
-      '@pax/contracts':
+      '@sift/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@pax/core':
+      '@sift/core':
         specifier: workspace:*
         version: link:../../packages/core
       class-variance-authority:
@@ -196,7 +196,7 @@ importers:
 
   packages/catalog:
     dependencies:
-      '@pax/contracts':
+      '@sift/contracts':
         specifier: workspace:*
         version: link:../contracts
       zod:
@@ -211,7 +211,7 @@ importers:
 
   packages/core:
     dependencies:
-      '@pax/contracts':
+      '@sift/contracts':
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
@@ -221,10 +221,10 @@ importers:
 
   packages/packs:
     dependencies:
-      '@pax/contracts':
+      '@sift/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@pax/core':
+      '@sift/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -234,17 +234,17 @@ importers:
 
   packages/scenarios:
     dependencies:
-      '@pax/contracts':
+      '@sift/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@pax/core':
+      '@sift/core':
         specifier: workspace:*
         version: link:../core
       zod:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@pax/packs':
+      '@sift/packs':
         specifier: workspace:*
         version: link:../packs
 

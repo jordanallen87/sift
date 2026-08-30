@@ -21,14 +21,14 @@ import {
 const MIT_TEXT = [
   'MIT License',
   '',
-  'Copyright (c) 2026 Pax contributors',
+  'Copyright (c) 2026 Sift contributors',
   '',
   'Permission is hereby granted, free of charge, to any person obtaining a copy',
   '',
 ].join('\n');
 
 function tempRoot(): string {
-  return mkdtempSync(join(tmpdir(), 'pax-test-submission-'));
+  return mkdtempSync(join(tmpdir(), 'sift-test-submission-'));
 }
 
 describe('checkRequiredFiles', () => {
@@ -83,12 +83,12 @@ describe('readme-commands-match-package-scripts (checkReadmeCommandsMatchPackage
   function writeRoot(readme: string, scripts: Record<string, string>): void {
     if (!dir) throw new Error('dir not set');
     writeFileSync(join(dir, 'README.md'), readme);
-    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'pax', scripts }));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'sift', scripts }));
   }
 
   it('fails when README.md is missing', () => {
     dir = tempRoot();
-    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'pax', scripts: {} }));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'sift', scripts: {} }));
     const result = checkReadmeCommandsMatchPackageScripts(dir);
     expect(result.status).toBe('fail');
     expect(result.message).toMatch(/README\.md is missing/);
@@ -118,11 +118,11 @@ describe('readme-commands-match-package-scripts (checkReadmeCommandsMatchPackage
 
   it('validates `pnpm --filter <pkg> <script>` against that workspace package', () => {
     dir = tempRoot();
-    writeRoot('Run `pnpm --filter @pax/web build`.\n', { verify: 'x' });
+    writeRoot('Run `pnpm --filter @sift/web build`.\n', { verify: 'x' });
     mkdirSync(join(dir, 'apps', 'web'), { recursive: true });
     writeFileSync(
       join(dir, 'apps', 'web', 'package.json'),
-      JSON.stringify({ name: '@pax/web', scripts: { build: 'vite build' } }),
+      JSON.stringify({ name: '@sift/web', scripts: { build: 'vite build' } }),
     );
     const result = checkReadmeCommandsMatchPackageScripts(dir);
     expect(result.status).toBe('pass');
@@ -130,11 +130,11 @@ describe('readme-commands-match-package-scripts (checkReadmeCommandsMatchPackage
 
   it('fails when `pnpm --filter <pkg> <script>` references a script the workspace package lacks', () => {
     dir = tempRoot();
-    writeRoot('Run `pnpm --filter @pax/web nonexistent-script`.\n', { verify: 'x' });
+    writeRoot('Run `pnpm --filter @sift/web nonexistent-script`.\n', { verify: 'x' });
     mkdirSync(join(dir, 'apps', 'web'), { recursive: true });
     writeFileSync(
       join(dir, 'apps', 'web', 'package.json'),
-      JSON.stringify({ name: '@pax/web', scripts: { build: 'vite build' } }),
+      JSON.stringify({ name: '@sift/web', scripts: { build: 'vite build' } }),
     );
     const result = checkReadmeCommandsMatchPackageScripts(dir);
     expect(result.status).toBe('fail');
@@ -143,10 +143,10 @@ describe('readme-commands-match-package-scripts (checkReadmeCommandsMatchPackage
 
   it('fails when `pnpm --filter` references an unknown workspace package', () => {
     dir = tempRoot();
-    writeRoot('Run `pnpm --filter @pax/does-not-exist build`.\n', { verify: 'x' });
+    writeRoot('Run `pnpm --filter @sift/does-not-exist build`.\n', { verify: 'x' });
     const result = checkReadmeCommandsMatchPackageScripts(dir);
     expect(result.status).toBe('fail');
-    expect(result.message).toContain('@pax/does-not-exist');
+    expect(result.message).toContain('@sift/does-not-exist');
   });
 
   it('only scans commands inside backticks, not plain prose', () => {
@@ -204,9 +204,13 @@ describe('checkEnvExampleNoSecrets', () => {
     dir = tempRoot();
     writeFileSync(
       join(dir, '.env.example'),
-      ['# comment', 'PAX_EXECUTION_TARGET=local', 'PAX_MODEL_ID=', 'AWS_REGION=us-east-1', ''].join(
-        '\n',
-      ),
+      [
+        '# comment',
+        'SIFT_EXECUTION_TARGET=local',
+        'SIFT_MODEL_ID=',
+        'AWS_REGION=us-east-1',
+        '',
+      ].join('\n'),
     );
     const result = checkEnvExampleNoSecrets(dir);
     expect(result.status).toBe('pass');
@@ -293,7 +297,7 @@ describe('checkFixtureAttribution', () => {
     mkdirSync(join(dir, 'docs'), { recursive: true });
     writeFileSync(
       join(dir, 'docs', 'reuse-attribution.md'),
-      `# Pax Reuse Attribution\n\n## 2026-08-27 — Example entry\n\n${'x'.repeat(500)}\n`,
+      `# Sift Reuse Attribution\n\n## 2026-08-27 — Example entry\n\n${'x'.repeat(500)}\n`,
     );
     const result = checkFixtureAttribution(dir);
     expect(result.status).toBe('pass');
@@ -480,7 +484,7 @@ describe('checkVideoDuration', () => {
     expect(result.status).toBe('fail');
   });
 
-  it('honors a PAX_*_VIDEO_PATH env override', () => {
+  it('honors a SIFT_*_VIDEO_PATH env override', () => {
     dir = tempRoot();
     mkdirSync(join(dir, 'custom'), { recursive: true });
     writeFileSync(join(dir, 'custom', 'my-video.mp4'), Buffer.from([0]));
@@ -491,7 +495,7 @@ describe('checkVideoDuration', () => {
     const result = checkVideoDuration(
       dir,
       webmcpSpec,
-      { PAX_WEBMCP_VIDEO_PATH: 'custom/my-video.mp4' },
+      { SIFT_WEBMCP_VIDEO_PATH: 'custom/my-video.mp4' },
       deps,
     );
     expect(result.status).toBe('pass');
@@ -518,7 +522,7 @@ describe('checkReleaseMetadataPublicUrls', () => {
     mkdirSync(join(dir, 'docs', 'submissions'), { recursive: true });
     writeFileSync(
       join(dir, 'docs', 'submissions', 'release-metadata.json'),
-      JSON.stringify({ repositoryUrl: 'https://github.com/example/pax', deployedUrl: null }),
+      JSON.stringify({ repositoryUrl: 'https://github.com/example/sift', deployedUrl: null }),
     );
     const result = checkReleaseMetadataPublicUrls(dir);
     expect(result.status).toBe('fail');
@@ -533,7 +537,7 @@ describe('checkReleaseMetadataPublicUrls', () => {
     writeFileSync(
       join(dir, 'docs', 'submissions', 'release-metadata.json'),
       JSON.stringify({
-        repositoryUrl: 'https://github.com/example/pax',
+        repositoryUrl: 'https://github.com/example/sift',
         deployedUrl: 'https://pax-hackathon-production.up.railway.app',
         webmcpVideoUrl: 'https://youtube.com/watch?v=abc',
         agentsForHumansVideoUrl: 'https://youtube.com/watch?v=def',

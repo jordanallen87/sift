@@ -62,8 +62,8 @@ import {
   type RuntimeDebugCategory,
   type RuntimeDebugEvent,
   type RuntimeDebugLevel,
-} from '@pax/contracts';
-import type { PaxDatabase } from '../db/connection.js';
+} from '@sift/contracts';
+import type { SiftDatabase } from '../db/connection.js';
 import { redactValue } from '../runtime/event-normalizer.js';
 
 /** A persisted `RuntimeDebugEvent` plus the synthetic `id` minted at write time. See this module's header comment. */
@@ -217,7 +217,7 @@ function rowToEvent(row: RuntimeEventRow): PersistedRuntimeEvent {
 }
 
 export class SqliteRuntimeEventStore implements RuntimeEventStore {
-  constructor(private readonly database: PaxDatabase) {}
+  constructor(private readonly database: SiftDatabase) {}
 
   append(event: RuntimeDebugEvent): PersistedRuntimeEvent {
     const validated = RuntimeDebugEventSchema.parse(redactRuntimeEvent(event));

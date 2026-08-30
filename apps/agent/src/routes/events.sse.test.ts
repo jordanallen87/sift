@@ -9,7 +9,7 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CaseState, CommandReceipt, PublicActivityEvent } from '@pax/contracts';
+import type { CaseState, CommandReceipt, PublicActivityEvent } from '@sift/contracts';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
 import type { ActivityStore } from '../store/activity-store.js';

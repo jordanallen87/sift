@@ -6,7 +6,7 @@
  * fixture candidates -- works correctly end to end through the real
  * HTTP/store pipeline (docs/decisions/0003-vehicle-catalog-and-normal-case-
  * creation.md). Every fixture vehicle below is mapped through the one real
- * adaptation boundary, `@pax/catalog`'s `mapCatalogRecordToOption`, exactly
+ * adaptation boundary, `@sift/catalog`'s `mapCatalogRecordToOption`, exactly
  * as `apps/web`'s catalog/shortlist flow would build its own `upsertOption`
  * calls -- this is a *test* closing a coverage gap the ADR itself calls out
  * ("This task adds tests proving that ... not new production code"), not new
@@ -38,10 +38,10 @@ import request from 'supertest';
 import type { Application } from 'express';
 import { afterEach, describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
-import type { CaseState, CommandReceipt, PublicActivityEvent, RunReceipt } from '@pax/contracts';
-import type { Clock, IdGenerator } from '@pax/core';
-import { compileCarPurchasePack, PackRegistry } from '@pax/packs';
-import { mapCatalogRecordToOption, type VehicleCatalogRecord } from '@pax/catalog';
+import type { CaseState, CommandReceipt, PublicActivityEvent, RunReceipt } from '@sift/contracts';
+import type { Clock, IdGenerator } from '@sift/core';
+import { compileCarPurchasePack, PackRegistry } from '@sift/packs';
+import { mapCatalogRecordToOption, type VehicleCatalogRecord } from '@sift/catalog';
 import { asJson } from '../fixtures/http-types.js';
 import { buildApp } from '../app.js';
 import { createTestDatabase, type TestDatabase } from '../db/connection.js';

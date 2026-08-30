@@ -1,11 +1,11 @@
 /**
- * Opens the canonical `better-sqlite3` connection Pax uses everywhere
+ * Opens the canonical `better-sqlite3` connection Sift uses everywhere
  * (docs/specs/architecture.md "Persistence": "`better-sqlite3`, Drizzle
  * migrations, foreign keys, WAL mode, and a bounded busy timeout").
  *
  * This module only opens connections and applies the required pragmas; it
  * does not create tables (`migrate.ts` does that) and does not read
- * `PAX_DATA_DIR` itself (`config.ts` resolves that into a plain `dataDir`
+ * `SIFT_DATA_DIR` itself (`config.ts` resolves that into a plain `dataDir`
  * string, which callers pass in here) — keeping config resolution and
  * connection-opening as separate, independently testable concerns.
  */
@@ -28,15 +28,15 @@ import * as schema from './schema.js';
  */
 export const BUSY_TIMEOUT_MS = 5_000;
 
-export const SQLITE_FILE_NAME = 'pax.sqlite';
+export const SQLITE_FILE_NAME = 'sift.sqlite';
 
-export type PaxDrizzleDatabase = BetterSQLite3Database<typeof schema>;
+export type SiftDrizzleDatabase = BetterSQLite3Database<typeof schema>;
 
-export interface PaxDatabase {
+export interface SiftDatabase {
   /** The raw `better-sqlite3` handle — used directly for pragmas and low-level checks (e.g. the health route's liveness probe). */
   sqlite: Database.Database;
   /** The Drizzle query-builder wrapper bound to the same connection. */
-  db: PaxDrizzleDatabase;
+  db: SiftDrizzleDatabase;
   close(): void;
 }
 
@@ -45,7 +45,7 @@ function configurePragmas(sqlite: Database.Database): void {
   // (architecture.md "Persistence") — WAL is a database-level (not purely
   // per-connection) setting but SQLite still requires it to be requested on
   // each connection that wants WAL-aware behavior; setting it here keeps
-  // every code path that opens a Pax database consistent.
+  // every code path that opens a Sift database consistent.
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
@@ -53,14 +53,14 @@ function configurePragmas(sqlite: Database.Database): void {
 
 /**
  * Opens (creating if necessary) the canonical SQLite database under
- * `dataDir`. `dataDir` defaults to `.pax-data` locally and `/data` on
+ * `dataDir`. `dataDir` defaults to `.sift-data` locally and `/data` on
  * Railway per architecture.md — resolving *which* directory to use is
  * `config.ts`'s job; this function only guarantees the directory exists
  * before opening the file inside it, so a missing or not-yet-created data
  * directory (e.g. a fresh checkout, or a fresh Railway volume) is created
  * rather than crashing.
  */
-export function openDatabase(dataDir: string): PaxDatabase {
+export function openDatabase(dataDir: string): SiftDatabase {
   mkdirSync(dataDir, { recursive: true });
   const filePath = join(dataDir, SQLITE_FILE_NAME);
   const sqlite = new Database(filePath);
@@ -73,7 +73,7 @@ export function openDatabase(dataDir: string): PaxDatabase {
   };
 }
 
-export interface TestDatabase extends PaxDatabase {
+export interface TestDatabase extends SiftDatabase {
   /** The isolated temporary directory backing this database. */
   dir: string;
   /** Closes the connection and removes the temporary directory. */
@@ -90,7 +90,7 @@ export interface TestDatabase extends PaxDatabase {
  * state.
  */
 export function createTestDatabase(): TestDatabase {
-  const dir = mkdtempSync(join(tmpdir(), 'pax-agent-test-'));
+  const dir = mkdtempSync(join(tmpdir(), 'sift-agent-test-'));
   const opened = openDatabase(dir);
   return {
     ...opened,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Clock } from '@pax/core';
-import { PaxDomainError } from '@pax/core';
-import type { DecisionPackManifest } from '@pax/contracts';
+import type { Clock } from '@sift/core';
+import { SiftDomainError } from '@sift/core';
+import type { DecisionPackManifest } from '@sift/contracts';
 import {
   PackCompilationError,
   checkApprovalPolicies,
@@ -27,7 +27,7 @@ function compileAndExpectIssue(
     compilePack(manifest, catalog, fixedClock);
   } catch (error) {
     expect(error).toBeInstanceOf(PackCompilationError);
-    expect(error).toBeInstanceOf(PaxDomainError);
+    expect(error).toBeInstanceOf(SiftDomainError);
     const compilationError = error as PackCompilationError;
     expect(compilationError.issues.some((issue) => issue.step === step)).toBe(true);
     return compilationError;

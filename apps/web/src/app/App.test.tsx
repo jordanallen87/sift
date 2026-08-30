@@ -4,14 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import type { CaseState, CommandReceipt, PublicActivityEvent } from '@pax/contracts';
+import type { CaseState, CommandReceipt, PublicActivityEvent } from '@sift/contracts';
 import { App } from './App.js';
 import { AppProviders } from './AppProviders.js';
-import { createFakePaxCommands, buildFakeCommandReceipt } from '../test/fake-pax-commands.js';
+import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-sift-commands.js';
 import { buildFixtureCaseState, buildFixtureCompiledPack } from '../test/fixtures.js';
 import { FakeEventSource, createFakeEventSource } from '../test/fake-event-source.js';
 import { InMemoryModelContextAdapter } from '../model-context/adapter.js';
-import { CASE_SCOPED_PAX_TOOL_NAMES } from '../model-context/register-pax-tools.js';
+import { CASE_SCOPED_SIFT_TOOL_NAMES } from '../model-context/register-sift-tools.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
 const CASE_ID = 'case-live-1';
@@ -149,7 +149,7 @@ async function startDemoAndWait() {
   return user;
 }
 
-// "What Pax found" is now a FindingsSheet trigger, not an inline
+// "What Sift found" is now a FindingsSheet trigger, not an inline
 // DisclosureSection (round-2 design review) -- tests that need to reach a
 // real evidence-card control open the sheet first.
 async function openFindingsSheet(user: ReturnType<typeof userEvent.setup>) {
@@ -162,7 +162,7 @@ async function openFindingsSheet(user: ReturnType<typeof userEvent.setup>) {
 describe('App', () => {
   it('renders the demo launcher when no case is active', () => {
     render(
-      <AppProviders commandsClient={createFakePaxCommands()}>
+      <AppProviders commandsClient={createFakeSiftCommands()}>
         <App />
       </AppProviders>,
     );
@@ -173,7 +173,7 @@ describe('App', () => {
 
   it('transitions from the launcher to the case workspace once a demo starts', async () => {
     const receipt = buildFakeCommandReceipt({ caseId: 'case-abc' });
-    const commands = createFakePaxCommands({
+    const commands = createFakeSiftCommands({
       startDemo: () => Promise.resolve(receipt),
     });
     const user = userEvent.setup();
@@ -233,7 +233,7 @@ describe('App', () => {
       ),
     );
     const startCaseReceipt = buildFakeCommandReceipt({ caseId: 'case-catalog-1' });
-    const commands = createFakePaxCommands({
+    const commands = createFakeSiftCommands({
       startCase: () => Promise.resolve(startCaseReceipt),
       upsertOption: () => Promise.resolve(buildFakeCommandReceipt({ caseId: 'case-catalog-1' })),
     });
@@ -271,7 +271,7 @@ describe('App', () => {
 
   it('has no routing chrome -- renders exactly one top-level region at a time', () => {
     render(
-      <AppProviders commandsClient={createFakePaxCommands()}>
+      <AppProviders commandsClient={createFakeSiftCommands()}>
         <App />
       </AppProviders>,
     );
@@ -282,7 +282,7 @@ describe('App', () => {
   describe('reload persistence', () => {
     it('restores the active case from a stored caseId, verified against the real server, on a fresh mount', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID, title: 'Restored case' });
-      localStorage.setItem('pax:activeCaseId', CASE_ID);
+      localStorage.setItem('sift:activeCaseId', CASE_ID);
       server.use(
         http.get(`/api/cases/${CASE_ID}`, () => HttpResponse.json(snapshot)),
         pollHandler(snapshot),
@@ -305,7 +305,7 @@ describe('App', () => {
     });
 
     it('clears a stale stored caseId and falls back to the launcher when the server no longer has that case', async () => {
-      localStorage.setItem('pax:activeCaseId', 'case-does-not-exist');
+      localStorage.setItem('sift:activeCaseId', 'case-does-not-exist');
       server.use(
         http.get('/api/cases/case-does-not-exist', () =>
           HttpResponse.json({ error: 'not found' }, { status: 404 }),
@@ -313,7 +313,7 @@ describe('App', () => {
       );
 
       render(
-        <AppProviders commandsClient={createFakePaxCommands()}>
+        <AppProviders commandsClient={createFakeSiftCommands()}>
           <App />
         </AppProviders>,
       );
@@ -321,7 +321,7 @@ describe('App', () => {
       await waitFor(() => {
         expect(screen.getByTestId('demo-launcher')).toBeInTheDocument();
       });
-      expect(localStorage.getItem('pax:activeCaseId')).toBeNull();
+      expect(localStorage.getItem('sift:activeCaseId')).toBeNull();
     });
   });
 
@@ -620,7 +620,7 @@ describe('App', () => {
       // pressed. `App.tsx`'s `handleRequestInvestigation` recovers
       // automatically using the conflict envelope's `actualSequence`
       // (architecture.md: "Conflicts return the latest sequence so ChatGPT
-      // can call pax_get_case_context before retrying") rather than
+      // can call sift_get_case_context before retrying") rather than
       // leaving the human stuck with a silently re-enabled button.
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       let callCount = 0;
@@ -892,7 +892,7 @@ describe('App', () => {
       await startDemoAndWait();
 
       await waitFor(() => {
-        for (const name of CASE_SCOPED_PAX_TOOL_NAMES) {
+        for (const name of CASE_SCOPED_SIFT_TOOL_NAMES) {
           expect(adapter.getRegisteredTool(name)).toBeDefined();
         }
       });
@@ -1225,20 +1225,20 @@ describe('App', () => {
       await startDemoAndWait();
 
       // Waiting for a *case-scoped* tool (rather than a global one) proves
-      // the async `registerPaxTools()` promise has actually resolved and
+      // the async `registerSiftTools()` promise has actually resolved and
       // its handle has been committed to React state via the follow-up
       // `setActiveCase` effect -- a global tool alone can appear registered
       // slightly before that commit, which would make this test's `unmount`
       // race the handle's own assignment.
       await waitFor(() => {
-        expect(adapter.getRegisteredTool('pax_upsert_option')).toBeDefined();
+        expect(adapter.getRegisteredTool('sift_upsert_option')).toBeDefined();
       });
-      expect(adapter.getRegisteredTool('pax_get_case_context')).toBeDefined();
+      expect(adapter.getRegisteredTool('sift_get_case_context')).toBeDefined();
 
       unmount();
 
-      expect(adapter.getRegisteredTool('pax_get_case_context')).toBeUndefined();
-      expect(adapter.getRegisteredTool('pax_upsert_option')).toBeUndefined();
+      expect(adapter.getRegisteredTool('sift_get_case_context')).toBeUndefined();
+      expect(adapter.getRegisteredTool('sift_upsert_option')).toBeUndefined();
     });
 
     it('recovers from a requestInvestigation failure by re-enabling the control', async () => {
@@ -1514,7 +1514,7 @@ describe('App', () => {
       ]) {
         expect(screen.getByTestId<HTMLDetailsElement>(testId).open).toBe(false);
       }
-      // "What Pax found" is a FindingsSheet trigger, not a native disclosure
+      // "What Sift found" is a FindingsSheet trigger, not a native disclosure
       // (round-2 design review) -- "closed by default" for this row means
       // the sheet is not open yet.
       expect(screen.queryByTestId('findings-sheet')).not.toBeInTheDocument();
@@ -1550,7 +1550,7 @@ describe('App', () => {
       });
     });
 
-    it('shows a live finding count on the closed "What Pax found" row', async () => {
+    it('shows a live finding count on the closed "What Sift found" row', async () => {
       const snapshot = buildFixtureCaseState({
         id: CASE_ID,
         sources: [
@@ -1638,7 +1638,7 @@ describe('App', () => {
       });
     });
 
-    it('shows a live pulsing indicator on "Pax\'s work so far" only while a run is genuinely active', async () => {
+    it('shows a live pulsing indicator on "Sift\'s work so far" only while a run is genuinely active', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
@@ -1665,7 +1665,7 @@ describe('App', () => {
       expect(screen.getByTestId('disclosure-work-so-far-meta')).toHaveTextContent('1 step');
     });
 
-    it('auto-opens "Add something Pax should check" when an agent-proposed extension is pending', async () => {
+    it('auto-opens "Add something Sift should check" when an agent-proposed extension is pending', async () => {
       const snapshot = buildFixtureCaseState({
         id: CASE_ID,
         caseExtensions: [
@@ -1702,7 +1702,7 @@ describe('App', () => {
       );
     });
 
-    it('leaves "Add something Pax should check" closed with no meta when nothing is pending', async () => {
+    it('leaves "Add something Sift should check" closed with no meta when nothing is pending', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
@@ -1757,7 +1757,7 @@ describe('App', () => {
       );
 
       const { unmount } = render(
-        <AppProviders commandsClient={createFakePaxCommands()}>
+        <AppProviders commandsClient={createFakeSiftCommands()}>
           <App />
         </AppProviders>,
       );
@@ -1794,7 +1794,7 @@ describe('App', () => {
     });
 
     it('unmounting before the reload-restore verification fetch resolves does not apply a late activeCaseId/clear update', async () => {
-      localStorage.setItem('pax:activeCaseId', CASE_ID);
+      localStorage.setItem('sift:activeCaseId', CASE_ID);
       let releaseRestore: (() => void) | undefined;
       server.use(
         http.get(`/api/cases/${CASE_ID}`, async () => {
@@ -1806,7 +1806,7 @@ describe('App', () => {
       );
 
       const { unmount } = render(
-        <AppProviders commandsClient={createFakePaxCommands()}>
+        <AppProviders commandsClient={createFakeSiftCommands()}>
           <App />
         </AppProviders>,
       );
@@ -1818,7 +1818,7 @@ describe('App', () => {
     });
 
     it('unmounting before the reload-restore verification fetch rejects does not apply a late clear/restore update', async () => {
-      localStorage.setItem('pax:activeCaseId', CASE_ID);
+      localStorage.setItem('sift:activeCaseId', CASE_ID);
       let releaseFailure: (() => void) | undefined;
       server.use(
         http.get(`/api/cases/${CASE_ID}`, async () => {
@@ -1830,7 +1830,7 @@ describe('App', () => {
       );
 
       const { unmount } = render(
-        <AppProviders commandsClient={createFakePaxCommands()}>
+        <AppProviders commandsClient={createFakeSiftCommands()}>
           <App />
         </AppProviders>,
       );
@@ -1841,12 +1841,12 @@ describe('App', () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
 
-    it('disposes the global WebMCP tool registration immediately if the component unmounts before registerPaxTools resolves', async () => {
+    it('disposes the global WebMCP tool registration immediately if the component unmounts before registerSiftTools resolves', async () => {
       // A subclass whose `registerTool` still performs the base class's real
       // synchronous bookkeeping (so `disposeAll()`'s abort-listener wiring
       // stays real) but leaves its OWN returned promise pending until this
       // test releases it -- giving a deterministic window to unmount before
-      // `registerPaxTools(...).then(...)` in `App.tsx` ever runs.
+      // `registerSiftTools(...).then(...)` in `App.tsx` ever runs.
       class DelayedRegisterAdapter extends InMemoryModelContextAdapter {
         readonly pendingReleases: (() => void)[] = [];
         override registerTool(
@@ -1862,15 +1862,15 @@ describe('App', () => {
       server.use(http.get('/api/packs', () => HttpResponse.json([])));
 
       const { unmount } = render(
-        <AppProviders commandsClient={createFakePaxCommands()} webMcpAdapter={adapter}>
+        <AppProviders commandsClient={createFakeSiftCommands()} webMcpAdapter={adapter}>
           <App />
         </AppProviders>,
       );
       await waitFor(() => expect(adapter.pendingReleases.length).toBeGreaterThan(0));
 
       unmount();
-      // `registerPaxTools` awaits its two `registerTool` calls sequentially
-      // (`pax_get_case_context` then `pax_list_packs`), so the second one
+      // `registerSiftTools` awaits its two `registerTool` calls sequentially
+      // (`sift_get_case_context` then `sift_list_packs`), so the second one
       // only becomes pending once the first is released.
       adapter.pendingReleases[0]?.();
       await waitFor(() => expect(adapter.pendingReleases.length).toBeGreaterThan(1));
@@ -1969,7 +1969,7 @@ describe('App', () => {
 
     it('shows the generic "Could not request an investigation." message when requestInvestigation rejects with a non-Error value', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
-      const commands = createFakePaxCommands({
+      const commands = createFakeSiftCommands({
         startDemo: () => Promise.resolve(buildFakeCommandReceipt({ caseId: CASE_ID })),
         requestInvestigation: vi.fn().mockRejectedValue('network gremlin'),
       });
@@ -2073,7 +2073,7 @@ describe('App', () => {
           createdAt: '2026-08-27T00:00:00.000Z',
         },
       });
-      const commands = createFakePaxCommands({
+      const commands = createFakeSiftCommands({
         startDemo: () => Promise.resolve(buildFakeCommandReceipt({ caseId: CASE_ID })),
         reviewProposal: vi.fn().mockRejectedValue('server hiccup'),
       });
@@ -2116,7 +2116,7 @@ describe('App', () => {
           },
         ],
       });
-      const commands = createFakePaxCommands({
+      const commands = createFakeSiftCommands({
         startDemo: () => Promise.resolve(buildFakeCommandReceipt({ caseId: CASE_ID })),
         setEvidenceDisposition: vi.fn().mockRejectedValue('server hiccup'),
       });

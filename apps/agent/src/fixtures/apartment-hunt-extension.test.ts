@@ -6,7 +6,7 @@
  * through SQLite, render it in the generic UI, and preserve an explicit
  * unknown when no installed source can verify it."
  *
- * Uses the SAME real `@pax/core`/`@pax/contracts`/`@pax/packs` functions the
+ * Uses the SAME real `@sift/core`/`@sift/contracts`/`@sift/packs` functions the
  * car pack's `custom.dog_crate_fit` proof already exercises
  * (`packages/core/src/extensions.test.ts`, `apps/agent/src/services/
  * command-service.test.ts`) -- `defineCaseExtension`, `addCriterion`,
@@ -16,12 +16,12 @@
  *
  * Judgment call: this test lives in `apps/agent`, not
  * `packages/packs/src/fixtures/manifest.test.ts`. `packages/packs` depends
- * only on `@pax/contracts`/`@pax/core` (no `better-sqlite3` -- see its
+ * only on `@sift/contracts`/`@sift/core` (no `better-sqlite3` -- see its
  * `package.json`), so "persist it through SQLite" is structurally
  * impossible to prove from inside that package. `apps/agent` is the only
  * package in this workspace with a real `SqliteCaseStore`, so the full
  * round trip is proven here instead, importing the real, already-built
- * `apartment-hunt` fixture manifest from `@pax/packs` rather than
+ * `apartment-hunt` fixture manifest from `@sift/packs` rather than
  * duplicating it.
  *
  * Judgment call: turning the pack's `extensionPolicy.userConcernTemplateId`
@@ -37,7 +37,7 @@
  * `deriveObligations`, `addCriterion`, or `defineCaseExtension` themselves.
  */
 import { describe, expect, it } from 'vitest';
-import { ATTRIBUTE_VALUE_TYPES, type CaseState } from '@pax/contracts';
+import { ATTRIBUTE_VALUE_TYPES, type CaseState } from '@sift/contracts';
 import {
   addCriterion,
   attributeValueStatusInvariantError,
@@ -47,9 +47,9 @@ import {
   deriveObligations,
   instantiateCase,
   type CaseExtensionObligationTemplate,
-} from '@pax/core';
-import { compilePack } from '@pax/packs';
-import { validCatalog, validManifest } from '@pax/packs/src/fixtures/manifest.js';
+} from '@sift/core';
+import { compilePack } from '@sift/packs';
+import { validCatalog, validManifest } from '@sift/packs/src/fixtures/manifest.js';
 import { createTestDatabase, type TestDatabase } from '../db/connection.js';
 import { applyMigrations } from '../db/migrate.js';
 import { SqliteCaseStore } from '../store/sqlite-case-store.js';
@@ -79,7 +79,7 @@ describe('apartment-hunt custom.pet_sensory_fit round trip (testing.md)', () => 
     const compiled = compilePack(validManifest(), validCatalog(), clock);
     const idGenerator = sequentialIdGenerator();
 
-    // 1. Instantiate the case from the real compiled pack (real @pax/core function).
+    // 1. Instantiate the case from the real compiled pack (real @sift/core function).
     const seed = instantiateCase(
       compiled,
       { selectedBy: 'user', reasons: ['Started apartment-hunt.'] },

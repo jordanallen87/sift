@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { CaseStateSchema, DecisionProposalSchema } from '@pax/contracts';
+import { CaseStateSchema, DecisionProposalSchema } from '@sift/contracts';
 import type {
   CaseState,
   DecisionProposal,
   ObligationState,
   ReviewProposalInput,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import {
   MODEL_PERMITTED_CHANGE_KINDS,
   MODEL_PROHIBITED_CHANGE_KINDS,

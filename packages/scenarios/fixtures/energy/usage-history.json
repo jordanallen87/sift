@@ -1,5 +1,5 @@
 {
-  "_provenance": "Fictional demo data. Usage figures are fixture-authored, internally consistent approximations for the Pax 'Home Energy Guardian' hackathon scenario and do not describe any real meter or account.",
+  "_provenance": "Fictional demo data. Usage figures are fixture-authored, internally consistent approximations for the Sift 'Home Energy Guardian' hackathon scenario and do not describe any real meter or account.",
   "caseId": "case-demo-energy-guardian",
   "householdId": "household-demo-energy-01",
   "note": "18 monthly billing cycles ending with the current (anomalous) cycle, which matches current-bill.json exactly. Cycles generally run the 16th of one month through the 15th of the next; the final cycle ends 2026-08-14 (30 days), matching current-bill.json's billingPeriod. tariffId reflects whichever tariff applied to that cycle per rate-schedules.json (a cycle is billed under the tariff in effect on its start date).",

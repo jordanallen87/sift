@@ -25,9 +25,9 @@ import { assertRightPaneIntegrity, disableAnimations } from './helpers/layout-as
 import {
   CAR_PURCHASE_CRITERION_IDS,
   getCaseState,
-  PaxPage,
+  SiftPage,
   postCommand,
-} from './pages/pax-page.js';
+} from './pages/sift-page.js';
 
 test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
   test('browse, shortlist, create case, enrich a candidate, reweight criteria, add a concern, reload', async ({
@@ -37,13 +37,13 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     test.setTimeout(60_000);
     await disableAnimations(page);
     const guard = installConsoleGuard(page);
-    const pax = new PaxPage(page);
+    const sift = new SiftPage(page);
 
     // --- Launcher -> catalog ---
-    await pax.open();
+    await sift.open();
     await assertNoSeriousAxeViolations(page, 'initial load (launcher)');
 
-    await pax.openVehicleCatalog();
+    await sift.openVehicleCatalog();
     // Waits for the initial, unfiltered search to fully settle (a real,
     // debounced network fetch -- never a fixed sleep) before asserting or
     // screenshotting, so this state is never captured mid-"Searching…".
@@ -78,7 +78,7 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     await expect(page.getByTestId('vehicle-catalog-shortlist-list').locator('li')).toHaveCount(2);
 
     // --- Create the real, persisted case from the shortlist ---
-    const { caseId } = await pax.startVehicleComparison();
+    const { caseId } = await sift.startVehicleComparison();
     expect(caseId).toMatch(/.+/);
 
     const afterCreate = await getCaseState(request, caseId);
@@ -92,7 +92,7 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     expect(afterCreate['recommendation']).toBeNull();
 
     // --- See those exact vehicles in the comparison table ---
-    await pax.openDisclosure('compare');
+    await sift.openDisclosure('compare');
     for (const entity of entities) {
       await expect(page.getByTestId('option-editor-list')).toContainText(entity.label);
     }
@@ -140,7 +140,7 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     // --- Add a custom concern absent from the installed pack (spec brief
     // "A concern absent from the pack can still become a typed custom.*
     // case extension"). ---
-    await pax.submitCustomConcern({
+    await sift.submitCustomConcern({
       slug: 'has_sunroof',
       label: 'Has a sunroof',
       reason: 'The household specifically wants a sunroof on their next car.',
@@ -161,7 +161,7 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     // transition). ---
     await page.reload();
     await expect(page.getByTestId('case-header')).toBeVisible({ timeout: 15_000 });
-    await pax.openDisclosure('compare');
+    await sift.openDisclosure('compare');
     for (const entity of entities) {
       await expect(page.getByTestId('option-editor-list')).toContainText(entity.label);
     }
@@ -183,10 +183,10 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
   test('Back returns to the plain launcher without creating a case', async ({ page }) => {
     await disableAnimations(page);
     const guard = installConsoleGuard(page);
-    const pax = new PaxPage(page);
+    const sift = new SiftPage(page);
 
-    await pax.open();
-    await pax.openVehicleCatalog();
+    await sift.open();
+    await sift.openVehicleCatalog();
     await page.getByTestId('vehicle-catalog-back').click();
     await expect(page.getByTestId('demo-launcher')).toBeVisible();
     await expect(page.getByTestId('vehicle-catalog-flow')).not.toBeVisible();

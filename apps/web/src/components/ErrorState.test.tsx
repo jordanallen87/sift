@@ -21,14 +21,14 @@ describe('ErrorState', () => {
   it('calls onRetry when the retry control is activated', async () => {
     const onRetry = vi.fn();
     const user = userEvent.setup();
-    render(<ErrorState message="Could not reach Pax." onRetry={onRetry} />);
+    render(<ErrorState message="Could not reach Sift." onRetry={onRetry} />);
 
     await user.click(screen.getByTestId('error-state-retry'));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
   it('renders no retry control when onRetry is not provided', () => {
-    render(<ErrorState message="Could not reach Pax." />);
+    render(<ErrorState message="Could not reach Sift." />);
     expect(screen.queryByTestId('error-state-retry')).not.toBeInTheDocument();
   });
 

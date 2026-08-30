@@ -7,9 +7,9 @@
  * of the same pack id in `PackRegistry`, if any.
  */
 import { z } from 'zod';
-import type { Clock } from '@pax/core';
-import type { CompiledDecisionPack } from '@pax/contracts';
-import type { CapabilityCatalog, PackRegistry } from '@pax/packs';
+import type { Clock } from '@sift/core';
+import type { CompiledDecisionPack } from '@sift/contracts';
+import type { CapabilityCatalog, PackRegistry } from '@sift/packs';
 import { packValidate } from './validate.js';
 
 export const PackDiffInputSchema = z.object({ draftId: z.string().min(1).max(100) }).strict();

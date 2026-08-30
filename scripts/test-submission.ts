@@ -490,14 +490,14 @@ export interface VideoCheckSpec {
 export const VIDEO_CHECKS: VideoCheckSpec[] = [
   {
     key: 'webmcp',
-    envVar: 'PAX_WEBMCP_VIDEO_PATH',
+    envVar: 'SIFT_WEBMCP_VIDEO_PATH',
     defaultPath: 'docs/demo/webmcp-recording.mp4',
     failsAt: (seconds) => seconds >= 180,
     limitDescription: 'strictly under three minutes (180s)',
   },
   {
     key: 'agents-for-humans',
-    envVar: 'PAX_AWS_VIDEO_PATH',
+    envVar: 'SIFT_AWS_VIDEO_PATH',
     defaultPath: 'docs/demo/aws-recording.mp4',
     failsAt: (seconds) => seconds > 300,
     limitDescription: 'no longer than five minutes (300s)',
@@ -683,13 +683,13 @@ export function runSubmissionChecks(
 function printReport(report: SubmissionCheckReport): void {
   for (const result of report.results) {
     const marker = result.status === 'pass' ? 'PASS' : result.status === 'fail' ? 'FAIL' : 'SKIP';
-    console.log(`[pax] test:submission [${marker}] ${result.name} — ${result.message}`);
+    console.log(`[sift] test:submission [${marker}] ${result.name} — ${result.message}`);
   }
   const passed = report.results.filter((r) => r.status === 'pass').length;
   const failed = report.results.filter((r) => r.status === 'fail').length;
   const skipped = report.results.filter((r) => r.status === 'skip').length;
   console.log(
-    `\n[pax] test:submission: ${report.ok ? 'PASSED' : 'FAILED'} (${String(passed)} passed, ${String(skipped)} skipped, ${String(failed)} failed)`,
+    `\n[sift] test:submission: ${report.ok ? 'PASSED' : 'FAILED'} (${String(passed)} passed, ${String(skipped)} skipped, ${String(failed)} failed)`,
   );
   if (!report.ok) {
     console.log(

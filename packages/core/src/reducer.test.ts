@@ -5,7 +5,7 @@ import type {
   Criterion,
   EvidenceLink,
   ObligationState,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import { applyCaseEvent } from './reducer.js';
 import { ValidationFailedError } from './errors.js';
 

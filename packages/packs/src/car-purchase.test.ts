@@ -11,8 +11,8 @@
  * packages/scenarios/fixtures/car-purchase/household-profile.json.
  */
 import { describe, expect, it } from 'vitest';
-import type { Clock } from '@pax/core';
-import type { EvidenceLevel } from '@pax/contracts';
+import type { Clock } from '@sift/core';
+import type { EvidenceLevel } from '@sift/contracts';
 import { CAR_PURCHASE_MANIFEST, compileCarPurchasePack } from './car-purchase.js';
 import { createCapabilityCatalog } from './capability-catalog.js';
 import type { CapabilityCatalog } from './capability-catalog.js';

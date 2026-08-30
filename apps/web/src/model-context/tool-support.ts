@@ -1,24 +1,24 @@
 /**
- * Shared plumbing every registered Pax WebMCP tool callback uses: JSON
- * Schema generation from a tool's real `@pax/contracts` Zod input schema,
+ * Shared plumbing every registered Sift WebMCP tool callback uses: JSON
+ * Schema generation from a tool's real `@sift/contracts` Zod input schema,
  * per-call cancellation, and honest error-to-envelope mapping (docs/specs/
  * webmcp.md "Tool result envelope", "Cancellation and concurrency").
  *
  * Zod-to-JSON-Schema approach: `z.toJSONSchema` (zod v4's own built-in
  * converter, `zod/v4/core/to-json-schema.js`, re-exported from the
- * top-level `zod` package `@pax/web` already depends on -- confirmed by
+ * top-level `zod` package `@sift/web` already depends on -- confirmed by
  * running it directly against a `.strict()` schema from this workspace
  * before writing this file). No new dependency was added for this: the
  * workspace lockfile does carry `zod-to-json-schema@3.25.2`, but that is a
  * transitive dependency of an MCP SDK used elsewhere in the workspace, not
- * something `@pax/web` depends on -- reaching for zod's own native
+ * something `@sift/web` depends on -- reaching for zod's own native
  * converter is both simpler and avoids taking on that package directly.
  */
 import { z } from 'zod';
-import type { ToolErrorCode } from '@pax/contracts';
-import { PaxClientError } from '../api/pax-client.js';
+import type { ToolErrorCode } from '@sift/contracts';
+import { SiftClientError } from '../api/sift-client.js';
 
-/** Converts a real `@pax/contracts` Zod input schema to the JSON Schema object a `WebMcpToolDefinition.inputSchema` requires. */
+/** Converts a real `@sift/contracts` Zod input schema to the JSON Schema object a `WebMcpToolDefinition.inputSchema` requires. */
 export function toToolInputSchema(schema: z.ZodTypeAny): Record<string, unknown> {
   return z.toJSONSchema(schema);
 }
@@ -71,10 +71,10 @@ function isAbortError(error: unknown): boolean {
 
 /**
  * Best-effort extraction of a `409` conflict's `actualSequence` from a
- * `PaxClientError.details` payload (`unknown` by construction). See this
- * module's `register-pax-tools.ts` sibling doc comment / this task's build
+ * `SiftClientError.details` payload (`unknown` by construction). See this
+ * module's `register-sift-tools.ts` sibling doc comment / this task's build
  * log entry for the real, currently-open gap this defends against: today's
- * `pax-client.ts` `PaxClientError.fromErrorResponse` does not parse
+ * `sift-client.ts` `SiftClientError.fromErrorResponse` does not parse
  * `HttpConflictResponseSchema` (the documented `409` body shape carrying
  * `error.expectedSequence`/`error.actualSequence` plus a top-level
  * `snapshot`) at all -- it falls through to a generic, code-less,
@@ -94,7 +94,7 @@ function extractActualSequence(details: unknown): number | undefined {
   return undefined;
 }
 
-/** Maps any thrown/rejected error from a `PaxCommands` call (or from an aborted wait on one) to an honest, never-claims-success `ToolEnvelope`. */
+/** Maps any thrown/rejected error from a `SiftCommands` call (or from an aborted wait on one) to an honest, never-claims-success `ToolEnvelope`. */
 export function mapErrorToEnvelope(error: unknown): ToolEnvelope<never> {
   if (isAbortError(error)) {
     return {
@@ -105,7 +105,7 @@ export function mapErrorToEnvelope(error: unknown): ToolEnvelope<never> {
     };
   }
 
-  if (error instanceof PaxClientError) {
+  if (error instanceof SiftClientError) {
     const code: ToolErrorCode = error.code ?? 'INTERNAL';
     const envelope: ToolEnvelope<never> = {
       ok: false,
@@ -138,7 +138,7 @@ export function mapErrorToEnvelope(error: unknown): ToolEnvelope<never> {
  * Real network-level cancellation gap (flagged loudly, not silently worked
  * around): this only stops *waiting* on `work`; it cannot abort an
  * in-flight `fetch` the way webmcp.md's "forwards it to fetch" describes,
- * because no `PaxCommands` method (`apps/web/src/api/pax-client.ts`)
+ * because no `SiftCommands` method (`apps/web/src/api/sift-client.ts`)
  * currently accepts an `AbortSignal` parameter to forward to its own
  * `fetchImpl` call -- `postJson`'s `fetchImpl(url, { method, headers,
  * body })` call has no `signal` field at all. The externally observable
@@ -146,7 +146,7 @@ export function mapErrorToEnvelope(error: unknown): ToolEnvelope<never> {
  * any late result) is still met; the underlying HTTP request itself keeps
  * running server-side until it naturally completes. See this task's build
  * log entry for the recommended fix: an additive, optional `options?:
- * { signal?: AbortSignal }` second parameter on every `PaxCommands` method.
+ * { signal?: AbortSignal }` second parameter on every `SiftCommands` method.
  */
 export function runAbortable<T>(
   work: () => Promise<T>,
@@ -171,9 +171,9 @@ export function runAbortable<T>(
       (error: unknown) => {
         signal.removeEventListener('abort', onAbort);
         // This forwards whatever `work()` itself rejected with verbatim
-        // (typically a real `PaxClientError`) rather than fabricating a new
+        // (typically a real `SiftClientError`) rather than fabricating a new
         // rejection reason -- `mapErrorToEnvelope` needs the original
-        // error's own shape (`instanceof PaxClientError`, `.code`,
+        // error's own shape (`instanceof SiftClientError`, `.code`,
         // `.details`) to map it honestly, so wrapping it in `new Error(...)`
         // here would destroy the information the caller actually needs.
         // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- see comment above: rethrowing the original rejection reason, not fabricating one.

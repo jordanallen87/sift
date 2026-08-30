@@ -6,7 +6,7 @@
  * Deliberately has no dependency on `@strands-agents/sdk` or any
  * `apps/agent` runtime module: `packages/scenarios` sits below `apps/agent`
  * in the workspace dependency graph (`apps/agent` depends on
- * `@pax/scenarios`, never the reverse -- architecture.md "Repository
+ * `@sift/scenarios`, never the reverse -- architecture.md "Repository
  * structure"), so the concrete engine that actually drives a Strands Graph
  * against the real car-purchase pack and populates one of these
  * (`apps/agent/src/runtime/car-purchase-scenario.ts`) lives in `apps/agent`
@@ -16,9 +16,9 @@
  * Strands.
  *
  * Each field maps directly onto one or more `ScenarioAssertion` kinds
- * (`@pax/contracts` `scenario.ts`); see that field's comment for which.
+ * (`@sift/contracts` `scenario.ts`); see that field's comment for which.
  */
-import type { CaseEvent, CaseState } from '@pax/contracts';
+import type { CaseEvent, CaseState } from '@sift/contracts';
 
 export interface TrajectoryPackSelection {
   readonly packId: string;

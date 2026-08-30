@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import type { DecisionPackManifest } from '@pax/contracts';
+import type { DecisionPackManifest } from '@sift/contracts';
 import { canonicalizeManifest, canonicalizeValue, hashManifest } from './canonicalize.js';
 
 function minimalManifest(overrides: Partial<DecisionPackManifest> = {}): DecisionPackManifest {

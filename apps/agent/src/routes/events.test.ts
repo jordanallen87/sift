@@ -1,7 +1,12 @@
 import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CaseState, CommandReceipt, HttpErrorBody, PublicActivityEvent } from '@pax/contracts';
+import type {
+  CaseState,
+  CommandReceipt,
+  HttpErrorBody,
+  PublicActivityEvent,
+} from '@sift/contracts';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
 import type { CaseStore } from '../store/case-store.js';

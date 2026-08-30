@@ -16,7 +16,7 @@ describe('runReleaseVerification', () => {
   });
 
   it('writes a passed report when every stage succeeds, to release-latest not latest', async () => {
-    outDir = mkdtempSync(join(tmpdir(), 'pax-verify-release-'));
+    outDir = mkdtempSync(join(tmpdir(), 'sift-verify-release-'));
 
     const report = await runReleaseVerification({
       outDir,
@@ -46,7 +46,7 @@ describe('runReleaseVerification', () => {
   });
 
   it('fails fast: a real stage failure skips every later stage', async () => {
-    outDir = mkdtempSync(join(tmpdir(), 'pax-verify-release-'));
+    outDir = mkdtempSync(join(tmpdir(), 'sift-verify-release-'));
 
     const report = await runReleaseVerification({
       outDir,
@@ -83,7 +83,7 @@ describe('runReleaseVerification', () => {
   });
 
   it('records an unavailable stage (e.g. Docker missing) as skipped, not failed, and does not fail-fast subsequent stages', async () => {
-    outDir = mkdtempSync(join(tmpdir(), 'pax-verify-release-'));
+    outDir = mkdtempSync(join(tmpdir(), 'sift-verify-release-'));
 
     const report = await runReleaseVerification({
       outDir,
@@ -95,7 +95,7 @@ describe('runReleaseVerification', () => {
         {
           name: 'release:docker',
           command: 'docker',
-          args: ['build', '-t', 'pax-release-check', '.'],
+          args: ['build', '-t', 'sift-release-check', '.'],
           isAvailable: () => false,
           unavailableNote: 'Docker is not available in this environment.',
         },
@@ -114,7 +114,7 @@ describe('runReleaseVerification', () => {
   });
 
   it('fails the gate when an available Docker stage genuinely fails', async () => {
-    outDir = mkdtempSync(join(tmpdir(), 'pax-verify-release-'));
+    outDir = mkdtempSync(join(tmpdir(), 'sift-verify-release-'));
 
     const report = await runReleaseVerification({
       outDir,
@@ -138,7 +138,7 @@ describe('runReleaseVerification', () => {
   });
 
   it('writes the same VerificationReport shape verify.ts uses', async () => {
-    outDir = mkdtempSync(join(tmpdir(), 'pax-verify-release-'));
+    outDir = mkdtempSync(join(tmpdir(), 'sift-verify-release-'));
 
     await runReleaseVerification({
       outDir,

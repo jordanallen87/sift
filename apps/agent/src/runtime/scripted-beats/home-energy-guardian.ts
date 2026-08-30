@@ -59,7 +59,7 @@
  * own module header) and no case-specific extension is part of this
  * trajectory.
  */
-import type { ExecutionResult } from '@pax/contracts';
+import type { ExecutionResult } from '@sift/contracts';
 import type { JSONValue } from '@strands-agents/sdk';
 import { PROPOSE_INSPECTION_TOOL_ID } from '../home-energy-swarm.js';
 import { ScriptedModelProvider, type ScriptedTurn } from '../model-provider.js';

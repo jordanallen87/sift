@@ -23,8 +23,8 @@
  * one HTTP call answers both views without a client needing to refetch
  * unfiltered data just to render Overview after applying a Timeline filter.
  *
- * `PAX_DEBUG_ENABLED=false` returns `404` for this route entirely
- * (debugging-and-observability.md "Redaction and access": "`PAX_DEBUG_ENABLED=false`
+ * `SIFT_DEBUG_ENABLED=false` returns `404` for this route entirely
+ * (debugging-and-observability.md "Redaction and access": "`SIFT_DEBUG_ENABLED=false`
  * disables debug routes and UI in non-demo deployments") -- `enabled`
  * defaults to `true` so every existing caller that does not pass it
  * (`server.ts` always will) keeps working.
@@ -43,7 +43,7 @@ import {
   type RuntimeDebugCategory,
   type RuntimeDebugEvent,
   type RuntimeDebugLevel,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import type { RunRecord, RunStore } from '../services/run-service.js';
 import type { RuntimeEventStore } from '../store/runtime-event-store.js';
 import { sendError } from './http-support.js';
@@ -51,7 +51,7 @@ import { sendError } from './http-support.js';
 export interface DebugRouterDeps {
   readonly runStore: RunStore;
   readonly runtimeEventStore: RuntimeEventStore;
-  /** `PAX_DEBUG_ENABLED` (config.ts). Defaults to `true`. */
+  /** `SIFT_DEBUG_ENABLED` (config.ts). Defaults to `true`. */
   readonly enabled?: boolean;
 }
 

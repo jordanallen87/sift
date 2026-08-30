@@ -1,5 +1,5 @@
-// @pax/contracts — Zod schemas and their inferred TypeScript types for every
-// stable Pax envelope. See docs/superpowers/plans/2026-08-26-pax-hackathon-build.md
+// @sift/contracts — Zod schemas and their inferred TypeScript types for every
+// stable Sift envelope. See docs/superpowers/plans/2026-08-26-pax-hackathon-build.md
 // Task 2 for the file map and docs/specs/architecture.md,
 // docs/specs/pack-authoring.md, docs/specs/packs-and-routing.md,
 // docs/specs/strands-runtime.md, docs/specs/webmcp.md, docs/specs/testing.md,

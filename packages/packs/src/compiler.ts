@@ -55,9 +55,9 @@ import {
   type OrchestrationDefinition,
   type PackEvaluationDefinition,
   type ResolvedCapabilityCatalog,
-} from '@pax/contracts';
-import type { Clock } from '@pax/core';
-import { PaxDomainError } from '@pax/core';
+} from '@sift/contracts';
+import type { Clock } from '@sift/core';
+import { SiftDomainError } from '@sift/core';
 import { canonicalizeManifest, hashManifest } from './canonicalize.js';
 import { capabilityKey, resolveCapabilityReferences } from './capability-catalog.js';
 import type { CapabilityCatalog } from './capability-catalog.js';
@@ -79,7 +79,7 @@ export interface PackCompilationIssue {
   readonly path?: string;
 }
 
-export class PackCompilationError extends PaxDomainError {
+export class PackCompilationError extends SiftDomainError {
   readonly code = 'PACK_COMPILATION_FAILED' as const;
   readonly issues: readonly PackCompilationIssue[];
 

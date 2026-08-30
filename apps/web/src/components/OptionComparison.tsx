@@ -19,7 +19,7 @@
  * option's already-persisted `EntityRecord.attributes` values as given.
  */
 import { useMemo } from 'react';
-import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@pax/contracts';
+import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
 import { formatAttributeValue } from './attribute-value-format.js';
 
 export interface OptionComparisonProps {

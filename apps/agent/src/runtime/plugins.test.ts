@@ -4,7 +4,7 @@ import { AgentSkills } from '@strands-agents/sdk/vended-plugins/skills';
 import { ContextInjector } from '@strands-agents/sdk/vended-plugins/context-injector';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
-import type { ExecutionRequest } from '@pax/contracts';
+import type { ExecutionRequest } from '@sift/contracts';
 import {
   createSequenceCounter,
   type NormalizerContext,

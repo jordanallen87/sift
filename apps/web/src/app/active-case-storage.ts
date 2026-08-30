@@ -12,7 +12,7 @@
  * sandboxed iframe) -- a caller must be able to treat that exactly like "no
  * stored case" rather than crashing the app.
  */
-const STORAGE_KEY = 'pax:activeCaseId';
+const STORAGE_KEY = 'sift:activeCaseId';
 
 export function readStoredCaseId(): string | null {
   try {

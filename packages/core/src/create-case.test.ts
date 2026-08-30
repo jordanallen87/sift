@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CompiledDecisionPack } from '@pax/contracts';
+import type { CompiledDecisionPack } from '@sift/contracts';
 import { instantiateCase } from './create-case.js';
 import type { Clock, IdGenerator } from './ports.js';
 

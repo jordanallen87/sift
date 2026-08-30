@@ -1,5 +1,5 @@
 {
-  "_provenance": "Fictional demo data. Service company, technician, and device names are invented for the Pax 'Home Energy Guardian' hackathon scenario and do not describe any real company, person, or device.",
+  "_provenance": "Fictional demo data. Service company, technician, and device names are invented for the Sift 'Home Energy Guardian' hackathon scenario and do not describe any real company, person, or device.",
   "caseId": "case-demo-energy-guardian",
   "householdId": "household-demo-energy-01",
   "events": [

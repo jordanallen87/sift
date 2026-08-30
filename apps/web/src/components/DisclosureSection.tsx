@@ -1,8 +1,8 @@
 /**
  * A closed-by-default disclosure row for regions 4-8 of the workspace
  * layout (docs/specs/product.md "Workspace layout", ADR 0002): "Compare
- * the options," "What Pax found," "Still checking," "Pax's work so far,"
- * and "Add something Pax should check." Wraps the region's existing,
+ * the options," "What Sift found," "Still checking," "Sift's work so far,"
+ * and "Add something Sift should check." Wraps the region's existing,
  * unchanged component -- this file owns no case logic of its own, only the
  * open/closed disclosure chrome and the live one-line summary a closed row
  * must always show (ADR 0002: "nothing is hidden -- every row's live state
@@ -13,7 +13,7 @@
  * toggle, `aria-expanded` state) come from the platform for free, with no
  * risk of drifting from them.
  *
- * `onTriggerClick` (round-2 design review follow-up): "What Pax found"
+ * `onTriggerClick` (round-2 design review follow-up): "What Sift found"
  * needs to open a dedicated review Sheet (`FindingsSheet`) rather than
  * expand its content inline -- the project owner's own feedback was that a
  * wall of fully-expanded evidence cards inside the normal scroll was

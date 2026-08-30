@@ -1,4 +1,4 @@
-// @pax/scenarios — Pax fixture data, scripted tools/model, scenario runner,
+// @sift/scenarios — Sift fixture data, scripted tools/model, scenario runner,
 // and assertions. See docs/superpowers/plans/2026-08-26-pax-hackathon-build.md
 // for the task map: the deterministic car-purchase fixture tools ship in
 // Task 3; the scripted model ships in `apps/agent/src/runtime/model-provider.ts`.

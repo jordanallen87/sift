@@ -4,7 +4,7 @@
  * rationale (including why this lives under `src/fixtures/`).
  */
 import { describe, expect, it } from 'vitest';
-import type { RuntimeDebugEvent } from '@pax/contracts';
+import type { RuntimeDebugEvent } from '@sift/contracts';
 import type { RuntimeEventStore } from '../store/runtime-event-store.js';
 
 const now = '2026-08-27T00:00:00.000Z';
@@ -139,7 +139,7 @@ export function runRuntimeEventStoreContractTests(createStore: () => RuntimeEven
       const store = createStore();
       store.append(
         draft('run-1', 'case-1', 0, {
-          attributes: { note: 'token is PAX_TEST_SECRET_ABC123' },
+          attributes: { note: 'token is SIFT_TEST_SECRET_ABC123' },
           redactions: [],
         }),
       );

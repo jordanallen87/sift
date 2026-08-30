@@ -1,11 +1,11 @@
 /**
- * The visible-control equivalent of the `pax_define_case_attribute` WebMCP
- * tool (docs/specs/webmcp.md "`pax_define_case_attribute`") -- lets the user
+ * The visible-control equivalent of the `sift_define_case_attribute` WebMCP
+ * tool (docs/specs/webmcp.md "`sift_define_case_attribute`") -- lets the user
  * define a typed `custom.*` case concern the installed pack did not
  * anticipate, directly from the page rather than only through ChatGPT
  * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation": both paths call `commands.defineCaseAttribute` on the
- * exact same `PaxCommands` instance).
+ * exact same `SiftCommands` instance).
  *
  * Fields mirror `DefineCaseAttributeInputSchema`'s `definition` shape
  * (`packages/contracts/src/commands.ts`) exactly -- id (rendered as the
@@ -33,8 +33,8 @@ import {
   type AttributeComparison,
   type AttributeValueType,
   type EvidenceExpectation,
-} from '@pax/contracts';
-import { usePaxCommands } from '../app/AppProviders.js';
+} from '@sift/contracts';
+import { useSiftCommands } from '../app/AppProviders.js';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -88,7 +88,7 @@ export function CustomConcernForm({
   expectedSequence,
   applicableKinds,
 }: CustomConcernFormProps) {
-  const commands = usePaxCommands();
+  const commands = useSiftCommands();
   const [form, setForm] = useState<FormState>(() => blankForm(applicableKinds));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,7 +146,7 @@ export function CustomConcernForm({
       <div className="flex flex-col gap-[var(--space-1)]">
         <h2 id="custom-concern-form-heading">Add a concern this pack didn&apos;t anticipate</h2>
         <p className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]">
-          Define a typed case-specific question. Pax will track it alongside the pack&apos;s own
+          Define a typed case-specific question. Sift will track it alongside the pack&apos;s own
           criteria without changing the installed Decision Pack.
         </p>
       </div>
@@ -328,7 +328,7 @@ export function CustomConcernForm({
               color: 'var(--color-status-satisfied-ink)',
             }}
           >
-            Concern added. Pax will derive an evidence question for it when one is required.
+            Concern added. Sift will derive an evidence question for it when one is required.
           </div>
         ) : null}
 

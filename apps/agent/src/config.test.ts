@@ -6,7 +6,7 @@ import { loadConfig, ConfigError, type RawEnv } from './config.js';
 // that file as authoritative for names/defaults.
 const DEFAULTS = {
   executionTarget: 'local',
-  dataDir: '.pax-data',
+  dataDir: '.sift-data',
   authoringEnabled: false,
   debugEnabled: true,
   debugPayloadMode: 'metadata-only',
@@ -24,15 +24,15 @@ describe('loadConfig', () => {
 
   it('reads and coerces every supported variable from a raw env-like object', () => {
     const config = loadConfig({
-      PAX_EXECUTION_TARGET: 'agentcore',
-      PAX_DATA_DIR: '/data',
-      PAX_AUTHORING_ENABLED: 'true',
-      PAX_DEBUG_ENABLED: 'false',
-      PAX_DEBUG_PAYLOAD_MODE: 'fixture-full',
-      PAX_DEBUG_RETENTION_DAYS: '14',
-      PAX_MODEL_ID: 'global.anthropic.claude-sonnet-4-7',
+      SIFT_EXECUTION_TARGET: 'agentcore',
+      SIFT_DATA_DIR: '/data',
+      SIFT_AUTHORING_ENABLED: 'true',
+      SIFT_DEBUG_ENABLED: 'false',
+      SIFT_DEBUG_PAYLOAD_MODE: 'fixture-full',
+      SIFT_DEBUG_RETENTION_DAYS: '14',
+      SIFT_MODEL_ID: 'global.anthropic.claude-sonnet-4-7',
       AWS_REGION: 'eu-west-1',
-      PAX_PUBLIC_ORIGIN: 'https://pax.example.com',
+      SIFT_PUBLIC_ORIGIN: 'https://sift.example.com',
     });
 
     expect(config).toEqual({
@@ -44,47 +44,47 @@ describe('loadConfig', () => {
       debugRetentionDays: 14,
       modelId: 'global.anthropic.claude-sonnet-4-7',
       awsRegion: 'eu-west-1',
-      publicOrigin: 'https://pax.example.com',
+      publicOrigin: 'https://sift.example.com',
     });
   });
 
-  it('treats an empty-string PAX_MODEL_ID as unset and applies the default', () => {
-    const config = loadConfig({ PAX_MODEL_ID: '' });
+  it('treats an empty-string SIFT_MODEL_ID as unset and applies the default', () => {
+    const config = loadConfig({ SIFT_MODEL_ID: '' });
     expect(config.modelId).toBe(DEFAULTS.modelId);
   });
 
-  it('treats an empty-string PAX_PUBLIC_ORIGIN as same-origin (undefined)', () => {
-    const config = loadConfig({ PAX_PUBLIC_ORIGIN: '' });
+  it('treats an empty-string SIFT_PUBLIC_ORIGIN as same-origin (undefined)', () => {
+    const config = loadConfig({ SIFT_PUBLIC_ORIGIN: '' });
     expect(config.publicOrigin).toBeUndefined();
   });
 
-  it('rejects an empty-string PAX_AUTHORING_ENABLED (booleanFromEnvString\'s "" branch, distinct from the "key entirely absent" case the no-env-vars test above already covers) -- real behavior, not the default substitution PAX_MODEL_ID/PAX_PUBLIC_ORIGIN\'s "" handling gets, because z.boolean() here has no .optional() for ZodDefault to fall through to', () => {
+  it('rejects an empty-string SIFT_AUTHORING_ENABLED (booleanFromEnvString\'s "" branch, distinct from the "key entirely absent" case the no-env-vars test above already covers) -- real behavior, not the default substitution SIFT_MODEL_ID/SIFT_PUBLIC_ORIGIN\'s "" handling gets, because z.boolean() here has no .optional() for ZodDefault to fall through to', () => {
     // Genuine finding, verified empirically against the installed zod@4.4.3:
     // `booleanFromEnvString`'s preprocess step does turn '' into `undefined`
     // (closing this branch), matching its own doc comment's "'' and
     // undefined both mean 'not set'" intent -- but `.default(false)` here
     // wraps `z.preprocess(fn, z.boolean())`, and zod's `ZodDefault` only
     // substitutes the default when the *wrapped* schema itself successfully
-    // resolves to `undefined` (as PAX_MODEL_ID's `.optional()`-wrapped inner
+    // resolves to `undefined` (as SIFT_MODEL_ID's `.optional()`-wrapped inner
     // schema does); `z.boolean()` alone rejects `undefined` as an invalid
     // boolean, so the net *observable* result is a thrown `ConfigError`, not
     // "applies the default". Not a config.ts fix in scope for this
     // assignment (production-fix permission here is scoped to
     // command-service.ts/run-service.ts only) -- asserting the real behavior.
-    expect(() => loadConfig({ PAX_AUTHORING_ENABLED: '' })).toThrow(ConfigError);
+    expect(() => loadConfig({ SIFT_AUTHORING_ENABLED: '' })).toThrow(ConfigError);
   });
 
-  it('rejects an empty-string PAX_DEBUG_RETENTION_DAYS (integerFromEnvString\'s "" branch) for the same real reason: z.number() here has no .optional() for ZodDefault to fall through to', () => {
-    expect(() => loadConfig({ PAX_DEBUG_RETENTION_DAYS: '' })).toThrow(ConfigError);
+  it('rejects an empty-string SIFT_DEBUG_RETENTION_DAYS (integerFromEnvString\'s "" branch) for the same real reason: z.number() here has no .optional() for ZodDefault to fall through to', () => {
+    expect(() => loadConfig({ SIFT_DEBUG_RETENTION_DAYS: '' })).toThrow(ConfigError);
   });
 
   it('throws a ConfigError listing every invalid variable at once, not just the first', () => {
     let caught: unknown;
     try {
       loadConfig({
-        PAX_EXECUTION_TARGET: 'not-a-target',
-        PAX_DEBUG_PAYLOAD_MODE: 'not-a-mode',
-        PAX_DEBUG_RETENTION_DAYS: 'not-a-number',
+        SIFT_EXECUTION_TARGET: 'not-a-target',
+        SIFT_DEBUG_PAYLOAD_MODE: 'not-a-mode',
+        SIFT_DEBUG_RETENTION_DAYS: 'not-a-number',
         AWS_REGION: '',
       });
     } catch (error) {
@@ -93,22 +93,22 @@ describe('loadConfig', () => {
 
     expect(caught).toBeInstanceOf(ConfigError);
     const message = (caught as ConfigError).message;
-    expect(message).toContain('PAX_EXECUTION_TARGET');
-    expect(message).toContain('PAX_DEBUG_PAYLOAD_MODE');
-    expect(message).toContain('PAX_DEBUG_RETENTION_DAYS');
+    expect(message).toContain('SIFT_EXECUTION_TARGET');
+    expect(message).toContain('SIFT_DEBUG_PAYLOAD_MODE');
+    expect(message).toContain('SIFT_DEBUG_RETENTION_DAYS');
     expect(message).toContain('AWS_REGION');
   });
 
   it('rejects a retention-days value above the 30-day cap from debugging-and-observability.md', () => {
-    expect(() => loadConfig({ PAX_DEBUG_RETENTION_DAYS: '31' })).toThrow(ConfigError);
+    expect(() => loadConfig({ SIFT_DEBUG_RETENTION_DAYS: '31' })).toThrow(ConfigError);
   });
 
-  it('rejects an invalid PAX_PUBLIC_ORIGIN that is not a valid URL', () => {
-    expect(() => loadConfig({ PAX_PUBLIC_ORIGIN: 'not a url' })).toThrow(ConfigError);
+  it('rejects an invalid SIFT_PUBLIC_ORIGIN that is not a valid URL', () => {
+    expect(() => loadConfig({ SIFT_PUBLIC_ORIGIN: 'not a url' })).toThrow(ConfigError);
   });
 
-  it('rejects a non-boolean-shaped PAX_AUTHORING_ENABLED value', () => {
-    expect(() => loadConfig({ PAX_AUTHORING_ENABLED: 'yes-please' })).toThrow(ConfigError);
+  it('rejects a non-boolean-shaped SIFT_AUTHORING_ENABLED value', () => {
+    expect(() => loadConfig({ SIFT_AUTHORING_ENABLED: 'yes-please' })).toThrow(ConfigError);
   });
 
   it('falls back to "(config)" as the issue path label when a Zod issue has no field path (a non-object env value fails at the schema root, path: [])', () => {
@@ -141,15 +141,15 @@ describe('loadConfig', () => {
   //   issue` true branch and the `received !== undefined` true branch it
   //   feeds are unreachable through any real `ConfigSchema` validation
   //   failure.
-  // - `parsed.PAX_MODEL_ID ?? 'global.anthropic.claude-sonnet-4-6'` (line
+  // - `parsed.SIFT_MODEL_ID ?? 'global.anthropic.claude-sonnet-4-6'` (line
   //   134): confirmed empirically that zod 4.4.3's `.default(...)` on a
   //   `z.preprocess(emptyToUndefined, z.string().optional())` schema fires
   //   even when the raw input key is present but preprocesses down to
-  //   `undefined` (e.g. `PAX_MODEL_ID: ''`), not only when the key is
-  //   entirely absent. `parsed.PAX_MODEL_ID` is therefore never `undefined`
+  //   `undefined` (e.g. `SIFT_MODEL_ID: ''`), not only when the key is
+  //   entirely absent. `parsed.SIFT_MODEL_ID` is therefore never `undefined`
   //   after a successful parse, so this `??`'s right-hand fallback never
   //   fires -- the field-level schema default (already exercised by the
-  //   "empty-string PAX_MODEL_ID" test above) always wins first. This is
+  //   "empty-string SIFT_MODEL_ID" test above) always wins first. This is
   //   redundant-but-harmless defense-in-depth against an assumption about
   //   `.default()` timing that this real zod version does not need.
 });

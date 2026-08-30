@@ -22,7 +22,7 @@
  * hashing the right *input*, not by filtering keys out of a bigger one.
  */
 import { createHash } from 'node:crypto';
-import type { DecisionPackManifest } from '@pax/contracts';
+import type { DecisionPackManifest } from '@sift/contracts';
 
 // A named, non-generic alias (rather than an inline `Readonly<Record<string,
 // JsonLike>>`) so this recursive union does not trip TypeScript's circular-

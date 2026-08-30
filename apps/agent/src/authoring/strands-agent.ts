@@ -129,13 +129,13 @@ export interface PackAuthoringAgentDeps {
  * Builds the real `pack-authoring` Strands `Agent`: `AgentSkills` pointed at
  * exactly `PACK_AUTHORING_SKILL_DIR`, plus the six bounded tools. Throws
  * `AuthoringDisabledError` -- refusing to construct the agent at all --
- * when `deps.authoringEnabled` is false, which is `PAX_AUTHORING_ENABLED`'s
+ * when `deps.authoringEnabled` is false, which is `SIFT_AUTHORING_ENABLED`'s
  * default (`config.ts`).
  */
 export function buildPackAuthoringAgent(deps: PackAuthoringAgentDeps): Agent {
   if (!deps.authoringEnabled) {
     throw new AuthoringDisabledError(
-      'Pack authoring is disabled (PAX_AUTHORING_ENABLED=false). Set PAX_AUTHORING_ENABLED=true ' +
+      'Pack authoring is disabled (SIFT_AUTHORING_ENABLED=false). Set SIFT_AUTHORING_ENABLED=true ' +
         'for local/developer authoring; it stays disabled in the public hackathon deployment.',
     );
   }

@@ -1,31 +1,31 @@
 /**
  * Registers the full imperative WebMCP tool catalog (docs/specs/webmcp.md
  * "Tool catalog") against a `ModelContextAdapter`. Every tool's `execute`
- * calls through the exact same `PaxCommands` client visible controls will
+ * calls through the exact same `SiftCommands` client visible controls will
  * later use (CLAUDE.md "Non-negotiable product truths": "Visible UI
  * controls and WebMCP callbacks use the same command implementation") --
  * there is no parallel fetch path anywhere in this module for the ten
  * command-backed tools.
  *
- * The two read-only tools (`pax_get_case_context`, `pax_list_packs`) are the
+ * The two read-only tools (`sift_get_case_context`, `sift_list_packs`) are the
  * one deliberate exception, and it is a real gap worth flagging rather than
- * papering over: `PaxCommands` (`apps/web/src/api/pax-client.ts`) only
+ * papering over: `SiftCommands` (`apps/web/src/api/sift-client.ts`) only
  * covers the architecture.md "Shared command client" interface -- commands
  * and `requestInvestigation` -- it has no query methods at all, and no
  * lightweight `GET /api/cases/:caseId` / `GET /api/packs` client exists yet
- * anywhere in `@pax/web` (confirmed: `AppProviders.tsx`'s own doc comment
+ * anywhere in `@sift/web` (confirmed: `AppProviders.tsx`'s own doc comment
  * defers "the event stream (SSE) and query-cache providers" to a later
  * task). Rather than inventing an ad hoc `fetch` for those two routes here
  * (which risks guessing at a response shape a later task would have to
  * un-invent) or guessing at server route wiring outside this task's scope,
- * `registerPaxTools` takes `getActiveCase`/`listPacks` as *injected data
+ * `registerSiftTools` takes `getActiveCase`/`listPacks` as *injected data
  * accessors*. A later integration task backs `getActiveCase` with live,
  * SSE-updated case state and `listPacks` with a real `GET /api/packs`
  * fetch; this module owns the read tools' honest projection, validation,
  * and envelope behavior, fully tested here against injected fixtures.
  *
  * Registration lifecycle (docs/specs/webmcp.md "Registration lifecycle"):
- * `registerPaxTools` registers the two global read tools once, under one
+ * `registerSiftTools` registers the two global read tools once, under one
  * `AbortController` that only `disposeAll()` aborts. The returned handle's
  * `setActiveCase(caseId)` registers (or re-registers) the ten case-scoped
  * tools under a *fresh* `AbortController` each time, first aborting
@@ -60,8 +60,8 @@ import {
   type SubmitSourceInput,
   type UpdateCriteriaInput,
   type UpsertOptionInput,
-} from '@pax/contracts';
-import type { PaxCommands } from '../api/pax-client.js';
+} from '@sift/contracts';
+import type { SiftCommands } from '../api/sift-client.js';
 import type {
   ModelContextAdapter,
   WebMcpToolCallContext,
@@ -83,26 +83,26 @@ import {
   type ToolEnvelopeUi,
 } from './tool-support.js';
 
-export const GLOBAL_PAX_TOOL_NAMES = ['pax_get_case_context', 'pax_list_packs'] as const;
+export const GLOBAL_SIFT_TOOL_NAMES = ['sift_get_case_context', 'sift_list_packs'] as const;
 
-export const CASE_SCOPED_PAX_TOOL_NAMES = [
-  'pax_select_pack',
-  'pax_focus_evidence',
-  'pax_focus_option',
-  'pax_upsert_option',
-  'pax_update_criteria',
-  'pax_define_case_attribute',
-  'pax_submit_source',
-  'pax_set_evidence_disposition',
-  'pax_request_investigation',
-  'pax_request_revision',
+export const CASE_SCOPED_SIFT_TOOL_NAMES = [
+  'sift_select_pack',
+  'sift_focus_evidence',
+  'sift_focus_option',
+  'sift_upsert_option',
+  'sift_update_criteria',
+  'sift_define_case_attribute',
+  'sift_submit_source',
+  'sift_set_evidence_disposition',
+  'sift_request_investigation',
+  'sift_request_revision',
 ] as const;
 
-export const PAX_WEBMCP_TOOL_NAMES = [
-  ...GLOBAL_PAX_TOOL_NAMES,
-  ...CASE_SCOPED_PAX_TOOL_NAMES,
+export const SIFT_WEBMCP_TOOL_NAMES = [
+  ...GLOBAL_SIFT_TOOL_NAMES,
+  ...CASE_SCOPED_SIFT_TOOL_NAMES,
 ] as const;
-export type PaxWebMcpToolName = (typeof PAX_WEBMCP_TOOL_NAMES)[number];
+export type SiftWebMcpToolName = (typeof SIFT_WEBMCP_TOOL_NAMES)[number];
 
 // --- Generic case-scoped command tool builder ---
 
@@ -110,7 +110,7 @@ interface CaseScopedCommandToolParams<
   TInput extends { caseId: string },
   TReceipt extends CommandReceipt,
 > {
-  name: PaxWebMcpToolName;
+  name: SiftWebMcpToolName;
   description: string;
   inputSchema: z.ZodTypeAny;
   activeCaseId: string;
@@ -121,10 +121,10 @@ interface CaseScopedCommandToolParams<
 
 /**
  * Every case-scoped, command-backed tool shares this shape: validate the
- * raw input against the tool's real `@pax/contracts` schema, reject any
+ * raw input against the tool's real `@sift/contracts` schema, reject any
  * `caseId` that is not the currently active case, call the one shared
- * `PaxCommands` method, race it against the browser's per-call abort
- * signal, and map the outcome to an honest `PaxToolResult` envelope. No
+ * `SiftCommands` method, race it against the browser's per-call abort
+ * signal, and map the outcome to an honest `SiftToolResult` envelope. No
  * branch here ever reports `ok: true` / `ui.changed: true` unless
  * `call(input)` actually resolved.
  */
@@ -144,7 +144,7 @@ function buildCaseScopedCommandTool<
       }
       // `safeParse` above already checked `rawInput` against `inputSchema`
       // at runtime; this cast reasserts that fact rather than bypassing it
-      // (same discipline as `pax-client.ts`'s `validate` helper).
+      // (same discipline as `sift-client.ts`'s `validate` helper).
       const input = parsed.data as TInput;
 
       if (input.caseId !== activeCaseId) {
@@ -177,9 +177,9 @@ function buildCaseScopedCommandTool<
 
 // --- The ten case-scoped tools (docs/specs/webmcp.md "Tool catalog") ---
 
-function buildSelectPackTool(commands: PaxCommands, activeCaseId: string): WebMcpToolDefinition {
+function buildSelectPackTool(commands: SiftCommands, activeCaseId: string): WebMcpToolDefinition {
   return buildCaseScopedCommandTool<SelectPackInput, CommandReceipt>({
-    name: 'pax_select_pack',
+    name: 'sift_select_pack',
     description: 'Selects a registered Decision Pack for a case that has no evidence yet.',
     inputSchema: SelectPackInputSchema,
     activeCaseId,
@@ -190,9 +190,12 @@ function buildSelectPackTool(commands: PaxCommands, activeCaseId: string): WebMc
   });
 }
 
-function buildFocusEvidenceTool(commands: PaxCommands, activeCaseId: string): WebMcpToolDefinition {
+function buildFocusEvidenceTool(
+  commands: SiftCommands,
+  activeCaseId: string,
+): WebMcpToolDefinition {
   return buildCaseScopedCommandTool<FocusEvidenceInput, CommandReceipt>({
-    name: 'pax_focus_evidence',
+    name: 'sift_focus_evidence',
     description:
       'Changes the evidence item highlighted in the shared page. This is the primary WebMCP collaboration tool: the user can select an item manually, or ChatGPT can focus it before discussing or revising the case.',
     inputSchema: FocusEvidenceInputSchema,
@@ -203,9 +206,9 @@ function buildFocusEvidenceTool(commands: PaxCommands, activeCaseId: string): We
   });
 }
 
-function buildFocusOptionTool(commands: PaxCommands, activeCaseId: string): WebMcpToolDefinition {
+function buildFocusOptionTool(commands: SiftCommands, activeCaseId: string): WebMcpToolDefinition {
   return buildCaseScopedCommandTool<FocusOptionInput, CommandReceipt>({
-    name: 'pax_focus_option',
+    name: 'sift_focus_option',
     description:
       "Changes the current option highlighted in the shared page and includes its safe summary in subsequent case context. This is the car-buying demo's primary shared-attention tool, but the contract works for any pack-defined option kind.",
     inputSchema: FocusOptionInputSchema,
@@ -216,9 +219,9 @@ function buildFocusOptionTool(commands: PaxCommands, activeCaseId: string): WebM
   });
 }
 
-function buildUpsertOptionTool(commands: PaxCommands, activeCaseId: string): WebMcpToolDefinition {
+function buildUpsertOptionTool(commands: SiftCommands, activeCaseId: string): WebMcpToolDefinition {
   return buildCaseScopedCommandTool<UpsertOptionInput, CommandReceipt>({
-    name: 'pax_upsert_option',
+    name: 'sift_upsert_option',
     description:
       "Adds or updates one manually supplied option using the pack's declared fields plus typed case extensions. It accepts structured facts supplied by the user or ChatGPT; it does not fetch or scrape a URL.",
     inputSchema: UpsertOptionInputSchema,
@@ -233,11 +236,11 @@ function buildUpsertOptionTool(commands: PaxCommands, activeCaseId: string): Web
 }
 
 function buildUpdateCriteriaTool(
-  commands: PaxCommands,
+  commands: SiftCommands,
   activeCaseId: string,
 ): WebMcpToolDefinition {
   return buildCaseScopedCommandTool<UpdateCriteriaInput, CommandReceipt>({
-    name: 'pax_update_criteria',
+    name: 'sift_update_criteria',
     description:
       'Adds, removes, reweights, or relabels decision criteria. Removing a criterion referenced by a decided case is rejected. A successful update invalidates the comparison and recommendation, then asks the engine to recompute.',
     inputSchema: UpdateCriteriaInputSchema,
@@ -249,11 +252,11 @@ function buildUpdateCriteriaTool(
 }
 
 function buildDefineCaseAttributeTool(
-  commands: PaxCommands,
+  commands: SiftCommands,
   activeCaseId: string,
 ): WebMcpToolDefinition {
   return buildCaseScopedCommandTool<DefineCaseAttributeInput, CommandReceipt>({
-    name: 'pax_define_case_attribute',
+    name: 'sift_define_case_attribute',
     description:
       "Defines a typed case-specific concern that the installed pack did not anticipate. A WebMCP call made in response to the user's explicit request records origin `user`; an extension autonomously proposed by a runtime agent uses an internal proposal event and remains pending until the user confirms it through the visible UI.",
     inputSchema: DefineCaseAttributeInputSchema,
@@ -264,11 +267,11 @@ function buildDefineCaseAttributeTool(
   });
 }
 
-function buildSubmitSourceTool(commands: PaxCommands, activeCaseId: string): WebMcpToolDefinition {
+function buildSubmitSourceTool(commands: SiftCommands, activeCaseId: string): WebMcpToolDefinition {
   return buildCaseScopedCommandTool<SubmitSourceInput, CommandReceipt>({
-    name: 'pax_submit_source',
+    name: 'sift_submit_source',
     description:
-      'Submits a structured source discovered by the user or ChatGPT for bounded Pax investigation. This lets ChatGPT contribute research while Pax retains provenance, challenge, and readiness control.',
+      'Submits a structured source discovered by the user or ChatGPT for bounded Sift investigation. This lets ChatGPT contribute research while Sift retains provenance, challenge, and readiness control.',
     inputSchema: SubmitSourceInputSchema,
     activeCaseId,
     call: (input) => commands.submitSource(input),
@@ -278,11 +281,11 @@ function buildSubmitSourceTool(commands: PaxCommands, activeCaseId: string): Web
 }
 
 function buildSetEvidenceDispositionTool(
-  commands: PaxCommands,
+  commands: SiftCommands,
   activeCaseId: string,
 ): WebMcpToolDefinition {
   return buildCaseScopedCommandTool<SetEvidenceDispositionInput, CommandReceipt>({
-    name: 'pax_set_evidence_disposition',
+    name: 'sift_set_evidence_disposition',
     description:
       'Lets the user tell the case to include, exclude, or question one evidence item. Exclusion preserves provenance and reason; it does not delete the source.',
     inputSchema: SetEvidenceDispositionInputSchema,
@@ -294,11 +297,11 @@ function buildSetEvidenceDispositionTool(
 }
 
 function buildRequestInvestigationTool(
-  commands: PaxCommands,
+  commands: SiftCommands,
   activeCaseId: string,
 ): WebMcpToolDefinition {
   return buildCaseScopedCommandTool<RequestInvestigationInput, CommandReceipt>({
-    name: 'pax_request_investigation',
+    name: 'sift_request_investigation',
     description:
       'Requests the next bounded engine move or asks the engine to revisit one named obligation.',
     inputSchema: RequestInvestigationInputSchema,
@@ -313,7 +316,7 @@ function buildRequestInvestigationTool(
 }
 
 function buildRequestRevisionTool(
-  commands: PaxCommands,
+  commands: SiftCommands,
   activeCaseId: string,
 ): WebMcpToolDefinition {
   // Deliberately calls `commands.requestRevision`, never
@@ -321,12 +324,12 @@ function buildRequestRevisionTool(
   // (`packages/contracts/src/commands.ts`) has no `decision`/`actor` field
   // at all, unlike `ReviewProposalInputSchema`, so there is no way to
   // misuse this tool to approve or reject anything even if a caller tried.
-  // `reviewProposal` (the only `PaxCommands` method that *can* approve) is
+  // `reviewProposal` (the only `SiftCommands` method that *can* approve) is
   // never referenced anywhere in this file -- see this module's exported
-  // `PAX_WEBMCP_TOOL_NAMES` catalog and this task's contract test for the
+  // `SIFT_WEBMCP_TOOL_NAMES` catalog and this task's contract test for the
   // proof that no approval-shaped tool is registered.
   return buildCaseScopedCommandTool<RequestRevisionInput, CommandReceipt>({
-    name: 'pax_request_revision',
+    name: 'sift_request_revision',
     description:
       'Attaches a human revision request to the pending recommendation and reopens affected obligations.',
     inputSchema: RequestRevisionInputSchema,
@@ -337,7 +340,10 @@ function buildRequestRevisionTool(
   });
 }
 
-function buildCaseScopedTools(commands: PaxCommands, activeCaseId: string): WebMcpToolDefinition[] {
+function buildCaseScopedTools(
+  commands: SiftCommands,
+  activeCaseId: string,
+): WebMcpToolDefinition[] {
   return [
     buildSelectPackTool(commands, activeCaseId),
     buildFocusEvidenceTool(commands, activeCaseId),
@@ -356,7 +362,7 @@ function buildCaseScopedTools(commands: PaxCommands, activeCaseId: string): WebM
 
 function buildGetCaseContextTool(getActiveCase: () => CaseState | null): WebMcpToolDefinition {
   return {
-    name: 'pax_get_case_context',
+    name: 'sift_get_case_context',
     description:
       'Returns the active case summary, selected pack ID/version/hash, pack-defined and case-defined criteria/attributes, options, readiness counts, current focus, selected option/evidence, recommendation, active run correlation, and pending human action. It omits private model messages and oversized source bodies.',
     inputSchema: toToolInputSchema(GetCaseContextInputSchema),
@@ -402,7 +408,7 @@ function buildListPacksTool(
   listPacks: () => CompiledDecisionPack[] | Promise<CompiledDecisionPack[]>,
 ): WebMcpToolDefinition {
   return {
-    name: 'pax_list_packs',
+    name: 'sift_list_packs',
     description:
       'Returns installed compiled Decision Packs with descriptions, versions, hashes, and activation signals.',
     inputSchema: toToolInputSchema(ListPacksInputSchema),
@@ -432,16 +438,16 @@ function buildListPacksTool(
 
 // --- Registration entry point ---
 
-export interface PaxToolRegistrationOptions {
+export interface SiftToolRegistrationOptions {
   adapter: ModelContextAdapter;
-  commands: PaxCommands;
-  /** Synchronous accessor for the currently active case's canonical state (or `null`). Read fresh on every `pax_get_case_context` call, not captured once at registration time. */
+  commands: SiftCommands;
+  /** Synchronous accessor for the currently active case's canonical state (or `null`). Read fresh on every `sift_get_case_context` call, not captured once at registration time. */
   getActiveCase: () => CaseState | null;
   /** Accessor for the installed compiled Decision Pack catalog; sync or async. */
   listPacks: () => CompiledDecisionPack[] | Promise<CompiledDecisionPack[]>;
 }
 
-export interface PaxToolRegistrationHandle {
+export interface SiftToolRegistrationHandle {
   /** Aborts and unregisters the currently-registered case-scoped tool set, if any, without touching the two global read tools. */
   disposeCaseTools: () => void;
   /**
@@ -461,9 +467,9 @@ export interface PaxToolRegistrationHandle {
  * caller (a later App-level integration task, per this task's brief) drives
  * as the active case changes over the component's lifetime.
  */
-export async function registerPaxTools(
-  options: PaxToolRegistrationOptions,
-): Promise<PaxToolRegistrationHandle> {
+export async function registerSiftTools(
+  options: SiftToolRegistrationOptions,
+): Promise<SiftToolRegistrationHandle> {
   const { adapter, commands, getActiveCase, listPacks } = options;
 
   if (!adapter.supported()) {

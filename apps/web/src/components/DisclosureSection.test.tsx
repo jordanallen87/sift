@@ -7,11 +7,11 @@ import { DisclosureSection } from './DisclosureSection.js';
 describe('DisclosureSection', () => {
   it('renders the title and closes by default', () => {
     render(
-      <DisclosureSection testId="findings" title="What Pax found">
+      <DisclosureSection testId="findings" title="What Sift found">
         <p>Hidden content</p>
       </DisclosureSection>,
     );
-    expect(screen.getByText('What Pax found')).toBeInTheDocument();
+    expect(screen.getByText('What Sift found')).toBeInTheDocument();
     const details = screen.getByTestId('disclosure-findings');
     expect(details).toBeInstanceOf(HTMLDetailsElement);
     expect((details as HTMLDetailsElement).open).toBe(false);
@@ -20,7 +20,7 @@ describe('DisclosureSection', () => {
   it('opens on click and exposes its content', async () => {
     const user = userEvent.setup();
     render(
-      <DisclosureSection testId="findings" title="What Pax found">
+      <DisclosureSection testId="findings" title="What Sift found">
         <p>Hidden content</p>
       </DisclosureSection>,
     );
@@ -30,7 +30,7 @@ describe('DisclosureSection', () => {
 
   it('renders open by default when defaultOpen is true', () => {
     render(
-      <DisclosureSection testId="add-concern" title="Add something Pax should check" defaultOpen>
+      <DisclosureSection testId="add-concern" title="Add something Sift should check" defaultOpen>
         <p>Form</p>
       </DisclosureSection>,
     );
@@ -57,14 +57,14 @@ describe('DisclosureSection', () => {
 
   it('shows a live indicator only when live is true', () => {
     const { rerender } = render(
-      <DisclosureSection testId="work" title="Pax's work so far" live>
+      <DisclosureSection testId="work" title="Sift's work so far" live>
         <p>Timeline</p>
       </DisclosureSection>,
     );
     expect(screen.getByTestId('disclosure-work-live')).toBeInTheDocument();
 
     rerender(
-      <DisclosureSection testId="work" title="Pax's work so far">
+      <DisclosureSection testId="work" title="Sift's work so far">
         <p>Timeline</p>
       </DisclosureSection>,
     );
@@ -73,7 +73,7 @@ describe('DisclosureSection', () => {
 
   it('resolves the summary to a real 44px touch target', () => {
     render(
-      <DisclosureSection testId="findings" title="What Pax found">
+      <DisclosureSection testId="findings" title="What Sift found">
         <p>Hidden content</p>
       </DisclosureSection>,
     );
@@ -84,14 +84,14 @@ describe('DisclosureSection', () => {
 
   it('has no axe violations open or closed', async () => {
     const { container, rerender } = render(
-      <DisclosureSection testId="findings" title="What Pax found" meta="3 findings">
+      <DisclosureSection testId="findings" title="What Sift found" meta="3 findings">
         <p>Hidden content</p>
       </DisclosureSection>,
     );
     expect(await axe(container)).toHaveNoViolations();
 
     rerender(
-      <DisclosureSection testId="findings" title="What Pax found" meta="3 findings" defaultOpen>
+      <DisclosureSection testId="findings" title="What Sift found" meta="3 findings" defaultOpen>
         <p>Hidden content</p>
       </DisclosureSection>,
     );
@@ -103,7 +103,7 @@ describe('DisclosureSection', () => {
     render(
       <DisclosureSection
         testId="findings"
-        title="What Pax found"
+        title="What Sift found"
         meta="2 need a look"
         onTriggerClick={onTriggerClick}
       />,
@@ -119,7 +119,7 @@ describe('DisclosureSection', () => {
     const user = userEvent.setup();
     const onTriggerClick = vi.fn();
     render(
-      <DisclosureSection testId="findings" title="What Pax found" onTriggerClick={onTriggerClick}>
+      <DisclosureSection testId="findings" title="What Sift found" onTriggerClick={onTriggerClick}>
         <p>Should never render</p>
       </DisclosureSection>,
     );
@@ -129,7 +129,9 @@ describe('DisclosureSection', () => {
   });
 
   it('the trigger button resolves to a real 44px touch target', () => {
-    render(<DisclosureSection testId="findings" title="What Pax found" onTriggerClick={vi.fn()} />);
+    render(
+      <DisclosureSection testId="findings" title="What Sift found" onTriggerClick={vi.fn()} />,
+    );
     expect(screen.getByTestId('disclosure-findings-summary')).toHaveClass(
       'min-h-[var(--size-touch-target-min)]',
     );
@@ -139,7 +141,7 @@ describe('DisclosureSection', () => {
     render(
       <DisclosureSection
         testId="findings"
-        title="What Pax found"
+        title="What Sift found"
         flagged
         onTriggerClick={vi.fn()}
       />,
@@ -152,7 +154,7 @@ describe('DisclosureSection', () => {
     const { container, rerender } = render(
       <DisclosureSection
         testId="findings"
-        title="What Pax found"
+        title="What Sift found"
         meta="2 need a look"
         onTriggerClick={vi.fn()}
       />,
@@ -162,7 +164,7 @@ describe('DisclosureSection', () => {
     rerender(
       <DisclosureSection
         testId="findings"
-        title="What Pax found"
+        title="What Sift found"
         meta="2 need a look"
         flagged
         onTriggerClick={vi.fn()}

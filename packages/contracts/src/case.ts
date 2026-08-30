@@ -140,7 +140,7 @@ export type Claim = z.infer<typeof ClaimSchema>;
 
 // --- Source ---
 // Inferred: `CaseState.sources: Source[]` has no field list. Grounded in
-// webmcp.md `pax_submit_source`'s input shape (`url`, `title`, `publisher`,
+// webmcp.md `sift_submit_source`'s input shape (`url`, `title`, `publisher`,
 // `publishedAt`, `retrievedAt`, `excerpt`), adding a persisted `id`/`origin`/
 // `verification`/`createdAt` per "submitted sources remain unverified until
 // source challenge and retain provenance" (webmcp.md).
@@ -171,10 +171,10 @@ export type Source = z.infer<typeof SourceSchema>;
 // Inferred: `CaseState.evidenceLinks: EvidenceLink[]` has no field list.
 // Grounded in strands-runtime.md's `ExecutionResult.evidenceResults` shape
 // (`sourceId`, `level`, `verdict`, `summary`) plus the canonical, core-owned
-// disposition/staleness layer described in webmcp.md `pax_set_evidence_
+// disposition/staleness layer described in webmcp.md `sift_set_evidence_
 // disposition` ("include, exclude, or question one evidence item ... does
 // not delete the source") and architecture.md ("evidence validity" is
-// core-owned). This is the "evidence item" `pax_focus_evidence`/
+// core-owned). This is the "evidence item" `sift_focus_evidence`/
 // `CaseState.selectedEvidenceId` refer to.
 
 export const EVIDENCE_VERDICTS = ['pass', 'fail', 'error', 'degraded', 'skipped'] as const;
@@ -205,7 +205,7 @@ export type EvidenceLink = z.infer<typeof EvidenceLinkSchema>;
 // Inferred: `CaseState.activeFocus: ActiveFocus | null` has no field list.
 // Distinguished from the separate `selectedOptionId`/`selectedEvidenceId`
 // fields (which track the *user's or ChatGPT's* WebMCP-driven selection via
-// `pax_focus_option`/`pax_focus_evidence`): `activeFocus` is the *system's*
+// `sift_focus_option`/`sift_focus_evidence`): `activeFocus` is the *system's*
 // "Current focus" card from product.md's workspace layout ("the obligation
 // being investigated, why it is next, active skill, and active specialist").
 

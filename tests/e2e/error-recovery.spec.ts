@@ -16,7 +16,7 @@
 import { expect, test } from '@playwright/test';
 import { installConsoleGuard } from './helpers/console-guard.js';
 import { disableAnimations } from './helpers/layout-assertions.js';
-import { getCaseState, PaxPage, postCommand } from './pages/pax-page.js';
+import { getCaseState, SiftPage, postCommand } from './pages/sift-page.js';
 
 test.describe('error recovery', () => {
   test('a real 409 conflict surfaces in the UI, and the case remains usable afterward', async ({
@@ -28,9 +28,9 @@ test.describe('error recovery', () => {
       (url, status) => url.includes('/commands/defineCaseAttribute') && status === 409,
     );
 
-    const pax = new PaxPage(page);
-    await pax.open();
-    const { caseId } = await pax.launchCarPurchase();
+    const sift = new SiftPage(page);
+    await sift.open();
+    const { caseId } = await sift.launchCarPurchase();
 
     await page.route('**/api/cases/*/commands/defineCaseAttribute', async (route) => {
       const original = route.request().postDataJSON() as Record<string, unknown>;
@@ -42,7 +42,7 @@ test.describe('error recovery', () => {
       label: 'A concern submitted with a stale sequence',
       reason: 'Deterministically forces a real 409 CONFLICT from the server.',
     };
-    await pax.fillAndSubmitCustomConcern(concern);
+    await sift.fillAndSubmitCustomConcern(concern);
 
     const form = page.getByTestId('custom-concern-form');
     await expect(form.getByTestId('custom-concern-form-error')).toBeVisible();
@@ -60,7 +60,7 @@ test.describe('error recovery', () => {
     // The case remains fully usable: the interception removed, an identical
     // retry succeeds through the same real UI.
     await page.unroute('**/api/cases/*/commands/defineCaseAttribute');
-    await pax.submitCustomConcern(concern);
+    await sift.submitCustomConcern(concern);
 
     const stateAfterRetry = await getCaseState(page.request, caseId);
     expect(
@@ -76,9 +76,9 @@ test.describe('error recovery', () => {
     page,
   }) => {
     await disableAnimations(page);
-    const pax = new PaxPage(page);
-    await pax.open();
-    const { caseId } = await pax.launchCarPurchase();
+    const sift = new SiftPage(page);
+    await sift.open();
+    const { caseId } = await sift.launchCarPurchase();
 
     const response = await postCommand(page.request, caseId, 'focusOption', {
       optionId: 'candidate-rav4',
@@ -95,7 +95,7 @@ test.describe('error recovery', () => {
     expect(body.error.expectedSequence).toBe(0);
     expect(body.error.actualSequence).toBeGreaterThan(0);
     // webmcp.md "Conflicts return the latest sequence so ChatGPT can call
-    // pax_get_case_context before retrying" -- the latest snapshot is
+    // sift_get_case_context before retrying" -- the latest snapshot is
     // included directly in the conflict body, not a separate round trip.
     expect(body.snapshot.id).toBe(caseId);
   });

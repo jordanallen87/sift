@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { axe } from 'jest-axe';
-import type { PublicActivityEvent } from '@pax/contracts';
+import type { PublicActivityEvent } from '@sift/contracts';
 import { LiveRunStatus } from './LiveRunStatus.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 

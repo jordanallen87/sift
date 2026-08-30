@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Clock } from '@pax/core';
-import { PaxDomainError } from '@pax/core';
+import type { Clock } from '@sift/core';
+import { SiftDomainError } from '@sift/core';
 import { compilePack } from './compiler.js';
 import { PackRegistry, PackRegistryConflictError } from './registry.js';
 import { validCatalog, validManifest } from './fixtures/manifest.js';
@@ -95,7 +95,7 @@ describe('PackRegistry', () => {
 
     registry.register(original);
     expect(() => registry.register(changed)).toThrow(PackRegistryConflictError);
-    expect(() => registry.register(changed)).toThrow(PaxDomainError);
+    expect(() => registry.register(changed)).toThrow(SiftDomainError);
     expect(registry.get('apartment-hunt', '1.0.0')).toEqual(original);
   });
 

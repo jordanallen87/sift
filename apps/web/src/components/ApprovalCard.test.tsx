@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { DecisionProposal } from '@pax/contracts';
+import type { DecisionProposal } from '@sift/contracts';
 import { ApprovalCard, type ApprovalCardProps } from './ApprovalCard.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
@@ -19,7 +19,7 @@ function buildProposal(overrides: Partial<DecisionProposal> = {}): DecisionPropo
 // Compile-time proof, not just a runtime convention: `ApprovalCardProps`
 // exposes no `actor` field at all, so no caller can pass one through to be
 // spoofed. If a future edit ever adds an `actor` prop to this component,
-// this line stops typechecking and `pnpm --filter @pax/web typecheck`
+// this line stops typechecking and `pnpm --filter @sift/web typecheck`
 // fails.
 type AssertNoActorProp = 'actor' extends keyof ApprovalCardProps
   ? 'FAIL: ApprovalCardProps must never expose an actor field'

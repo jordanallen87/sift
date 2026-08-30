@@ -49,7 +49,7 @@ const EXCLUDED_DIRS = new Set([
   'build',
   'coverage',
   'artifacts',
-  '.pax-data',
+  '.sift-data',
   '.stryker-tmp',
   'playwright-report',
   'test-results',
@@ -256,12 +256,12 @@ export function checkSource(options: CheckSourceOptions): CheckSourceResult {
 
 function printReport(result: CheckSourceResult): void {
   if (result.ok) {
-    console.log(`[pax] check:source: clean (${result.filesScanned} files scanned).`);
+    console.log(`[sift] check:source: clean (${result.filesScanned} files scanned).`);
     return;
   }
 
   console.error(
-    `[pax] check:source: found ${result.findings.length} issue(s) across ${result.filesScanned} scanned files.\n`,
+    `[sift] check:source: found ${result.findings.length} issue(s) across ${result.filesScanned} scanned files.\n`,
   );
   for (const finding of result.findings) {
     console.error(`  ${finding.filePath}:${finding.line}  [${finding.rule}]  ${finding.message}`);

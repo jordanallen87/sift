@@ -2,7 +2,7 @@ import { Agent, Message, tool } from '@strands-agents/sdk';
 import { BedrockModel } from '@strands-agents/sdk/models/bedrock';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
-import type { IdGenerator } from '@pax/core';
+import type { IdGenerator } from '@sift/core';
 import {
   ScriptedModelProvider,
   createBedrockModel,
@@ -12,13 +12,16 @@ import {
 describe('ScriptedModelProvider config', () => {
   it('getConfig reflects the constructor modelId by default', () => {
     const provider = new ScriptedModelProvider({ beats: {} });
-    expect(provider.getConfig().modelId).toBe('pax-scripted-model');
+    expect(provider.getConfig().modelId).toBe('sift-scripted-model');
   });
 
   it('updateConfig merges into the existing config', () => {
     const provider = new ScriptedModelProvider({ beats: {} });
     provider.updateConfig({ temperature: 0.2 });
-    expect(provider.getConfig()).toMatchObject({ modelId: 'pax-scripted-model', temperature: 0.2 });
+    expect(provider.getConfig()).toMatchObject({
+      modelId: 'sift-scripted-model',
+      temperature: 0.2,
+    });
   });
 });
 
@@ -175,7 +178,7 @@ describe('ScriptedModelProvider driving a real Strands Agent end to end', () => 
 });
 
 describe('createBedrockModel / resolveModelProvider', () => {
-  it('createBedrockModel builds a real BedrockModel from Pax config', () => {
+  it('createBedrockModel builds a real BedrockModel from Sift config', () => {
     const model = createBedrockModel({
       modelId: 'global.anthropic.claude-sonnet-4-6',
       awsRegion: 'us-east-1',

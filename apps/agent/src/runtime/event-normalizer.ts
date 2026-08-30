@@ -1,7 +1,7 @@
 /**
  * Converts real Strands TypeScript SDK hook events (`BeforeToolCallEvent`,
  * `AfterToolCallEvent`, `BeforeModelCallEvent`, `AfterModelCallEvent`) and
- * Pax's own runtime-layer moments (skill activation, context injection,
+ * Sift's own runtime-layer moments (skill activation, context injection,
  * intervention decisions, GoalLoop validation, session snapshot save/
  * restore) into the normalized `RuntimeDebugEvent` shape defined in
  * docs/specs/debugging-and-observability.md ("Runtime event contract").
@@ -35,7 +35,7 @@ import type {
   BeforeModelCallEvent,
   BeforeToolCallEvent,
 } from '@strands-agents/sdk';
-import type { Redaction, RuntimeCorrelation, RuntimeDebugEvent } from '@pax/contracts';
+import type { Redaction, RuntimeCorrelation, RuntimeDebugEvent } from '@sift/contracts';
 import type { InterventionEvent } from './interventions.js';
 
 /** The single normalized event shape `strands-adapter.ts`'s `execute()` yields alongside `ExecutionResult`. See module header. */
@@ -67,7 +67,7 @@ export function hashContent(text: string): string {
 
 const REDACTED_PLACEHOLDER = '[REDACTED]';
 
-/** Object/record keys that are always redacted regardless of value shape (debugging-and-observability.md: "Environment variables, authorization headers, cookies, credentials, account identifiers ... are always removed before persistence"). Deliberately excludes Pax's own correlation fields (`sessionId`, `caseId`, `runId`, ...), which are legitimate, non-secret identifiers. */
+/** Object/record keys that are always redacted regardless of value shape (debugging-and-observability.md: "Environment variables, authorization headers, cookies, credentials, account identifiers ... are always removed before persistence"). Deliberately excludes Sift's own correlation fields (`sessionId`, `caseId`, `runId`, ...), which are legitimate, non-secret identifiers. */
 const SENSITIVE_KEY_PATTERN =
   /^(authorization|cookie|set-cookie|password|secret|token|refresh[-_]?token|api[-_]?key|access[-_]?key|private[-_]?key|credential(s)?|aws[-_]?secret[-_]?access[-_]?key)$/i;
 
@@ -77,7 +77,7 @@ const SENSITIVE_KEY_PATTERN =
  * Bounded to a small, deliberate default set rather than a speculative
  * catch-all: AWS access key IDs, bearer tokens, OpenAI/Anthropic-style
  * `sk-...` API keys, and a seeded test canary
- * (`PAX_TEST_SECRET_...`) so redaction is directly assertable in tests
+ * (`SIFT_TEST_SECRET_...`) so redaction is directly assertable in tests
  * without depending on a real-looking credential ("Secrets and seeded
  * redaction canaries never appear ...", debugging-and-observability.md
  * "Acceptance requirements").
@@ -86,7 +86,7 @@ const SENSITIVE_VALUE_PATTERNS: RegExp[] = [
   /AKIA[0-9A-Z]{16}/g,
   /Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi,
   /\bsk-[A-Za-z0-9]{16,}\b/g,
-  /\bPAX_TEST_SECRET_[A-Za-z0-9]+\b/g,
+  /\bSIFT_TEST_SECRET_[A-Za-z0-9]+\b/g,
 ];
 
 const MAX_REDACTION_DEPTH = 6;
@@ -186,7 +186,7 @@ function buildEvent(
 
 /**
  * `timestamp` above uses wall-clock `new Date().toISOString()` rather than
- * an injected `Clock`, deliberately: every other Pax subsystem threads a
+ * an injected `Clock`, deliberately: every other Sift subsystem threads a
  * `Clock` port for reproducible business timestamps
  * (case events, run records), but `RuntimeDebugEvent.timestamp` stamps
  * *telemetry* emitted from inside real Strands hook callbacks that this

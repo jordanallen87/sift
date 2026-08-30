@@ -18,15 +18,15 @@
  * 2. `server.ts`'s real source text contains no reference at all to the
  *    authoring module, an authoring HTTP route, or the CLI's `pack:author`
  *    command -- there is no publicly reachable authoring endpoint for
- *    `PAX_AUTHORING_ENABLED` to even need to gate. Authoring is reachable
- *    only through `pnpm pax pack:author` (`scripts/pax-cli.ts`), a local
+ *    `SIFT_AUTHORING_ENABLED` to even need to gate. Authoring is reachable
+ *    only through `pnpm sift pack:author` (`scripts/sift-cli.ts`), a local
  *    developer command, never through the deployed HTTP service.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../config.js';
-import { PackRegistry } from '@pax/packs';
+import { PackRegistry } from '@sift/packs';
 import { AuthoringDisabledError, buildPackAuthoringAgent } from './strands-agent.js';
 import { buildInstalledCapabilityCatalog } from './catalog.js';
 
@@ -38,7 +38,7 @@ describe('public deployment has authoring disabled', () => {
     expect(serverSource).toMatch(/loadConfig\(\s*\)/);
   });
 
-  it('that exact call (loadConfig with no PAX_AUTHORING_ENABLED set) yields authoringEnabled: false', () => {
+  it('that exact call (loadConfig with no SIFT_AUTHORING_ENABLED set) yields authoringEnabled: false', () => {
     expect(loadConfig({}).authoringEnabled).toBe(false);
   });
 

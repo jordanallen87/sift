@@ -8,7 +8,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
 import { installConsoleGuard } from './helpers/console-guard.js';
 import { disableAnimations } from './helpers/layout-assertions.js';
-import { PaxPage } from './pages/pax-page.js';
+import { SiftPage } from './pages/sift-page.js';
 
 /** Presses Tab (bounded) until `target` is focused, or fails with a clear message -- avoids a magic single-Tab assumption about exactly how many focusable ancestors precede the target. */
 async function tabUntilFocused(page: Page, target: Locator, maxPresses = 15): Promise<void> {
@@ -28,8 +28,8 @@ test.describe('keyboard operation and accessibility', () => {
   }) => {
     await disableAnimations(page);
     const guard = installConsoleGuard(page);
-    const pax = new PaxPage(page);
-    await pax.open();
+    const sift = new SiftPage(page);
+    await sift.open();
 
     await assertNoSeriousAxeViolations(page, 'launcher (initial load)');
 
@@ -55,19 +55,19 @@ test.describe('keyboard operation and accessibility', () => {
     test.setTimeout(120_000);
     await disableAnimations(page);
     const guard = installConsoleGuard(page);
-    const pax = new PaxPage(page);
+    const sift = new SiftPage(page);
 
-    await pax.open();
-    await pax.launchCarPurchase();
-    const round1 = await pax.requestInvestigation();
+    await sift.open();
+    await sift.launchCarPurchase();
+    const round1 = await sift.requestInvestigation();
     await assertNoSeriousAxeViolations(page, 'mid-investigation');
-    await pax.waitForInvestigationCompleted(round1.runId);
-    await pax.waitForRecommendationReady();
+    await sift.waitForInvestigationCompleted(round1.runId);
+    await sift.waitForRecommendationReady();
 
-    // "Add something Pax should check" is a closed-by-default disclosure
+    // "Add something Sift should check" is a closed-by-default disclosure
     // row (ADR 0002) -- opened before the form fields below become
     // reachable at all.
-    await pax.openDisclosure('add-concern');
+    await sift.openDisclosure('add-concern');
 
     // --- Fill CustomConcernForm using real keystrokes, not `.fill()` ---
     const form = page.getByTestId('custom-concern-form');
@@ -88,9 +88,9 @@ test.describe('keyboard operation and accessibility', () => {
     await expect(form.getByTestId('custom-concern-form-success')).toBeVisible();
 
     // --- Round 2, then keyboard-activated approval ---
-    const round2 = await pax.requestInvestigation();
-    await pax.waitForInvestigationCompleted(round2.runId);
-    await pax.waitForRecommendationReady();
+    const round2 = await sift.requestInvestigation();
+    await sift.waitForInvestigationCompleted(round2.runId);
+    await sift.waitForRecommendationReady();
 
     const approveButton = page.getByTestId('approval-card-approve');
     await expect(approveButton).toBeVisible();

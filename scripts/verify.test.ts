@@ -15,7 +15,7 @@ describe('runVerification', () => {
   });
 
   it('writes a valid VerificationReport when a child stage fails, and skips (not silently passes) later stages', async () => {
-    outDir = mkdtempSync(join(tmpdir(), 'pax-verify-'));
+    outDir = mkdtempSync(join(tmpdir(), 'sift-verify-'));
 
     const report = await runVerification({
       outDir,
@@ -93,7 +93,7 @@ describe('runVerification', () => {
   });
 
   it('writes a passed report with no summary.md when every real stage succeeds', async () => {
-    outDir = mkdtempSync(join(tmpdir(), 'pax-verify-'));
+    outDir = mkdtempSync(join(tmpdir(), 'sift-verify-'));
 
     const report = await runVerification({
       outDir,

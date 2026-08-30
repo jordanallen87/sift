@@ -8,7 +8,7 @@
  * `confirmation` state. It does not create the derived case obligation
  * (`obligations.ts`, owned by a different workstream) — it produces the
  * typed extension record that group's code needs as input, matching
- * `CaseExtensionSummary` from `@pax/contracts`.
+ * `CaseExtensionSummary` from `@sift/contracts`.
  *
  * No filesystem, network, or wall-clock access. Every timestamp comes from
  * an injected `Clock`; every generated ID comes from an injected
@@ -26,14 +26,14 @@ import {
   type CaseExtensionReviewDecision,
   type CaseExtensionSummary,
   type EvidenceExpectation,
-} from '@pax/contracts';
+} from '@sift/contracts';
 import { fail, ok, type Clock, type DomainResult, type IdGenerator } from './attributes.js';
 
 const CASE_ATTRIBUTE_ID_PREFIX = 'custom.';
 
 /**
  * The author-facing shape of a proposed case attribute, matching
- * webmcp.md `pax_define_case_attribute`'s `definition` input field exactly:
+ * webmcp.md `sift_define_case_attribute`'s `definition` input field exactly:
  * `required` and `sensitive` are deliberately absent here (the command
  * handler assigns them, per `DefineCaseAttributeInputSchema`'s comment in
  * `packages/contracts/src/commands.ts`), as are `origin`/`confirmation`/
@@ -53,7 +53,7 @@ export interface CaseAttributeDraft {
 
 export interface CreateCaseAttributeDefinitionContext {
   /** `'user'` for an explicit user request; `'agent_proposed'` for a
-   * runtime-agent proposal (webmcp.md `pax_define_case_attribute`). */
+   * runtime-agent proposal (webmcp.md `sift_define_case_attribute`). */
   readonly origin: CaseAttributeOrigin;
   readonly proposedBy: string;
   /** Every attribute definition id already present on the case (pack-defined
@@ -249,7 +249,7 @@ export function reviewCaseExtension(
 
 /**
  * Compact projection of a `CaseExtension` matching `CaseExtensionSummary`
- * (`@pax/contracts`), for the obligations group and the Strands Context
+ * (`@sift/contracts`), for the obligations group and the Strands Context
  * Injector. Uses the underlying attribute definition's `custom.*` id as the
  * summary's `id` (not the `CaseExtension` wrapper's own storage id) since
  * that is the identity other typed data — `Criterion.appliesToAttribute`,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { axe } from 'jest-axe';
-import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@pax/contracts';
+import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
 import { OptionComparison } from './OptionComparison.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 

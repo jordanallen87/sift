@@ -33,15 +33,15 @@
  * `pnpm test:mutation` (invoked purely as an external command by its
  * package.json script name — a concurrent task owns its real
  * implementation and `stryker.config.mjs`; this script never depends on
- * its internals), a production build check (`pnpm --filter @pax/web
- * build`; `pnpm --filter @pax/agent typecheck` is intentionally NOT
+ * its internals), a production build check (`pnpm --filter @sift/web
+ * build`; `pnpm --filter @sift/agent typecheck` is intentionally NOT
  * re-run as a separate stage here because the composed `pnpm verify` stage
  * immediately before this one already runs the root `typecheck` script,
  * which recursively runs every workspace package's own `typecheck`
- * — including `@pax/agent`'s — via `pnpm -r --if-present run typecheck`;
+ * — including `@sift/agent`'s — via `pnpm -r --if-present run typecheck`;
  * re-running it here would be redundant, not "or equivalent" as the spec
  * allows), a Docker build contract check (`docker build -t
- * pax-release-check .`, skipped with an honest reason if `docker` is not
+ * sift-release-check .`, skipped with an honest reason if `docker` is not
  * installed), and `pnpm test:submission`.
  *
  * Writes its own report to `artifacts/verification/release-<runId>/report.json`
@@ -79,11 +79,11 @@ function isDockerAvailable(): boolean {
 export const DEFAULT_RELEASE_STAGES: ReleaseStageSpec[] = [
   { name: 'verify', command: 'pnpm', args: ['run', 'verify'] },
   { name: 'test:mutation', command: 'pnpm', args: ['run', 'test:mutation'] },
-  { name: 'release:build', command: 'pnpm', args: ['--filter', '@pax/web', 'build'] },
+  { name: 'release:build', command: 'pnpm', args: ['--filter', '@sift/web', 'build'] },
   {
     name: 'release:docker',
     command: 'docker',
-    args: ['build', '-t', 'pax-release-check', '.'],
+    args: ['build', '-t', 'sift-release-check', '.'],
     isAvailable: isDockerAvailable,
     unavailableNote:
       'Docker is not available in this environment (`docker` command not found or not runnable). ' +
@@ -275,7 +275,7 @@ export async function runReleaseVerification(
 
 function renderSummaryMarkdown(report: VerificationReport): string {
   const lines: string[] = [];
-  lines.push(`# Pax verify:release report — ${report.status.toUpperCase()}`);
+  lines.push(`# Sift verify:release report — ${report.status.toUpperCase()}`);
   lines.push('');
   lines.push(`- Run ID: \`${report.runId}\``);
   lines.push(`- Git SHA: \`${report.gitSha ?? 'unknown'}\``);
@@ -324,20 +324,20 @@ function writeReport(report: VerificationReport, runDir: string, latestDir: stri
 }
 
 function printConsoleSummary(report: VerificationReport): void {
-  console.log(`\n[pax] verify:release: ${report.status.toUpperCase()} (run ${report.runId})`);
+  console.log(`\n[sift] verify:release: ${report.status.toUpperCase()} (run ${report.runId})`);
   for (const stage of report.stages) {
     const marker = stage.status === 'passed' ? 'PASS' : stage.status === 'failed' ? 'FAIL' : 'SKIP';
     console.log(`  [${marker}] ${stage.stage}${stage.note ? ` — ${stage.note}` : ''}`);
   }
   if (report.failures.length > 0) {
-    console.log('\n[pax] Failures:');
+    console.log('\n[sift] Failures:');
     for (const failure of report.failures) {
       console.log(
         `  - ${failure.stage} (${failure.fingerprint}): rerun with \`${failure.focusedRerunCommand}\``,
       );
     }
   }
-  console.log(`\n[pax] Report: artifacts/verification/release-latest/report.json`);
+  console.log(`\n[sift] Report: artifacts/verification/release-latest/report.json`);
 }
 
 function isMain(): boolean {

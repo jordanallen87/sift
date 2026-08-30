@@ -5,9 +5,9 @@
  * (`apps/agent/src/routes/catalog.ts`), build a 2-5 vehicle shortlist, and
  * start a real, persisted `car-purchase` case from it: `startCase` once,
  * then one `upsertOption` per shortlisted vehicle (`mapCatalogRecordToOption`
- * from `@pax/catalog/browser` -- the exact same mapping any future
+ * from `@sift/catalog/browser` -- the exact same mapping any future
  * server-side caller would use, per that ADR's "one adaptation boundary")
- * -- the same shared `PaxCommands` instance every other visible control and
+ * -- the same shared `SiftCommands` instance every other visible control and
  * WebMCP callback already uses (CLAUDE.md "Visible UI controls and WebMCP
  * callbacks use the same command implementation").
  *
@@ -18,10 +18,10 @@
  * right pane").
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { VehicleCatalogRecord } from '@pax/catalog/browser';
-import { mapCatalogRecordToOption } from '@pax/catalog/browser';
-import type { CommandReceipt } from '@pax/contracts';
-import { usePaxCommands, useApiConfig } from '../app/AppProviders.js';
+import type { VehicleCatalogRecord } from '@sift/catalog/browser';
+import { mapCatalogRecordToOption } from '@sift/catalog/browser';
+import type { CommandReceipt } from '@sift/contracts';
+import { useSiftCommands, useApiConfig } from '../app/AppProviders.js';
 import {
   fetchCatalogBodyStyles,
   fetchCatalogMakes,
@@ -29,7 +29,7 @@ import {
   searchCatalogVehicles,
   CatalogClientError,
 } from '../api/catalog-client.js';
-import { PaxClientError } from '../api/pax-client.js';
+import { SiftClientError } from '../api/sift-client.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -56,7 +56,7 @@ const selectClassName =
   'min-h-[var(--size-touch-target-min)] h-9 w-full min-w-0 rounded-[var(--radius-sm)] border-0 bg-muted px-3 py-1 text-[length:var(--font-size-base)] outline-none transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60';
 
 export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFlowProps) {
-  const commands = usePaxCommands();
+  const commands = useSiftCommands();
   const apiConfig = useApiConfig();
 
   const [queryText, setQueryText] = useState('');
@@ -224,7 +224,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
     } catch (error: unknown) {
       setCreating(false);
       setCreateError(
-        error instanceof PaxClientError || error instanceof Error
+        error instanceof SiftClientError || error instanceof Error
           ? error.message
           : 'Could not start this comparison.',
       );

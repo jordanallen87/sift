@@ -8,7 +8,7 @@
  * `PORT` follows the standard Node/Railway convention (Railway injects it
  * automatically; architecture.md separately notes the AgentCore Strands
  * image listens on `8080`, used here as the local default too) rather than
- * being one of the `.env.example`-documented `PAX_*` variables validated in
+ * being one of the `.env.example`-documented `SIFT_*` variables validated in
  * `config.ts` — see `config.ts`'s module comment for why.
  *
  * `startServer` returns the started `server`/`app`/`database`/`config`
@@ -21,14 +21,14 @@ import type { Server } from 'node:http';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Application } from 'express';
-import { compileCarPurchasePack, compileHomeEnergyGuardianPack, PackRegistry } from '@pax/packs';
+import { compileCarPurchasePack, compileHomeEnergyGuardianPack, PackRegistry } from '@sift/packs';
 import {
   buildCarPurchaseCandidateEntities,
   buildHomeEnergyResponseOptionEntities,
-} from '@pax/scenarios';
+} from '@sift/scenarios';
 import { buildApp } from './app.js';
-import { loadConfig, type PaxConfig } from './config.js';
-import type { PaxDatabase } from './db/connection.js';
+import { loadConfig, type SiftConfig } from './config.js';
+import type { SiftDatabase } from './db/connection.js';
 import { migrate, type MigrateResult } from './db/migrate.js';
 import { carPurchaseCapabilityCatalog } from './runtime/car-purchase-scenario.js';
 import { createCarPurchaseEngine } from './runtime/car-purchase-engine.js';
@@ -54,9 +54,9 @@ export interface StartServerOptions {
 
 export interface StartedServer {
   app: Application;
-  database: PaxDatabase;
+  database: SiftDatabase;
   server: Server;
-  config: PaxConfig;
+  config: SiftConfig;
   migration: MigrateResult;
 }
 
@@ -178,13 +178,13 @@ if (isMain()) {
       const address = server.address();
       const port = address !== null && typeof address !== 'string' ? address.port : DEFAULT_PORT;
       console.log(
-        `[pax] agent listening on port ${port} ` +
+        `[sift] agent listening on port ${port} ` +
           `(executionTarget=${config.executionTarget}, dataDir=${config.dataDir}, ` +
           `migrationsApplied=${migration.applied.length}, migrationsAlreadyApplied=${migration.alreadyApplied.length})`,
       );
     })
     .catch((error: unknown) => {
-      console.error('[pax] agent failed to start:', error);
+      console.error('[sift] agent failed to start:', error);
       process.exitCode = 1;
     });
 }

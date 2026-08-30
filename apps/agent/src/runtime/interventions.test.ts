@@ -9,7 +9,7 @@ import {
   ToolUseBlock,
 } from '@strands-agents/sdk';
 import { describe, expect, it } from 'vitest';
-import type { Clock } from '@pax/core';
+import type { Clock } from '@sift/core';
 import { ScriptedModelProvider } from './model-provider.js';
 import {
   BudgetGuard,

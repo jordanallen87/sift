@@ -25,7 +25,7 @@
  * `options.signal` controls how long the *tool definition itself* stays
  * registered (webmcp.md "Registration lifecycle": "Abort the previous
  * registration controller whenever the active case changes or the
- * component unmounts" -- `register-pax-tools.ts` creates a fresh
+ * component unmounts" -- `register-sift-tools.ts` creates a fresh
  * `AbortController` per case generation and aborts it to unregister that
  * generation's case-scoped tools). `WebMcpToolDefinition.execute`'s own
  * second `context.signal` parameter is a *separate*, per-invocation signal
@@ -118,7 +118,7 @@ interface RegistrationRecord {
  * In-memory `ModelContextAdapter` test double (webmcp.md "Tests inject an
  * in-memory adapter that captures registrations and executes callbacks with
  * schema validation" -- schema validation itself lives at the tool-callback
- * boundary in `register-pax-tools.ts`, not in this generic adapter).
+ * boundary in `register-sift-tools.ts`, not in this generic adapter).
  */
 export class InMemoryModelContextAdapter implements ModelContextAdapter {
   private readonly byName = new Map<string, RegistrationRecord>();

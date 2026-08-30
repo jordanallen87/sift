@@ -8,7 +8,7 @@
  * the fixture's explicit unknowns (dog-crate compatibility, driving
  * comfort) as genuinely unresolved -- never a fabricated value.
  *
- * Both `knownFacts` and `unknowns` are shaped as `@pax/contracts`
+ * Both `knownFacts` and `unknowns` are shaped as `@sift/contracts`
  * `AttributeRecord`s (pack-authoring.md "Typed core with extensible domain
  * data"): a known fact carries `status: 'supported'` and a typed `value`; an
  * unknown carries `status: 'unknown'` and -- per
@@ -34,7 +34,7 @@
  * `unknown.rear_cargo_crate_compatibility` question the fixture says cannot
  * be derived from specification data alone.
  */
-import type { AttributeRecord } from '@pax/contracts';
+import type { AttributeRecord } from '@sift/contracts';
 import { loadFixture, type ExplicitUnknown, type HouseholdFitCandidate } from './fixture-loader.js';
 import {
   cancelledResult,
