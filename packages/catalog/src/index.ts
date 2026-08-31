@@ -13,6 +13,7 @@ export {
   listModels,
   listTrims,
   listBodyStyles,
+  listFuelTypes,
   getVehicle,
   searchVehicles,
   MAX_SEARCH_RESULTS,

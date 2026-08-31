@@ -17,7 +17,7 @@
  * viewport is 390-480px (product.md "The canonical viewport is ChatGPT's
  * right pane").
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { VehicleCatalogRecord } from '@sift/catalog/browser';
 import { mapCatalogRecordToOption } from '@sift/catalog/browser';
 import type { CommandReceipt } from '@sift/contracts';
@@ -495,11 +495,27 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
             >
               {results.map((vehicle) => {
                 const alreadyAdded = shortlistIds.has(vehicle.id);
+                // Kept to five short specs on purpose. The catalog record
+                // carries 83 EPA fields, but this is a 390px-wide browse
+                // list whose job is to let someone recognise a vehicle and
+                // shortlist it -- the full detail belongs in the comparison
+                // view, where a shortlisted candidate is actually weighed.
+                //
+                // Annual fuel cost earns its place here because it is EPA's
+                // most decision-relevant published number, is populated for
+                // 100% of the catalog, and is the one running-cost figure
+                // that separates two vehicles with similar MPG. It is
+                // labelled "est." because EPA's figure assumes 15,000
+                // miles/year at a national average fuel price, neither of
+                // which is this shopper's actual situation.
                 const specs = [
                   vehicle.bodyStyle,
                   vehicle.drivetrain,
                   vehicle.fuelType,
                   vehicle.combinedMpg !== null ? `${vehicle.combinedMpg} MPG combined` : null,
+                  vehicle.annualFuelCostUsd !== null
+                    ? `est. $${vehicle.annualFuelCostUsd.toLocaleString('en-US')}/yr fuel`
+                    : null,
                 ].filter((value): value is string => value !== null);
                 return (
                   <li
@@ -512,8 +528,32 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
                         {vehicleLabel(vehicle)}
                       </span>
                       {specs.length > 0 ? (
+                        // Each spec keeps its own trailing separator inside a
+                        // `nowrap` span rather than being one joined string.
+                        // At 390px this line wraps, and a plain join let the
+                        // break land *before* a separator -- so a wrapped
+                        // line opened with "· est. $2,800/yr fuel", which
+                        // reads as a bullet rather than a continuation.
+                        // Binding the separator to the end of the preceding
+                        // spec puts the break after it, where it belongs, and
+                        // also stops a single spec being split mid-phrase.
                         <span className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]">
-                          {specs.join(' · ')}
+                          {specs.map((spec, index) => (
+                            <Fragment key={spec}>
+                              <span className="whitespace-nowrap">
+                                {spec}
+                                {index < specs.length - 1 ? ' ·' : ''}
+                              </span>
+                              {/* The separating space lives OUTSIDE the
+                                  nowrap span on purpose: it is the only
+                                  break opportunity on this line. Putting it
+                                  inside (as a trailing " · ") left the line
+                                  with nowhere to break at all, so instead of
+                                  wrapping it overflowed and clipped the last
+                                  spec mid-word. */}
+                              {index < specs.length - 1 ? ' ' : ''}
+                            </Fragment>
+                          ))}
                         </span>
                       ) : null}
                     </div>

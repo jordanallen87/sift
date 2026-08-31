@@ -20,11 +20,29 @@ To regenerate:
 Source snapshot used for the checked-in data: retrieved 2026-08-29 from
 https://www.fueleconomy.gov/feg/epadata/vehicles.csv
 (Last-Modified: Fri, 07 Aug 2026 13:13:18 GMT, ETag "3d9b9836e26dd1:0").
+
+## Column coverage
+
+The source has 84 columns. This transform carries 82 of them. The two
+omissions are exact duplicates, not judgement calls:
+
+  * `co2`  duplicates `co2TailpipeGpm`  (integer vs float of the same value)
+  * `co2A` duplicates `co2TailpipeAGpm` (same)
+
+An earlier revision of this script carried only 10 columns and then 20,
+selected by guessing which ones a car shopper would care about. That guess
+was wrong in both directions: it dropped EPA's published annual fuel cost
+(the single most decision-relevant number in the file) while keeping
+internal identifiers. The rule now is to carry everything the source
+publishes and let the product decide what to surface, because a field that
+was never imported cannot be surfaced later without a re-import, while a
+field that is imported and unused costs only disk.
 """
 import csv
 import json
 import re
 import sys
+from datetime import datetime
 
 SOURCE_CSV = "epa-vehicles.csv"
 OUT_JSON = "vehicle-catalog.json"
@@ -129,7 +147,7 @@ DRIVE_MAP = {
 }
 
 
-def norm_body_style(vclass: str) -> str:
+def norm_body_style(vclass: str) -> str | None:
     return VCLASS_MAP.get(vclass.strip(), vclass.strip() or None)
 
 
@@ -168,45 +186,78 @@ def slugify(value: str) -> str:
     return re.sub(r"-+", "-", value).strip("-")
 
 
-def signed(row: dict, column: str):
-    """Like `num`, but keeps negative values, which are real data here.
+# ---------------------------------------------------------------------------
+# Column readers.
+#
+# EPA does NOT use one convention for "not reported" -- it uses three, and
+# which one applies depends on the column. Getting this wrong is not a
+# cosmetic issue: a single shared `value <= 0 -> None` rule was applied
+# across all numeric columns in an earlier revision and silently corrupted
+# the catalog twice, both times in the direction that most misleads a
+# shopper.
+#
+#   1. `youSaveSpend` is the 5-year amount saved (positive) or SPENT
+#      (negative) versus an average new vehicle. Nulling negatives made the
+#      catalog say "unknown" for precisely the thirstiest vehicles while
+#      confidently reporting a number for the efficient ones.
+#   2. `co2TailpipeGpm` is 0.0 for a battery EV -- a genuine MEASURED zero
+#      (58 records in the current curated set, every one of them
+#      `atvType == "EV"`). Nulling it erased an EV's single strongest number
+#      and reported "unknown emissions" for the cleanest vehicles in the
+#      catalog.
+#
+# So the policy is now declared per column at the call site, and the three
+# readers below are named for the convention they implement rather than for
+# a type. Adding a column means choosing one deliberately.
+# ---------------------------------------------------------------------------
 
-    Only `youSaveSpend` uses this. EPA's value is the 5-year amount saved
-    (positive) or **spent** (negative) versus an average new vehicle, so a
-    thirsty truck legitimately reports something like -3500. Running it
-    through `num` nulled every one of those, which dropped field coverage
-    from ~98% to ~36% and -- far worse -- made the catalog report "unknown"
-    for precisely the vehicles that cost the most to run, while confidently
-    reporting a number for the efficient ones. That is a silent bias in the
-    exact direction a shopper would be misled by.
 
-    Zero and blank still mean "not reported"; EPA does not publish a genuine
-    break-even 0 here.
+def text(row: dict, column: str) -> str | None:
+    """A free-text column. Blank is the only "not reported" encoding."""
+    return (row.get(column) or "").strip() or None
+
+
+def measured(row: dict, column: str, cast, *, na_sentinel=None):
+    """A column where 0 and negative values are REAL measurements.
+
+    Used for `co2TailpipeGpm`/`co2TailpipeAGpm` (0 g/mi is the true tailpipe
+    figure for a battery EV), `youSaveSpend` (negative means the vehicle
+    costs MORE than average over five years; 0 is a genuine break-even --
+    49 records sit exactly at the average, all at `fuelCost08` 2200), and
+    `barrels08` (annual petroleum consumption, small but nonzero even for
+    an EV because of upstream generation).
+
+    `na_sentinel` is EPA's explicit "not available" marker for the column
+    where one exists -- `-1` for the CO2 columns -- and is distinct from a
+    measured value. It does not currently occur in the curated rows, but a
+    future re-import covering new model years may include it, and treating
+    -1 as a real gram-per-mile figure would be worse than any prior bug.
     """
     raw = (row.get(column) or "").strip()
     if raw == "":
         return None
     try:
-        value = int(raw)
+        value = cast(raw)
     except ValueError:
         return None
-    return None if value == 0 else value
+    if na_sentinel is not None and value == na_sentinel:
+        return None
+    return round(value, 4) if cast is float else value
 
 
-def num(row: dict, column: str, cast):
-    """Reads one numeric EPA column, or None when the source did not report it.
+def applicable(row: dict, column: str, cast):
+    """A column where 0 encodes "not applicable to this vehicle".
 
-    EPA encodes "not reported" three different ways depending on the column:
-    an empty string, a literal `0` (e.g. `range`/`charge240` on a gasoline
-    car, where zero is genuinely "not applicable" rather than a measured
-    zero), and `-1` (`feScore`/`ghgScore` for an unrated vehicle). All three
-    collapse to `None` here, matching the catalog schema's documented rule
-    that `null` means "the source did not report this" -- Sift never
-    fabricates, and a fabricated `0` mpg or `$0` fuel cost would be worse
-    than an honest unknown because it would rank as if it were measured.
+    EPA stores 0 rather than blank for a whole family of columns that only
+    apply to some drivetrains or body styles: `range`/`charge240`/`cityE`
+    on a gasoline car, the `phev*`/`*UF` columns on anything that is not a
+    plug-in hybrid, and the interior-volume columns (`pv4`/`lv4`/`hpv`/
+    `hlv`/`pv2`/`lv2`) on trucks and SUVs, which EPA does not measure.
 
-    No column in this catalog has a legitimate measured value of exactly 0,
-    so this mapping loses nothing real.
+    None of these has a legitimate measured value of exactly 0 -- a car with
+    0 cubic feet of passenger volume does not exist -- so collapsing 0 to
+    None loses nothing real and correctly yields "unknown" rather than a
+    fabricated zero that would sort as if it had been measured.
     """
     raw = (row.get(column) or "").strip()
     if raw == "":
@@ -217,13 +268,275 @@ def num(row: dict, column: str, cast):
         return None
     if value <= 0:
         return None
-    return round(value, 2) if cast is float else value
+    return round(value, 4) if cast is float else value
+
+
+def dual_fuel_measured(row: dict, column: str, cast, *, na_sentinel=None):
+    """A second-fuel column where 0 is real, but only on a dual-fuel vehicle.
+
+    `co2TailpipeAGpm` needs both rules at once and neither alone is right.
+    On a plug-in hybrid whose second fuel is electricity, 0 g/mi is the true
+    tailpipe figure for the electric side, so `applicable` would wrongly
+    null it. But on the ~98% of the catalog with no second fuel at all, EPA
+    also stores 0.0 -- meaning "not applicable" -- so `measured` reports a
+    confident 0 g/mi of alternative-fuel emissions for cars that cannot burn
+    an alternative fuel. That is a fabricated measurement, and it read as
+    100% field coverage on a column that genuinely applies to 2% of rows.
+
+    Gating on `fuelType2` separates the two: no second fuel means the
+    question does not apply, and only then is 0 taken at face value.
+    """
+    if (row.get("fuelType2") or "").strip() == "":
+        return None
+    return measured(row, column, cast, na_sentinel=na_sentinel)
+
+
+def rated(row: dict, column: str):
+    """An EPA 1-10 score, where -1 means "not rated"."""
+    raw = (row.get(column) or "").strip()
+    if raw == "":
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if 1 <= value <= 10 else None
+
+
+def yes_no(row: dict, column: str) -> bool | None:
+    """A Y/N column. Blank is genuinely unknown, because N is available."""
+    raw = (row.get(column) or "").strip().upper()
+    if raw == "Y":
+        return True
+    if raw == "N":
+        return False
+    return None
+
+
+def flag(row: dict, column: str, marker: str) -> bool:
+    """A marker-or-blank column (`tCharger` = "T", `sCharger` = "S").
+
+    This is the one place blank is read as a value rather than as unknown.
+    EPA encodes these as a set-membership flag: the marker is present when
+    the vehicle has the feature and the cell is empty when it does not, with
+    no third state. A 2016 Camry is not "unknown turbocharged", it is not
+    turbocharged. Reporting null here would make ~68% of the catalog claim
+    ignorance about a fact the source does record.
+    """
+    return (row.get(column) or "").strip().upper() == marker
+
+
+def boolean_text(row: dict, column: str) -> bool | None:
+    """A literal "true"/"false" column (`phevBlended`)."""
+    raw = (row.get(column) or "").strip().lower()
+    if raw == "true":
+        return True
+    if raw == "false":
+        return False
+    return None
+
+
+def epa_date(row: dict, column: str) -> str | None:
+    """`createdOn`/`modifiedOn`, e.g. "Fri May 29 00:00:00 EDT 2015".
+
+    Normalised to a plain ISO `YYYY-MM-DD` date. The timestamp is always
+    midnight and the zone alternates EST/EDT purely with the season, so
+    neither carries information; keeping the raw string would just push the
+    parsing problem onto every consumer. These two dates are real provenance
+    -- when EPA first published and last revised this record -- which is
+    exactly the kind of freshness signal Sift's evidence model cares about.
+    """
+    raw = (row.get(column) or "").strip()
+    if raw == "":
+        return None
+    parts = raw.split()
+    if len(parts) != 6:
+        return None
+    try:
+        return datetime.strptime(
+            f"{parts[1]} {parts[2]} {parts[5]}", "%b %d %Y"
+        ).strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def first_measured(*values):
+    """First non-None of several mutually exclusive columns.
+
+    EPA splits interior volume across three column pairs by body style --
+    4-door (`pv4`/`lv4`), hatchback (`hpv`/`hlv`), and 2-door (`pv2`/`lv2`)
+    -- and populates exactly one pair per vehicle. Consumers want "the
+    passenger volume", so this collapses them while the raw per-body-style
+    columns are still carried individually below for anyone who needs to
+    know which measurement standard produced the number.
+    """
+    for value in values:
+        if value is not None:
+            return value
+    return None
 
 
 def derive_trim(model_field: str, base_model: str) -> str | None:
     rest = model_field[len(base_model):].strip()
     rest = rest.lstrip("- ").strip()
     return rest or None
+
+
+def build_record(make: str, base_model: str, year: str, row: dict) -> dict:
+    trim = derive_trim(row["model"].strip(), base_model)
+    record_id = "veh-" + slugify(f"{year}-{make}-{base_model}-{trim or 'base'}-{row['id']}")
+
+    passenger_volume = first_measured(
+        applicable(row, "pv4", int), applicable(row, "hpv", int), applicable(row, "pv2", int)
+    )
+    luggage_volume = first_measured(
+        applicable(row, "lv4", int), applicable(row, "hlv", int), applicable(row, "lv2", int)
+    )
+
+    return {
+        # -- Identity ---------------------------------------------------
+        "id": record_id,
+        "year": int(year),
+        "make": make,
+        "model": base_model,
+        "trim": trim,
+        # EPA's own model strings, kept verbatim alongside our curated
+        # split. `epaModel` is the full field ("CX-5 4WD"), `epaBaseModel`
+        # is EPA's own base-model grouping, which does not always agree
+        # with our `CURATED` prefix and is useful for cross-referencing
+        # against other EPA-keyed datasets.
+        "epaModel": text(row, "model"),
+        "epaBaseModel": text(row, "baseModel"),
+        "bodyStyle": norm_body_style(row["VClass"]),
+        "epaVehicleClass": text(row, "VClass"),
+
+        # -- Powertrain and engine --------------------------------------
+        "drivetrain": norm_drivetrain(row["drive"]),
+        "fuelType": norm_fuel_type(row["fuelType1"], row.get("atvType", ""), row.get("fuelType2", "")),
+        # The grade of fuel the vehicle actually requires ("Premium",
+        # "Regular", "Gasoline or E85"). Distinct from the normalised
+        # `fuelType` above and a real running-cost factor a shopper feels
+        # every week: premium-required is roughly a 10-15% fuel premium.
+        "requiredFuel": text(row, "fuelType"),
+        "primaryFuel": text(row, "fuelType1"),
+        "secondaryFuel": text(row, "fuelType2"),
+        "alternativeTechnology": text(row, "atvType"),
+        "engineDisplacementL": applicable(row, "displ", float),
+        "cylinders": applicable(row, "cylinders", int),
+        "transmission": text(row, "trany"),
+        "transmissionDetail": text(row, "trans_dscr"),
+        "engineDetail": text(row, "eng_dscr"),
+        "turbocharged": flag(row, "tCharger", "T"),
+        "supercharged": flag(row, "sCharger", "S"),
+        "startStopSystem": yes_no(row, "startStop"),
+        "electricMotor": text(row, "evMotor"),
+        "phevBlended": boolean_text(row, "phevBlended"),
+
+        # -- Fuel economy, primary fuel ---------------------------------
+        "combinedMpg": applicable(row, "comb08", int),
+        "cityMpg": applicable(row, "city08", int),
+        "highwayMpg": applicable(row, "highway08", int),
+        # EPA publishes both a rounded window-sticker MPG and an unrounded
+        # figure. The unrounded values are what you need to compare two
+        # vehicles that both round to the same number.
+        "combinedMpgUnrounded": applicable(row, "comb08U", float),
+        "cityMpgUnrounded": applicable(row, "city08U", float),
+        "highwayMpgUnrounded": applicable(row, "highway08U", float),
+        # Raw dynamometer results before EPA's real-world adjustment.
+        "unadjustedCityMpg": applicable(row, "UCity", float),
+        "unadjustedHighwayMpg": applicable(row, "UHighway", float),
+
+        # -- Fuel economy, alternative fuel -----------------------------
+        # The second fuel of a dual-fuel vehicle: E85 in a flex-fuel car,
+        # or the gasoline side of a plug-in hybrid.
+        "altCombinedMpg": applicable(row, "combA08", int),
+        "altCityMpg": applicable(row, "cityA08", int),
+        "altHighwayMpg": applicable(row, "highwayA08", int),
+        "altCombinedMpgUnrounded": applicable(row, "combA08U", float),
+        "altCityMpgUnrounded": applicable(row, "cityA08U", float),
+        "altHighwayMpgUnrounded": applicable(row, "highwayA08U", float),
+        "unadjustedAltCityMpg": applicable(row, "UCityA", float),
+        "unadjustedAltHighwayMpg": applicable(row, "UHighwayA", float),
+
+        # -- Electric and charging --------------------------------------
+        "electricRangeMiles": applicable(row, "range", float),
+        "electricRangeCityMiles": applicable(row, "rangeCity", float),
+        "electricRangeHighwayMiles": applicable(row, "rangeHwy", float),
+        "altFuelRangeMiles": applicable(row, "rangeA", float),
+        "altFuelRangeCityMiles": applicable(row, "rangeCityA", float),
+        "altFuelRangeHighwayMiles": applicable(row, "rangeHwyA", float),
+        # Electric consumption in kWh per 100 miles -- the EV equivalent of
+        # MPG, and the number that actually drives an EV's running cost.
+        "combinedKwhPer100Mi": applicable(row, "combE", float),
+        "cityKwhPer100Mi": applicable(row, "cityE", float),
+        "highwayKwhPer100Mi": applicable(row, "highwayE", float),
+        "charge120Hours": applicable(row, "charge120", float),
+        "charge240Hours": applicable(row, "charge240", float),
+        "charge240bHours": applicable(row, "charge240b", float),
+        "charger240Description": text(row, "c240Dscr"),
+        "charger240bDescription": text(row, "c240bDscr"),
+
+        # -- Plug-in hybrid charge-depleting operation ------------------
+        "phevCombinedMpge": applicable(row, "phevComb", int),
+        "phevCityMpge": applicable(row, "phevCity", int),
+        "phevHighwayMpge": applicable(row, "phevHwy", int),
+        "chargeDepletingCombinedMpge": applicable(row, "combinedCD", float),
+        "chargeDepletingCityMpge": applicable(row, "cityCD", float),
+        "chargeDepletingHighwayMpge": applicable(row, "highwayCD", float),
+        # Utility factor: the share of miles SAE expects to be driven on
+        # battery rather than gasoline. Without it a PHEV's blended MPG
+        # figure cannot be interpreted.
+        "combinedUtilityFactor": applicable(row, "combinedUF", float),
+        "cityUtilityFactor": applicable(row, "cityUF", float),
+        "highwayUtilityFactor": applicable(row, "highwayUF", float),
+
+        # -- Cost --------------------------------------------------------
+        "annualFuelCostUsd": applicable(row, "fuelCost08", int),
+        "altAnnualFuelCostUsd": applicable(row, "fuelCostA08", int),
+        "fiveYearSavingsVsAverageUsd": measured(row, "youSaveSpend", int),
+        # Gas guzzler tax band, where one applies. Absent across the whole
+        # current curated set, which is itself the honest answer rather
+        # than a reason to drop the column.
+        "gasGuzzlerTax": text(row, "guzzler"),
+
+        # -- Emissions and environment ----------------------------------
+        "fuelEconomyScore": rated(row, "feScore"),
+        "greenhouseGasScore": rated(row, "ghgScore"),
+        "altGreenhouseGasScore": rated(row, "ghgScoreA"),
+        "co2GramsPerMile": measured(row, "co2TailpipeGpm", float, na_sentinel=-1),
+        "altCo2GramsPerMile": dual_fuel_measured(row, "co2TailpipeAGpm", float, na_sentinel=-1),
+        "annualPetroleumBarrels": measured(row, "barrels08", float),
+        "altAnnualPetroleumBarrels": applicable(row, "barrelsA08", float),
+
+        # -- Interior volume --------------------------------------------
+        # Unified across EPA's three body-style-specific column pairs, with
+        # the raw pairs retained so a consumer can tell which measurement
+        # standard produced the figure. EPA measures interior volume for
+        # cars but not for trucks and SUVs, so roughly a third of the
+        # catalog has these and the rest are honestly null.
+        "passengerVolumeCuFt": passenger_volume,
+        "luggageVolumeCuFt": luggage_volume,
+        "passengerVolume4DoorCuFt": applicable(row, "pv4", int),
+        "passengerVolume2DoorCuFt": applicable(row, "pv2", int),
+        "passengerVolumeHatchbackCuFt": applicable(row, "hpv", int),
+        "luggageVolume4DoorCuFt": applicable(row, "lv4", int),
+        "luggageVolume2DoorCuFt": applicable(row, "lv2", int),
+        "luggageVolumeHatchbackCuFt": applicable(row, "hlv", int),
+
+        # -- Provenance --------------------------------------------------
+        "source": {
+            "dataset": "epa-fueleconomy-gov",
+            "recordId": row["id"],
+            "epaEngineId": text(row, "engId"),
+            "manufacturerCode": text(row, "mfrCode"),
+            "createdOn": epa_date(row, "createdOn"),
+            "modifiedOn": epa_date(row, "modifiedOn"),
+            # Whether EPA holds owner-reported real-world MPG for this
+            # vehicle, i.e. whether the published figure has been checked
+            # against drivers rather than only a dynamometer.
+            "hasUserMpgData": yes_no(row, "mpgData"),
+        },
+    }
 
 
 def main() -> None:
@@ -264,56 +577,28 @@ def main() -> None:
                 break
 
         for row in picked:
-            trim = derive_trim(row["model"].strip(), base_model)
-            record_id = "veh-" + slugify(f"{year}-{make}-{base_model}-{trim or 'base'}-{row['id']}")
-            records.append({
-                "id": record_id,
-                "year": int(year),
-                "make": make,
-                "model": base_model,
-                "trim": trim,
-                "bodyStyle": norm_body_style(row["VClass"]),
-                "drivetrain": norm_drivetrain(row["drive"]),
-                "fuelType": norm_fuel_type(row["fuelType1"], row.get("atvType", ""), row.get("fuelType2", "")),
-                "combinedMpg": num(row, "comb08", int),
-                "cityMpg": num(row, "city08", int),
-                "highwayMpg": num(row, "highway08", int),
-                # EPA's own published cost estimates. These are the two most
-                # decision-relevant numbers in the whole dataset for a car
-                # purchase and were previously dropped: `fuelCost08` is the
-                # estimated annual fuel cost in dollars, and `youSaveSpend` is
-                # the 5-year amount saved (positive) or spent (negative)
-                # against an average new vehicle. Both are ~99% populated for
-                # 2016+.
-                "annualFuelCostUsd": num(row, "fuelCost08", int),
-                "fiveYearSavingsVsAverageUsd": signed(row, "youSaveSpend"),
-                # EPA 1-10 scores. Note `feScore`/`ghgScore` use -1 for "not
-                # rated", which `num` maps to None along with 0 and blank.
-                "fuelEconomyScore": num(row, "feScore", int),
-                "greenhouseGasScore": num(row, "ghgScore", int),
-                "co2GramsPerMile": num(row, "co2TailpipeGpm", float),
-                "engineDisplacementL": num(row, "displ", float),
-                "cylinders": num(row, "cylinders", int),
-                "transmission": row["trany"].strip() or None,
-                # EV/PHEV-only. Genuinely absent for a gasoline car rather
-                # than zero, so `num`'s 0 -> None mapping is the correct
-                # reading, not a lossy one: EPA stores 0 for "not applicable".
-                "electricRangeMiles": num(row, "range", float),
-                "charge240Hours": num(row, "charge240", float),
-                "source": {
-                    "dataset": "epa-fueleconomy-gov",
-                    "recordId": row["id"],
-                },
-            })
+            records.append(build_record(make, base_model, year, row))
 
     records.sort(key=lambda r: (r["make"], r["model"], -r["year"], r["trim"] or ""))
 
     print(f"Total records: {len(records)}", file=sys.stderr)
-    by_make = {}
+    by_make: dict[str, int] = {}
     for r in records:
         by_make[r["make"]] = by_make.get(r["make"], 0) + 1
     for make, count in sorted(by_make.items()):
         print(f"  {make}: {count}", file=sys.stderr)
+
+    # Field-level coverage, printed on every run so a re-import that
+    # silently loses a column is visible immediately rather than at the
+    # point some downstream feature quietly starts rendering "Unknown".
+    if records:
+        print(f"\nFields per record: {len(records[0]) - 1} + source", file=sys.stderr)
+        print("Coverage:", file=sys.stderr)
+        for field in records[0]:
+            if field == "source":
+                continue
+            filled = sum(1 for r in records if r[field] is not None)
+            print(f"  {field:32s} {100 * filled / len(records):5.1f}%", file=sys.stderr)
 
     with open(OUT_JSON, "w") as f:
         json.dump(records, f, indent=2)

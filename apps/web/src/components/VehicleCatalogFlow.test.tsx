@@ -5,6 +5,7 @@ import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import type { VehicleCatalogRecord } from '@sift/catalog/browser';
+import { buildVehicleCatalogRecord } from '@sift/catalog/test-support';
 import {
   VehicleCatalogFlow,
   MAX_SHORTLIST_SIZE,
@@ -19,8 +20,18 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
+/**
+ * This file's own defaults for a catalog record, layered over the shared
+ * `buildVehicleCatalogRecord` factory rather than spelled out as a literal.
+ *
+ * The literal version listed all 20 fields the record had at the time, which
+ * meant it silently stopped compiling the moment the catalog widened to 83 --
+ * and, worse, would have left the 63 new fields as `undefined` rather than
+ * `null` at runtime, a distinction the rendering code is entitled to rely on.
+ * Delegating keeps this factory to just the fields these tests care about.
+ */
 function record(overrides: Partial<VehicleCatalogRecord> = {}): VehicleCatalogRecord {
-  return {
+  return buildVehicleCatalogRecord({
     id: 'veh-camry-1',
     year: 2025,
     make: 'Toyota',
@@ -32,19 +43,8 @@ function record(overrides: Partial<VehicleCatalogRecord> = {}): VehicleCatalogRe
     combinedMpg: 47,
     cylinders: 4,
     transmission: 'Automatic (AV-S6)',
-    cityMpg: null,
-    highwayMpg: null,
-    annualFuelCostUsd: null,
-    fiveYearSavingsVsAverageUsd: null,
-    fuelEconomyScore: null,
-    greenhouseGasScore: null,
-    co2GramsPerMile: null,
-    engineDisplacementL: null,
-    electricRangeMiles: null,
-    charge240Hours: null,
-    source: { dataset: 'epa-fueleconomy-gov', recordId: '1' },
     ...overrides,
-  };
+  });
 }
 
 const CAMRY = record();

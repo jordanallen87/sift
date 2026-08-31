@@ -346,15 +346,15 @@ CSV was **not** committed or redistributed wholesale. A one-time, offline,
 checked-in Python transform
 (`packages/catalog/scripts/import-vehicle-catalog.py`) reads the raw CSV
 and produces the checked-in `packages/catalog/data/vehicle-catalog.json`
-(originally 151 records / ~60 KB; **now 853 records / ~574 KB** after the
-2026-08-30 widening) by:
+(originally 151 records / ~60 KB / 10 fields; **now 853 records / ~2.5 MB /
+83 fields** after the 2026-08-30 widening) by:
 
 - filtering by model year. **Originally** the two most recent years present
   at retrieval time (2025/2026). **Since 2026-08-30** every model year from
   `EARLIEST_YEAR = 2016` forward, expressed as an open-ended floor so a later
   re-import picks up new years automatically instead of freezing at whatever
   was current when the constant was last edited;
-- filtering to a hand-curated list of 44 popular make/model families
+- filtering to a hand-curated list of 43 popular make/model families
   (`CURATED` in the script) — a deliberate, bounded scope per the spec
   brief's "do NOT turn this task into building a comprehensive automotive
   data company" (§4/§25), not an attempt at exhaustive market coverage;
@@ -362,25 +362,48 @@ and produces the checked-in `packages/catalog/data/vehicle-catalog.json`
   per model-year, deduplicated by `(drivetrain, fuelType, combinedMpg)`
   signature, to avoid dozens of near-duplicate trim rows for one popular
   model;
-- retaining a bounded field subset per record. **Originally** 10 fields.
-  **Since 2026-08-30**, 20 (`year`, `make`, `model`, `trim`,
-  `bodyStyle`, `drivetrain`, `fuelType`, `combinedMpg`, `cylinders`,
-  `transmission`, plus `cityMpg`, `highwayMpg`, `annualFuelCostUsd`,
-  `fiveYearSavingsVsAverageUsd`, `fuelEconomyScore`, `greenhouseGasScore`,
-  `co2GramsPerMile`, `engineDisplacementL`, `electricRangeMiles`,
-  `charge240Hours`) plus a `source.recordId` pointing back to the EPA
-  dataset's own row id. The remaining EPA columns (city/highway MPG
-  *unrounded* variants, per-fuel breakdowns for dual-fuel vehicles, engine
-  descriptor codes, manufacturer codes, etc.) are still dropped as
-  unnecessary for Sift's comparison use case.
+- retaining fields per record. **Originally** 10, then 20, and **since
+  2026-08-30 all 83** columns the source publishes, plus a 7-field `source`
+  provenance object. The only two source columns not carried are `co2` and
+  `co2A`, which are exact integer restatements of `co2TailpipeGpm` and
+  `co2TailpipeAGpm`.
 
-  The two additions that matter most are `annualFuelCostUsd` (EPA's
-  published annual fuel cost, ~100% populated) and
-  `fiveYearSavingsVsAverageUsd` (EPA's 5-year saved/spent figure versus an
-  average new vehicle, ~94% populated). These are real published dollar
-  figures, and `map-to-option.ts` now feeds the first into the pack's
-  `car.five_year_fuel_cost` criterion, which was previously satisfiable only
-  from fictional fixture data;
+  The narrow subsets were chosen by guessing which columns a car shopper
+  would care about, and the guess was wrong in both directions: it discarded
+  EPA's published annual fuel cost — the single most decision-relevant number
+  in the file — while retaining internal identifiers. The rule is now to
+  carry everything the source publishes and let the product decide what to
+  surface, because a column that was never imported cannot be surfaced later
+  without a re-import, whereas an imported and unused column costs only disk.
+  Size is not a constraint here: the JSON is read server-side from disk and
+  served paginated, and is never bundled into the browser
+  (`packages/catalog/src/browser.ts` deliberately excludes the fs-backed
+  surface).
+
+  The additions that matter most for a purchase decision are
+  `annualFuelCostUsd` (EPA's published annual fuel cost, 100% populated),
+  `fiveYearSavingsVsAverageUsd` (the 5-year saved/spent figure versus an
+  average new vehicle, 100%), `requiredFuel` (regular vs premium — a
+  recurring cost a shopper pays every fill, 100%), and
+  `luggageVolumeCuFt`/`passengerVolumeCuFt` (36%, since EPA measures interior
+  volume for cars but not trucks or SUVs). `map-to-option.ts` feeds the
+  annual fuel cost into the pack's `car.five_year_fuel_cost` criterion and
+  the luggage volume into `car.cargo_volume_cu_ft`, both of which were
+  previously satisfiable only from fictional fixture data.
+
+  **Zero is not the same as unknown.** EPA uses three different encodings for
+  "not reported" depending on the column, and an earlier single shared
+  "treat `<= 0` as missing" rule silently corrupted this catalog twice, both
+  times biasing it in the direction that most misleads a shopper: it nulled
+  every *negative* `youSaveSpend`, so the catalog reported "unknown" for
+  precisely the thirstiest vehicles while confidently reporting a number for
+  the efficient ones; and it nulled `co2TailpipeGpm` of `0.0`, which is the
+  true measured tailpipe figure for a battery EV, so all 58 EVs reported
+  unknown emissions — erasing their strongest number. The transform now
+  declares the convention per column (`measured` / `applicable` / `rated` /
+  `dual_fuel_measured`) at each call site, and the Zod schema's
+  `.nonnegative()` bounds are the second line of defence rather than
+  incidental;
 - normalizing free-text EPA values into Sift's own vocabulary (e.g. EPA's
   `VClass` "Small Sport Utility Vehicle 4WD" → Sift's `bodyStyle`
   "Compact SUV"; EPA's `drive` "All-Wheel Drive" → Sift's `drivetrain`

@@ -11,14 +11,31 @@
  *
  * Deliberately maps only the subset of `car.*` attributes a vehicle catalog
  * can actually know (make, model, model year, trim, body style, drivetrain,
- * powertrain, combined fuel economy). Every attribute a catalog cannot know
- * -- price, mileage, dealer terms, safety/reliability ratings, ownership
- * cost, cargo dimensions -- is simply omitted from the returned attribute
- * list. `OptionComparison`'s existing rendering already treats an absent
- * attribute as "Unknown" (confirmed by reading
+ * powertrain, combined fuel economy, five-year fuel cost, cargo volume).
+ * Every attribute a catalog cannot know -- price, mileage, dealer terms,
+ * safety/reliability ratings, insurance, ownership cost, cargo width/length,
+ * legroom, ground clearance, or anything requiring a subjective or
+ * verification-level judgment -- is simply omitted from the returned
+ * attribute list. `OptionComparison`'s existing rendering already treats an
+ * absent attribute as "Unknown" (confirmed by reading
  * `apps/web/src/components/OptionComparison.tsx`), so omission alone
  * produces the correct honest-unknown UI with no new "unknown" plumbing
  * needed here.
+ *
+ * The catalog widened from 20 to 83 EPA fields
+ * (`packages/catalog/src/schema.ts`), which is what makes `car.cargo_volume_cu_ft`
+ * honestly fillable below. That widening was re-checked field-by-field
+ * against every other `car.*` attribute the pack declares
+ * (`packages/packs/src/car-purchase.ts`), and nothing else newly qualifies:
+ * the remaining 82 fields describe fuel economy/emissions/charging detail
+ * this pack does not model as separate attributes, or engine/transmission
+ * trivia with no matching `car.*` id. The pack's price, mileage,
+ * safety/reliability, insurance, and dimensional attributes (cargo width,
+ * cargo length, rear door opening, second-row legroom, ground clearance) all
+ * describe a specific dealer listing, a rated test result, or a physical
+ * measurement EPA's fuel-economy dataset simply does not publish -- not
+ * something a wider EPA export could ever answer, so they stay unmapped
+ * regardless of how many columns the catalog carries.
  *
  * `car.drivetrain` and `car.powertrain` are pack-declared `enum` attributes
  * with a closed `allowedValues` list (`packages/packs/src/car-purchase.ts`).
@@ -124,6 +141,26 @@ export function mapCatalogRecordToOption(record: VehicleCatalogRecord): MappedOp
         amount: record.annualFuelCostUsd * 5,
         currency: 'USD',
       },
+    });
+  }
+
+  // `car.cargo_volume_cu_ft` from EPA's `luggageVolumeCuFt`.
+  //
+  // The pack labels this attribute "Cargo volume behind second row". EPA's
+  // luggage-volume figure is measured differently by body style -- trunk
+  // volume for a sedan, the area behind the rear seats for a hatchback/wagon
+  // -- but both are the same real-world quantity a shopper means by "cargo
+  // space behind the second row", so the raw EPA number can be passed
+  // through without adjustment.
+  //
+  // EPA simply does not measure this for trucks and SUVs (see `VolumeCuFt`
+  // in schema.ts), so roughly two thirds of catalog records carry `null`
+  // here. That is left as an omitted attribute -- not a 0 or a placeholder
+  // -- exactly like every other honestly-unknown field in this mapping.
+  if (record.luggageVolumeCuFt !== null) {
+    attributes.push({
+      definitionId: 'car.cargo_volume_cu_ft',
+      value: { type: 'number', value: record.luggageVolumeCuFt, unit: 'cu ft' },
     });
   }
 

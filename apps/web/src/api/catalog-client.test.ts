@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import { buildVehicleCatalogRecord } from '@sift/catalog/test-support';
 import {
   CatalogClientError,
   fetchCatalogBodyStyles,
@@ -16,30 +17,22 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-const RECORD = {
+/**
+ * The mocked shape of a single record in a `/api/catalog/vehicles` response.
+ *
+ * This has to be a COMPLETE, schema-valid record, because the point of these
+ * tests is that `catalog-client.ts` Zod-validates what the server sends. A
+ * hand-written partial would make the client's own validation the thing
+ * under test rather than the transport, which is exactly what happened when
+ * the catalog widened to 83 fields and this 20-field literal started failing
+ * validation for a reason unrelated to any of the assertions here.
+ */
+const RECORD = buildVehicleCatalogRecord({
   id: 'veh-1',
   year: 2025,
   make: 'Toyota',
   model: 'Camry',
-  trim: null,
-  bodyStyle: null,
-  drivetrain: null,
-  fuelType: null,
-  combinedMpg: null,
-  cylinders: null,
-  transmission: null,
-  cityMpg: null,
-  highwayMpg: null,
-  annualFuelCostUsd: null,
-  fiveYearSavingsVsAverageUsd: null,
-  fuelEconomyScore: null,
-  greenhouseGasScore: null,
-  co2GramsPerMile: null,
-  engineDisplacementL: null,
-  electricRangeMiles: null,
-  charge240Hours: null,
-  source: { dataset: 'epa-fueleconomy-gov', recordId: '1' },
-};
+});
 
 describe('fetchCatalogYears', () => {
   it('returns the parsed years array on success', async () => {

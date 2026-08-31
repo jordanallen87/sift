@@ -68,6 +68,19 @@ export interface SearchVehiclesParams {
   make?: string;
   model?: string;
   bodyStyle?: string;
+  /**
+   * Exact match against the catalog's normalised `fuelType` ("Hybrid",
+   * "Electric", "Gasoline", "Plug-in hybrid", "Diesel", "Flex-fuel",
+   * "Gasoline (premium)").
+   *
+   * Added because "show me the hybrids" is one of the most common ways a
+   * shopper narrows a list, and it was previously unanswerable: the
+   * free-text `query` only searches make/model/trim, so a fuel-type search
+   * silently returned nothing rather than filtering. Use `listFuelTypes()`
+   * to populate a picker rather than hardcoding the values, which are data,
+   * not a closed enum.
+   */
+  fuelType?: string;
   /** Bounded to `MAX_SEARCH_RESULTS`; defaults to `DEFAULT_SEARCH_LIMIT`. */
   limit?: number;
   offset?: number;
@@ -95,6 +108,7 @@ export function searchVehicles(params: SearchVehiclesParams = {}): SearchVehicle
     if (params.make !== undefined && record.make !== params.make) return false;
     if (params.model !== undefined && record.model !== params.model) return false;
     if (params.bodyStyle !== undefined && record.bodyStyle !== params.bodyStyle) return false;
+    if (params.fuelType !== undefined && record.fuelType !== params.fuelType) return false;
     if (query !== undefined && query.length > 0) {
       const haystack = `${record.make} ${record.model} ${record.trim ?? ''}`.toLowerCase();
       if (!haystack.includes(query)) return false;
@@ -122,6 +136,22 @@ export function listBodyStyles(): string[] {
   return sortedUnique(
     loadCatalog()
       .map((record) => record.bodyStyle)
+      .filter((value): value is string => value !== null),
+  );
+}
+
+/**
+ * Every distinct catalog-reported fuel type, alphabetically.
+ *
+ * Same reasoning as `listBodyStyles`: these come from the data rather than a
+ * hardcoded list, so a re-import that introduces a new powertrain (a
+ * hydrogen vehicle, say) shows up in the filter automatically instead of
+ * being silently unselectable.
+ */
+export function listFuelTypes(): string[] {
+  return sortedUnique(
+    loadCatalog()
+      .map((record) => record.fuelType)
       .filter((value): value is string => value !== null),
   );
 }

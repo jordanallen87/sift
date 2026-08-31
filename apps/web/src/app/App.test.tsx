@@ -5,6 +5,7 @@ import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import type { CaseState, CommandReceipt, PublicActivityEvent } from '@sift/contracts';
+import { buildVehicleCatalogRecord } from '@sift/catalog/test-support';
 import { App } from './App.js';
 import { AppProviders } from './AppProviders.js';
 import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-sift-commands.js';
@@ -198,55 +199,27 @@ describe('App', () => {
       http.get('/api/catalog/body-styles', () => HttpResponse.json({ bodyStyles: ['Sedan'] })),
       http.get('/api/catalog/vehicles', () =>
         HttpResponse.json({
+          // Complete, schema-valid records: `catalog-client.ts` Zod-validates
+          // this response, so a hand-written partial would fail validation
+          // rather than exercise the launcher -> catalog -> workspace
+          // transition these assertions are actually about.
           records: [
-            {
+            buildVehicleCatalogRecord({
               id: 'veh-camry-1',
               year: 2025,
               make: 'Toyota',
               model: 'Camry',
-              trim: null,
               bodyStyle: 'Sedan',
-              drivetrain: null,
-              fuelType: null,
-              combinedMpg: null,
-              cylinders: null,
-              transmission: null,
-              cityMpg: null,
-              highwayMpg: null,
-              annualFuelCostUsd: null,
-              fiveYearSavingsVsAverageUsd: null,
-              fuelEconomyScore: null,
-              greenhouseGasScore: null,
-              co2GramsPerMile: null,
-              engineDisplacementL: null,
-              electricRangeMiles: null,
-              charge240Hours: null,
               source: { dataset: 'epa-fueleconomy-gov', recordId: '1' },
-            },
-            {
+            }),
+            buildVehicleCatalogRecord({
               id: 'veh-corolla-1',
               year: 2025,
               make: 'Toyota',
               model: 'Corolla',
-              trim: null,
               bodyStyle: 'Sedan',
-              drivetrain: null,
-              fuelType: null,
-              combinedMpg: null,
-              cylinders: null,
-              transmission: null,
-              cityMpg: null,
-              highwayMpg: null,
-              annualFuelCostUsd: null,
-              fiveYearSavingsVsAverageUsd: null,
-              fuelEconomyScore: null,
-              greenhouseGasScore: null,
-              co2GramsPerMile: null,
-              engineDisplacementL: null,
-              electricRangeMiles: null,
-              charge240Hours: null,
               source: { dataset: 'epa-fueleconomy-gov', recordId: '2' },
-            },
+            }),
           ],
           total: 2,
         }),

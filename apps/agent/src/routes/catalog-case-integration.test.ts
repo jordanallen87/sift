@@ -42,6 +42,7 @@ import type { CaseState, CommandReceipt, PublicActivityEvent, RunReceipt } from 
 import type { Clock, IdGenerator } from '@sift/core';
 import { compileCarPurchasePack, PackRegistry } from '@sift/packs';
 import { mapCatalogRecordToOption, type VehicleCatalogRecord } from '@sift/catalog';
+import { buildVehicleCatalogRecord } from '@sift/catalog/test-support';
 import { asJson } from '../fixtures/http-types.js';
 import { buildApp } from '../app.js';
 import { createTestDatabase, type TestDatabase } from '../db/connection.js';
@@ -142,8 +143,23 @@ function buildRealCarPurchaseHttpHarness(): RealCarPurchaseHttpHarness {
 // gasoline SUV, and an EV with no known combined MPG (`combinedMpg: null`)
 // -- proving `mapCatalogRecordToOption` omits genuinely unknown fields per
 // vehicle, not just once for the whole fixture set. ---
+/**
+ * Three catalog records covering the shapes this integration path has to
+ * survive: a hybrid sedan with cargo volume, a gasoline SUV where EPA
+ * publishes no interior volume at all, and a battery EV with no engine.
+ *
+ * Built through `buildVehicleCatalogRecord` rather than as object literals.
+ * They *were* literals, and when the catalog widened from 20 fields to 83
+ * every unlisted field became `undefined` at runtime instead of `null` --
+ * which slipped past `mapCatalogRecordToOption`'s `!== null` guards and made
+ * it emit attributes with an `undefined` value, so `upsertOption` correctly
+ * rejected the command with a 400 and three tests here failed for a reason
+ * that had nothing to do with what they were testing. The factory defaults
+ * every unlisted field to a real `null`, so these fixtures now state only
+ * the fields the assertions actually depend on and cannot drift again.
+ */
 const CATALOG_FIXTURES: VehicleCatalogRecord[] = [
-  {
+  buildVehicleCatalogRecord({
     id: 'toyota-camry-2025-le-hybrid',
     year: 2025,
     make: 'Toyota',
@@ -155,19 +171,13 @@ const CATALOG_FIXTURES: VehicleCatalogRecord[] = [
     combinedMpg: 51,
     cylinders: 4,
     transmission: 'Automatic (variable gear ratios)',
-    cityMpg: null,
-    highwayMpg: null,
-    annualFuelCostUsd: null,
-    fiveYearSavingsVsAverageUsd: null,
-    fuelEconomyScore: null,
-    greenhouseGasScore: null,
-    co2GramsPerMile: null,
-    engineDisplacementL: null,
-    electricRangeMiles: null,
-    charge240Hours: null,
+    // A sedan is exactly the body style EPA does measure, so this record
+    // exercises the `car.cargo_volume_cu_ft` mapping rather than only its
+    // omission path.
+    luggageVolumeCuFt: 15,
     source: { dataset: 'epa-fueleconomy-2025-2026', recordId: 'epa-10234' },
-  },
-  {
+  }),
+  buildVehicleCatalogRecord({
     id: 'honda-crv-2025-exl-awd',
     year: 2025,
     make: 'Honda',
@@ -179,19 +189,11 @@ const CATALOG_FIXTURES: VehicleCatalogRecord[] = [
     combinedMpg: 29,
     cylinders: 4,
     transmission: 'Automatic (CVT)',
-    cityMpg: null,
-    highwayMpg: null,
-    annualFuelCostUsd: null,
-    fiveYearSavingsVsAverageUsd: null,
-    fuelEconomyScore: null,
-    greenhouseGasScore: null,
-    co2GramsPerMile: null,
-    engineDisplacementL: null,
-    electricRangeMiles: null,
-    charge240Hours: null,
+    // Left null on purpose: EPA publishes no interior volume for SUVs, so
+    // this is the honest-unknown half of the same mapping.
     source: { dataset: 'epa-fueleconomy-2025-2026', recordId: 'epa-10567' },
-  },
-  {
+  }),
+  buildVehicleCatalogRecord({
     id: 'chevrolet-bolt-euv-2025-lt',
     year: 2025,
     make: 'Chevrolet',
@@ -200,21 +202,8 @@ const CATALOG_FIXTURES: VehicleCatalogRecord[] = [
     bodyStyle: 'Hatchback',
     drivetrain: 'FWD',
     fuelType: 'Electric',
-    combinedMpg: null,
-    cylinders: null,
-    transmission: null,
-    cityMpg: null,
-    highwayMpg: null,
-    annualFuelCostUsd: null,
-    fiveYearSavingsVsAverageUsd: null,
-    fuelEconomyScore: null,
-    greenhouseGasScore: null,
-    co2GramsPerMile: null,
-    engineDisplacementL: null,
-    electricRangeMiles: null,
-    charge240Hours: null,
     source: { dataset: 'epa-fueleconomy-2025-2026', recordId: 'epa-10999' },
-  },
+  }),
 ];
 
 interface CatalogBuiltCase {

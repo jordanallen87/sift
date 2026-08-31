@@ -81,6 +81,40 @@ describe('GET /api/catalog/*', () => {
     expect(body.bodyStyles.length).toBeGreaterThan(0);
   });
 
+  it('GET /api/catalog/fuel-types returns a non-empty array', async () => {
+    harness = createHttpTestHarness();
+
+    const response = await request(harness.app).get('/api/catalog/fuel-types');
+
+    expect(response.status).toBe(200);
+    const body = asJson<{ fuelTypes: string[] }>(response.body);
+    expect(body.fuelTypes.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * The filter has to survive the HTTP leg, not just `searchVehicles` --
+   * a query param the route forgets to forward silently returns the
+   * unfiltered catalog, which looks like a working search right up until
+   * someone notices the results ignore the filter.
+   */
+  it('GET /api/catalog/vehicles?fuelType= filters over HTTP', async () => {
+    harness = createHttpTestHarness();
+
+    const response = await request(harness.app).get('/api/catalog/vehicles?fuelType=Electric');
+
+    expect(response.status).toBe(200);
+    const body = asJson<{ records: { fuelType: string | null }[]; total: number }>(response.body);
+    expect(body.total).toBeGreaterThan(0);
+    expect(body.records.length).toBeGreaterThan(0);
+    for (const record of body.records) {
+      expect(record.fuelType).toBe('Electric');
+    }
+
+    const unfiltered = await request(harness.app).get('/api/catalog/vehicles');
+    const unfilteredTotal = asJson<{ total: number }>(unfiltered.body).total;
+    expect(body.total).toBeLessThan(unfilteredTotal);
+  });
+
   it('GET /api/catalog/vehicles with no params returns a bounded default page with a total', async () => {
     harness = createHttpTestHarness();
 

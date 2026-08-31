@@ -17,8 +17,18 @@ import { VehicleCatalogRecordListSchema, type VehicleCatalogRecord } from './sch
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CATALOG_PATH = join(__dirname, '..', 'data', 'vehicle-catalog.json');
 
-/** Defensive upper bound on the catalog file's byte size -- the real file is ~60KB; 5MB is generous headroom while still refusing to parse a runaway file. */
-export const MAX_CATALOG_BYTES = 5_000_000;
+/**
+ * Defensive upper bound on the catalog file's byte size. The real file is
+ * ~2.5MB (853 records x 83 fields); 16MB keeps generous headroom while still
+ * refusing to parse a runaway file.
+ *
+ * This constant has now been outgrown twice -- the comment here claimed
+ * "~60KB" while the file was already 574KB -- so the bound is set well clear
+ * of the current size rather than just above it. It exists to stop a
+ * corrupted or hostile file, not to assert how big the legitimate catalog
+ * happens to be today.
+ */
+export const MAX_CATALOG_BYTES = 16_000_000;
 
 export class CatalogLoadError extends Error {
   constructor(message: string) {

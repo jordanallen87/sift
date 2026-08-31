@@ -67,32 +67,94 @@ function vehicleLabel(record: VehicleCatalogRecord): string {
   return parts.join(' ');
 }
 
-function vehicleFields(record: VehicleCatalogRecord): CatalogSearchResultItem['fields'] {
-  return {
-    year: record.year,
-    make: record.make,
-    model: record.model,
-    trim: record.trim,
-    bodyStyle: record.bodyStyle,
-    drivetrain: record.drivetrain,
-    fuelType: record.fuelType,
-    combinedMpg: record.combinedMpg,
-    cylinders: record.cylinders,
-    transmission: record.transmission,
-    cityMpg: record.cityMpg,
-    highwayMpg: record.highwayMpg,
-    annualFuelCostUsd: record.annualFuelCostUsd,
-    fiveYearSavingsVsAverageUsd: record.fiveYearSavingsVsAverageUsd,
-    fuelEconomyScore: record.fuelEconomyScore,
-    greenhouseGasScore: record.greenhouseGasScore,
-    co2GramsPerMile: record.co2GramsPerMile,
-    engineDisplacementL: record.engineDisplacementL,
-    electricRangeMiles: record.electricRangeMiles,
-    charge240Hours: record.charge240Hours,
-  };
+/**
+ * `source.<key>` -> its flattened `fields` key, e.g. `modifiedOn` becomes
+ * `sourceModifiedOn`. A plain prefix-and-capitalize, not a lookup table, so
+ * a future `source.*` addition (packages/catalog/src/schema.ts) needs no
+ * matching edit here -- see `vehicleFields` below for why that property
+ * matters.
+ */
+function sourceFieldKey(key: string): string {
+  return `source${key.charAt(0).toUpperCase()}${key.slice(1)}`;
 }
 
-export const VEHICLE_CATALOG_FILTER_KEYS = ['year', 'make', 'model', 'bodyStyle'] as const;
+/**
+ * Maps a full `VehicleCatalogRecord` onto the flat `fields` bag a WebMCP
+ * search result carries.
+ *
+ * This used to be a hand-listed subset of ~20 field names. When the bundled
+ * catalog's schema widened from 20 to 83 columns
+ * (packages/catalog/src/schema.ts), the hand-list kept returning exactly the
+ * original 20 -- five-year fuel savings, EV range, interior volume, engine
+ * detail, and 40-odd more fields were sitting in the already-validated HTTP
+ * response and silently never reached the model. A literal field list can
+ * only ever be as current as the last person who remembered to update it;
+ * enumerating `record`'s own keys instead means a *future* schema field
+ * requires no matching edit here, because it is simply present in
+ * `Object.entries(scalarFields)` the moment `catalog-client.ts`'s response
+ * schema accepts it.
+ *
+ * `source` (EPA provenance) is the one field that cannot flow through this
+ * loop unchanged: `VehicleCatalogRecordSchema` types it as a nested object,
+ * but `CatalogSearchResultItem['fields']` is deliberately flat --
+ * `Record<string, string | number | boolean | null>` -- because a WebMCP
+ * result has to stay flat JSON scalars, not an arbitrarily deep object. The
+ * destructure below pulls `source` out by name for that reason alone (it is
+ * the only field on the record whose *type* forces special handling, not a
+ * judgement call about which fields are "worth" exposing); every other key
+ * is treated identically and automatically.
+ *
+ * `source`'s own fields carry real signal for a shopping model rather than
+ * being purely internal plumbing -- `createdOn`/`modifiedOn` are "how fresh
+ * is this row" and `hasUserMpgData` is "checked against real drivers, not
+ * only a dynamometer" (schema.ts's own comments make this explicit). Dropping
+ * the whole object, as the previous version of this function did, threw that
+ * signal away along with the two fields (`dataset`, `recordId`) that really
+ * are internal. Flattening it under a `source`-prefixed key keeps the
+ * signal, costs nothing but a few bytes for the two internal fields, and --
+ * critically -- applies the same "derive from the schema, do not hand-pick"
+ * rule one level down, so `source` gaining a field later does not reopen the
+ * exact bug this rewrite fixes.
+ */
+function vehicleFields(record: VehicleCatalogRecord): CatalogSearchResultItem['fields'] {
+  const { source, ...scalarFields } = record;
+  const fields: CatalogSearchResultItem['fields'] = {};
+  for (const [key, value] of Object.entries(scalarFields)) {
+    fields[key] = value;
+  }
+  for (const [key, value] of Object.entries(source)) {
+    fields[sourceFieldKey(key)] = value;
+  }
+  return fields;
+}
+
+// Every filter `SearchCatalogVehiclesParams` (catalog-client.ts) can actually
+// forward to `GET /api/catalog/vehicles` through the filter bag. `query`,
+// `limit`, and `offset` are also supported, but `search` below reads those
+// straight off `CatalogSearchInput` rather than through `filters`, so they
+// were never candidates for this list.
+//
+// This list is a promise: `recognizedFilterKeys` is surfaced in
+// `sift_search_catalog`'s response so a model can learn the filters without
+// guessing. A key listed here that `search` does not actually read would
+// silently return unfiltered results that *look* filtered -- worse than
+// having no filter at all. So every entry must be read below AND reach the
+// route.
+//
+// `fuelType` was added once the client and route gained it, which is what
+// makes "show me the hybrids" answerable. `vehicleFields` now exposes 90
+// fields (83 scalar plus 7 flattened `source.*`, up from the old hand-list's
+// 20), and most of them -- engine detail, five-year savings, EV range,
+// interior volume, provenance -- remain unfilterable. Widening further is
+// real follow-up work, and it starts in `catalog-client.ts`'s
+// `SearchCatalogVehiclesParams` and the route behind it, not here.
+export const VEHICLE_CATALOG_FILTER_KEYS = [
+  'year',
+  'make',
+  'model',
+  'bodyStyle',
+  'fuelType',
+] as const;
 
 /**
  * The real car-purchase catalog adapter. `searchFn` defaults to the real
@@ -115,6 +177,7 @@ export function buildVehicleCatalogAdapter(
       const make = filterString(input.filters, 'make');
       const model = filterString(input.filters, 'model');
       const bodyStyle = filterString(input.filters, 'bodyStyle');
+      const fuelType = filterString(input.filters, 'fuelType');
 
       const result = await searchFn(
         {
@@ -123,6 +186,7 @@ export function buildVehicleCatalogAdapter(
           ...(make !== undefined ? { make } : {}),
           ...(model !== undefined ? { model } : {}),
           ...(bodyStyle !== undefined ? { bodyStyle } : {}),
+          ...(fuelType !== undefined ? { fuelType } : {}),
           ...(input.limit !== undefined ? { limit: input.limit } : {}),
           ...(input.offset !== undefined ? { offset: input.offset } : {}),
         },

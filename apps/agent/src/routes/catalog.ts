@@ -24,6 +24,7 @@ import { z } from 'zod';
 import {
   getVehicle,
   listBodyStyles,
+  listFuelTypes,
   listMakes,
   listModels,
   listYears,
@@ -37,6 +38,7 @@ const ListYearsResponseSchema = z.object({ years: z.array(z.number().int()) }).s
 const ListMakesResponseSchema = z.object({ makes: z.array(z.string()) }).strict();
 const ListModelsResponseSchema = z.object({ models: z.array(z.string()) }).strict();
 const ListBodyStylesResponseSchema = z.object({ bodyStyles: z.array(z.string()) }).strict();
+const ListFuelTypesResponseSchema = z.object({ fuelTypes: z.array(z.string()) }).strict();
 const SearchVehiclesResponseSchema = z
   .object({ records: VehicleCatalogRecordListSchema, total: z.number().int().nonnegative() })
   .strict();
@@ -103,6 +105,13 @@ export function createCatalogRouter(): Router {
     res.status(200).json(ListBodyStylesResponseSchema.parse({ bodyStyles: listBodyStyles() }));
   });
 
+  // Mirrors `/api/catalog/body-styles` exactly: the distinct values come from
+  // the data so a picker never offers a fuel type no vehicle has, and never
+  // omits one a re-import introduces.
+  router.get('/api/catalog/fuel-types', (_req, res) => {
+    res.status(200).json(ListFuelTypesResponseSchema.parse({ fuelTypes: listFuelTypes() }));
+  });
+
   router.get('/api/catalog/vehicles', (req, res) => {
     const year = parseOptionalInt(firstString(req.query['year']));
     const limit = parseOptionalInt(firstString(req.query['limit']));
@@ -124,6 +133,7 @@ export function createCatalogRouter(): Router {
     const make = firstString(req.query['make']);
     const model = firstString(req.query['model']);
     const bodyStyle = firstString(req.query['bodyStyle']);
+    const fuelType = firstString(req.query['fuelType']);
 
     const result = searchVehicles({
       ...(query !== undefined ? { query } : {}),
@@ -131,6 +141,7 @@ export function createCatalogRouter(): Router {
       ...(make !== undefined ? { make } : {}),
       ...(model !== undefined ? { model } : {}),
       ...(bodyStyle !== undefined ? { bodyStyle } : {}),
+      ...(fuelType !== undefined ? { fuelType } : {}),
       ...(limit !== undefined ? { limit } : {}),
       ...(offset !== undefined ? { offset } : {}),
     });

@@ -34,6 +34,7 @@ export class CatalogClientError extends Error {
 const ListYearsResponseSchema = z.object({ years: z.array(z.number().int()) }).strict();
 const ListMakesResponseSchema = z.object({ makes: z.array(z.string()) }).strict();
 const ListBodyStylesResponseSchema = z.object({ bodyStyles: z.array(z.string()) }).strict();
+const ListFuelTypesResponseSchema = z.object({ fuelTypes: z.array(z.string()) }).strict();
 const SearchVehiclesResponseSchema = z
   .object({
     records: z.array(VehicleCatalogRecordSchema).max(1000),
@@ -103,12 +104,22 @@ export async function fetchCatalogBodyStyles(
   return data.bodyStyles;
 }
 
+/** Fetches the distinct fuel types present in the catalog, for populating a picker from data rather than a hardcoded list. */
+export async function fetchCatalogFuelTypes(options: CatalogClientOptions = {}): Promise<string[]> {
+  const data = (await getJson(options, '/api/catalog/fuel-types', ListFuelTypesResponseSchema)) as {
+    fuelTypes: string[];
+  };
+  return data.fuelTypes;
+}
+
 export interface SearchCatalogVehiclesParams {
   query?: string;
   year?: number;
   make?: string;
   model?: string;
   bodyStyle?: string;
+  /** Exact match on the catalog's normalised fuel type ("Hybrid", "Electric", ...). See `fetchCatalogFuelTypes`. */
+  fuelType?: string;
   limit?: number;
   offset?: number;
 }
@@ -128,6 +139,7 @@ export async function searchCatalogVehicles(
   if (params.make !== undefined) search.set('make', params.make);
   if (params.model !== undefined) search.set('model', params.model);
   if (params.bodyStyle !== undefined) search.set('bodyStyle', params.bodyStyle);
+  if (params.fuelType !== undefined) search.set('fuelType', params.fuelType);
   if (params.limit !== undefined) search.set('limit', String(params.limit));
   if (params.offset !== undefined) search.set('offset', String(params.offset));
   const qs = search.toString();

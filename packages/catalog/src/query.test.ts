@@ -3,6 +3,7 @@ import {
   DEFAULT_SEARCH_LIMIT,
   getVehicle,
   listBodyStyles,
+  listFuelTypes,
   listMakes,
   listModels,
   listTrims,
@@ -180,5 +181,58 @@ describe('listBodyStyles', () => {
     expect(new Set(styles).size).toBe(styles.length);
     const sorted = [...styles].sort((a, b) => a.localeCompare(b));
     expect(styles).toEqual(sorted);
+  });
+});
+
+describe('listFuelTypes', () => {
+  it('returns every distinct non-null fuel type, alphabetically, with no duplicates', () => {
+    const fuelTypes = listFuelTypes();
+    expect(fuelTypes.length).toBeGreaterThan(0);
+    expect(new Set(fuelTypes).size).toBe(fuelTypes.length);
+    const sorted = [...fuelTypes].sort((a, b) => a.localeCompare(b));
+    expect(fuelTypes).toEqual(sorted);
+  });
+
+  /**
+   * Guards the reason this list is derived from data rather than hardcoded:
+   * every value it offers must actually match something, or a picker built
+   * from it hands the user a filter that returns an empty list.
+   */
+  it('offers only values that actually match at least one vehicle', () => {
+    for (const fuelType of listFuelTypes()) {
+      expect(searchVehicles({ fuelType, limit: 1 }).total).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('searchVehicles fuelType filter', () => {
+  it('returns only vehicles of the requested fuel type', () => {
+    const result = searchVehicles({ fuelType: 'Electric', limit: MAX_SEARCH_RESULTS });
+    expect(result.total).toBeGreaterThan(0);
+    for (const record of result.records) {
+      expect(record.fuelType).toBe('Electric');
+    }
+  });
+
+  it('ANDs with the other filters rather than replacing them', () => {
+    const result = searchVehicles({
+      make: 'Toyota',
+      fuelType: 'Hybrid',
+      limit: MAX_SEARCH_RESULTS,
+    });
+    expect(result.total).toBeGreaterThan(0);
+    for (const record of result.records) {
+      expect(record.make).toBe('Toyota');
+      expect(record.fuelType).toBe('Hybrid');
+    }
+  });
+
+  /**
+   * An unmatched filter must return an honest empty result, not fall back to
+   * the unfiltered list -- a silent fallback would show a shopper petrol cars
+   * under a "hydrogen" filter.
+   */
+  it('returns zero matches for a fuel type no vehicle has', () => {
+    expect(searchVehicles({ fuelType: 'Hydrogen fuel cell' }).total).toBe(0);
   });
 });
