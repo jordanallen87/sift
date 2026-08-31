@@ -597,7 +597,7 @@ spec conflict it resolves, and why the failure was invisible to every existing g
       stops being a near-duplicate of 480 and starts testing a distinct layout. Inspect, do not
       blind-accept — the previous 1440 baselines encoded the capped layout, which is exactly why
       pixel equality proved nothing.
-- [ ] **K6. Full `pnpm verify` green, redeploy, and verify the live desktop layout** at 1440
+- [x] **K6. Full `pnpm verify` green, redeploy, and verify the live desktop layout** at 1440
       against the deployed build rather than a local one.
 
 ### Known gap recorded, not silently carried
