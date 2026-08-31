@@ -14,8 +14,8 @@
     "volumeName": "pax-hackathon-volume",
     "volumeId": "477985d7-abfe-4216-8281-fa01b3e7b508",
     "volumeMountPath": "/data",
-    "latestDeploymentId": "53d8a3aa-fdd8-4e0f-9e18-b71fef7a9840",
-    "latestDeploymentGitSha": "d31b82f",
+    "latestDeploymentId": "4ede5ecc-9946-4d9e-b77d-560c9531d28c",
+    "latestDeploymentGitSha": "4f47fa5",
     "latestDeploymentStatus": "SUCCESS"
   },
   "agentCore": {
