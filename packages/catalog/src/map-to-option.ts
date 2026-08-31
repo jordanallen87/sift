@@ -153,10 +153,16 @@ export function mapCatalogRecordToOption(record: VehicleCatalogRecord): MappedOp
   // space behind the second row", so the raw EPA number can be passed
   // through without adjustment.
   //
-  // EPA simply does not measure this for trucks and SUVs (see `VolumeCuFt`
-  // in schema.ts), so roughly two thirds of catalog records carry `null`
-  // here. That is left as an omitted attribute -- not a 0 or a placeholder
-  // -- exactly like every other honestly-unknown field in this mapping.
+  // EPA publishes this for every passenger car but for almost no SUV,
+  // pickup, or minivan (see `VolumeCuFt` in schema.ts for the exact split),
+  // so 544 of 853 records carry `null`. That is left as an omitted
+  // attribute -- not a 0 or a placeholder -- exactly like every other
+  // honestly-unknown field in this mapping.
+  //
+  // Worth knowing when reading a comparison: this attribute will be present
+  // for the sedans on a shortlist and absent for the SUVs, which is a
+  // property of the source rather than of the vehicles, and is precisely
+  // the situation the pack's honest-unknown rendering exists for.
   if (record.luggageVolumeCuFt !== null) {
     attributes.push({
       definitionId: 'car.cargo_volume_cu_ft',

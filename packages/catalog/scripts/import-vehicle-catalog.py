@@ -252,7 +252,9 @@ def applicable(row: dict, column: str, cast):
     apply to some drivetrains or body styles: `range`/`charge240`/`cityE`
     on a gasoline car, the `phev*`/`*UF` columns on anything that is not a
     plug-in hybrid, and the interior-volume columns (`pv4`/`lv4`/`hpv`/
-    `hlv`/`pv2`/`lv2`) on trucks and SUVs, which EPA does not measure.
+    `hlv`/`pv2`/`lv2`) on the vehicles EPA does not measure -- it publishes
+    interior volume for every passenger car in the curated set, but for
+    only 33 of its 432 SUVs and none of its pickups or minivans.
 
     None of these has a legitimate measured value of exactly 0 -- a car with
     0 cubic feet of passenger volume does not exist -- so collapsing 0 to

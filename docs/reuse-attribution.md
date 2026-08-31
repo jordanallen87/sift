@@ -385,8 +385,9 @@ and produces the checked-in `packages/catalog/data/vehicle-catalog.json`
   `fiveYearSavingsVsAverageUsd` (the 5-year saved/spent figure versus an
   average new vehicle, 100%), `requiredFuel` (regular vs premium — a
   recurring cost a shopper pays every fill, 100%), and
-  `luggageVolumeCuFt`/`passengerVolumeCuFt` (36%, since EPA measures interior
-  volume for cars but not trucks or SUVs). `map-to-option.ts` feeds the
+  `luggageVolumeCuFt`/`passengerVolumeCuFt` (36%: EPA publishes interior
+  volume for every passenger car in the catalog, but for only 31 of 351
+  compact SUVs, 2 of 81 SUVs, and none of the pickups or minivans). `map-to-option.ts` feeds the
   annual fuel cost into the pack's `car.five_year_fuel_cost` criterion and
   the luggage volume into `car.cargo_volume_cu_ft`, both of which were
   previously satisfiable only from fictional fixture data.

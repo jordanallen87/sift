@@ -47,7 +47,17 @@ const EpaScore = z.number().int().min(1).max(10).nullable();
 /** A share of miles, so bounded to 0-1 rather than left as an open float. */
 const UtilityFactor = z.number().min(0).max(1).nullable();
 
-/** Cubic feet of interior volume. EPA measures this for cars but not for trucks or SUVs, so roughly two thirds of the catalog is honestly `null` here. */
+/**
+ * Cubic feet of interior volume.
+ *
+ * Populated for 309 of 853 records. The split is by body style, not
+ * arbitrary: EPA publishes interior volume for every passenger car in this
+ * catalog (145/145 sedans, 85/85 full-size sedans, 40/40 compact cars, 6/6
+ * wagons) and for almost no high-riding vehicle (31 of 351 compact SUVs,
+ * 2 of 81 SUVs, and none of the 68 pickups, 22 compact pickups, or 55
+ * minivans). So a `null` here is a real statement about EPA's measurement
+ * programme, not a gap in this import.
+ */
 const VolumeCuFt = z.number().int().positive().max(400).nullable();
 
 export const VehicleCatalogRecordSchema = z
