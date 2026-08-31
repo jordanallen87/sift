@@ -45,6 +45,7 @@ import { installConsoleGuard } from './helpers/console-guard.js';
 import {
   assertPrimaryTouchTargets,
   assertRecommendationHeroAboveTheFold,
+  assertExpandedLayoutUsesWidth,
   assertRightPaneIntegrity,
   disableAnimations,
   expectNamedScreenshot,
@@ -154,6 +155,10 @@ test.describe('Choose our next car -- full demo journey', () => {
     // above-the-fold invariant added specifically because this property
     // regressed once already, silently.
     await assertRecommendationHeroAboveTheFold(page);
+    // No-op at 390/430/480. At desktop this is the assertion whose absence
+    // let the whole workspace ship as a 448px column in an empty 1440px
+    // window -- see ADR 0007 for why every other gate stayed green.
+    await assertExpandedLayoutUsesWidth(page, 'case-workspace');
 
     await expectNamedScreenshot(
       page,

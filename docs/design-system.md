@@ -247,13 +247,28 @@ desktop layout. Concrete decisions this token system makes for that width:
   view selector) must resolve to a real ≥44px box via padding or
   min-height/min-width, independent of how small its label or icon looks.
 - **Stacking order.** `--desktop-breakpoint: 900px` remains defined for
-  desktop-only compositional gutters, but the workspace is single-column
-  at every width (ADR 0002; CLAUDE.md's "canonical UI is a ChatGPT right
-  pane, not a desktop dashboard shrunk after the fact") in the exact
-  region order `docs/specs/product.md` specifies: header → what Sift is
-  doing → our pick (recommendation + approval, always expanded) → compare
-  the options → what Sift found → still checking → Sift's work so far → add
-  a concern (the last five as closed-by-default disclosure rows). The
+  desktop-only compositional gutters. The narrow pane (≤ `--pane-width-max`,
+  480px) is single-column, in the region order `docs/specs/product.md`
+  "Workspace layout" specifies.
+
+  **This paragraph previously read "the workspace is single-column at every
+  width (ADR 0002)" and that was wrong twice over** — it cited an ADR whose
+  layout `product.md` §55 records as replaced by ADR 0004, and it contradicted
+  change-set §7's requirement for two intentional information architectures.
+  Implementers read it as licence for the `max-w-[480px]` cap that three
+  separate top-level components each applied, which made expanded mode
+  structurally unreachable: at a 1440px viewport the whole product rendered in
+  a 448px column. See **ADR 0007** for the correction and the shared
+  `.page-shell` that replaces those three caps.
+
+  Above 480px the shell widens to `--shell-width-max` (1280px) and individual
+  views adopt their expanded information architecture — a card grid, a
+  multi-column comparison table, a wider board. CLAUDE.md's "not a desktop
+  dashboard shrunk after the fact" remains binding and is a statement about
+  *design order* — the narrow pane is designed first and natively, and is
+  never a compressed desktop layout. It is not a licence to leave desktop
+  space unused, and `product.md` §69's guardrail still forbids a three-column
+  dashboard or full-page navigation chrome at any width. The
   Runtime Inspector is a full-width route replacing the case body — never
   a second column — consistent with `docs/specs/debugging-and-observability.md`'s
   390px requirement for "a single view selector and stacked event

@@ -287,6 +287,25 @@
   --pane-width-min: 390px;
   --pane-width-max: 480px;
   --desktop-breakpoint: 900px; /* below this, always single-column stacked */
+
+  /*
+   * The expanded (desktop) shell's maximum content width.
+   *
+   * Every top-level screen was previously capped at `--pane-width-max`
+   * (480px) at EVERY viewport, so at 1440px the whole product rendered as a
+   * 448px column with ~500px of dead grey on each side. That was never the
+   * specified behaviour: change-set §7 requires "two intentional information
+   * architectures" and `docs/specs/product.md` §69 requires "a genuinely
+   * different information architecture" at expanded width. The cap made
+   * expanded mode structurally unreachable -- `OptionCompareView` correctly
+   * switched to its multi-column table at >480px and then had to scroll it
+   * inside a 448px card.
+   *
+   * 1280px, not unbounded: past roughly this width a comparison table's rows
+   * become hard to track across and running text exceeds a comfortable
+   * measure. The shell centres itself beyond it rather than stretching.
+   */
+  --shell-width-max: 1280px;
   --size-touch-target-min: 44px; /* CSS px; see docs/specs/testing.md */
 
   /* ---------------------------------------------------------------------

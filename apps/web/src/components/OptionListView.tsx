@@ -84,6 +84,27 @@
  * no fixed pixel widths anywhere, so nothing here can force horizontal page overflow -- there is no
  * horizontally-scrolling region to manage in the first place, unlike Compare's table or Board's
  * columns.
+ *
+ * **Narrow vs. expanded (§7, ADR 0005 Decision 4, product.md's "List and Board currently render one
+ * layout across both width modes" gap).** Change-set §7 states expanded mode must show "more
+ * attributes visible simultaneously" and alter information architecture, "not merely CSS widths" --
+ * so, exactly like `OptionCompareView`, `layout` is a caller-supplied prop rather than something this
+ * component detects itself (`WorkspaceViewSwitcher` owns `useWidthMode` and passes the resolved value
+ * down, identically for all three option views now). Two genuinely different structures follow from
+ * it, not one grid stretched by CSS:
+ *   1. **Card arrangement.** Narrow keeps today's single stacked column (`flex flex-col`) -- nothing
+ *      changes there. Expanded renders the same cards inside the shared `.option-grid` utility
+ *      (`apps/web/src/styles/global.css`), a responsive `auto-fill` grid that shows as many cards
+ *      side by side as the available width allows (up to `--shell-width-max`), so several full option
+ *      cards are visible without scrolling at once -- literally "more options visible simultaneously,"
+ *      the same instinct §7 names for Compare's multi-column table.
+ *   2. **Prominent-field budget.** `pickProminentDefinitions` (below) takes a higher attribute cap in
+ *      expanded mode and, when a pack defines more than one `presentation.attributeGroups` entry,
+ *      draws from as many of those groups (in the pack author's own order) as fit under that cap,
+ *      not just the first. This is deliberately still presentation-driven, never a bypass of it: this
+ *      task's own instruction is "pack presentation metadata already drives which fields are
+ *      prominent -- respect that, don't bypass it." Expanded mode does not invent a new selection
+ *      source; it simply has room to honor more of what the pack author already ordered.
  */
 import { useMemo } from 'react';
 import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
@@ -101,12 +122,22 @@ export interface OptionListViewProps {
   visibleOptionIds?: string[];
   /** Explicit caller-chosen prominent attribute ids, taking precedence over `presentation`'s first group and the generic fallback. Applied identically to every rendered card (a per-option override is not part of this contract). `undefined` or empty falls through to `presentation`, then the generic fallback. */
   prominentAttributeIds?: string[];
+  /** Caller-decided information architecture (ADR 0005 Decision 4) -- this component never calls `matchMedia` itself. See the header comment's "Narrow vs. expanded" section for exactly what changes at each value. */
+  layout: 'narrow' | 'expanded';
   /** Fired when a user or WebMCP-driven caller focuses a card. This component never decides focus itself, matching `OptionCompareView.onFocusOption`/`OptionBoardView.onFocusOption`. */
   onFocusOption: (optionId: string) => void;
 }
 
 const CUSTOM_ATTRIBUTE_ID_PREFIX = 'custom.';
-const MAX_PROMINENT_ATTRIBUTES = 6;
+// Narrow keeps the original cap exactly (a card stacked in a single column
+// has limited vertical patience for facts before it crowds out strengths/
+// concerns/unresolved below it). Expanded has real extra width to spend, so
+// the cap is raised rather than left as a hidden CSS-only difference --
+// per §7, "more attributes visible simultaneously" is meant to be a real
+// information-architecture change, not merely a wider box around the same
+// six facts.
+const MAX_PROMINENT_ATTRIBUTES_NARROW = 6;
+const MAX_PROMINENT_ATTRIBUTES_EXPANDED = 10;
 // Caps each of the three insight lists once `buildInsights` widened from
 // "only the prominent set" to every applicable definition (see that
 // function's header comment) -- otherwise a pack with many attributes could
@@ -134,39 +165,67 @@ function narrowOptions(
 
 /**
  * Resolves the bounded prominent-attribute set for one option's applicable definitions, following
- * the three-step precedence the header comment describes: an explicit prop, then the pack's first
- * presentation group, then the generic comparison-relevant-or-first-few fallback
+ * the three-step precedence the header comment describes: an explicit prop, then the pack's
+ * presentation grouping, then the generic comparison-relevant-or-first-few fallback
  * `QuickPickView.tsx` uses. Every section of the rendered card reads only from this list, which is
  * what makes "avoid dumping every available field" (§10) true by construction rather than by
  * convention.
+ *
+ * `layout` only changes *how much room* this function has to work with, never *where* it looks:
+ * narrow reproduces the original contract byte-for-byte (only `attributeGroups[0]`, capped at
+ * `MAX_PROMINENT_ATTRIBUTES_NARROW`). Expanded raises the cap and, when the pack defines more than
+ * one presentation group, walks the remaining groups in the pack author's own order to fill that
+ * larger budget -- still nothing this component invents, only more of what the pack already
+ * prioritized (see the header comment's "Prominent-field budget" note).
  */
 function pickProminentDefinitions(
   applicableDefinitions: AttributeDefinition[],
   presentation: PresentationDefinition | null,
   prominentAttributeIds: string[] | undefined,
+  layout: 'narrow' | 'expanded',
 ): AttributeDefinition[] {
+  const maxProminent =
+    layout === 'expanded' ? MAX_PROMINENT_ATTRIBUTES_EXPANDED : MAX_PROMINENT_ATTRIBUTES_NARROW;
   const byId = new Map(applicableDefinitions.map((definition) => [definition.id, definition]));
 
   if (prominentAttributeIds !== undefined && prominentAttributeIds.length > 0) {
     const explicit = prominentAttributeIds
       .map((id) => byId.get(id))
       .filter((definition): definition is AttributeDefinition => definition !== undefined);
-    if (explicit.length > 0) return explicit.slice(0, MAX_PROMINENT_ATTRIBUTES);
+    if (explicit.length > 0) return explicit.slice(0, maxProminent);
   }
 
   if (presentation !== null && presentation.attributeGroups.length > 0) {
-    const firstGroup = presentation.attributeGroups[0]!;
-    const grouped = firstGroup.attributeIds
-      .map((id) => byId.get(id))
-      .filter((definition): definition is AttributeDefinition => definition !== undefined);
-    if (grouped.length > 0) return grouped.slice(0, MAX_PROMINENT_ATTRIBUTES);
+    // Narrow only ever reads the pack's first/primary group -- the original,
+    // unchanged contract. Expanded has room to honor more of the pack
+    // author's own grouping, so it walks every group in the order the pack
+    // declared them, accumulating distinct definitions until the expanded
+    // cap is reached (a definition already picked up from an earlier group
+    // is skipped rather than duplicated).
+    const groupsToConsider =
+      layout === 'expanded'
+        ? presentation.attributeGroups
+        : presentation.attributeGroups.slice(0, 1);
+    const grouped: AttributeDefinition[] = [];
+    const seenIds = new Set<string>();
+    for (const group of groupsToConsider) {
+      if (grouped.length >= maxProminent) break;
+      for (const id of group.attributeIds) {
+        if (grouped.length >= maxProminent) break;
+        const definition = byId.get(id);
+        if (definition === undefined || seenIds.has(definition.id)) continue;
+        seenIds.add(definition.id);
+        grouped.push(definition);
+      }
+    }
+    if (grouped.length > 0) return grouped;
   }
 
   const comparisonRelevant = applicableDefinitions.filter(
     (definition) => definition.comparison !== 'none',
   );
   const fallbackSource = comparisonRelevant.length > 0 ? comparisonRelevant : applicableDefinitions;
-  return fallbackSource.slice(0, MAX_PROMINENT_ATTRIBUTES);
+  return fallbackSource.slice(0, maxProminent);
 }
 
 interface CardFact {
@@ -318,6 +377,7 @@ interface OptionListCardProps {
   attributeDefinitions: AttributeDefinition[];
   presentation: PresentationDefinition | null;
   prominentAttributeIds: string[] | undefined;
+  layout: 'narrow' | 'expanded';
   isSelected: boolean;
   onFocusOption: (optionId: string) => void;
 }
@@ -327,6 +387,7 @@ function OptionListCard({
   attributeDefinitions,
   presentation,
   prominentAttributeIds,
+  layout,
   isSelected,
   onFocusOption,
 }: OptionListCardProps) {
@@ -336,8 +397,9 @@ function OptionListCard({
   );
 
   const prominentDefinitions = useMemo(
-    () => pickProminentDefinitions(applicableDefinitions, presentation, prominentAttributeIds),
-    [applicableDefinitions, presentation, prominentAttributeIds],
+    () =>
+      pickProminentDefinitions(applicableDefinitions, presentation, prominentAttributeIds, layout),
+    [applicableDefinitions, presentation, prominentAttributeIds, layout],
   );
 
   const facts = useMemo(
@@ -439,12 +501,23 @@ export function OptionListView({
   selectedOptionId,
   visibleOptionIds,
   prominentAttributeIds,
+  layout,
   onFocusOption,
 }: OptionListViewProps) {
   const displayedOptions = useMemo(
     () => narrowOptions(options, visibleOptionIds),
     [options, visibleOptionIds],
   );
+
+  // Narrow keeps today's single stacked column untouched. Expanded switches
+  // to the shared `.option-grid` utility (`apps/web/src/styles/global.css`)
+  // -- a responsive `auto-fill` grid, not a hand-rolled breakpoint here --
+  // so several full cards are visible side by side at once, the "more
+  // options visible simultaneously" half of §7's expanded-mode brief. See
+  // the header comment's "Narrow vs. expanded" section for the full
+  // reasoning, including the companion prominent-field-budget change.
+  const cardsClassName =
+    layout === 'expanded' ? 'option-grid' : 'flex flex-col gap-[var(--space-3)]';
 
   return (
     <section
@@ -462,7 +535,7 @@ export function OptionListView({
           Add at least one candidate to see details for each option.
         </p>
       ) : (
-        <ul data-testid="option-list-view-cards" className="flex flex-col gap-[var(--space-3)]">
+        <ul data-testid="option-list-view-cards" data-layout={layout} className={cardsClassName}>
           {displayedOptions.map((option) => (
             <OptionListCard
               key={option.id}
@@ -470,6 +543,7 @@ export function OptionListView({
               attributeDefinitions={attributeDefinitions}
               presentation={presentation}
               prominentAttributeIds={prominentAttributeIds}
+              layout={layout}
               isSelected={option.id === selectedOptionId}
               onFocusOption={onFocusOption}
             />

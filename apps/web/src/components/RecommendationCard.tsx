@@ -159,9 +159,13 @@ export function RecommendationCard({
             </p>
           ) : null}
 
+          {/* The rationale is real running prose, so it takes a reading
+              measure rather than the full shell width. Inert at narrow
+              width; at 1280px it is the difference between a readable
+              paragraph and a ~150-character line. */}
           <p
             data-testid="recommendation-card-rationale"
-            className="text-[length:var(--font-size-base)] text-[var(--color-ink)]"
+            className="reading-measure text-[length:var(--font-size-base)] text-[var(--color-ink)]"
           >
             {recommendation.rationale}
           </p>

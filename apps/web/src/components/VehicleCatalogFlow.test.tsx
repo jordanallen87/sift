@@ -72,6 +72,14 @@ function installCatalogHandlers(
     http.get('/api/catalog/body-styles', () =>
       HttpResponse.json({ bodyStyles: ['Compact SUV', 'Sedan'] }),
     ),
+    // `VehicleCatalogFlow` fetches this alongside makes/body-styles/years on
+    // mount (the fuel-type filter), so every test needs a handler here --
+    // `setupServer` is configured with `onUnhandledRequest: 'error'`, and an
+    // unmatched request fails the test regardless of the component's own
+    // `.catch(() => undefined)` degrade-silently handling.
+    http.get('/api/catalog/fuel-types', () =>
+      HttpResponse.json({ fuelTypes: ['Gasoline', 'Hybrid'] }),
+    ),
     http.get('/api/catalog/years', () => HttpResponse.json({ years: [2026, 2025] })),
     http.get('/api/catalog/vehicles', () => {
       if (overrides.vehiclesStatus !== undefined) {
@@ -300,6 +308,41 @@ describe('VehicleCatalogFlow', () => {
     });
   });
 
+  it('renders a fuel type filter populated from the catalog', async () => {
+    installCatalogHandlers();
+    renderFlow();
+    await waitForResults();
+
+    const fuelTypeSelect = screen.getByLabelText('Fuel type');
+    expect(
+      within(fuelTypeSelect).getByRole('option', { name: 'Any fuel type' }),
+    ).toBeInTheDocument();
+    expect(within(fuelTypeSelect).getByRole('option', { name: 'Hybrid' })).toBeInTheDocument();
+    expect(within(fuelTypeSelect).getByRole('option', { name: 'Gasoline' })).toBeInTheDocument();
+  });
+
+  it('filters by fuel type, including it in the search request', async () => {
+    let capturedUrl = '';
+    installCatalogHandlers();
+    server.use(
+      http.get('/api/catalog/vehicles', ({ request }) => {
+        capturedUrl = request.url;
+        return HttpResponse.json({ records: [CAMRY], total: 1 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderFlow();
+    await waitForResults();
+
+    const fuelTypeSelect = screen.getByLabelText('Fuel type');
+    await user.selectOptions(fuelTypeSelect, 'Hybrid');
+
+    await waitFor(() => {
+      expect(fuelTypeSelect).toHaveValue('Hybrid');
+      expect(new URL(capturedUrl, 'http://localhost').searchParams.get('fuelType')).toBe('Hybrid');
+    });
+  });
+
   it('loads and filters by model year', async () => {
     let capturedUrl = '';
     installCatalogHandlers();
@@ -349,5 +392,61 @@ describe('VehicleCatalogFlow', () => {
     await user.click(screen.getByTestId('vehicle-add-veh-camry-1'));
     const shortlistItem = screen.getByTestId('shortlist-item-veh-camry-1');
     expect(within(shortlistItem).getByText('2025 Toyota Camry XLE')).toBeInTheDocument();
+  });
+
+  it('renders results in the shared `.option-grid` layout, which collapses to one column at narrow width on its own', async () => {
+    installCatalogHandlers();
+    renderFlow();
+    await waitForResults();
+
+    // No separate narrow-width rule is asserted here on purpose: `.option-grid`
+    // (global.css) is a single class that is one column at narrow width and a
+    // multi-column grid at expanded width by itself, so the list markup is
+    // identical for both -- there is nothing narrow-specific left to test.
+    expect(screen.getByTestId('vehicle-catalog-results-list')).toHaveClass('option-grid');
+  });
+
+  it("gives each result card an expanded-width detail grid with fields the narrow spec line doesn't show, omitting whatever the catalog doesn't know", async () => {
+    installCatalogHandlers({
+      vehicles: [record({ fuelEconomyScore: 8, luggageVolumeCuFt: 15 }), CRV],
+      total: 2,
+    });
+    renderFlow();
+    await waitForResults();
+
+    const details = screen.getByTestId('vehicle-card-details-veh-camry-1');
+    // Structural assertions, not computed-style ones: jsdom applies no
+    // stylesheet, so the expanded detail grid is always present in the DOM --
+    // these two classes are what `global.css`'s `min-[481px]` boundary (the
+    // same one `.page-shell` already uses) relies on to keep it invisible and
+    // out of layout below 481px.
+    expect(details).toHaveClass('hidden');
+    expect(details).toHaveClass('min-[481px]:grid');
+
+    expect(within(details).getByText('EPA fuel economy score')).toBeInTheDocument();
+    expect(within(details).getByText('8/10')).toBeInTheDocument();
+    expect(within(details).getByText('Cargo volume')).toBeInTheDocument();
+    expect(within(details).getByText('15 cu ft')).toBeInTheDocument();
+    expect(within(details).getByText('Body style')).toBeInTheDocument();
+    expect(within(details).getByText('Sedan')).toBeInTheDocument();
+
+    // `annualFuelCostUsd` is null on this record (the shared `record()`
+    // helper leaves it unset) -- the catalog's "unknown stays unknown, never
+    // fabricated" rule means that row is simply absent, not a placeholder.
+    expect(within(details).queryByText('Est. annual fuel cost')).not.toBeInTheDocument();
+  });
+
+  it('renders no expanded-width detail grid when the catalog has no data beyond identity', async () => {
+    const bare = buildVehicleCatalogRecord({
+      id: 'veh-bare-1',
+      year: 2025,
+      make: 'Kia',
+      model: 'Rio',
+    });
+    installCatalogHandlers({ vehicles: [bare], total: 1 });
+    renderFlow();
+    await waitForResults();
+
+    expect(screen.queryByTestId('vehicle-card-details-veh-bare-1')).not.toBeInTheDocument();
   });
 });

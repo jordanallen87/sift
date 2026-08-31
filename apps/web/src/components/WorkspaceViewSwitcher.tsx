@@ -39,17 +39,23 @@
  * a future caller can swap the source of truth to the real persisted
  * `WorkspaceViewState.mode` without this component changing at all.
  *
- * `layout` for `OptionCompareView`, by contrast, IS decided locally here via
- * `useWidthMode` (Phase B3, `apps/web/src/hooks/use-width-mode.ts`) rather
- * than threaded through as a prop: it is a real-time viewport fact, not
+ * `layout`, by contrast, IS decided locally here via `useWidthMode` (Phase
+ * B3, `apps/web/src/hooks/use-width-mode.ts`) rather than threaded through
+ * as a prop from further up the tree: it is a real-time viewport fact, not
  * case/session state anything needs to persist or share with a WebMCP
  * caller (ADR 0005 Decision 4's "narrow and expanded modes are two
  * intentional information architectures" is about what a given width
  * *renders*, not something ChatGPT would ever set on the user's behalf).
- * This is this hook's first real consumer -- previously `layout="narrow"`
- * was hard-coded here, which is exactly the gap ADR 0005 Decision 4 named
- * ("no existing component or hook ... provides a starting point for the
- * width-detection mechanism itself").
+ * `OptionCompareView` was this hook's first real consumer -- previously
+ * `layout="narrow"` was hard-coded here, which is exactly the gap ADR 0005
+ * Decision 4 named ("no existing component or hook ... provides a starting
+ * point for the width-detection mechanism itself"). `OptionListView` and
+ * `OptionBoardView` now receive the same resolved `widthMode` the identical
+ * way (product.md's own tracked gap: "List and Board currently render one
+ * layout across both width modes; a genuinely distinct expanded treatment
+ * for those two views ... remains open work" -- this closes exactly that).
+ * All three views stay pure, caller-fed leaves; only this component ever
+ * calls `useWidthMode`.
  *
  * `compareOptionIds`/`compareVisibleAttributeIds`/`comparePinnedAttributeIds`/
  * `caseExtensions` (Defect 1 & 2 seam fix): `OptionCompareView` already
@@ -229,6 +235,7 @@ export function WorkspaceViewSwitcher({
             attributeDefinitions={attributeDefinitions}
             presentation={presentation}
             selectedOptionId={selectedOptionId}
+            layout={widthMode}
             onFocusOption={onFocusOption}
           />
         </TabsContent>
@@ -239,6 +246,7 @@ export function WorkspaceViewSwitcher({
             attributeDefinitions={attributeDefinitions}
             optionColumnIds={boardPlacement}
             selectedOptionId={selectedOptionId}
+            layout={widthMode}
             onMoveOption={onMoveOption}
             onFocusOption={onFocusOption}
           />

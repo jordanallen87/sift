@@ -922,7 +922,7 @@ export function App() {
           data-testid="case-workspace-restoring"
           aria-busy="true"
           aria-live="polite"
-          className="loading-pulse mx-auto flex min-h-screen w-full max-w-[480px] items-center justify-center bg-background p-[var(--space-4)] text-[var(--color-ink-secondary)]"
+          className="page-shell loading-pulse flex min-h-screen items-center justify-center bg-background p-[var(--space-4)] text-[var(--color-ink-secondary)]"
         >
           Restoring your case…
         </div>
@@ -1082,7 +1082,7 @@ export function App() {
       // active case actually changes.
       key={activeCaseId}
       data-testid="case-workspace"
-      className="page-enter mx-auto flex min-h-screen w-full max-w-[480px] flex-col gap-[var(--space-4)] p-[var(--space-4)]"
+      className="page-shell page-enter flex min-h-screen flex-col gap-[var(--space-4)] p-[var(--space-4)]"
     >
       {snapshot ? (
         <CaseHeader

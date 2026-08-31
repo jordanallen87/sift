@@ -108,7 +108,7 @@ export function DemoLauncher({ onDemoStarted, onCompareVehicles }: DemoLauncherP
       <section
         data-testid="demo-launcher"
         aria-labelledby="demo-launcher-heading"
-        className="page-enter flex w-full max-w-[480px] flex-col gap-[var(--space-4)]"
+        className="pane-shell page-enter flex flex-col gap-[var(--space-4)]"
       >
         <div className="flex items-start justify-between gap-[var(--space-2)]">
           <div className="flex flex-col gap-[var(--space-1)]">

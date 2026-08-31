@@ -427,6 +427,118 @@
   animation: fade-slide-in var(--duration-normal) var(--ease-standard);
 }
 
+/*
+ * The shared outer container for every top-level screen (`DemoLauncher`,
+ * `VehicleCatalogFlow`, the case workspace).
+ *
+ * Narrow (<= --pane-width-max) is the canonical ChatGPT right pane and is
+ * unchanged: a 480px-max single column. Wider viewports get a genuinely
+ * wider shell so the expanded information architectures that change-set §7
+ * requires ("deeper comparison; multi-option table; more attributes visible
+ * simultaneously; larger board") have somewhere to render.
+ *
+ * This exists as ONE class rather than a `max-w-[480px]` utility repeated at
+ * each call site because that repetition is exactly how the cap silently
+ * became app-wide: three files each independently pinned 480px, and nothing
+ * connected them to the width-mode hook that was supposed to drive the
+ * expanded layouts. A single class means the narrow/expanded boundary is
+ * stated once, next to the reasoning for it.
+ *
+ * Note this is a max-width, not a layout switch. Each view decides its own
+ * expanded information architecture (a grid, a multi-column table, a wider
+ * board); the shell only stops capping the space they can use. The guardrail
+ * from `product.md` §69 still holds -- the primary view keeps dominating,
+ * and no three-column dashboard or persistent nav chrome is layered on.
+ */
+.page-shell {
+  width: 100%;
+  max-width: var(--pane-width-max);
+  margin-inline: auto;
+}
+
+@media (min-width: 481px) {
+  .page-shell {
+    max-width: var(--shell-width-max);
+  }
+}
+
+/*
+ * Pane width at EVERY viewport -- the deliberate exception to `.page-shell`.
+ *
+ * The launcher is a focused three-choice entry screen with nothing to spread
+ * across 1280px; stretching its cards that wide would be using the space
+ * because it is there, not because the content wants it. It stays a centred
+ * pane, which is also what its own call site already reasoned its way to:
+ * "a judge opening the deployed URL directly in a full desktop tab has no
+ * [ChatGPT] chrome to dock inside -- min-h-screen + centered flex gives that
+ * same pane a real, intentional-looking home."
+ *
+ * This is a separate named class rather than an omission so the exemption is
+ * a visible decision. An implementer who later adds content to the launcher
+ * can see that pane width was chosen for it, and change the class knowingly
+ * -- which is exactly what did NOT happen when three components each pinned
+ * `max-w-[480px]` and nobody could tell which were decisions (ADR 0007).
+ */
+.pane-shell {
+  width: 100%;
+  max-width: var(--pane-width-max);
+  margin-inline: auto;
+}
+
+/*
+ * A responsive card grid for the expanded information architectures.
+ *
+ * `auto-fill` + `minmax` rather than explicit breakpoints: the column count
+ * then adapts continuously from 481px to 1280px, so the awkward tablet range
+ * between the right pane and a real desktop never needs its own hand-tuned
+ * breakpoint, and a future wider `--shell-width-max` needs no change here.
+ * At narrow width it collapses to exactly one column on its own, which is
+ * why the narrow layouts need no separate rule.
+ */
+.option-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+}
+
+/*
+ * A comfortable measure for running prose.
+ *
+ * Widening the shell to 1280px fixed a real problem and created a smaller
+ * one: the recommendation rationale is a genuine paragraph, and at full
+ * shell width it ran to roughly 150 characters per line, which is roughly
+ * twice a readable measure and makes the eye lose its place returning to the
+ * next line. `docs/design-system.md` already calls for keeping running text
+ * near a comfortable measure; this is that rule expressed as a utility.
+ *
+ * `ch` rather than px so the cap tracks the font actually in use, and only a
+ * `max-width`, so it is inert at narrow width where the pane is already
+ * narrower than the measure. It belongs on paragraphs a person READS, not on
+ * data-dense regions -- a comparison table, an option grid, and a board all
+ * legitimately want the full shell.
+ */
+.reading-measure {
+  max-width: 72ch;
+}
+
+/*
+ * A sane maximum for a stacked form's fields.
+ *
+ * Same class of problem as `.reading-measure`, different content: a
+ * single-column form inside the widened shell gave "Option label" a 1280px
+ * text input, which reads as broken rather than spacious -- a field's width
+ * implies how much text belongs in it, and that one implies a paragraph.
+ * Tighter than the prose measure because form labels and values are short.
+ *
+ * A genuinely richer expanded form (multi-column field layout, which
+ * change-set §7 lists under "profile editing") is a reasonable future step;
+ * this is the honest minimum that stops the current layout looking wrong,
+ * not a claim to have built that.
+ */
+.form-measure {
+  max-width: 52ch;
+}
+
 /* A card/row that just arrived in a live list (a new finding, a new
    activity item, a freshly-collapsed "Reviewed" summary) -- a brief,
    calm entrance rather than an abrupt pop, so real-time updates read as

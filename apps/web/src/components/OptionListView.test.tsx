@@ -186,6 +186,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={null}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
@@ -199,6 +200,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
@@ -221,6 +223,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         visibleOptionIds={['candidate-rav4', 'candidate-crv']}
         onFocusOption={vi.fn()}
       />,
@@ -240,6 +243,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
@@ -263,6 +267,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         prominentAttributeIds={['warranty']}
         onFocusOption={vi.fn()}
       />,
@@ -281,6 +286,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
@@ -300,6 +306,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
@@ -323,6 +330,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
@@ -382,6 +390,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
@@ -407,6 +416,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={onFocusOption}
       />,
     );
@@ -424,6 +434,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={onFocusOption}
       />,
     );
@@ -442,6 +453,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId="candidate-rav4"
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
@@ -461,6 +473,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
@@ -472,6 +485,7 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId="candidate-rav4"
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
@@ -485,9 +499,95 @@ describe('OptionListView', () => {
         attributeDefinitions={DEFINITIONS}
         presentation={PRESENTATION}
         selectedOptionId={null}
+        layout="narrow"
         onFocusOption={vi.fn()}
       />,
     );
     expect(overflowRisks).toEqual([]);
+  });
+
+  // §7 "Expanded mode vs narrow mode": expanded must show "more attributes
+  // visible simultaneously" and change information architecture, "not
+  // merely CSS widths" -- these two tests prove both of this view's two
+  // concrete IA changes, not just that a different className string was
+  // produced.
+  it('narrow stacks cards in a single column; expanded renders them in the shared option-grid layout', () => {
+    const { rerender } = render(
+      <OptionListView
+        options={OPTIONS}
+        attributeDefinitions={DEFINITIONS}
+        presentation={PRESENTATION}
+        selectedOptionId={null}
+        layout="narrow"
+        onFocusOption={vi.fn()}
+      />,
+    );
+    const narrowCards = screen.getByTestId('option-list-view-cards');
+    expect(narrowCards).toHaveAttribute('data-layout', 'narrow');
+    expect(narrowCards.className).not.toContain('option-grid');
+
+    rerender(
+      <OptionListView
+        options={OPTIONS}
+        attributeDefinitions={DEFINITIONS}
+        presentation={PRESENTATION}
+        selectedOptionId={null}
+        layout="expanded"
+        onFocusOption={vi.fn()}
+      />,
+    );
+    const expandedCards = screen.getByTestId('option-list-view-cards');
+    expect(expandedCards).toHaveAttribute('data-layout', 'expanded');
+    expect(expandedCards.className).toContain('option-grid');
+  });
+
+  it('expanded widens the prominent-field budget to include more of the pack’s own presentation groups; narrow reads only the first group', () => {
+    const multiGroupPresentation: PresentationDefinition = {
+      optionLabel: 'car',
+      optionLabelPlural: 'cars',
+      attributeGroups: [
+        {
+          id: 'headline',
+          label: 'Headline',
+          attributeIds: ['price', 'mileage', 'custom.laptop_work_fit'],
+        },
+        { id: 'secondary', label: 'Secondary', attributeIds: ['warranty', 'reliability'] },
+      ],
+    };
+
+    const { rerender } = render(
+      <OptionListView
+        options={[RAV4]}
+        attributeDefinitions={DEFINITIONS}
+        presentation={multiGroupPresentation}
+        selectedOptionId={null}
+        layout="narrow"
+        onFocusOption={vi.fn()}
+      />,
+    );
+    // Narrow reproduces the original contract exactly: only the first group.
+    expect(
+      screen.queryByTestId('option-list-view-fact-candidate-rav4-warranty'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('option-list-view-fact-candidate-rav4-reliability'),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <OptionListView
+        options={[RAV4]}
+        attributeDefinitions={DEFINITIONS}
+        presentation={multiGroupPresentation}
+        selectedOptionId={null}
+        layout="expanded"
+        onFocusOption={vi.fn()}
+      />,
+    );
+    // Expanded has room to also honor the pack's second presentation group --
+    // still nothing invented, only more of what the pack itself declared.
+    expect(screen.getByTestId('option-list-view-fact-candidate-rav4-warranty')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('option-list-view-fact-candidate-rav4-reliability'),
+    ).toBeInTheDocument();
   });
 });

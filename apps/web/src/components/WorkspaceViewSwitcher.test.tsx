@@ -208,6 +208,55 @@ describe('WorkspaceViewSwitcher', () => {
     vi.unstubAllGlobals();
   });
 
+  // product.md's own tracked gap: "List and Board currently render one
+  // layout across both width modes; a genuinely distinct expanded treatment
+  // for those two views ... remains open work." These four tests prove this
+  // component now threads the same real `widthMode` into `OptionListView`
+  // and `OptionBoardView` it already threads into `OptionCompareView` above
+  // -- mirroring those two Compare tests exactly, including the "no
+  // matchMedia in jsdom defaults to narrow" case.
+  it('drives OptionListView layout from the real width, defaulting narrow with no matchMedia present', () => {
+    render(<WorkspaceViewSwitcher {...buildProps({ mode: 'list' })} />);
+    expect(screen.getByTestId('option-list-view-cards')).toHaveAttribute('data-layout', 'narrow');
+  });
+
+  it('drives OptionListView expanded layout once the viewport reports wider than the canonical narrow pane', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    }));
+
+    render(<WorkspaceViewSwitcher {...buildProps({ mode: 'list' })} />);
+    expect(screen.getByTestId('option-list-view-cards')).toHaveAttribute('data-layout', 'expanded');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('drives OptionBoardView layout from the real width, defaulting narrow with no matchMedia present', () => {
+    render(<WorkspaceViewSwitcher {...buildProps({ mode: 'board' })} />);
+    expect(screen.getByTestId('board-columns')).toHaveAttribute('data-layout', 'narrow');
+  });
+
+  it('drives OptionBoardView expanded layout once the viewport reports wider than the canonical narrow pane', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    }));
+
+    render(<WorkspaceViewSwitcher {...buildProps({ mode: 'board' })} />);
+    expect(screen.getByTestId('board-columns')).toHaveAttribute('data-layout', 'expanded');
+
+    vi.unstubAllGlobals();
+  });
+
   // Defect 1 (§58 WebMCP demo moment): `sift_configure_comparison` persists
   // through the real `setView` command, but nothing upstream of this
   // component ever threaded the persisted configuration into

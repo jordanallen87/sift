@@ -1,6 +1,22 @@
 # Implementation plan — Generic Decision Workspace (Sift)
 
-Status: **complete** (2026-08-30) — see `docs/completion-report-2026-08-30.md`
+Status: **reopened** (2026-08-31) — Phase K below. Phases 0–J complete (2026-08-30), see
+`docs/completion-report-2026-08-30.md`.
+
+**Why this reopened, recorded so the decomposition failure is not repeated.** Change-set §7
+("Expanded mode vs narrow mode") is an app-wide information-architecture requirement. This plan
+decomposed it into exactly two tasks — **B3** (a width-detection hook) and **C3** (Compare's
+narrow/expanded switch). Both were implemented correctly and honestly, so both were checked off
+and the plan reported complete. But no task ever existed for the 480px shell width cap, for the
+catalog browse's expanded IA, or for List and Board. The result shipped and deployed: three
+components each independently pinned `max-w-[480px]`, so at a 1440px viewport the entire product
+rendered in a 448px column surrounded by empty grey, and expanded mode was structurally
+unreachable rather than merely unwired.
+
+`docs/specs/product.md` §100 *did* record the shortfall in writing ("remains open work rather
+than something this build claims"). Writing a gap down is not scheduling it. The lesson for the
+next plan: when a requirement is app-wide, at least one task must own the app-wide surface, or
+the per-component tasks will each pass while the requirement fails. See **ADR 0007**.
 Date opened: 2026-08-30
 Requirements: `docs/change-sets/2026-08-30-generic-decision-workspace.md` (approved, authoritative input)
 Audit: `docs/audits/2026-08-30-generic-decision-workspace-audit.md`
@@ -551,3 +567,42 @@ is task A5.
 3. **Baseline churn.** The IA change invalidates most visual baselines. Each must be inspected,
    not blind-updated.
 4. **The exact-tool-set contract test** must be updated deliberately with every tool addition.
+
+---
+
+## Phase K — expanded-width information architecture (2026-08-31)
+
+Closes change-set §7 and `docs/specs/product.md` §69/§100. See **ADR 0007** for the decision, the
+spec conflict it resolves, and why the failure was invisible to every existing gate.
+
+- [x] **K1. One shared shell.** Replace the three independently-pinned `max-w-[480px]` caps
+      (`App.tsx` ×2, `VehicleCatalogFlow.tsx`, `DemoLauncher.tsx`) with a single `.page-shell`
+      class: 480px max at narrow, `--shell-width-max` (1280px) above 481px, centred. Add
+      `.option-grid` (`auto-fill`/`minmax`) so column count adapts continuously without new
+      breakpoints and collapses to one column at narrow width on its own.
+      *Done when:* no `max-w-[480px]` remains in non-test `apps/web/src`, and a 1440px viewport
+      measures a container materially wider than 448px.
+- [x] **K2. Catalog browse expanded IA.** Results become a responsive card grid at expanded
+      width, single-column list at narrow, with genuinely more per card rather than wider
+      whitespace. Adds the Fuel type filter, whose query/route/client plumbing already shipped
+      but had no UI control.
+- [x] **K3. List and Board expanded IA.** Closes §100's named gap. Both take `layout` as a prop
+      threaded from `WorkspaceViewSwitcher`, extending ADR 0005 decision 4's Compare contract
+      rather than inventing a second mechanism — this is also what keeps the expanded layouts
+      testable, since `matchMedia` is absent in jsdom.
+- [x] **K4. Spec and doc truth.** ADR 0007 written; `design-system.md`'s stale "single-column at
+      every width" paragraph corrected; `product.md` §100 rewritten to describe what List and
+      Board actually do at each width.
+- [x] **K5. Baselines regenerated and inspected as a set** at 390/430/480/1440. The 1440 project
+      stops being a near-duplicate of 480 and starts testing a distinct layout. Inspect, do not
+      blind-accept — the previous 1440 baselines encoded the capped layout, which is exactly why
+      pixel equality proved nothing.
+- [ ] **K6. Full `pnpm verify` green, redeploy, and verify the live desktop layout** at 1440
+      against the deployed build rather than a local one.
+
+### Known gap recorded, not silently carried
+
+The horizontal-overflow assertion measures `document.scrollWidth`, so clipping *inside* a
+container is invisible to it. That is how both the capped Compare table and a truncated catalog
+spec line passed. Closing it is follow-up work; recorded here so it is not rediscovered from
+scratch.

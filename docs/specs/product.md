@@ -97,7 +97,22 @@ Where the workspace shows what is actively being investigated, it must derive fr
 
 ### Narrow and expanded modes
 
-**Status: implemented, partially wired.** A real width-detection mechanism exists (`apps/web/src/hooks/use-width-mode.ts`, `useWidthMode`, ADR 0005 decision 4): it uses a live `matchMedia` listener keyed to CLAUDE.md's own 480px narrow-pane ceiling, and falls back safely to `narrow` wherever `matchMedia` is unavailable (SSR/JSDOM) rather than throwing. Today it drives exactly one view's layout — `OptionCompareView`'s narrow/expanded switch (two-option head-to-head versus multi-column table) — because Compare is where the change set states the clearest distinct information architecture (§7's own example). Quick Pick is narrow-native by design and is not expected to need a materially different expanded layout (ADR 0005 decision 4). List and Board currently render one layout across both width modes; a genuinely distinct expanded treatment for those two views, if one proves worth building, remains open work rather than something this build claims.
+**Status: implemented and wired across the shell and all three views that benefit (ADR 0007).** A real width-detection mechanism exists (`apps/web/src/hooks/use-width-mode.ts`, `useWidthMode`, ADR 0005 decision 4): a live `matchMedia` listener keyed to CLAUDE.md's 480px narrow-pane ceiling, falling back safely to `narrow` wherever `matchMedia` is unavailable (SSR/JSDOM) rather than throwing. `WorkspaceViewSwitcher` calls it once and passes an explicit `layout` prop to each view; the views stay pure. That is deliberate and load-bearing: `matchMedia` does not exist in this repo's jsdom environment, so a hook called inside a view would pin every test to `narrow` and leave the expanded layouts permanently unasserted.
+
+**This section previously read "implemented, partially wired" and described List and Board's expanded treatment as "open work."** That was accurate as documentation and useless as scheduling — nothing converted it back into a task, and meanwhile a more basic problem made the whole question moot: three top-level components each independently capped their own container at `max-w-[480px]`, so at a 1440px viewport the entire product rendered in a 448px column surrounded by empty space. Expanded mode was not partially wired, it was structurally unreachable — `OptionCompareView` correctly switched to its multi-column table above 480px and then had to scroll it inside a 448px card. See ADR 0007 for how every existing gate passed anyway.
+
+What each view does at each width now:
+
+- **Shell** — a single `.page-shell` class: `--pane-width-max` (480px) at narrow, `--shell-width-max` (1280px) above 481px, centred. The launcher deliberately keeps pane width via `.pane-shell`, since a three-choice entry screen has nothing to spread across 1280px; that exemption is a named class rather than an omission so it reads as a decision.
+- **Quick Pick** — narrow-native by design, unchanged at both widths (ADR 0005 decision 4).
+- **List** — narrow keeps the single stacked column. Expanded renders cards in `.option-grid` so several are visible at once, and raises the prominent-field budget from 6 to 10, walking every pack presentation group in the author's declared order rather than only the first. Pack-driven prominence is respected, never bypassed.
+- **Compare** — two-option head-to-head at narrow, multi-column table when expanded (unchanged logic; it now has the width it always assumed).
+- **Board** — narrow keeps fixed-width horizontally-scrolling columns. Expanded uses a single-row grid so more status columns are visible simultaneously without scrolling, and raises the facts-per-card budget from 2 to 4. The keyboard-operable alternative to drag-and-drop (change-set §49) is identical in both modes and is asserted as such.
+- **Catalog browse** — single-column list at narrow; `.option-grid` card grid at expanded, each card adding a mini spec sheet (body style, drivetrain, fuel type, combined MPG, estimated annual fuel cost, EPA fuel-economy score, cargo volume), every row omitted rather than fabricated when the field is null.
+
+Running prose and stacked forms take `.reading-measure` / `.form-measure` caps so widening the shell does not produce 150-character lines or 1280px-wide text inputs. Grids, tables, and boards deliberately take the full shell.
+
+`assertExpandedLayoutUsesWidth` (`tests/e2e/helpers/layout-assertions.ts`) is the release evidence: at any viewport above 480px the main content container must measure materially wider than the narrow pane. It is a lower bound on width rather than a snapshot, so it asserts the property §7 requires without pinning one design.
 
 ### Decision Profile
 

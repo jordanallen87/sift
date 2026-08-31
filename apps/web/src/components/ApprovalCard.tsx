@@ -163,7 +163,13 @@ export function ApprovalCard({
           </Badge>
 
           {!revisionForm.open ? (
-            <div className="flex flex-col gap-[var(--space-2)]">
+            // `form-measure`: these are the case's consequential controls, so
+            // they stay full-bleed in the narrow pane where that reads as
+            // emphasis. At the widened desktop shell an 1180px-wide
+            // "Approve" reads as a stretched layout rather than a decisive
+            // action, and a control's width should suggest its weight, not
+            // the container's.
+            <div className="form-measure flex flex-col gap-[var(--space-2)]">
               <Button
                 type="button"
                 data-testid="approval-card-approve"

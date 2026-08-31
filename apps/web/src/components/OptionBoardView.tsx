@@ -61,6 +61,32 @@
  * `definition.label` ever renders here); nor do raw entity or column ids -- `option.label` and
  * `column.label` render everywhere a person can read, id strings appear only inside
  * `data-testid`/`id`/`value` attributes, never as text content.
+ *
+ * **Narrow vs. expanded (§7, ADR 0005 Decision 4, product.md's "List and Board currently render one
+ * layout across both width modes" gap).** `layout` is a caller-supplied prop, not something this
+ * component detects itself -- the same "caller owns width detection, view stays pure" contract
+ * `OptionCompareView` and `OptionListView` already use; `WorkspaceViewSwitcher` resolves it once via
+ * `useWidthMode` and passes it down identically to all three. §7 names Board's expanded brief
+ * directly: "larger board... more status columns visible simultaneously." Two changes follow:
+ *   1. **Column layout.** Narrow keeps today's behavior exactly: fixed `w-[220px]` columns in a
+ *      horizontally-scrolling flex row (`board-scroll-region`'s `overflow-x-auto`), unchanged.
+ *      Expanded switches the columns to a single-row CSS grid (`repeat(N, minmax(240px, 1fr))`,
+ *      `N` = the real column count) instead: each column keeps the same 240px floor so a card never
+ *      gets too cramped to read, but the `1fr` share lets columns actually grow to fill whatever
+ *      width the expanded pane offers, so the whole board (commonly 3-4 columns) is visible at once
+ *      without scrolling on a genuinely wide viewport -- "more status columns simultaneously rather
+ *      than requiring horizontal scrolling," this task's own wording. `board-scroll-region` still
+ *      wraps both layouts: an unusually large custom `columns` list can still legitimately need to
+ *      scroll even in expanded mode, and that is the same "scroll inside its own container, never the
+ *      page" discipline this component already used, not a new exception.
+ *   2. **Facts-per-card budget.** `MAX_FACTS_PER_CARD` is layout-dependent the same way
+ *      `OptionListView`'s prominent-attribute cap is: narrow keeps the original 2-fact cap; expanded
+ *      raises it, because the wider columns above genuinely have "room for more per card" (this
+ *      task's own wording) rather than merely more whitespace around the same two facts.
+ * The keyboard-operable move `<select>` is untouched by any of this -- it is not layout-conditional
+ * code at all, only the surrounding column container and per-card fact budget are, so it keeps
+ * working identically (same markup, same event) in both modes, matching change-set §49's "must not
+ * rely solely on drag-and-drop" requirement exactly as before.
  */
 import { useMemo } from 'react';
 import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
@@ -83,12 +109,23 @@ export interface OptionBoardViewProps {
   /** Maps optionId -> a short caller-supplied reason surfaced on its card (§12's "Dealer offer conflicts with advertised price"). Never invented here -- an option with no entry (or an empty string) renders no reason text at all. */
   reasons?: Record<string, string>;
   selectedOptionId: string | null;
+  /** Caller-decided information architecture (ADR 0005 Decision 4) -- this component never calls `matchMedia` itself. See the header comment's "Narrow vs. expanded" section for exactly what changes at each value. */
+  layout: 'narrow' | 'expanded';
   /** Reports an intended move. This component never applies the move itself -- see the header comment's "human authority" note; the caller decides whether/how to persist it. */
   onMoveOption: (optionId: string, toColumnId: string) => void;
   onFocusOption: (optionId: string) => void;
 }
 
-const MAX_FACTS_PER_CARD = 2;
+// Narrow keeps the original per-card fact budget exactly. Expanded's grid
+// columns (see the header comment's "Narrow vs. expanded" section) are
+// genuinely wider, so this cap is raised rather than leaving the extra room
+// unused -- "room for more per card" is this task's own wording for exactly
+// this.
+const MAX_FACTS_PER_CARD_NARROW = 2;
+const MAX_FACTS_PER_CARD_EXPANDED = 4;
+// Narrow-only: expanded columns are sized by the CSS grid template built in
+// the component body instead (see `columnsContainerStyle`), not this fixed
+// class.
 const COLUMN_WIDTH_CLASS = 'w-[220px]';
 
 export const DEFAULT_BOARD_COLUMNS: OptionBoardColumn[] = [
@@ -109,17 +146,20 @@ interface OptionFact {
 }
 
 /**
- * "A couple of decision-relevant facts" (§12) -- the first `MAX_FACTS_PER_CARD` attribute
- * definitions, in caller-supplied `attributeDefinitions` order, that both apply to this option's
- * `kind` and have a defined value on it. Order is the caller's lever for prominence (the same
- * convention `OptionCompareView`'s `pinnedAttributeIds` uses to control row priority): put the
- * attributes that matter most for a quick glance first. Definitions with no value on this option
- * are skipped rather than shown as "Unknown" -- a compact card favors facts that are actually
- * known over an inventory of what is missing (List view, per §10, is the place for that).
+ * "A couple of decision-relevant facts" (§12) -- the first `maxFacts` attribute definitions, in
+ * caller-supplied `attributeDefinitions` order, that both apply to this option's `kind` and have a
+ * defined value on it. Order is the caller's lever for prominence (the same convention
+ * `OptionCompareView`'s `pinnedAttributeIds` uses to control row priority): put the attributes that
+ * matter most for a quick glance first. Definitions with no value on this option are skipped rather
+ * than shown as "Unknown" -- a compact card favors facts that are actually known over an inventory of
+ * what is missing (List view, per §10, is the place for that). `maxFacts` is the caller's
+ * layout-dependent budget (`MAX_FACTS_PER_CARD_NARROW`/`MAX_FACTS_PER_CARD_EXPANDED`), not a fixed
+ * constant read here -- see the header comment's "Narrow vs. expanded" section.
  */
 function pickFacts(
   option: EntityRecord,
   attributeDefinitions: AttributeDefinition[],
+  maxFacts: number,
 ): OptionFact[] {
   const facts: OptionFact[] = [];
   for (const definition of attributeDefinitions) {
@@ -131,7 +171,7 @@ function pickFacts(
       label: definition.label,
       display: formatAttributeValue(record.value),
     });
-    if (facts.length >= MAX_FACTS_PER_CARD) break;
+    if (facts.length >= maxFacts) break;
   }
   return facts;
 }
@@ -169,6 +209,7 @@ export function OptionBoardView({
   columns,
   reasons,
   selectedOptionId,
+  layout,
   onMoveOption,
   onFocusOption,
 }: OptionBoardViewProps) {
@@ -179,6 +220,27 @@ export function OptionBoardView({
     () => groupOptionsByColumn(options, optionColumnIds, effectiveColumns),
     [options, optionColumnIds, effectiveColumns],
   );
+
+  const maxFactsPerCard =
+    layout === 'expanded' ? MAX_FACTS_PER_CARD_EXPANDED : MAX_FACTS_PER_CARD_NARROW;
+
+  // Narrow: the original horizontally-scrolling flex row of fixed-width
+  // columns, untouched. Expanded: a single-row CSS grid sized to the real
+  // column count, so columns grow (via `1fr`) to fill the wider pane instead
+  // of staying pinned at 220px -- see the header comment's "Narrow vs.
+  // expanded" section for why a plain Tailwind class can't express this (the
+  // column count, and therefore the track count, is only known at render
+  // time from `effectiveColumns.length`).
+  const columnsContainerClassName =
+    layout === 'expanded' ? 'grid gap-[var(--space-3)]' : 'flex gap-[var(--space-3)]';
+  const columnsContainerStyle =
+    layout === 'expanded'
+      ? { gridTemplateColumns: `repeat(${effectiveColumns.length}, minmax(240px, 1fr))` }
+      : undefined;
+  const columnClassName =
+    layout === 'expanded'
+      ? 'flex min-w-0 flex-col gap-[var(--space-2)]'
+      : `flex ${COLUMN_WIDTH_CLASS} shrink-0 flex-col gap-[var(--space-2)]`;
 
   return (
     <section
@@ -195,14 +257,19 @@ export function OptionBoardView({
         role="region"
         aria-label="Board columns -- scroll horizontally to see every column"
       >
-        <div className="flex gap-[var(--space-3)]">
+        <div
+          data-testid="board-columns"
+          data-layout={layout}
+          className={columnsContainerClassName}
+          style={columnsContainerStyle}
+        >
           {effectiveColumns.map((column) => {
             const columnOptions = groupedOptions.get(column.id) ?? [];
             return (
               <div
                 key={column.id}
                 data-testid={`board-column-${column.id}`}
-                className={`flex ${COLUMN_WIDTH_CLASS} shrink-0 flex-col gap-[var(--space-2)]`}
+                className={columnClassName}
               >
                 <div className="flex flex-col gap-[var(--space-0-5)]">
                   <h3 className="label-caps text-[var(--color-ink-secondary)]">
@@ -232,7 +299,7 @@ export function OptionBoardView({
                   >
                     {columnOptions.map((option) => {
                       const isSelected = option.id === selectedOptionId;
-                      const facts = pickFacts(option, attributeDefinitions);
+                      const facts = pickFacts(option, attributeDefinitions, maxFactsPerCard);
                       const reason = reasons?.[option.id];
                       const moveSelectId = `board-move-select-${option.id}`;
 

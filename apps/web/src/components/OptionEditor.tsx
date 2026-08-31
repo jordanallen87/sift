@@ -195,7 +195,10 @@ export function OptionEditor({
 
       <form
         data-testid="option-editor-form"
-        className="flex flex-col gap-[var(--space-2)]"
+        // `form-measure`: inert at narrow width; at the widened desktop shell
+        // it stops every field stretching to 1280px, which made short inputs
+        // like "Option label" read as broken rather than roomy.
+        className="form-measure flex flex-col gap-[var(--space-2)]"
         onSubmit={(event) => {
           event.preventDefault();
           handleSubmit();

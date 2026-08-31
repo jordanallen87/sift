@@ -327,3 +327,55 @@ export async function expectNamedScreenshot(
   await waitForStableHeight(target, name);
   await expect(target).toHaveScreenshot(name, screenshotOptions);
 }
+
+/**
+ * At an expanded (desktop) viewport, the page's main content must actually
+ * USE the width rather than rendering the narrow pane centred in dead space.
+ *
+ * This is the assertion whose absence let the defect ADR 0007 describes ship
+ * and deploy. Three top-level components each independently pinned
+ * `max-w-[480px]`, so at a 1440px viewport the entire product rendered in a
+ * 448px column with roughly 500px of empty grey on either side. Every gate
+ * passed: the component tests pass `layout` directly and never render the
+ * shell; `assertNoHorizontalOverflow` only ever gets *more* true as content
+ * gets narrower; and the `desktop-1440` visual baselines were themselves
+ * captured from the capped layout, so pixel equality confirmed the bug
+ * instead of catching it.
+ *
+ * Deliberately a lower bound on width, not a snapshot: it asserts the
+ * property the spec actually requires (change-set §7's "two intentional
+ * information architectures"; `docs/specs/product.md` §69) without pinning a
+ * particular design, so a future layout change does not have to update it.
+ *
+ * No-op below the narrow ceiling, so the same journey can call it at every
+ * viewport in the matrix without branching at the call site.
+ */
+export async function assertExpandedLayoutUsesWidth(
+  page: Page,
+  containerTestId: string,
+): Promise<void> {
+  const viewportWidth = page.viewportSize()?.width ?? 0;
+  // CLAUDE.md's canonical narrow-pane ceiling, matching
+  // `apps/web/src/hooks/use-width-mode.ts`'s NARROW_MAX_WIDTH_PX.
+  const NARROW_MAX_WIDTH_PX = 480;
+  if (viewportWidth <= NARROW_MAX_WIDTH_PX) return;
+
+  const container = page.getByTestId(containerTestId);
+  await expect(container).toBeVisible();
+  const box = await container.boundingBox();
+  expect(
+    box,
+    `"${containerTestId}" must have a measurable box at ${viewportWidth}px`,
+  ).not.toBeNull();
+
+  // The bar: wider than the narrow pane could ever be. A capped shell
+  // measures ~448px here (480px minus padding) regardless of viewport, which
+  // is exactly the shape this rejects. Anything genuinely responsive clears
+  // it comfortably at 1440.
+  expect(
+    box!.width,
+    `at a ${viewportWidth}px viewport, "${containerTestId}" is ${Math.round(box!.width)}px wide -- ` +
+      `the expanded layout must use the available width, not render the ${NARROW_MAX_WIDTH_PX}px ` +
+      `pane centred in dead space (change-set §7, docs/specs/product.md §69, ADR 0007)`,
+  ).toBeGreaterThan(NARROW_MAX_WIDTH_PX + 100);
+}

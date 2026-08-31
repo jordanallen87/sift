@@ -22,6 +22,7 @@ import { expect, test } from '@playwright/test';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
 import { installConsoleGuard } from './helpers/console-guard.js';
 import {
+  assertExpandedLayoutUsesWidth,
   assertRecommendationHeroAboveTheFold,
   assertRightPaneIntegrity,
   disableAnimations,
@@ -58,6 +59,9 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
       'vehicle-catalog-start-comparison',
       'vehicle-catalog-back',
     ]);
+    // No-op at 390/430/480; at desktop this is what stops the browse screen
+    // silently regressing to the narrow pane centred in dead space (ADR 0007).
+    await assertExpandedLayoutUsesWidth(page, 'vehicle-catalog-flow');
     await expectNamedScreenshot(
       page,
       page.getByTestId('vehicle-catalog-flow'),

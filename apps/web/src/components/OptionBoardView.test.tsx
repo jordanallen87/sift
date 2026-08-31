@@ -128,6 +128,7 @@ describe('OptionBoardView', () => {
         attributeDefinitions={DEFINITIONS}
         optionColumnIds={{}}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={noop}
         onFocusOption={noop}
       />,
@@ -150,6 +151,7 @@ describe('OptionBoardView', () => {
           { id: 'finalists', label: 'Finalists' },
         ]}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={noop}
         onFocusOption={noop}
       />,
@@ -168,6 +170,7 @@ describe('OptionBoardView', () => {
         attributeDefinitions={DEFINITIONS}
         optionColumnIds={{ 'option-1': 'top_choices', 'option-2': 'out' }}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={noop}
         onFocusOption={noop}
       />,
@@ -198,6 +201,7 @@ describe('OptionBoardView', () => {
         attributeDefinitions={DEFINITIONS}
         optionColumnIds={{}}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={onMoveOption}
         onFocusOption={noop}
       />,
@@ -218,6 +222,7 @@ describe('OptionBoardView', () => {
         attributeDefinitions={DEFINITIONS}
         optionColumnIds={{}}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={onMoveOption}
         onFocusOption={noop}
       />,
@@ -243,6 +248,7 @@ describe('OptionBoardView', () => {
         attributeDefinitions={DEFINITIONS}
         optionColumnIds={{ 'option-1': 'top_choices' }}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={onMoveOption}
         onFocusOption={noop}
       />,
@@ -270,6 +276,7 @@ describe('OptionBoardView', () => {
         attributeDefinitions={DEFINITIONS}
         optionColumnIds={{}}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={noop}
         onFocusOption={onFocusOption}
       />,
@@ -287,6 +294,7 @@ describe('OptionBoardView', () => {
         optionColumnIds={{}}
         reasons={{ 'option-1': 'Dealer offer conflicts with advertised price' }}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={noop}
         onFocusOption={noop}
       />,
@@ -305,6 +313,7 @@ describe('OptionBoardView', () => {
         attributeDefinitions={DEFINITIONS}
         optionColumnIds={{}}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={noop}
         onFocusOption={noop}
       />,
@@ -326,6 +335,7 @@ describe('OptionBoardView', () => {
         attributeDefinitions={DEFINITIONS}
         optionColumnIds={{ 'option-3': 'need_to_verify' }}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={noop}
         onFocusOption={noop}
       />,
@@ -350,6 +360,7 @@ describe('OptionBoardView', () => {
         optionColumnIds={{ 'option-1': 'top_choices', 'option-2': 'out' }}
         reasons={{ 'option-2': 'Dealer offer conflicts with advertised price' }}
         selectedOptionId="option-1"
+        layout="narrow"
         onMoveOption={noop}
         onFocusOption={noop}
       />,
@@ -364,10 +375,152 @@ describe('OptionBoardView', () => {
         attributeDefinitions={DEFINITIONS}
         optionColumnIds={{}}
         selectedOptionId={null}
+        layout="narrow"
         onMoveOption={noop}
         onFocusOption={noop}
       />,
     );
     expect(overflowRisks).toEqual([]);
+  });
+
+  // §7 "Expanded mode vs narrow mode": expanded must show "more status
+  // columns visible simultaneously... rather than requiring horizontal
+  // scrolling" and change information architecture, "not merely CSS
+  // widths" -- this proves the concrete structural swap (fixed-width flex
+  // row -> a real single-row CSS grid sized to the actual column count),
+  // not just a different className string.
+  it('narrow renders fixed-width columns in a flex row; expanded renders a single-row grid sized to the real column count', () => {
+    const { rerender } = render(
+      <OptionBoardView
+        options={OPTIONS}
+        attributeDefinitions={DEFINITIONS}
+        optionColumnIds={{}}
+        selectedOptionId={null}
+        layout="narrow"
+        onMoveOption={noop}
+        onFocusOption={noop}
+      />,
+    );
+    const narrowColumns = screen.getByTestId('board-columns');
+    expect(narrowColumns).toHaveAttribute('data-layout', 'narrow');
+    expect(narrowColumns.className).toContain('flex');
+    expect(narrowColumns.className).not.toContain('grid');
+    expect(screen.getByTestId('board-column-considering').className).toContain('w-[220px]');
+
+    rerender(
+      <OptionBoardView
+        options={OPTIONS}
+        attributeDefinitions={DEFINITIONS}
+        optionColumnIds={{}}
+        selectedOptionId={null}
+        layout="expanded"
+        onMoveOption={noop}
+        onFocusOption={noop}
+      />,
+    );
+    const expandedColumns = screen.getByTestId('board-columns');
+    expect(expandedColumns).toHaveAttribute('data-layout', 'expanded');
+    expect(expandedColumns.className).toContain('grid');
+    // 4 columns -- the DEFAULT_BOARD_COLUMNS count -- each floored at 240px
+    // but free to grow (`1fr`) to fill the wider expanded pane, rather than
+    // staying pinned at the narrow layout's fixed 220px.
+    expect(expandedColumns).toHaveStyle({ gridTemplateColumns: 'repeat(4, minmax(240px, 1fr))' });
+    expect(screen.getByTestId('board-column-considering').className).not.toContain('w-[220px]');
+  });
+
+  it('narrow caps card facts at two; expanded raises the per-card fact budget', () => {
+    const threeFactOption: EntityRecord = {
+      id: 'option-4',
+      kind: 'car',
+      label: 'Mazda CX-5',
+      attributes: {
+        price: {
+          definitionId: 'price',
+          label: 'Price',
+          value: { type: 'money', amount: 29500, currency: 'USD' },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+        mileage: {
+          definitionId: 'mileage',
+          label: 'Mileage',
+          value: { type: 'number', value: 18000, unit: 'mi' },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+        'custom.laptop_work_fit': {
+          definitionId: 'custom.laptop_work_fit',
+          label: 'Laptop work fit',
+          value: { type: 'string', value: 'Good' },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+      },
+      createdAt: '2026-08-27T00:00:00.000Z',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    };
+
+    const { rerender } = render(
+      <OptionBoardView
+        options={[threeFactOption]}
+        attributeDefinitions={DEFINITIONS}
+        optionColumnIds={{}}
+        selectedOptionId={null}
+        layout="narrow"
+        onMoveOption={noop}
+        onFocusOption={noop}
+      />,
+    );
+    const narrowFacts = screen.getByTestId('board-facts-option-4');
+    expect(narrowFacts).toHaveTextContent('Price: $29,500');
+    expect(narrowFacts).toHaveTextContent('Mileage: 18,000 mi');
+    expect(narrowFacts).not.toHaveTextContent('Laptop work fit');
+
+    rerender(
+      <OptionBoardView
+        options={[threeFactOption]}
+        attributeDefinitions={DEFINITIONS}
+        optionColumnIds={{}}
+        selectedOptionId={null}
+        layout="expanded"
+        onMoveOption={noop}
+        onFocusOption={noop}
+      />,
+    );
+    const expandedFacts = screen.getByTestId('board-facts-option-4');
+    expect(expandedFacts).toHaveTextContent('Price: $29,500');
+    expect(expandedFacts).toHaveTextContent('Mileage: 18,000 mi');
+    expect(expandedFacts).toHaveTextContent('Laptop work fit: Good');
+  });
+
+  // Change-set §49: "Board changes must not rely solely on drag-and-drop."
+  // This is the mandatory keyboard-operable alternative -- proven working,
+  // unchanged, in expanded layout too, not only the narrow layout the other
+  // move-control tests above already cover.
+  it('the keyboard-accessible move control keeps working identically in expanded layout', async () => {
+    const user = userEvent.setup();
+    const onMoveOption = vi.fn();
+    render(
+      <OptionBoardView
+        options={OPTIONS}
+        attributeDefinitions={DEFINITIONS}
+        optionColumnIds={{}}
+        selectedOptionId={null}
+        layout="expanded"
+        onMoveOption={onMoveOption}
+        onFocusOption={noop}
+      />,
+    );
+
+    const select = screen.getByTestId('board-move-option-1');
+    await user.selectOptions(select, 'top_choices');
+
+    expect(onMoveOption).toHaveBeenCalledExactlyOnceWith('option-1', 'top_choices');
   });
 });

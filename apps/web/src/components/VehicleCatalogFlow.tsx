@@ -24,6 +24,7 @@ import type { CommandReceipt } from '@sift/contracts';
 import { useSiftCommands, useApiConfig } from '../app/AppProviders.js';
 import {
   fetchCatalogBodyStyles,
+  fetchCatalogFuelTypes,
   fetchCatalogMakes,
   fetchCatalogYears,
   searchCatalogVehicles,
@@ -52,6 +53,41 @@ function vehicleLabel(record: VehicleCatalogRecord): string {
   return `${record.year} ${record.make} ${record.model}${trimSuffix}`;
 }
 
+/**
+ * Label/value rows for the expanded-width result card's detail grid.
+ *
+ * This is the "genuinely different IA" the expanded layout owes the record,
+ * not just the narrow row's spec line stretched wider (change-set §7): the
+ * narrow row stays a terse recognise-and-shortlist line, while an expanded
+ * card has room for an actual mini spec sheet, including two fields the
+ * narrow line never shows (EPA's 1-10 fuel-economy score and cargo volume).
+ * Each row is independently omitted when the catalog does not know the
+ * value -- `schema.ts`'s "null is a deliberate present value, never
+ * fabricated" -- rather than rendering a placeholder dash.
+ */
+function vehicleCardDetails(record: VehicleCatalogRecord): { label: string; value: string }[] {
+  return [
+    record.bodyStyle !== null ? { label: 'Body style', value: record.bodyStyle } : null,
+    record.drivetrain !== null ? { label: 'Drivetrain', value: record.drivetrain } : null,
+    record.fuelType !== null ? { label: 'Fuel type', value: record.fuelType } : null,
+    record.combinedMpg !== null
+      ? { label: 'Combined MPG', value: `${record.combinedMpg} MPG` }
+      : null,
+    record.annualFuelCostUsd !== null
+      ? {
+          label: 'Est. annual fuel cost',
+          value: `$${record.annualFuelCostUsd.toLocaleString('en-US')}/yr`,
+        }
+      : null,
+    record.fuelEconomyScore !== null
+      ? { label: 'EPA fuel economy score', value: `${record.fuelEconomyScore}/10` }
+      : null,
+    record.luggageVolumeCuFt !== null
+      ? { label: 'Cargo volume', value: `${record.luggageVolumeCuFt} cu ft` }
+      : null,
+  ].filter((entry): entry is { label: string; value: string } => entry !== null);
+}
+
 const selectClassName =
   'min-h-[var(--size-touch-target-min)] h-9 w-full min-w-0 rounded-[var(--radius-sm)] border-0 bg-muted px-3 py-1 text-[length:var(--font-size-base)] outline-none transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60';
 
@@ -62,9 +98,11 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
   const [queryText, setQueryText] = useState('');
   const [makeFilter, setMakeFilter] = useState('');
   const [bodyStyleFilter, setBodyStyleFilter] = useState('');
+  const [fuelTypeFilter, setFuelTypeFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
   const [makes, setMakes] = useState<string[]>([]);
   const [bodyStyles, setBodyStyles] = useState<string[]>([]);
+  const [fuelTypes, setFuelTypes] = useState<string[]>([]);
   const [years, setYears] = useState<number[]>([]);
 
   const [searchStatus, setSearchStatus] = useState<'idle' | 'loading' | 'error'>('loading');
@@ -98,6 +136,11 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
         if (!cancelled) setBodyStyles(values);
       })
       .catch(() => undefined);
+    fetchCatalogFuelTypes(apiConfig)
+      .then((values) => {
+        if (!cancelled) setFuelTypes(values);
+      })
+      .catch(() => undefined);
     fetchCatalogYears(apiConfig)
       .then((values) => {
         if (!cancelled) setYears(values);
@@ -123,6 +166,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
           ...(queryText.trim().length > 0 ? { query: queryText.trim() } : {}),
           ...(makeFilter.length > 0 ? { make: makeFilter } : {}),
           ...(bodyStyleFilter.length > 0 ? { bodyStyle: bodyStyleFilter } : {}),
+          ...(fuelTypeFilter.length > 0 ? { fuelType: fuelTypeFilter } : {}),
           ...(yearFilter.length > 0 ? { year: Number(yearFilter) } : {}),
         },
         apiConfig,
@@ -144,7 +188,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
         });
     },
     // `apiConfig` deliberately omitted: stable per `AppProviders` mount.
-    [queryText, makeFilter, bodyStyleFilter, yearFilter],
+    [queryText, makeFilter, bodyStyleFilter, fuelTypeFilter, yearFilter],
   );
 
   // Debounced search -- a real network debounce, not a fabricated loading
@@ -234,7 +278,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
   return (
     <div
       data-testid="vehicle-catalog-flow"
-      className="page-enter mx-auto flex min-h-screen w-full max-w-[480px] flex-col gap-[var(--space-4)] p-[var(--space-4)]"
+      className="page-shell page-enter flex min-h-screen flex-col gap-[var(--space-4)] p-[var(--space-4)]"
     >
       <div className="flex items-center justify-between gap-[var(--space-2)]">
         <div className="flex flex-col gap-[var(--space-1)]">
@@ -392,8 +436,17 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
           </select>
         </div>
 
-        <div className="flex flex-col gap-[var(--space-2)] min-[400px]:flex-row">
-          <div className="flex flex-1 flex-col gap-[var(--space-1)]">
+        {/*
+          `flex-wrap` plus each filter's own `min-w` (rather than a new
+          breakpoint) is what lets a third filter join this row at expanded
+          width without cramming three selects into the same 390-480px
+          narrow pane the wrapping already has to serve: below roughly
+          420px the filters wrap onto their own lines the same way they
+          always have, and above it -- where `.page-shell` has real room --
+          they settle onto one row on their own.
+        */}
+        <div className="flex flex-col gap-[var(--space-2)] min-[400px]:flex-row min-[400px]:flex-wrap">
+          <div className="flex min-w-[140px] flex-1 flex-col gap-[var(--space-1)]">
             <Label
               htmlFor="vehicle-catalog-make"
               className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
@@ -417,7 +470,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
             </select>
           </div>
 
-          <div className="flex flex-1 flex-col gap-[var(--space-1)]">
+          <div className="flex min-w-[140px] flex-1 flex-col gap-[var(--space-1)]">
             <Label
               htmlFor="vehicle-catalog-body-style"
               className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
@@ -436,6 +489,30 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
               {bodyStyles.map((style) => (
                 <option key={style} value={style}>
                   {style}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex min-w-[140px] flex-1 flex-col gap-[var(--space-1)]">
+            <Label
+              htmlFor="vehicle-catalog-fuel-type"
+              className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+            >
+              Fuel type
+            </Label>
+            <select
+              id="vehicle-catalog-fuel-type"
+              value={fuelTypeFilter}
+              className={selectClassName}
+              onChange={(event) => {
+                setFuelTypeFilter(event.target.value);
+              }}
+            >
+              <option value="">Any fuel type</option>
+              {fuelTypes.map((fuelType) => (
+                <option key={fuelType} value={fuelType}>
+                  {fuelType}
                 </option>
               ))}
             </select>
@@ -489,10 +566,13 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
             >
               Showing {results.length} of {resultsTotal}
             </p>
-            <ul
-              data-testid="vehicle-catalog-results-list"
-              className="flex flex-col gap-[var(--space-2)]"
-            >
+            {/*
+              `.option-grid` (global.css) collapses to a single column on
+              its own at narrow width, so this is the same list markup for
+              both layouts -- only the expanded per-card detail grid below
+              is new content, not a second copy of this list.
+            */}
+            <ul data-testid="vehicle-catalog-results-list" className="option-grid">
               {results.map((vehicle) => {
                 const alreadyAdded = shortlistIds.has(vehicle.id);
                 // Kept to five short specs on purpose. The catalog record
@@ -517,59 +597,88 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
                     ? `est. $${vehicle.annualFuelCostUsd.toLocaleString('en-US')}/yr fuel`
                     : null,
                 ].filter((value): value is string => value !== null);
+                // The expanded-width-only mini spec sheet -- see
+                // `vehicleCardDetails`'s own comment for why this is a
+                // genuinely different card, not the narrow row stretched.
+                const cardDetails = vehicleCardDetails(vehicle);
                 return (
                   <li
                     key={vehicle.id}
                     data-testid={`vehicle-card-${vehicle.id}`}
-                    className="list-item-enter flex items-center justify-between gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-3)]"
+                    className="list-item-enter flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-3)]"
                   >
-                    <div className="flex flex-col gap-[var(--space-1)]">
-                      <span className="text-[length:var(--font-size-sm)] font-[var(--font-weight-semibold)] text-[var(--color-ink)]">
-                        {vehicleLabel(vehicle)}
-                      </span>
-                      {specs.length > 0 ? (
-                        // Each spec keeps its own trailing separator inside a
-                        // `nowrap` span rather than being one joined string.
-                        // At 390px this line wraps, and a plain join let the
-                        // break land *before* a separator -- so a wrapped
-                        // line opened with "· est. $2,800/yr fuel", which
-                        // reads as a bullet rather than a continuation.
-                        // Binding the separator to the end of the preceding
-                        // spec puts the break after it, where it belongs, and
-                        // also stops a single spec being split mid-phrase.
-                        <span className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]">
-                          {specs.map((spec, index) => (
-                            <Fragment key={spec}>
-                              <span className="whitespace-nowrap">
-                                {spec}
-                                {index < specs.length - 1 ? ' ·' : ''}
-                              </span>
-                              {/* The separating space lives OUTSIDE the
-                                  nowrap span on purpose: it is the only
-                                  break opportunity on this line. Putting it
-                                  inside (as a trailing " · ") left the line
-                                  with nowhere to break at all, so instead of
-                                  wrapping it overflowed and clipped the last
-                                  spec mid-word. */}
-                              {index < specs.length - 1 ? ' ' : ''}
-                            </Fragment>
-                          ))}
+                    <div className="flex items-center justify-between gap-[var(--space-2)]">
+                      <div className="flex flex-col gap-[var(--space-1)]">
+                        <span className="text-[length:var(--font-size-sm)] font-[var(--font-weight-semibold)] text-[var(--color-ink)]">
+                          {vehicleLabel(vehicle)}
                         </span>
-                      ) : null}
+                        {specs.length > 0 ? (
+                          // Each spec keeps its own trailing separator inside a
+                          // `nowrap` span rather than being one joined string.
+                          // At 390px this line wraps, and a plain join let the
+                          // break land *before* a separator -- so a wrapped
+                          // line opened with "· est. $2,800/yr fuel", which
+                          // reads as a bullet rather than a continuation.
+                          // Binding the separator to the end of the preceding
+                          // spec puts the break after it, where it belongs, and
+                          // also stops a single spec being split mid-phrase.
+                          <span className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]">
+                            {specs.map((spec, index) => (
+                              <Fragment key={spec}>
+                                <span className="whitespace-nowrap">
+                                  {spec}
+                                  {index < specs.length - 1 ? ' ·' : ''}
+                                </span>
+                                {/* The separating space lives OUTSIDE the
+                                    nowrap span on purpose: it is the only
+                                    break opportunity on this line. Putting it
+                                    inside (as a trailing " · ") left the line
+                                    with nowhere to break at all, so instead of
+                                    wrapping it overflowed and clipped the last
+                                    spec mid-word. */}
+                                {index < specs.length - 1 ? ' ' : ''}
+                              </Fragment>
+                            ))}
+                          </span>
+                        ) : null}
+                      </div>
+                      <Button
+                        type="button"
+                        data-testid={`vehicle-add-${vehicle.id}`}
+                        variant={alreadyAdded ? 'secondary' : 'default'}
+                        size="sm"
+                        className="min-h-[var(--size-touch-target-min)] shrink-0"
+                        disabled={alreadyAdded || (atCapacity && !alreadyAdded)}
+                        onClick={() => {
+                          addToShortlist(vehicle);
+                        }}
+                      >
+                        {alreadyAdded ? 'Added' : 'Add'}
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      data-testid={`vehicle-add-${vehicle.id}`}
-                      variant={alreadyAdded ? 'secondary' : 'default'}
-                      size="sm"
-                      className="min-h-[var(--size-touch-target-min)] shrink-0"
-                      disabled={alreadyAdded || (atCapacity && !alreadyAdded)}
-                      onClick={() => {
-                        addToShortlist(vehicle);
-                      }}
-                    >
-                      {alreadyAdded ? 'Added' : 'Add'}
-                    </Button>
+                    {cardDetails.length > 0 ? (
+                      // `hidden` / `min-[481px]:grid` reuses `.page-shell`'s
+                      // own 481px expanded-width boundary (global.css) rather
+                      // than inventing a second one -- below it this detail
+                      // sheet takes no layout space at all, above it the
+                      // card grows from a row into a real two-column spec
+                      // grid.
+                      <dl
+                        data-testid={`vehicle-card-details-${vehicle.id}`}
+                        className="hidden min-[481px]:grid grid-cols-2 gap-x-[var(--space-3)] gap-y-[var(--space-2)] border-t border-border pt-[var(--space-2)]"
+                      >
+                        {cardDetails.map(({ label, value }) => (
+                          <div key={label} className="flex flex-col gap-[var(--space-1)]">
+                            <dt className="text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]">
+                              {label}
+                            </dt>
+                            <dd className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]">
+                              {value}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
                   </li>
                 );
               })}
