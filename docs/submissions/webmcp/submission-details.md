@@ -99,13 +99,15 @@ Important everyday comparisons do not fail because a model cannot produce an ans
 
 In Choose Our Next Car, the user and ChatGPT work against the same live case. ChatGPT reads the selected vehicle, adds or reweights a household concern through structured WebMCP tools, and requests bounded investigation. Sift converts that change into typed case state and evidence obligations. A Strands Graph switches focus and skills, challenges weak sources, recomputes only affected conclusions, and streams every meaningful transition into the right pane. The user alone approves the shortlist.
 
+Crucially, the ranking itself is computed by Sift, not narrated by the model. A reweight through WebMCP re-orders the options deterministically and immediately, and every position is explainable line by line — what each criterion contributed, which way it was scored, and what could not be scored at all. When the model's own favorite is not the option the criteria put first, Sift says so and caps its confidence rather than quietly overriding the model or quietly agreeing with it.
+
 ### Why WebMCP is essential
 
 Without WebMCP, ChatGPT would have to infer page state, ask the user to repeat selected candidates, or manipulate visual controls indirectly. With WebMCP, the page exposes explicit shared attention, typed mutations, source submission, run receipts, and current case context. A spoken preference can therefore redirect an already-running backend investigation and remain visibly synchronized with the page.
 
 ### Distinguishing claim
 
-Most WebMCP examples let an agent operate a website. Sift lets a website mediate collaboration among a human, ChatGPT, and a separate supervised agent team.
+Most WebMCP examples let an agent operate a website. Sift lets a website mediate collaboration among a human, ChatGPT, and a separate supervised agent team — and keeps the analysis on the website's side of that boundary. The model changes what matters; Sift decides what follows, and can be checked.
 
 ## Required hero demonstration
 
@@ -115,7 +117,7 @@ The under-three-minute video should put the best material first:
 2. **0:15–0:35 — shared attention.** Ask ChatGPT what would have to be true for the selected RAV4 to win; show `sift_get_case_context` read the exact selection, then `sift_request_investigation` fire in the same breath so Beat 4's active Strands investigation has a real cause on screen.
 3. **0:35–1:05 — unanticipated concern.** Say that driving comfort is now non-negotiable and two dog crates must fit. Show WebMCP define/reweight the concern and the page add `custom.dog_crate_fit` plus an evidence question.
 4. **1:05–1:35 — cross-agent steering.** Show the active Strands trajectory redirect, `household-fit` activate, source challenge occur, and prior recommendation become stale.
-5. **1:35–2:05 — honest adaptation.** Show sourced cargo dimensions, explicit unknown comfort/crate fit, test-drive questions, and the revised ranking.
+5. **1:35–2:05 — honest adaptation, and the ranking moves.** Show sourced cargo dimensions, explicit unknown comfort/crate fit, and test-drive questions — then the deterministic re-rank. The strongest ten seconds available: state that the reweight re-ordered the options with no model call, that the leader's own coverage figure shows how much of the household's stated priorities is still unmeasured, and that Sift flags where its scoring disagrees with the model's recommendation instead of hiding it.
 6. **2:05–2:30 — human boundary.** Show that ChatGPT can request revision but cannot approve; approve the shortlist in the visible UI.
 7. **2:30–2:50 — proof.** Open one correlated Runtime Inspector event and briefly show the green release evidence.
 8. **2:50–3:00 — close.** State the distinguishing claim above and end on the working case.

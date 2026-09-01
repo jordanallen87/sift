@@ -108,6 +108,8 @@ Households repeatedly notice a surprising bill, search one likely cause, and eit
 
 Home Energy Guardian watches a deterministic bill feed and creates a case only when usage is materially abnormal. A Strands Swarm investigates rate, weather, usage, and household changes. Sift measures evidence progress around the Swarm. It can reject a plausible recommendation, steer a stalled agent, switch skills and specialists, inject new case state, challenge sources, persist through a confirmation pause, and surface one bounded proposal for human review.
 
+The distinguishing claim below is implemented literally rather than asserted. Every recommendation's confidence is a stated function of two measured quantities -- how much of what the household said matters was actually established, and how far the leader leads -- both reported alongside it so the arithmetic can be checked. A factor nobody researched lowers that confidence without ever being counted against an option. A measurement whose sources contradict each other is marked contested, and Sift says when the leader's lead depends on it. Where the Swarm's own favorite is not the option the household's criteria put first, the product states the disagreement in plain words instead of resolving it silently in either direction.
+
 ### Why Strands is essential
 
 - AgentSkills progressively load the technique required by the active obligation.
