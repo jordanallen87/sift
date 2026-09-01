@@ -109,6 +109,7 @@ import {
   type CaseState,
   type Claim,
   type CommandOrigin,
+  PRESENTATION_ONLY_ACTIVITY_DETAIL,
   type CommandReceipt,
   type CompiledDecisionPack,
   type Criterion,
@@ -890,6 +891,7 @@ export class CommandService {
           type: 'command.accepted',
           phase: 'completed',
           summary: `Focused option "${input.optionId}".`,
+          safeDetails: { [PRESENTATION_ONLY_ACTIVITY_DETAIL]: true },
         },
         commandOrigin,
       );
@@ -942,6 +944,7 @@ export class CommandService {
           type: 'command.accepted',
           phase: 'completed',
           summary: `Set workspace view to "${input.view.mode}".`,
+          safeDetails: { [PRESENTATION_ONLY_ACTIVITY_DETAIL]: true },
         },
         commandOrigin,
       );
@@ -1221,6 +1224,7 @@ export class CommandService {
           type: 'command.accepted',
           phase: 'completed',
           summary: `Focused evidence "${input.evidenceId}".`,
+          safeDetails: { [PRESENTATION_ONLY_ACTIVITY_DETAIL]: true },
         },
         commandOrigin,
       );

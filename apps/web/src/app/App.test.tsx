@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import { PRESENTATION_ONLY_ACTIVITY_DETAIL } from '@sift/contracts';
 import type { CaseState, CommandReceipt, PublicActivityEvent } from '@sift/contracts';
 import { buildVehicleCatalogRecord } from '@sift/catalog/test-support';
 import { App } from './App.js';
@@ -1289,6 +1290,117 @@ describe('App', () => {
       // history is fixture/demo seeding, not something the human asked for.
       expect(screen.queryByTestId('live-run-status')).not.toBeInTheDocument();
       expect(screen.queryByText(/Added option/i)).not.toBeInTheDocument();
+    });
+
+    // ADR 0009. The same defect shape as the seeding case above, found the
+    // same way -- by looking at the running product at 390px -- and made
+    // frequent by this change: filters now write `setView` on every chip
+    // press, so picking "Body style: compact crossover SUV" surfaced
+    // "Latest command / Set workspace view to "quick_pick". / Completed"
+    // directly beneath a hero still reading "Nothing's been looked into
+    // yet." Individually true, a non-sequitur together, and phrased in
+    // internal vocabulary a person shopping for a car has never seen.
+    //
+    // The rule: a presentation-only command (`setView`/`focusOption`/
+    // `focusEvidence` -- the three that write through `updateSelection`,
+    // append no `CaseEvent`, and never advance `eventSequence`) cannot
+    // answer "what did Sift last do about my decision," so it never claims
+    // this block.
+    it('never promotes a presentation-only command into "Latest command" -- a filter or view change is not something Sift did about the decision', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null, proposal: null });
+      const events: PublicActivityEvent[] = [
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-seed-1',
+          sequence: 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          caseId: CASE_ID,
+          commandId: 'cmd-start',
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: 'Started "Choose Our Next Car".',
+        },
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-view-1',
+          sequence: 2,
+          timestamp: '2026-08-27T00:00:01.000Z',
+          caseId: CASE_ID,
+          commandId: 'cmd-set-view',
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: 'Set workspace view to "quick_pick".',
+          safeDetails: { [PRESENTATION_ONLY_ACTIVITY_DETAIL]: true },
+        },
+      ];
+      renderLiveWorkspace(snapshot, events);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
+          "Nothing's been looked into yet.",
+        );
+      });
+      // Skipping the `setView` event falls through to the seeding command,
+      // which the rule above already excludes -- so nothing renders at all,
+      // exactly as it did before filters ever wrote a view.
+      expect(screen.queryByTestId('live-run-status')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Set workspace view/i)).not.toBeInTheDocument();
+    });
+
+    it('still surfaces a REAL command underneath a later presentation-only one, rather than skipping the block entirely', async () => {
+      // The other half of the rule, and the reason this is a `continue`
+      // rather than an early `return null`: a presentation-only event must
+      // be stepped OVER, never treated as "there is nothing to show." A user
+      // who adds an option and then switches tabs must still see the option
+      // they added reported here.
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, recommendation: null, proposal: null });
+      const events: PublicActivityEvent[] = [
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-seed-1',
+          sequence: 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          caseId: CASE_ID,
+          commandId: 'cmd-start',
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: 'Started "Choose Our Next Car".',
+        },
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-real-1',
+          sequence: 2,
+          timestamp: '2026-08-27T00:00:01.000Z',
+          caseId: CASE_ID,
+          commandId: 'cmd-add-option',
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: 'Added option "2022 Mazda CX-5 Preferred AWD".',
+        },
+        {
+          schemaVersion: '1.0',
+          eventId: 'evt-view-1',
+          sequence: 3,
+          timestamp: '2026-08-27T00:00:02.000Z',
+          caseId: CASE_ID,
+          commandId: 'cmd-set-view',
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: 'Set workspace view to "list".',
+          safeDetails: { [PRESENTATION_ONLY_ACTIVITY_DETAIL]: true },
+        },
+      ];
+      renderLiveWorkspace(snapshot, events);
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('live-run-status')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('live-run-status-summary')).toHaveTextContent(
+        'Added option "2022 Mazda CX-5 Preferred AWD".',
+      );
+      expect(screen.queryByText(/Set workspace view/i)).not.toBeInTheDocument();
     });
 
     it('does not send a reset command when the active pack id is not a recognized demo id', async () => {
@@ -2766,7 +2878,7 @@ describe('App', () => {
       });
     });
 
-    describe('WorkspaceSidebar (web app mode filters/priorities/still-checking)', () => {
+    describe('WorkspaceSidebar (web app mode priorities/still-checking) and the filter surface', () => {
       const AWD_DEFINITION = {
         id: 'awd',
         label: 'AWD',
@@ -2777,6 +2889,51 @@ describe('App', () => {
         comparison: 'none' as const,
         sensitive: false,
       };
+
+      /**
+       * Two options that genuinely DISAGREE on AWD, which is what makes an
+       * AWD control render at all: `planFilter` suppresses any filter that
+       * cannot change which options are visible, so a case where every
+       * option agrees -- or has no value -- correctly shows no toggle.
+       */
+      const AWD_SPLIT_ENTITIES = [
+        {
+          id: 'candidate-rav4',
+          kind: 'car',
+          label: 'Toyota RAV4',
+          attributes: {
+            awd: {
+              definitionId: 'awd',
+              label: 'AWD',
+              value: { type: 'boolean' as const, value: true },
+              origin: 'user' as const,
+              sourceIds: [],
+              status: 'asserted' as const,
+              updatedAt: '2026-08-27T00:00:00.000Z',
+            },
+          },
+          createdAt: '2026-08-27T00:00:00.000Z',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+        {
+          id: 'candidate-civic',
+          kind: 'car',
+          label: 'Honda Civic',
+          attributes: {
+            awd: {
+              definitionId: 'awd',
+              label: 'AWD',
+              value: { type: 'boolean' as const, value: false },
+              origin: 'user' as const,
+              sourceIds: [],
+              status: 'asserted' as const,
+              updatedAt: '2026-08-27T00:00:00.000Z',
+            },
+          },
+          createdAt: '2026-08-27T00:00:00.000Z',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+      ];
 
       it('renders the sidebar only in expanded layout, never in narrow', async () => {
         const snapshot = buildFixtureCaseState({ id: CASE_ID });
@@ -2791,6 +2948,51 @@ describe('App', () => {
         const snapshot = buildFixtureCaseState({
           id: CASE_ID,
           attributeDefinitions: [AWD_DEFINITION],
+          // Two options that genuinely DISAGREE on AWD. Required, and a
+          // strictly better fixture than the empty `entities: []` this test
+          // used before: `planFilter` suppresses any control that cannot
+          // change which options are visible, so a case where every option
+          // agrees -- or has no value at all -- correctly renders no toggle.
+          // Real disagreement is what makes this exercise the derived path
+          // the shipping product actually uses.
+          entities: [
+            {
+              id: 'candidate-rav4',
+              kind: 'car',
+              label: 'Toyota RAV4',
+              attributes: {
+                awd: {
+                  definitionId: 'awd',
+                  label: 'AWD',
+                  value: { type: 'boolean' as const, value: true },
+                  origin: 'user' as const,
+                  sourceIds: [],
+                  status: 'asserted' as const,
+                  updatedAt: '2026-08-27T00:00:00.000Z',
+                },
+              },
+              createdAt: '2026-08-27T00:00:00.000Z',
+              updatedAt: '2026-08-27T00:00:00.000Z',
+            },
+            {
+              id: 'candidate-civic',
+              kind: 'car',
+              label: 'Honda Civic',
+              attributes: {
+                awd: {
+                  definitionId: 'awd',
+                  label: 'AWD',
+                  value: { type: 'boolean' as const, value: false },
+                  origin: 'user' as const,
+                  sourceIds: [],
+                  status: 'asserted' as const,
+                  updatedAt: '2026-08-27T00:00:00.000Z',
+                },
+              },
+              createdAt: '2026-08-27T00:00:00.000Z',
+              updatedAt: '2026-08-27T00:00:00.000Z',
+            },
+          ],
         });
         let capturedBody: unknown;
         renderLiveWorkspace(snapshot);
@@ -2802,7 +3004,15 @@ describe('App', () => {
         const user = await startDemoAndWait();
 
         await waitFor(() => expect(screen.getByTestId('workspace-sidebar')).toBeInTheDocument());
-        await user.click(screen.getByTestId('workspace-sidebar-filter-awd'));
+        // The filter surface moved out of the sidebar into a sheet reachable
+        // from both layouts (ADR 0009), so reaching the same control now
+        // takes one deliberate open. The assertion below is unchanged --
+        // this test's real subject is that a filter control writes through
+        // the real `setView` command as presentation-only state, and that is
+        // exactly as true from the sheet as it was from the sidebar.
+        await user.click(screen.getByTestId('workspace-filter-open'));
+        await waitFor(() => expect(screen.getByTestId('workspace-filter-sheet')).toBeVisible());
+        await user.click(screen.getByTestId('workspace-filter-awd'));
 
         await waitFor(() => {
           expect(capturedBody).toMatchObject({
@@ -2820,6 +3030,65 @@ describe('App', () => {
         // call would surface as an unhandled-request error (`server.listen`
         // is configured `onUnhandledRequest: 'error'` at the top of this
         // file).
+      });
+
+      // ADR 0009 regression gate. The view-mode writer and the filter writer
+      // are two separate single-flight queues, and both used to rebuild the
+      // FULL `WorkspaceViewState` by spreading `snapshotRef.current.view` --
+      // a snapshot that lags whatever the other writer has in flight. So a
+      // filter press computed `mode` from a stale snapshot and persisted it,
+      // silently undoing the view the user had just chosen.
+      //
+      // Harmless while nothing read `filters`; a visible defect the moment
+      // filters became real. Repro in one sentence: switch to List, apply a
+      // filter, get thrown back to Best Match. Found by the new e2e journey
+      // failing consistently under four parallel workers while passing in
+      // isolation -- the timing signature of a real race.
+      //
+      // This asserts the WIRE PAYLOAD rather than the rendered tab, because
+      // the payload is where the rollback originated: the filter write must
+      // carry the mode the person actually chose.
+      it('a filter write carries the view mode the user just chose, never a stale one that would roll their view back', async () => {
+        stubExpandedLayout();
+        const snapshot = buildFixtureCaseState({
+          id: CASE_ID,
+          attributeDefinitions: [AWD_DEFINITION],
+          entities: AWD_SPLIT_ENTITIES,
+        });
+        const setViewBodies: unknown[] = [];
+        renderLiveWorkspace(snapshot);
+        server.use(
+          commandHandler('setView', buildFakeCommandReceipt({ caseId: CASE_ID }), (body) => {
+            setViewBodies.push(body);
+          }),
+        );
+        const user = await startDemoAndWait();
+
+        // Choose List, then IMMEDIATELY apply a filter -- without waiting for
+        // the mode write to round-trip into the snapshot. That gap is exactly
+        // the race; awaiting the round-trip first would test nothing.
+        await user.click(screen.getByTestId('workspace-view-tab-list'));
+        await user.click(screen.getByTestId('workspace-filter-open'));
+        await waitFor(() => expect(screen.getByTestId('workspace-filter-sheet')).toBeVisible());
+        await user.click(screen.getByTestId('workspace-filter-awd'));
+
+        await waitFor(() => {
+          expect(
+            setViewBodies.some(
+              (body) => (body as { view?: { filters?: unknown[] } }).view?.filters?.length === 1,
+            ),
+          ).toBe(true);
+        });
+        const filterWrite = setViewBodies.find(
+          (body) => (body as { view?: { filters?: unknown[] } }).view?.filters?.length === 1,
+        ) as { view: { mode: string; filters: unknown[] } };
+        expect(filterWrite.view.mode).toBe('list');
+        // And no write anywhere in the sequence may quietly revert the mode.
+        expect(
+          setViewBodies.every(
+            (body) => (body as { view: { mode: string } }).view.mode !== 'quick_pick',
+          ),
+        ).toBe(true);
       });
 
       it('renders real priorities from the derived DecisionProfile, and opens "Still checking" (with the real ReadinessPanel) via the sidebar button', async () => {

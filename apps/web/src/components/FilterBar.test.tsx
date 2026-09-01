@@ -1,0 +1,434 @@
+/**
+ * The always-visible half of the filter experience: a `Filters` button with
+ * an active count, one removable chip per applied filter, `Clear all`, and
+ * a live result count that says in plain words why the list below is the
+ * length it is.
+ *
+ * These tests deliberately assert the *sentence* a person reads, not just
+ * the presence of an element. The defect this whole round of work exists to
+ * fix is a results area that goes empty with no explanation, so "No saved
+ * cars match these filters." being on screen -- with an escape hatch beside
+ * it -- is the behaviour under test, not an incidental string.
+ */
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { axe } from 'jest-axe';
+import type {
+  AttributeDefinition,
+  AttributeValue,
+  EntityRecord,
+  PresentationDefinition,
+  WorkspaceFilter,
+} from '@sift/contracts';
+import { FilterBar, type FilterBarProps } from './FilterBar.js';
+
+function buildAttribute(overrides: Partial<AttributeDefinition> = {}): AttributeDefinition {
+  return {
+    id: 'awd',
+    label: 'AWD',
+    valueType: 'boolean',
+    required: false,
+    appliesTo: ['car'],
+    evidenceExpectation: 'assertion',
+    comparison: 'none',
+    sensitive: false,
+    ...overrides,
+  };
+}
+
+const ATTRIBUTES: AttributeDefinition[] = [
+  buildAttribute({ id: 'awd', label: 'AWD', valueType: 'boolean' }),
+  buildAttribute({ id: 'price', label: 'Price', valueType: 'number', unit: 'USD' }),
+  buildAttribute({ id: 'msrp', label: 'MSRP', valueType: 'money' }),
+  buildAttribute({ id: 'color', label: 'Color', valueType: 'string' }),
+  // Nothing here has an honest single-field comparison control, so a bar
+  // built from only these must render no chrome at all.
+  buildAttribute({ id: 'listedOn', label: 'Listed on', valueType: 'date' }),
+];
+
+function buildOption(id: string, values: Record<string, AttributeValue>): EntityRecord {
+  const attributes: EntityRecord['attributes'] = {};
+  for (const [definitionId, value] of Object.entries(values)) {
+    attributes[definitionId] = {
+      definitionId,
+      label: definitionId,
+      value,
+      origin: 'user',
+      sourceIds: [],
+      status: 'asserted',
+      updatedAt: '2026-08-28T00:00:00.000Z',
+    };
+  }
+  return {
+    id,
+    kind: 'car',
+    label: id,
+    attributes,
+    createdAt: '2026-08-28T00:00:00.000Z',
+    updatedAt: '2026-08-28T00:00:00.000Z',
+  };
+}
+
+const OPTIONS: EntityRecord[] = [
+  buildOption('car-1', {
+    awd: { type: 'boolean', value: true },
+    price: { type: 'number', value: 27995 },
+    msrp: { type: 'money', amount: 29500, currency: 'USD' },
+    color: { type: 'string', value: 'Red' },
+  }),
+  buildOption('car-2', {
+    awd: { type: 'boolean', value: false },
+    price: { type: 'number', value: 24500 },
+    msrp: { type: 'money', amount: 26000, currency: 'USD' },
+    color: { type: 'string', value: 'Blue' },
+  }),
+  buildOption('car-3', {
+    awd: { type: 'boolean', value: true },
+    price: { type: 'number', value: 31995 },
+    color: { type: 'string', value: 'Black' },
+  }),
+  buildOption('car-4', {
+    awd: { type: 'boolean', value: false },
+    price: { type: 'number', value: 22995 },
+    color: { type: 'string', value: 'Red' },
+  }),
+];
+
+/** The real `PresentationDefinition` shape the car-purchase pack ships (`packages/packs/src/car-purchase.ts`) -- a pack author's own noun, never one invented here. */
+const CAR_PRESENTATION: PresentationDefinition = {
+  optionLabel: 'Saved car',
+  optionLabelPlural: 'Saved cars',
+  attributeGroups: [],
+};
+
+function baseProps(overrides: Partial<FilterBarProps> = {}): FilterBarProps {
+  return {
+    attributeDefinitions: ATTRIBUTES,
+    options: OPTIONS,
+    filters: [],
+    onFiltersChange: vi.fn(),
+    onOpenFilters: vi.fn(),
+    matchingCount: OPTIONS.length,
+    totalCount: OPTIONS.length,
+    presentation: CAR_PRESENTATION,
+    ...overrides,
+  };
+}
+
+const AWD_FILTER: WorkspaceFilter = { fieldId: 'awd', operator: 'equals', value: 'true' };
+const COLOR_FILTER: WorkspaceFilter = { fieldId: 'color', operator: 'equals', value: 'Red' };
+
+describe('FilterBar', () => {
+  describe('when there is nothing to filter', () => {
+    it('renders no chrome at all when the case declares no filterable attribute', () => {
+      const { container } = render(
+        <FilterBar {...baseProps({ attributeDefinitions: [ATTRIBUTES[4]!] })} />,
+      );
+      expect(container).toBeEmptyDOMElement();
+      expect(screen.queryByTestId('workspace-filter-bar')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the Filters entry point', () => {
+    it('renders the button with no count badge while nothing is applied', () => {
+      render(<FilterBar {...baseProps()} />);
+      expect(screen.getByTestId('workspace-filter-bar')).toBeInTheDocument();
+      expect(screen.getByTestId('workspace-filter-open')).toHaveTextContent('Filters');
+      expect(screen.queryByTestId('workspace-filter-active-count')).not.toBeInTheDocument();
+    });
+
+    it('shows how many filters are applied, once at least one is', () => {
+      render(<FilterBar {...baseProps({ filters: [AWD_FILTER, COLOR_FILTER] })} />);
+      expect(screen.getByTestId('workspace-filter-active-count')).toHaveTextContent('2');
+    });
+
+    it('only asks the caller to open the sheet -- it never opens anything itself', async () => {
+      const user = userEvent.setup();
+      const onOpenFilters = vi.fn();
+      render(<FilterBar {...baseProps({ onOpenFilters })} />);
+
+      await user.click(screen.getByTestId('workspace-filter-open'));
+      expect(onOpenFilters).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('workspace-filter-sheet')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('applied-filter chips', () => {
+    it('renders one chip per applied filter, worded the way the control that set it is worded', () => {
+      render(
+        <FilterBar
+          {...baseProps({
+            filters: [
+              AWD_FILTER,
+              COLOR_FILTER,
+              { fieldId: 'price', operator: 'less_than_or_equal', value: '30000' },
+              { fieldId: 'msrp', operator: 'less_than_or_equal', value: '30000' },
+            ],
+            matchingCount: 1,
+          })}
+        />,
+      );
+      expect(screen.getByTestId('workspace-filter-chip-awd')).toHaveTextContent('AWD only');
+      expect(screen.getByTestId('workspace-filter-chip-color')).toHaveTextContent('Color: Red');
+      // The declared unit for a plain number, the real declared currency for money.
+      expect(screen.getByTestId('workspace-filter-chip-price')).toHaveTextContent(
+        'Price: 30,000 USD or less',
+      );
+      expect(screen.getByTestId('workspace-filter-chip-msrp')).toHaveTextContent(
+        'MSRP: $30,000 or less',
+      );
+    });
+
+    it('orders chips by the attribute declaration, so the row does not reshuffle as filters are toggled', () => {
+      render(
+        <FilterBar
+          {...baseProps({
+            // Applied in the reverse of declaration order.
+            filters: [COLOR_FILTER, AWD_FILTER],
+            matchingCount: 2,
+          })}
+        />,
+      );
+      const chips = within(screen.getByTestId('workspace-filter-chips')).getAllByText(
+        /AWD only|Color: Red/,
+      );
+      expect(chips.map((chip) => chip.textContent)).toEqual(['AWD only', 'Color: Red']);
+    });
+
+    it("gives every chip's ✕ an accessible name saying what it removes, not a bare glyph", () => {
+      render(
+        <FilterBar {...baseProps({ filters: [AWD_FILTER, COLOR_FILTER], matchingCount: 2 })} />,
+      );
+      expect(screen.getByTestId('workspace-filter-chip-remove-awd')).toHaveAccessibleName(
+        'Remove filter: AWD only',
+      );
+      expect(screen.getByTestId('workspace-filter-chip-remove-color')).toHaveAccessibleName(
+        'Remove filter: Color: Red',
+      );
+    });
+
+    it('removing one chip emits the COMPLETE next array with only that filter gone', async () => {
+      const user = userEvent.setup();
+      const onFiltersChange = vi.fn();
+      render(
+        <FilterBar
+          {...baseProps({ filters: [AWD_FILTER, COLOR_FILTER], matchingCount: 2, onFiltersChange })}
+        />,
+      );
+
+      await user.click(screen.getByTestId('workspace-filter-chip-remove-awd'));
+      expect(onFiltersChange).toHaveBeenCalledWith([COLOR_FILTER]);
+    });
+
+    it('never writes a criterion-shaped payload -- only fieldId/operator/value survive a removal', async () => {
+      const user = userEvent.setup();
+      const onFiltersChange = vi.fn();
+      render(
+        <FilterBar
+          {...baseProps({ filters: [AWD_FILTER, COLOR_FILTER], matchingCount: 2, onFiltersChange })}
+        />,
+      );
+
+      await user.click(screen.getByTestId('workspace-filter-chip-remove-awd'));
+      const [next] = onFiltersChange.mock.calls.at(-1) as [WorkspaceFilter[]];
+      for (const filter of next) {
+        expect(Object.keys(filter as object).sort()).toEqual(['fieldId', 'operator', 'value']);
+      }
+    });
+
+    it('keeps a long chip readable at pane width instead of truncating it to a stub', () => {
+      const longValue = 'Deep Ocean Metallic with Graphite Accents';
+      render(
+        <FilterBar
+          {...baseProps({
+            filters: [{ fieldId: 'color', operator: 'equals', value: longValue }],
+            matchingCount: 0,
+          })}
+        />,
+      );
+      const chip = screen.getByTestId('workspace-filter-chip-color');
+      // The chip claims its own line rather than losing a shrink race (the
+      // exact defect that once cut a real label down to "S…"), and the
+      // complete text stays reachable even if the value overflows.
+      expect(chip).toHaveClass('shrink-0');
+      expect(chip).toHaveClass('max-w-full');
+      expect(within(chip).getByTitle(`Color: ${longValue}`)).toHaveTextContent(longValue);
+    });
+
+    it('renders no chip for a filter naming an attribute this pack version no longer declares', () => {
+      render(
+        <FilterBar
+          {...baseProps({
+            filters: [{ fieldId: 'towing_capacity', operator: 'equals', value: '5000' }],
+          })}
+        />,
+      );
+      // A stale filter is ignored by `applyWorkspaceFilters` too, so
+      // counting it here would claim a narrowing that is not happening.
+      expect(screen.getByTestId('workspace-filter-bar')).toBeInTheDocument();
+      expect(screen.queryByTestId('workspace-filter-active-count')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('workspace-filter-clear-all')).not.toBeInTheDocument();
+      expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent('4 saved cars');
+    });
+  });
+
+  describe('clear all', () => {
+    it('is absent while nothing is applied', () => {
+      render(<FilterBar {...baseProps()} />);
+      expect(screen.queryByTestId('workspace-filter-clear-all')).not.toBeInTheDocument();
+    });
+
+    it('empties every filter at once, including one with no chip of its own', async () => {
+      const user = userEvent.setup();
+      const onFiltersChange = vi.fn();
+      render(
+        <FilterBar
+          {...baseProps({
+            filters: [
+              AWD_FILTER,
+              { fieldId: 'towing_capacity', operator: 'equals', value: '5000' },
+            ],
+            matchingCount: 2,
+            onFiltersChange,
+          })}
+        />,
+      );
+
+      await user.click(screen.getByTestId('workspace-filter-clear-all'));
+      expect(onFiltersChange).toHaveBeenCalledWith([]);
+    });
+  });
+
+  describe('the live result count', () => {
+    it('reads as a plain total when nothing is applied', () => {
+      render(<FilterBar {...baseProps()} />);
+      expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent('4 saved cars');
+    });
+
+    it('reads as "N of M" once a filter narrows the list', () => {
+      render(<FilterBar {...baseProps({ filters: [AWD_FILTER], matchingCount: 2 })} />);
+      expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent(
+        '2 of 4 saved cars',
+      );
+    });
+
+    it('uses the singular noun for a single saved option, never "1 saved cars"', () => {
+      render(
+        <FilterBar {...baseProps({ options: [OPTIONS[0]!], matchingCount: 1, totalCount: 1 })} />,
+      );
+      expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent('1 saved car');
+      expect(screen.getByTestId('workspace-filter-result-count')).not.toHaveTextContent(
+        '1 saved cars',
+      );
+    });
+
+    it("uses the pack's own noun rather than one invented here", () => {
+      render(
+        <FilterBar
+          {...baseProps({
+            presentation: {
+              optionLabel: 'Response option',
+              optionLabelPlural: 'Response options',
+              attributeGroups: [],
+            },
+          })}
+        />,
+      );
+      expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent(
+        '4 response options',
+      );
+    });
+
+    it('falls back to a neutral noun when no pack has been resolved yet', () => {
+      render(<FilterBar {...baseProps({ presentation: null })} />);
+      expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent('4 options');
+    });
+
+    it('falls back to the neutral singular for a single option with no pack resolved', () => {
+      render(
+        <FilterBar
+          {...baseProps({
+            presentation: null,
+            options: [OPTIONS[0]!],
+            matchingCount: 1,
+            totalCount: 1,
+          })}
+        />,
+      );
+      expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent('1 option');
+    });
+  });
+
+  describe('when filters exclude everything', () => {
+    it('says so in plain words and keeps the escape hatch inline', () => {
+      render(
+        <FilterBar
+          {...baseProps({
+            filters: [{ fieldId: 'color', operator: 'equals', value: 'Purple' }],
+            matchingCount: 0,
+          })}
+        />,
+      );
+      // An unexplained empty results area is the defect this closes: it
+      // looks identical to a case with nothing saved, or to a broken load.
+      expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent(
+        'No saved cars match these filters.',
+      );
+      expect(screen.getByTestId('workspace-filter-clear-all')).toBeInTheDocument();
+      expect(screen.getByTestId('workspace-filter-chip-remove-color')).toBeInTheDocument();
+    });
+  });
+
+  describe('accessibility', () => {
+    it('gives every control a real 44px touch target', () => {
+      render(<FilterBar {...baseProps({ filters: [AWD_FILTER], matchingCount: 2 })} />);
+      expect(screen.getByTestId('workspace-filter-open')).toHaveClass(
+        'min-h-[var(--size-touch-target-min)]',
+      );
+      expect(screen.getByTestId('workspace-filter-clear-all')).toHaveClass(
+        'min-h-[var(--size-touch-target-min)]',
+      );
+      expect(screen.getByTestId('workspace-filter-chip-awd')).toHaveClass(
+        'min-h-[var(--size-touch-target-min)]',
+      );
+      expect(screen.getByTestId('workspace-filter-chip-remove-awd')).toHaveClass(
+        'h-[var(--size-touch-target-min)]',
+        'w-[var(--size-touch-target-min)]',
+      );
+    });
+
+    it('has no axe violations with nothing applied', async () => {
+      const { container } = render(<FilterBar {...baseProps()} />);
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('has no axe violations with a full chip row', async () => {
+      const { container } = render(
+        <FilterBar
+          {...baseProps({
+            filters: [
+              AWD_FILTER,
+              COLOR_FILTER,
+              { fieldId: 'price', operator: 'less_than_or_equal', value: '30000' },
+            ],
+            matchingCount: 1,
+          })}
+        />,
+      );
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('has no axe violations in the zero-match state', async () => {
+      const { container } = render(
+        <FilterBar
+          {...baseProps({
+            filters: [{ fieldId: 'color', operator: 'equals', value: 'Purple' }],
+            matchingCount: 0,
+          })}
+        />,
+      );
+      expect(await axe(container)).toHaveNoViolations();
+    });
+  });
+});

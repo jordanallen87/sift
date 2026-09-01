@@ -73,12 +73,19 @@
  * persistent left `WorkspaceSidebar` beside a main column holding the
  * primary view switcher:
  *
- *  - Sidebar: priorities (`decisionProfile`, read-only ranked list),
- *    filters (`snapshot.view.filters`, written through the presentation-
- *    only path -- see the filters-writer block below), and a "Still
- *    checking" count/button. All three were disclosure rows before this
- *    task; ADR 0008 decision 2 moves them into the persistent column a
- *    "shopping site" shell is expected to have.
+ *  - Sidebar: priorities (`decisionProfile`, read-only ranked list) and a
+ *    "Still checking" count/button. Both were disclosure rows before ADR
+ *    0008, which moved them into the persistent column a "shopping site"
+ *    shell is expected to have.
+ *
+ *    Filters USED to live here too, and no longer do (ADR 0009). Two
+ *    reasons, both found by looking at the running product: the filter list
+ *    ran longer than the main column at 1440, and -- more seriously --
+ *    `WorkspaceSidebar` renders `null` at `layout: 'narrow'`, so filters
+ *    living in it meant pane/WebMCP mode had NO filter entry point at all,
+ *    contradicting ADR 0008's "still has to have the same functionalities."
+ *    They now live in a `FilterSheet` mounted as global chrome, opened from
+ *    a `FilterBar` that both shells render above their view switcher.
  *  - Main column: a small utility toolbar (this file's own plain buttons,
  *    not a locked component -- `workspace-expanded-open-*` testids) for the
  *    three regions that have no natural sidebar slot -- "What you're
@@ -104,6 +111,9 @@
  *  - "What you're looking for" -> sidebar priorities (expanded) / unchanged
  *    disclosure (narrow); the FULL profile is also reachable via a sheet in
  *    expanded mode (see above).
+ *  - Filters -> `FilterBar` + `FilterSheet`, identical in BOTH modes
+ *    (ADR 0009). `visibleOptions` below is what makes them do anything at
+ *    all; before it, every filter control wrote durable state no code read.
  *  - "Add a note" -> unchanged disclosure (narrow, wrapping `CaseNotes` +
  *    `AddNoteForm` as before) / a "Notes" sheet reached from the main-column
  *    toolbar (expanded).
@@ -180,6 +190,7 @@ import { z } from 'zod';
 import {
   CompiledDecisionPackSchema,
   DEMO_IDS,
+  PRESENTATION_ONLY_ACTIVITY_DETAIL,
   type CommandReceipt,
   type CompiledDecisionPack,
   type EvidenceDisposition,
@@ -220,6 +231,9 @@ import {
   type WorkspaceAlertBannerItem,
 } from '../components/WorkspaceAlertBanner.js';
 import { WorkspaceSidebar } from '../components/WorkspaceSidebar.js';
+import { FilterBar } from '../components/FilterBar.js';
+import { FilterSheet } from '../components/FilterSheet.js';
+import { applyWorkspaceFilters } from '../components/workspace-filters.js';
 import { useWidthMode } from '../hooks/use-width-mode.js';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -319,7 +333,22 @@ function deriveReceiptFromEvents(events: PublicActivityEvent[]): LiveRunStatusRe
   const creationCommandId = bySequence.find((event) => event.commandId !== undefined)?.commandId;
 
   for (let i = bySequence.length - 1; i >= 0; i -= 1) {
-    const commandId = bySequence[i]?.commandId;
+    const event = bySequence[i];
+    // A presentation-only command (`setView`/`focusOption`/`focusEvidence`
+    // -- the three that write through `updateSelection` and append no
+    // `CaseEvent`) never answers the question this block exists to answer:
+    // "what did Sift last do about my decision." Found in the running
+    // product at 390px the moment filters started writing `setView` on every
+    // chip press -- picking "Body style: compact crossover SUV" surfaced
+    // "Latest command / Set workspace view to "quick_pick". / Completed"
+    // directly under a hero still reading "Nothing's been looked into yet."
+    //
+    // Same shape as the seeding exclusion below, discovered the same way: an
+    // individually-true status line that is a non-sequitur where it lands.
+    // The event itself is untouched and still fully visible in the activity
+    // stream and Runtime Inspector -- this only declines to PROMOTE it.
+    if (event?.safeDetails?.[PRESENTATION_ONLY_ACTIVITY_DETAIL] === true) continue;
+    const commandId = event?.commandId;
     if (commandId !== undefined) {
       if (commandId === creationCommandId) return null;
       return { commandId };
@@ -401,6 +430,11 @@ export function App() {
   const [decisionProfileSheetOpen, setDecisionProfileSheetOpen] = useState(false);
   const [notesSheetOpen, setNotesSheetOpen] = useState(false);
   const [addConcernSheetOpen, setAddConcernSheetOpen] = useState(false);
+  // Filters live in a sheet reachable from BOTH layouts, not in the
+  // expanded-only sidebar they used to occupy (ADR 0009). That placement is
+  // what makes filtering exist at all in pane/WebMCP mode, where
+  // `WorkspaceSidebar` renders `null` outright.
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [resetPending, setResetPending] = useState(false);
   const [runRequestPending, setRunRequestPending] = useState(false);
   const [runRequestError, setRunRequestError] = useState<string | null>(null);
@@ -676,6 +710,31 @@ export function App() {
   const desiredViewRef = useRef<WorkspaceViewMode | null>(null);
   const viewWriteInFlightRef = useRef(false);
 
+  // The person's standing intent for `WorkspaceViewState`, shared by BOTH
+  // writers below and deliberately never cleared once set.
+  //
+  // The two writers stay separate single-flight queues (the mode writer is
+  // hardened against the reproduced race described above and is not worth
+  // re-opening), but they were each rebuilding the FULL `WorkspaceViewState`
+  // by spreading `snapshotRef.current.view` -- a snapshot that lags whatever
+  // the other writer has in flight. So the filter writer would compute
+  // `mode` from a stale snapshot and persist it, silently undoing a view
+  // change the user had just made.
+  //
+  // That was disclosed here as an accepted residual limitation, and it was
+  // genuinely harmless while nothing READ `filters` -- persisting a stale
+  // mode alongside a filter nobody applied changed no pixel. Making filters
+  // real (`visibleOptions`) turned it into a visible defect with a
+  // one-sentence repro: **switch to List, apply a filter, and the workspace
+  // jumps back to Best Match.** Caught by the new e2e journey failing
+  // consistently under four parallel workers while passing in isolation --
+  // the timing signature of a genuine race, not a flaky selector.
+  //
+  // Reading intent from here instead of from the snapshot makes each write
+  // carry the newest value of BOTH fields, so neither writer can roll the
+  // other back regardless of which response lands first.
+  const intendedViewRef = useRef<{ mode?: WorkspaceViewMode; filters?: WorkspaceFilter[] }>({});
+
   const drainViewWrites = useCallback(async () => {
     if (viewWriteInFlightRef.current) return;
     viewWriteInFlightRef.current = true;
@@ -688,7 +747,14 @@ export function App() {
           desiredViewRef.current = null;
           return;
         }
-        const view: WorkspaceViewState = { ...(current.view ?? {}), mode };
+        // `filters` comes from shared intent when the person has set any,
+        // so this write cannot roll back an in-flight filter change.
+        const intendedFilters = intendedViewRef.current.filters;
+        const view: WorkspaceViewState = {
+          ...(current.view ?? {}),
+          ...(intendedFilters !== undefined ? { filters: intendedFilters } : {}),
+          mode,
+        };
         try {
           await commands.setView({ caseId, expectedSequence: current.eventSequence, view });
         } catch {
@@ -714,6 +780,7 @@ export function App() {
   const handleViewModeChange = useCallback(
     (mode: WorkspaceViewMode) => {
       setOptimisticViewMode(mode);
+      intendedViewRef.current.mode = mode;
       desiredViewRef.current = mode;
       void drainViewWrites();
     },
@@ -781,9 +848,14 @@ export function App() {
         // supplies the exact same 'quick_pick' fallback the read side
         // already uses (`viewMode` above, Task A10) rather than producing
         // an invalid patch with no `mode`.
+        // `mode` comes from shared intent first, falling back to the
+        // snapshot and finally to the same `'quick_pick'` default the read
+        // side uses. Reading the snapshot ALONE here is what let a filter
+        // press silently undo a just-made view change -- see
+        // `intendedViewRef`'s comment for the repro.
         const view: WorkspaceViewState = {
           ...(current.view ?? {}),
-          mode: current.view?.mode ?? 'quick_pick',
+          mode: intendedViewRef.current.mode ?? current.view?.mode ?? 'quick_pick',
           filters: nextFilters,
         };
         try {
@@ -805,10 +877,54 @@ export function App() {
   const handleFiltersChange = useCallback(
     (nextFilters: WorkspaceFilter[]) => {
       setOptimisticFilters(nextFilters);
+      intendedViewRef.current.filters = nextFilters;
       desiredFiltersRef.current = nextFilters;
+      // Changing the filters changes the queue Quick Pick is walking, so its
+      // position has to return to the start of the NEW queue. Without this, a
+      // user three cars into a five-car triage who narrows to two cars lands
+      // past the end of the filtered queue and sees the "you've reviewed
+      // everything" end state over a list they have not seen at all --
+      // `QuickPickView` renders exactly that for `position >= options.length`
+      // (`QuickPickView.tsx:180`). Restarting the queue is also what every
+      // faceted browse UI does when the result set changes underneath it.
+      setQuickPickPosition(0);
       void drainFilterWrites();
     },
     [drainFilterWrites],
+  );
+
+  // THE READER THAT MAKES EVERY FILTER CONTROL MEAN SOMETHING.
+  //
+  // Until this line existed, `WorkspaceFilter` was written by the filter
+  // controls, persisted durably through `setView`, and read by NOBODY -- a
+  // repo-wide grep matched only the schema, this file's writer, and the
+  // control that produced it. Toggling "AWD only" changed stored state and
+  // changed nothing a person could see.
+  //
+  // Scope is deliberate and narrow: this narrows the OPTION BROWSING
+  // SURFACE only (`WorkspaceViewSwitcher`, the one prop every view reads).
+  // It is deliberately NOT applied to `RecommendationHero`, readiness,
+  // `CaseNotes`, or `OptionEditor`:
+  //
+  //  - a recommendation Sift already reached about an option must stay
+  //    visible even while a filter hides that option from the list, or the
+  //    product appears to silently retract its own answer;
+  //  - a note referencing a hidden option would lose its subject;
+  //  - the "Add option" editor reads existing options to avoid duplicates,
+  //    which a filtered list would defeat.
+  //
+  // ADR 0005 (Consequences) requires Compare specifically to be driven by
+  // `filters`; applying them to every option view is a superset of that,
+  // chosen because a filter bar that silently affected only one tab is
+  // exactly the "nothing familiar" problem this round of work exists to fix.
+  const allOptions = useMemo(() => snapshot?.entities ?? [], [snapshot?.entities]);
+  const filterableDefinitions = useMemo(
+    () => snapshot?.attributeDefinitions ?? [],
+    [snapshot?.attributeDefinitions],
+  );
+  const visibleOptions = useMemo(
+    () => applyWorkspaceFilters(allOptions, filters, filterableDefinitions),
+    [allOptions, filters, filterableDefinitions],
   );
 
   const installedPacksRef = useRef(installedPacks);
@@ -1398,15 +1514,6 @@ export function App() {
           <WorkspaceSidebar
             layout={layout}
             decisionProfile={decisionProfile}
-            attributeDefinitions={snapshot?.attributeDefinitions ?? []}
-            // The real saved cars, so the filter panel can derive its facets
-            // from values that actually exist rather than offering blank
-            // "Search make" boxes over a four-option case. Same array the
-            // option views already receive; without it the sidebar falls back
-            // to its generic per-type controls.
-            options={snapshot?.entities ?? []}
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
             openQuestionsCount={remainingObligationCount}
             onOpenQuestions={() => setStillCheckingSheetOpen(true)}
           />
@@ -1456,10 +1563,24 @@ export function App() {
               </Button>
             </div>
 
+            <FilterBar
+              attributeDefinitions={filterableDefinitions}
+              options={allOptions}
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              onOpenFilters={() => setFilterSheetOpen(true)}
+              matchingCount={visibleOptions.length}
+              totalCount={allOptions.length}
+              presentation={activePack?.presentation ?? null}
+            />
+
             <WorkspaceViewSwitcher
               mode={viewMode}
               onModeChange={handleViewModeChange}
-              options={snapshot?.entities ?? []}
+              // The FILTERED list -- see the `visibleOptions` comment above
+              // for why this one prop is narrowed and the hero/notes/editor
+              // deliberately are not.
+              options={visibleOptions}
               attributeDefinitions={snapshot?.attributeDefinitions ?? []}
               caseExtensions={snapshot?.caseExtensions ?? []}
               presentation={activePack?.presentation ?? null}
@@ -1483,10 +1604,25 @@ export function App() {
         // regions promoted into the app bar above (options, findings) --
         // see this file's own header comment for the full mapping.
         <>
+          {/* Same filter entry point as web-app mode, and the reason the
+              filter surface moved out of the sidebar at all: this component
+              tree has no sidebar, so filters previously did not exist here
+              in any form (ADR 0009). */}
+          <FilterBar
+            attributeDefinitions={filterableDefinitions}
+            options={allOptions}
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            onOpenFilters={() => setFilterSheetOpen(true)}
+            matchingCount={visibleOptions.length}
+            totalCount={allOptions.length}
+            presentation={activePack?.presentation ?? null}
+          />
+
           <WorkspaceViewSwitcher
             mode={viewMode}
             onModeChange={handleViewModeChange}
-            options={snapshot?.entities ?? []}
+            options={visibleOptions}
             attributeDefinitions={snapshot?.attributeDefinitions ?? []}
             caseExtensions={snapshot?.caseExtensions ?? []}
             presentation={activePack?.presentation ?? null}
@@ -1580,6 +1716,21 @@ export function App() {
           these five is mounted unconditionally (always controlled by
           `open`, never duplicated alongside a narrow-mode disclosure over
           the same underlying component). */}
+      {/* Mounted unconditionally, like every sheet below it, and NOT inside
+          either layout branch: the filter surface is the one region that
+          must be identical in both modes (ADR 0009), so it is global chrome
+          rather than something each shell renders its own copy of. */}
+      <FilterSheet
+        open={filterSheetOpen}
+        onOpenChange={setFilterSheetOpen}
+        attributeDefinitions={filterableDefinitions}
+        options={allOptions}
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+        matchingCount={visibleOptions.length}
+        totalCount={allOptions.length}
+      />
+
       <Sheet open={manageOptionsSheetOpen} onOpenChange={setManageOptionsSheetOpen}>
         <SheetContent data-testid="workspace-add-option-sheet">
           <SheetHeader>

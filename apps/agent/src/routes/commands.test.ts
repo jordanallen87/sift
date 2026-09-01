@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
+import { PRESENTATION_ONLY_ACTIVITY_DETAIL } from '@sift/contracts';
 import type { CommandReceipt, HttpConflictResponse, HttpErrorBody } from '@sift/contracts';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
@@ -546,9 +547,24 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
       expect(noteResponse.status).toBe(200);
 
       const events = harness.activityStore.replayFrom(caseId, 0);
-      for (const commandId of ['cmd-view', 'cmd-attr', 'cmd-note']) {
+      // Still an exact `toEqual`, not a loosened `toMatchObject`: this test's
+      // job is to prove the origin marker is recorded and that NOTHING else
+      // is silently attached alongside it.
+      //
+      // `setView` legitimately carries one more key (ADR 0009):
+      // `presentationOnly`, marking the three commands that write through
+      // `updateSelection` and append no `CaseEvent`. `emitActivity` merges
+      // rather than replaces (`{ ...event.safeDetails, origin }`), so the two
+      // markers coexist -- which is exactly what the per-command expectation
+      // below asserts, rather than weakening the check to accommodate it.
+      const expectedSafeDetails: Record<string, Record<string, unknown>> = {
+        'cmd-view': { [PRESENTATION_ONLY_ACTIVITY_DETAIL]: true, origin: 'webmcp' },
+        'cmd-attr': { origin: 'webmcp' },
+        'cmd-note': { origin: 'webmcp' },
+      };
+      for (const [commandId, expected] of Object.entries(expectedSafeDetails)) {
         const event = events.find((entry) => entry.commandId === commandId);
-        expect(event?.safeDetails, `commandId ${commandId}`).toEqual({ origin: 'webmcp' });
+        expect(event?.safeDetails, `commandId ${commandId}`).toEqual(expected);
       }
       // upsertOption sent no header -- unaffected.
       const optionEvent = events.find((entry) => entry.commandId === 'cmd-option');

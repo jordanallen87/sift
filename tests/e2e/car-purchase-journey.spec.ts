@@ -177,8 +177,8 @@ test.describe('Choose our next car -- full demo journey', () => {
     // ADR 0008: the two layouts are genuinely different shells, not the same
     // stack merely made wider -- proven directly, not just inferred from the
     // width assertion above. Web-app mode gets a persistent left
-    // `WorkspaceSidebar` (priorities/filters/still-checking) the pane never
-    // has; pane mode keeps the narrow disclosure stack ADR 0004 already
+    // `WorkspaceSidebar` (priorities/still-checking) the pane never has;
+    // pane mode keeps the narrow disclosure stack ADR 0004 already
     // established, which web-app mode has none of at all (its equivalent
     // content lives in the main-column toolbar's Sheets instead).
     if (!isNarrowLayout(page)) {
@@ -188,6 +188,16 @@ test.describe('Choose our next car -- full demo journey', () => {
     } else {
       await expect(page.getByTestId('workspace-sidebar')).toHaveCount(0);
     }
+
+    // ADR 0009: filters are the ONE region that must be byte-identical in
+    // both shells, which is why they left the expanded-only sidebar for a
+    // sheet mounted as global chrome. This is the assertion whose absence
+    // let filtering ship as an expanded-mode-only capability -- and, worse,
+    // as durable state nothing read. Asserted UNCONDITIONALLY, outside the
+    // layout branch above, precisely because "the same in both modes" is
+    // the property under test.
+    await expect(page.getByTestId('workspace-filter-bar')).toBeVisible();
+    await expect(page.getByTestId('workspace-filter-open')).toBeVisible();
 
     await expectNamedScreenshot(
       page,
@@ -496,6 +506,97 @@ test.describe('Choose our next car -- full demo journey', () => {
     const finalState = await getCaseState(page.request, caseId);
     expect(finalState['status']).toBe('decided');
     expect((finalState['proposal'] as { status: string } | null)?.status).toBe('approved');
+
+    guard.assertClean();
+  });
+
+  /**
+   * ADR 0009's end-to-end proof, and a genuine regression gate rather than a
+   * rendering check.
+   *
+   * Before this change, `WorkspaceFilter` was written by the filter controls
+   * and read by NOBODY -- a repo-wide grep matched the schema, the writer,
+   * and the control that produced it, and nothing else. Every control on
+   * screen wrote durable state that changed no pixel. A test that only
+   * asserted "the control renders and a filter is persisted" would have
+   * passed against that defect, which is exactly why this asserts the
+   * OPTION LIST ITSELF narrows and then comes back.
+   *
+   * Runs at every configured viewport, unbranched, because "identical in
+   * both modes" is the property ADR 0009 exists to guarantee -- at 390-480px
+   * this capability previously did not exist at all.
+   */
+  test('filters narrow the real option list, and removing the chip restores it', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await disableAnimations(page);
+    const guard = installConsoleGuard(page);
+    const sift = new SiftPage(page);
+
+    await sift.open();
+    await sift.launchCarPurchase();
+
+    // The List view renders one card per visible option, which is the
+    // surface a filter must actually move.
+    await sift.selectWorkspaceView('list');
+    const optionCards = page.locator('[data-testid^="option-list-view-card-"]');
+
+    const resultCount = page.getByTestId('workspace-filter-result-count');
+    await expect(resultCount).toBeVisible();
+    // No filters applied yet: a bare total, never an "N of M" reading.
+    await expect(resultCount).not.toContainText(' of ');
+
+    // The bar's own unfiltered total is the source for how many cards must
+    // be on screen, so this never hard-codes a seed count it does not own.
+    //
+    // Deliberately `toHaveCount` (which retries) rather than reading
+    // `locator.count()` into a variable: `count()` resolves ONCE, with no
+    // auto-waiting, so under four parallel workers it samples the list
+    // before React has rendered a single card and returns 0. That is
+    // exactly how the first version of this test failed -- green in
+    // isolation, red every time the full spec ran -- and it is the failure
+    // mode CLAUDE.md's "avoid fixed sleeps" rule exists to prevent.
+    const seededCount = Number(/^(\d+)/.exec((await resultCount.textContent()) ?? '')?.[1]);
+    expect(seededCount).toBeGreaterThan(1);
+    await expect(optionCards).toHaveCount(seededCount);
+
+    // Take whatever the first facet group offers rather than hard-coding a
+    // make or a drivetrain: `planWorkspaceFilters` orders controls by how
+    // much they can actually narrow THIS case's real seeded data, so the
+    // first facet chip is by construction a real, narrowing choice. Naming a
+    // specific value here would couple this gate to seed data it does not
+    // own.
+    await sift.openFilterSheet();
+    const firstFacetChip = page
+      .getByTestId('workspace-filter-sheet')
+      .locator('[data-testid*="-option-0"]')
+      .first();
+    await expect(firstFacetChip).toBeVisible();
+    await firstFacetChip.click();
+    await sift.closeFilterSheet();
+
+    // The bar now explains the narrowing, and the list genuinely obeys it.
+    const chip = page.locator('[data-testid^="workspace-filter-chip-"]').first();
+    await expect(chip).toBeVisible();
+    await expect(page.getByTestId('workspace-filter-active-count')).toHaveText('1');
+    await expect(resultCount).toContainText(' of ');
+
+    // THE assertion this whole test exists for: the rendered list obeys the
+    // filter. Before this change `WorkspaceFilter` was persisted and read by
+    // nothing, so the count below would have stayed at `seededCount` while
+    // every other assertion here still passed.
+    const filteredCount = Number(/^(\d+)/.exec((await resultCount.textContent()) ?? '')?.[1]);
+    expect(filteredCount).toBeGreaterThan(0);
+    expect(filteredCount).toBeLessThan(seededCount);
+    await expect(optionCards).toHaveCount(filteredCount);
+
+    // Removing the chip from the bar -- without reopening the sheet -- is
+    // the whole reason the applied filters are shown outside it.
+    await page.locator('[data-testid^="workspace-filter-chip-remove-"]').first().click();
+    await expect(page.getByTestId('workspace-filter-active-count')).toHaveCount(0);
+    await expect(resultCount).not.toContainText(' of ');
+    await expect(optionCards).toHaveCount(seededCount);
 
     guard.assertClean();
   });

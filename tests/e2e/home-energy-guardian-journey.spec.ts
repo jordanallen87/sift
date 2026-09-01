@@ -183,6 +183,14 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
       await expect(page.getByTestId('workspace-sidebar')).toHaveCount(0);
     }
 
+    // ADR 0009, asserted in the SECOND pack's journey too: the filter
+    // surface is pack-agnostic. `home-energy-guardian` declares its own
+    // attributes and its own `optionLabel`/`optionLabelPlural`, so this
+    // proves the bar renders from whatever the active pack actually
+    // declares rather than from anything car-shaped.
+    await expect(page.getByTestId('workspace-filter-bar')).toBeVisible();
+    await expect(page.getByTestId('workspace-filter-open')).toBeVisible();
+
     await expectNamedScreenshot(
       page,
       page.getByTestId('case-workspace'),

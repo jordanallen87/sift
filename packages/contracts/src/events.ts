@@ -129,6 +129,35 @@ export const PublicActivityEventSchema = z
   .strict();
 export type PublicActivityEvent = z.infer<typeof PublicActivityEventSchema>;
 
+/**
+ * The `safeDetails` key marking an activity event as a PRESENTATION-ONLY
+ * command -- one that wrote through `CaseStore.updateSelection` (patching
+ * the snapshot durably, appending no `CaseEvent`, never advancing
+ * `eventSequence`) rather than through `append`. Exactly three commands
+ * qualify today: `setView`, `focusOption`, and `focusEvidence`.
+ *
+ * Declared here, in the shared contract, rather than as a string literal at
+ * either end: the emitter (`apps/agent/src/services/command-service.ts`)
+ * and the reader (`apps/web/src/app/App.tsx`'s `deriveReceiptFromEvents`)
+ * are in different packages, and a typo in either one would silently
+ * reintroduce the defect below rather than fail a build.
+ *
+ * These events are still emitted, still replayed, and still fully visible in
+ * the activity stream and Runtime Inspector -- an agent-driven
+ * `sift_set_view` call genuinely is something a person should be able to see
+ * ChatGPT do. This flag exists so a *consumer* can tell the two classes
+ * apart, not to hide anything.
+ *
+ * The consumer that needs it: the workspace hero's "Latest command" block,
+ * which answers "what did Sift last do about my decision." Filtering the
+ * option list by body style is not an answer to that question. Found in the
+ * running product at 390px -- picking a filter chip surfaced "Latest command
+ * / Set workspace view to "quick_pick". / Completed" directly beneath a hero
+ * still reading "Nothing's been looked into yet.", which is both internal
+ * jargon and a non-sequitur to someone shopping for a car.
+ */
+export const PRESENTATION_ONLY_ACTIVITY_DETAIL = 'presentationOnly';
+
 // --- CaseEvent ---
 
 const CaseEventBaseSchema = z.object({

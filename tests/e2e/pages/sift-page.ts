@@ -478,6 +478,30 @@ export class SiftPage {
   }
 
   /**
+   * Opens the filter Sheet (ADR 0009) from the `FilterBar`'s always-visible
+   * "Filters" control.
+   *
+   * Needs no layout branch, and that is the entire point of the ADR: the
+   * filter surface is global chrome mounted once above the narrow/expanded
+   * split, exactly like the app bar. Its predecessor lived inside
+   * `WorkspaceSidebar`, which renders `null` below 481px, so this capability
+   * did not exist in pane mode at all.
+   *
+   * A real modal -- not safe to leave open across unrelated steps, for the
+   * same overlay-interception reason `openManageOptionsSheet` documents.
+   * This project has already lost 120 seconds of a desktop-1440 run to
+   * exactly that mistake with a different sheet.
+   */
+  async openFilterSheet(): Promise<void> {
+    await this.openSheetVia('workspace-filter-open', 'workspace-filter-sheet');
+  }
+
+  /** The `openFilterSheet` counterpart -- closes the Sheet via its own close control. */
+  async closeFilterSheet(): Promise<void> {
+    await this.closeSheet('workspace-filter-sheet');
+  }
+
+  /**
    * Opens the "your priorities" content -- the FULL `DecisionProfileView`
    * (including `personalConcerns`/`missing`/`suggestedQuestions`, which
    * `WorkspaceSidebar`'s own cut-down priorities list excludes) -- and
