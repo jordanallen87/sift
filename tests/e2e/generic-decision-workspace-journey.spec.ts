@@ -77,6 +77,21 @@ import {
   postCommand,
 } from './pages/sift-page.js';
 
+/**
+ * `docs/decisions/0008-two-mode-product-architecture.md` dismantled the
+ * "Manage options"/"What Sift found" disclosures entirely (both layouts now
+ * reach `OptionEditor`/`FindingsSheet` only through `WorkspaceAppBar`'s
+ * "Add option"/"Findings" Sheets, via `sift.openManageOptionsSheet()`/
+ * `openFindingsSheet()`), and moved "your priorities"/"Add a note"/"Add a
+ * question" into a main-column toolbar Sheet in web-app mode (>480px) while
+ * leaving pane mode's (<=480px) disclosures untouched. This spec runs at
+ * all four projects, including `desktop-1440`, so it drives those three
+ * layout-dependent regions through `sift.openDecisionProfile()`/
+ * `openNotes()`/`openAddConcern()` (and their `close*` counterparts) rather
+ * than `openDisclosure(...)` directly, so each step reaches the control the
+ * way a real user would in whichever layout is under test.
+ */
+
 /** Presses Tab (bounded) until `target` is focused -- mirrors `keyboard-accessibility.spec.ts`'s own local helper; not shared since each spec's target/context differs. */
 async function tabUntilFocused(page: Page, target: Locator, maxPresses = 15): Promise<void> {
   for (let attempt = 0; attempt < maxPresses; attempt += 1) {
@@ -155,7 +170,7 @@ test.describe('generic decision workspace -- §61 journey', () => {
     // pack's own 5-option cap (`OptionEditor`'s `maxOptions`); "several"
     // honestly reduces to "one more, at the cap" rather than fabricating
     // room that does not exist -- disclosed here, not silently narrowed. ---
-    await sift.openDisclosure('options');
+    await sift.openManageOptionsSheet();
     const beforeAddState = await getCaseState(page.request, caseId);
     const carKind = (beforeAddState['entities'] as { kind: string }[])[0]!.kind;
     await page.getByTestId('option-editor-new').click();
@@ -167,9 +182,13 @@ test.describe('generic decision workspace -- §61 journey', () => {
     const upsertResponse = await upsertResponsePromise;
     expect(upsertResponse.ok(), await upsertResponse.text()).toBe(true);
 
-    // --- §61 step 4: "Verify page updates." ---
-    await expect(page.getByTestId('disclosure-options-meta')).toHaveText('5 options');
+    // --- §61 step 4: "Verify page updates." --- Closed before the app-bar
+    // check below: ADR 0008's "Add option" Sheet is a real modal, and its
+    // own live option count (superseding the retired "Manage options"
+    // disclosure meta) is the app bar's `workspace-app-bar-option-count`.
     await expect(page.getByTestId('option-editor-list')).toContainText(newOptionLabel);
+    await sift.closeManageOptionsSheet();
+    await expect(page.getByTestId('workspace-app-bar-option-count')).toHaveText('5 options');
     await assertNoHorizontalOverflow(page);
 
     const afterAddState = await getCaseState(page.request, caseId);
@@ -317,12 +336,12 @@ test.describe('generic decision workspace -- §61 journey', () => {
     // surface is covered by `OptionCompareView`'s own unit tests, which can
     // exercise a confirmed extension directly without threading one through
     // this journey's scripted fixture. ---
-    await sift.openDisclosure('decision-profile');
-    const profileSection = page.getByTestId('disclosure-decision-profile');
+    const profileSection = await sift.openDecisionProfile();
     const concernRow = profileSection.locator('li', { hasText: customFieldLabel });
     await expect(concernRow).toBeVisible();
     await expect(concernRow).toContainText('Added by you');
     await assertNoSeriousAxeViolations(page, 'decision profile open, custom field visible');
+    await sift.closeDecisionProfile();
 
     // --- §61 step 13: "Add research/source." No dedicated visible control
     // exists yet (same documented-gap category as `updateCriteria` in
@@ -383,7 +402,7 @@ test.describe('generic decision workspace -- §61 journey', () => {
     expect(unpopulatedEntity.attributes['custom.roof_rails']).toBeUndefined();
 
     // --- §61 step 16: "Add note." Real visible `AddNoteForm`. ---
-    await sift.openDisclosure('add-note');
+    await sift.openNotes();
     const noteBody = 'Grandma insists on a sunroof, but nobody else in the household cares.';
     await page.locator('#add-note-form-body').fill(noteBody);
     const addNoteResponsePromise = page.waitForResponse(
@@ -395,6 +414,10 @@ test.describe('generic decision workspace -- §61 journey', () => {
     await expect(page.getByTestId('add-note-form-success')).toBeVisible();
     await expect(page.getByTestId('case-notes')).toContainText(noteBody);
     await assertNoHorizontalOverflow(page);
+    // Closed before the Developer view entry point (step 19) below: in
+    // web-app mode the Notes Sheet is a real modal that would otherwise
+    // intercept that click.
+    await sift.closeNotes();
 
     // --- §61 step 17: "Update criterion." Same real, no-dedicated-UI route
     // `car-purchase-journey.spec.ts` uses. ---
@@ -417,7 +440,7 @@ test.describe('generic decision workspace -- §61 journey', () => {
     // --- §61 step 19: "Enter Developer view." The dedicated entry point
     // (Task A5) -- opens with no run in hand, so it lands on the Activity
     // tab (`RuntimeInspector.tsx`'s own documented default). ---
-    await page.getByTestId('case-header-developer-view').click();
+    await page.getByTestId('workspace-app-bar-developer-view').click();
     await expect(page.getByTestId('runtime-inspector')).toBeVisible();
     await expect(page.getByTestId('runtime-inspector-activity')).toBeVisible();
     await assertNoSeriousAxeViolations(page, 'developer view, activity tab');
@@ -446,17 +469,21 @@ test.describe('generic decision workspace -- §61 journey', () => {
 
     // --- §61 step 21: "Reload." A genuine full-page reload. ---
     await page.reload();
-    await expect(page.getByTestId('case-header')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('workspace-app-bar')).toBeVisible({ timeout: 15_000 });
 
     // --- §61 step 22: "Verify durable state survived." Every mutation this
     // journey made, re-read from a fresh load: the 5th option, the
     // reweighted criterion, the confirmed custom field and its populated
     // value, the unpopulated option's honest unknown, the note, the last
     // selection, and the persisted view mode. ---
-    await sift.openDisclosure('options');
+    await sift.openManageOptionsSheet();
     await expect(page.getByTestId('option-editor-list')).toContainText(newOptionLabel);
+    await sift.closeManageOptionsSheet();
     await assertNoHorizontalOverflow(page);
-    await assertRightPaneIntegrity(page, ['case-header-reset-demo', 'case-header-developer-view']);
+    await assertRightPaneIntegrity(page, [
+      'workspace-app-bar-reset-demo',
+      'workspace-app-bar-developer-view',
+    ]);
 
     const afterReloadState = await getCaseState(page.request, caseId);
     expect(afterReloadState['id']).toBe(caseId);

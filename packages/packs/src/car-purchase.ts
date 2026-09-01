@@ -92,7 +92,7 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
   entities: [
     {
       id: 'candidate',
-      label: 'Candidate vehicle',
+      label: 'Saved car',
       description:
         'One shortlisted vehicle listing under comparison (e.g. a specific model year/trim at a specific dealer).',
       attributeIds: [
@@ -906,8 +906,8 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
   ],
 
   presentation: {
-    optionLabel: 'Candidate vehicle',
-    optionLabelPlural: 'Candidate vehicles',
+    optionLabel: 'Saved car',
+    optionLabelPlural: 'Saved cars',
     attributeGroups: [
       {
         id: 'basics',

@@ -52,8 +52,41 @@
  *    case-defined concern had real values but never became a comparison row. `caseExtensions` is
  *    merged into `attributeDefinitions` (confirmed only) before the existing custom-id rendering
  *    logic below runs, so no separate marking step was needed.
+ *
+ * Two further signal defects closed here (a later pass over this otherwise-sound table -- grouped
+ * rows, zebra striping, real column headers were already correct and are untouched):
+ *
+ * 3. **Identity rows restated the column header.** Columns are headed with the option's full label
+ *    ("2022 Toyota RAV4 XLE Hybrid AWD"); the first rows underneath were then Make / Model / Trim --
+ *    the same string, decomposed, carrying no DIFFERENCE a comparison table exists to show. Fixed by
+ *    reusing `isIdentityAttribute` (`../lib/evidence-expectation.js`) -- the exact judgment
+ *    `QuickPickView.tsx`/`OptionListView.tsx` already use to keep an option's own identity fields out
+ *    of their strengths/concerns lists -- to exclude identity attributes from `narrowedDefinitions`'s
+ *    DEFAULT branch only (`visibleAttributeIds === undefined`). Compare is configurable
+ *    (`sift_configure_comparison` writes `visibleAttributeIds`/`pinnedAttributeIds` through
+ *    `WorkspaceViewState`), so an identity row is never made unreachable: an explicit
+ *    `visibleAttributeIds` list still shows exactly what it names (the existing branch, untouched),
+ *    and an identity id present in `pinnedAttributeIds` survives the default-branch filter too --
+ *    pinning is itself a deliberate "put this back" request and must never be silently dropped.
+ *    (`car.model_year` -- also part of the same header string -- is deliberately NOT filtered: it is
+ *    `valueType: 'number'` with `comparison: 'higher_better'` in the car-purchase pack, so
+ *    `isIdentityAttribute` correctly reads it as genuine comparison-relevant data -- a newer model
+ *    year is actually a reason to prefer one option -- not a bare label. That is `isIdentityAttribute`'s
+ *    own judgment, reused verbatim rather than second-guessed here.)
+ * 4. **All-equal rows outweighed genuine differences.** A row where every currently rendered option
+ *    resolves to the identical formatted value (e.g. `car.standard_features` -- identical across all
+ *    four demo candidates in `packages/scenarios/fixtures/car-purchase/candidate-listings.json` --
+ *    which also happens to be the single longest row on the page) carries no comparison signal but
+ *    occupied the same visual weight as a row with real differences. `computeAllEqualDisplayByAttributeId`
+ *    detects this (only when >= 2 options are actually rendered, and only when every one of them has a
+ *    *resolved* value -- an all-`Unknown` row means "no one has an answer yet," a distinct evidence-gap
+ *    problem, not "everyone agrees"). Such a row collapses by default to one muted, italicized cell
+ *    spanning every option column plus a "Same for all" badge -- obvious at a glance, and the data is
+ *    never deleted: a per-row toggle (`CompareRow`'s `expanded` state, local to this component --
+ *    display-only UI state, not case state, so it needs no caller wiring) reveals the ordinary
+ *    per-option cells on demand and can be collapsed again just as easily.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type {
   AttributeDefinition,
   CaseExtension,
@@ -61,6 +94,7 @@ import type {
   PresentationDefinition,
 } from '@sift/contracts';
 import { formatAttributeValue } from './attribute-value-format.js';
+import { isIdentityAttribute } from '../lib/evidence-expectation.js';
 import { Badge } from '@/components/ui/badge';
 
 export interface OptionCompareViewProps {
@@ -185,22 +219,95 @@ function pickHeadToHeadOptions(
   return other === undefined ? [selected] : [selected, other];
 }
 
+/**
+ * Problem 2's detection pass: the shared formatted display value for every attribute definition
+ * where every currently *rendered* option (post narrow-layout head-to-head pairing, not the full
+ * option set -- "these two agree" is exactly as real a de-emphasis signal as "all four agree," so
+ * narrow layout gets the same treatment rather than being silently exempted) resolves to the exact
+ * same formatted string. A row is only ever eligible when every rendered option has a *resolved*
+ * value: if even one is still unknown, this is an evidence gap ("no one has an answer yet"), not
+ * agreement, and is left out of the returned map entirely so it renders as an ordinary row (an
+ * absent map entry means "not all-equal," reusing the row's existing missing-value handling).
+ * Requires at least two rendered options -- with only one there is nothing to differ from, so
+ * "every option has the same value" would be true of literally every row and collapse the whole
+ * table without saying anything real.
+ */
+function computeAllEqualDisplayByAttributeId(
+  definitions: AttributeDefinition[],
+  renderedOptions: EntityRecord[],
+): ReadonlyMap<string, string> {
+  const result = new Map<string, string>();
+  if (renderedOptions.length < 2) return result;
+
+  for (const definition of definitions) {
+    let shared: string | undefined;
+    let allResolvedAndEqual = true;
+    for (const option of renderedOptions) {
+      const value = option.attributes[definition.id]?.value;
+      if (value === undefined) {
+        allResolvedAndEqual = false;
+        break;
+      }
+      const display = formatAttributeValue(value);
+      if (shared === undefined) {
+        shared = display;
+      } else if (display !== shared) {
+        allResolvedAndEqual = false;
+        break;
+      }
+    }
+    if (allResolvedAndEqual && shared !== undefined) {
+      result.set(definition.id, shared);
+    }
+  }
+  return result;
+}
+
 interface CompareRowProps {
   definition: AttributeDefinition;
   pinned: boolean;
   isStriped: boolean;
   renderedOptions: EntityRecord[];
+  /**
+   * The shared formatted value when Problem 2's judgment finds every rendered option resolves to
+   * this identical value; `undefined` for an ordinary row (real per-option differences, or any
+   * unresolved cell). Presence of this, not a separate boolean, is the row's "all-equal" signal --
+   * one value that cannot itself drift out of sync with the boolean it would otherwise need to
+   * accompany.
+   */
+  allEqualDisplay: string | undefined;
+  /** Only meaningful when `allEqualDisplay !== undefined`: whether the user toggled this specific all-equal row open to see the (identical) per-option cells anyway. Always `false` for an ordinary row. */
+  expanded: boolean;
+  onToggleExpanded: (definitionId: string) => void;
 }
 
 /** No `border-t`: alternating `bg-muted` tint (or the pinned tint) carries the row-legibility job instead, matching `OptionComparison.tsx`'s "no cell/row borders" convention. */
-function CompareRow({ definition, pinned, isStriped, renderedOptions }: CompareRowProps) {
+function CompareRow({
+  definition,
+  pinned,
+  isStriped,
+  renderedOptions,
+  allEqualDisplay,
+  expanded,
+  onToggleExpanded,
+}: CompareRowProps) {
   const custom = isCustomAttributeId(definition.id);
+  const allEqual = allEqualDisplay !== undefined;
   const rowClassName = pinned ? 'bg-[var(--color-brand-tint)]' : isStriped ? 'bg-muted' : undefined;
+  // Collapsed by default (`allEqual && !expanded`): the value area renders as one spanning cell
+  // instead of N repeated ones, which is what actually stops a long identical string ("Standard
+  // features") from dominating the table -- a single cell gets the table's full width to wrap into,
+  // where each of N narrow per-option cells would each wrap the same text onto more lines and force
+  // the row just as tall as before. `expanded` (toggled per row, see `onToggleExpanded`) restores the
+  // ordinary per-option cells -- still visually muted, since the values are still non-differentiating
+  // -- so a person can always drop back to "one row per option" without losing anything.
+  const showCollapsedCell = allEqual && !expanded;
 
   return (
     <tr
       data-testid={`option-compare-view-row-${definition.id}`}
       data-pinned={pinned ? 'true' : 'false'}
+      data-all-equal={allEqual ? 'true' : 'false'}
       className={rowClassName}
     >
       <th
@@ -230,23 +337,70 @@ function CompareRow({ definition, pinned, isStriped, renderedOptions }: CompareR
               Custom
             </Badge>
           ) : null}
+          {allEqual ? (
+            <Badge
+              variant="outline"
+              data-testid={`option-compare-view-same-badge-${definition.id}`}
+              className="label-caps shrink-0 px-[var(--space-1)] py-0 text-[var(--color-ink-muted)]"
+              title="Every option shown here has the same value for this attribute"
+            >
+              Same for all
+            </Badge>
+          ) : null}
+          {allEqual ? (
+            // A real, reversible affordance -- not a decorative label. Reuses the existing
+            // link-style convention this codebase already applies to inline actionable text
+            // (`EvidenceCard.tsx`/`RecommendationCard.tsx`'s `text-[var(--color-brand)] underline`),
+            // rather than inventing a new "this is clickable" signal for this one row type.
+            <button
+              type="button"
+              data-testid={`option-compare-view-row-toggle-${definition.id}`}
+              aria-expanded={expanded}
+              onClick={() => {
+                onToggleExpanded(definition.id);
+              }}
+              className="shrink-0 cursor-pointer border-0 bg-transparent p-0 text-[length:var(--font-size-xs)] text-[var(--color-brand)] underline underline-offset-2"
+            >
+              {expanded ? 'Show as one row' : 'Show separately'}
+            </button>
+          ) : null}
         </span>
       </th>
-      {renderedOptions.map((option) => {
-        const record = option.attributes[definition.id];
-        const display =
-          record?.value !== undefined ? formatAttributeValue(record.value) : 'Unknown';
-        return (
-          <td
-            key={option.id}
-            data-testid={`option-compare-view-cell-${definition.id}-${option.id}`}
-            className="p-[var(--space-2)] text-[length:var(--font-size-sm)]"
-            style={record?.value === undefined ? { color: 'var(--color-ink-muted)' } : undefined}
-          >
-            {display}
-          </td>
-        );
-      })}
+      {showCollapsedCell ? (
+        <td
+          colSpan={renderedOptions.length}
+          data-testid={`option-compare-view-collapsed-cell-${definition.id}`}
+          className="p-[var(--space-2)] text-[length:var(--font-size-sm)] italic text-[var(--color-ink-muted)]"
+        >
+          {allEqualDisplay}
+        </td>
+      ) : (
+        renderedOptions.map((option) => {
+          const record = option.attributes[definition.id];
+          const display =
+            record?.value !== undefined ? formatAttributeValue(record.value) : 'Unknown';
+          // An all-equal row's cells are never actually "Unknown" here (see
+          // `computeAllEqualDisplayByAttributeId`'s resolved-value requirement), so the
+          // muted-vs-unknown styling branches never collide -- `allEqual` italicizes/mutes an
+          // expanded-by-choice all-equal row's real values; the unknown-value branch below still
+          // covers an ordinary row's genuinely missing cells exactly as before.
+          const style = allEqual
+            ? { color: 'var(--color-ink-muted)', fontStyle: 'italic' as const }
+            : record?.value === undefined
+              ? { color: 'var(--color-ink-muted)' }
+              : undefined;
+          return (
+            <td
+              key={option.id}
+              data-testid={`option-compare-view-cell-${definition.id}-${option.id}`}
+              className="p-[var(--space-2)] text-[length:var(--font-size-sm)]"
+              style={style}
+            >
+              {display}
+            </td>
+          );
+        })
+      )}
     </tr>
   );
 }
@@ -315,10 +469,23 @@ export function OptionCompareView({
   }, [options, allDefinitions]);
 
   const narrowedDefinitions = useMemo(() => {
-    if (visibleAttributeIds === undefined) return applicableDefinitions;
-    const visibleIdSet = new Set(visibleAttributeIds);
-    return applicableDefinitions.filter((definition) => visibleIdSet.has(definition.id));
-  }, [applicableDefinitions, visibleAttributeIds]);
+    if (visibleAttributeIds !== undefined) {
+      const visibleIdSet = new Set(visibleAttributeIds);
+      return applicableDefinitions.filter((definition) => visibleIdSet.has(definition.id));
+    }
+    // Problem 1 (this task): an identity/label descriptor (`isIdentityAttribute` -- e.g.
+    // `car.make`/`car.model`/`car.trim`) merely restates what the column header above it already
+    // says, so it is excluded from the DEFAULT visible set only -- this branch runs precisely when
+    // no explicit `visibleAttributeIds` request exists. An id present in `pinnedAttributeIds` is
+    // exempted from this filter even in the default branch: pinning is itself a deliberate,
+    // explicit "put this back" request (exactly like naming it in `visibleAttributeIds` above), and
+    // this component's own contract (see `pinnedAttributeIds`'s prop doc) is "never silently drop a
+    // row someone deliberately pinned."
+    const pinnedIdSet = new Set(pinnedAttributeIds ?? []);
+    return applicableDefinitions.filter(
+      (definition) => pinnedIdSet.has(definition.id) || !isIdentityAttribute(definition),
+    );
+  }, [applicableDefinitions, visibleAttributeIds, pinnedAttributeIds]);
 
   const pinnedDefinitions = useMemo(() => {
     if (pinnedAttributeIds === undefined || pinnedAttributeIds.length === 0) return [];
@@ -337,6 +504,40 @@ export function OptionCompareView({
     () => buildGroups(unpinnedDefinitions, presentation),
     [unpinnedDefinitions, presentation],
   );
+
+  // Problem 2 (this task): computed once over `narrowedDefinitions` (the full set feeding both the
+  // pinned and grouped `.map()` calls below -- a `Map.get` by id works regardless of which of those
+  // two render paths a given definition ends up on) and `renderedOptions` (the options actually on
+  // screen, so narrow layout's head-to-head pair gets evaluated on its own pair, not the full,
+  // possibly-narrowed-further option set). See `computeAllEqualDisplayByAttributeId`'s own doc
+  // comment for the resolved-value and >= 2-rendered-options requirements.
+  const allEqualDisplayByAttributeId = useMemo(
+    () => computeAllEqualDisplayByAttributeId(narrowedDefinitions, renderedOptions),
+    [narrowedDefinitions, renderedOptions],
+  );
+
+  // Per-row, user-toggled "show this all-equal row's per-option cells anyway" state. Deliberately
+  // local `useState`, not a prop: unlike `visibleOptionIds`/`visibleAttributeIds`/
+  // `pinnedAttributeIds` above (real `WorkspaceViewState`, shared with a WebMCP-driven ChatGPT
+  // session per this file's header comment), whether one row is currently expanded or collapsed is
+  // ephemeral display state with no case-state or cross-session meaning -- nothing forwards it into
+  // this component the way `App.tsx`/`WorkspaceViewSwitcher` forward the real narrowing props, and
+  // nothing needs to. A definition id no longer present after re-narrowing simply becomes an inert
+  // entry in this set (never read again), rather than needing explicit pruning.
+  const [expandedAllEqualRowIds, setExpandedAllEqualRowIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const toggleAllEqualRowExpanded = (definitionId: string) => {
+    setExpandedAllEqualRowIds((current) => {
+      const next = new Set(current);
+      if (next.has(definitionId)) {
+        next.delete(definitionId);
+      } else {
+        next.add(definitionId);
+      }
+      return next;
+    });
+  };
 
   // A running counter over pinned rows first, then every grouped row in render
   // order, precomputed once rather than mutated during JSX (pinned rows and
@@ -491,6 +692,9 @@ export function OptionCompareView({
                       pinned
                       isStriped={(stripeIndexByAttributeId.get(definition.id) ?? 0) % 2 === 1}
                       renderedOptions={renderedOptions}
+                      allEqualDisplay={allEqualDisplayByAttributeId.get(definition.id)}
+                      expanded={expandedAllEqualRowIds.has(definition.id)}
+                      onToggleExpanded={toggleAllEqualRowExpanded}
                     />
                   ))}
                 </tbody>
@@ -515,6 +719,9 @@ export function OptionCompareView({
                       pinned={false}
                       isStriped={(stripeIndexByAttributeId.get(definition.id) ?? 0) % 2 === 1}
                       renderedOptions={renderedOptions}
+                      allEqualDisplay={allEqualDisplayByAttributeId.get(definition.id)}
+                      expanded={expandedAllEqualRowIds.has(definition.id)}
+                      onToggleExpanded={toggleAllEqualRowExpanded}
                     />
                   ))}
                 </tbody>

@@ -73,6 +73,37 @@ function formatGroupedNumber(value: number, minimumDigitsToGroup: number): strin
 }
 
 /**
+ * Money's magnitude, in whole units or in exactly two decimal places -- never
+ * one, and never three.
+ *
+ * `formatGroupedNumber`'s deliberate "read the fraction verbatim" rule is
+ * right for a bare measurement (37.6 cu ft should stay 37.6, not 37.60), and
+ * wrong for currency. A derived amount like an out-the-door price of
+ * `33291.3` was rendering as **"$33,291.3"** in the live app -- a
+ * one-decimal price that reads as a typo or a truncation, since no currency
+ * is quoted to a tenth of a unit.
+ *
+ * The rule here: no fractional part renders as whole units ("$27,995"), and
+ * any fractional part renders to exactly two ("$33,291.30"). Rounding uses
+ * `toFixed(2)`, which also collapses the float-representation noise these
+ * derived amounts carry (a computed 5296.299999999999 becomes "5,296.30"
+ * rather than a 13-decimal string).
+ *
+ * Grouping still goes through `formatGroupedNumber` so money keeps the same
+ * `MONEY_MIN_DIGITS_TO_GROUP` threshold as before -- this only fixes the
+ * fractional half, and a whole-unit amount takes the identical path it
+ * always did.
+ */
+function formatMoneyMagnitude(absoluteAmount: number): string {
+  if (Number.isInteger(absoluteAmount)) {
+    return formatGroupedNumber(absoluteAmount, MONEY_MIN_DIGITS_TO_GROUP);
+  }
+  const [integerDigits, fractionalDigits] = absoluteAmount.toFixed(2).split('.');
+  const grouped = groupThousands(integerDigits ?? '0', MONEY_MIN_DIGITS_TO_GROUP);
+  return `${grouped}.${fractionalDigits ?? '00'}`;
+}
+
+/**
  * Currency codes mapped to their display symbol, deliberately a short,
  * explicit allowlist rather than a lookup covering every ISO 4217 code:
  * guessing a symbol for an unmapped currency risks silently showing the
@@ -96,7 +127,7 @@ export function formatAttributeValue(value: AttributeValue): string {
     }
     case 'money': {
       const negative = value.amount < 0;
-      const magnitude = formatGroupedNumber(Math.abs(value.amount), MONEY_MIN_DIGITS_TO_GROUP);
+      const magnitude = formatMoneyMagnitude(Math.abs(value.amount));
       const symbol = CURRENCY_SYMBOLS[value.currency];
       const numeric =
         symbol !== undefined ? `${symbol}${magnitude}` : `${magnitude} ${value.currency}`;

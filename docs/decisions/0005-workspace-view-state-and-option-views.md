@@ -164,7 +164,16 @@ information architecture.
    `visibleOptionIds`; Board's narrow mode is likely one column at a time with paging controls,
    its expanded mode all configured columns side by side; Quick Pick is narrow-native and, per
    §6/§7, is not expected to grow a meaningfully different expanded-mode layout beyond more
-   surrounding context. No existing component or hook in `apps/web/src` provides a starting point
+   surrounding context.
+
+   > **Superseded on 2026-09-01 by ADR 0008.** That last clause about Quick Pick was written when
+   > the whole product was a 480px column, and it stopped being true once web app mode existed:
+   > Quick Pick honoured it by capping itself at pane width, which left roughly 700px of empty
+   > space beside a phone-sized card on a 1900px shopping-site layout. Quick Pick (now "Best
+   > Match") does have a distinct expanded layout — a two-column card plus queue context. The rest
+   > of this decision, including the caller-owns-width-detection contract below, still stands.
+
+   No existing component or hook in `apps/web/src` provides a starting point
    for the width-detection mechanism itself; introducing it (a `useMediaQuery`-style hook keyed to
    the same 390/430/480/expanded set of viewports `testing.md` already treats as canonical) is new
    surface area this ADR authorizes.

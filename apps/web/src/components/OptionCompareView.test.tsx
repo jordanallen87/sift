@@ -139,6 +139,75 @@ const OPTIONS: EntityRecord[] = [
   }),
 ];
 
+// Problem 1 fixtures: an identity/label descriptor (`valueType: 'string'`, `comparison: 'none'`,
+// non-`custom.` id) exactly matching `isIdentityAttribute`'s own criteria -- the same shape as the
+// car-purchase pack's real `car.make`/`car.model`/`car.trim` definitions, standing in for them here
+// so this test file does not depend on `@sift/packs`.
+const IDENTITY_DEFINITION: AttributeDefinition = {
+  id: 'make',
+  label: 'Make',
+  valueType: 'string',
+  required: true,
+  appliesTo: ['car'],
+  evidenceExpectation: 'source',
+  comparison: 'none',
+  sensitive: false,
+};
+
+const DEFINITIONS_WITH_IDENTITY: AttributeDefinition[] = [IDENTITY_DEFINITION, ...DEFINITIONS];
+
+function withMake(option: EntityRecord, make: string): EntityRecord {
+  return {
+    ...option,
+    attributes: {
+      ...option.attributes,
+      make: {
+        definitionId: 'make',
+        label: 'Make',
+        value: { type: 'string', value: make },
+        origin: 'user',
+        sourceIds: [],
+        status: 'asserted',
+        updatedAt: '2026-08-27T00:00:00.000Z',
+      },
+    },
+  };
+}
+
+const OPTIONS_WITH_IDENTITY: EntityRecord[] = [
+  withMake(OPTIONS[0]!, 'Toyota'),
+  withMake(OPTIONS[1]!, 'Honda'),
+  withMake(OPTIONS[2]!, 'Subaru'),
+];
+
+// Problem 2 fixtures: every option carries the identical `price` value, standing in for the
+// motivating "car.standard_features is identical across all four demo candidates" case
+// (`packages/scenarios/fixtures/car-purchase/candidate-listings.json`) with a value type
+// (`money`) already covered by `DEFINITIONS`/`formatAttributeValue`.
+function withPrice(option: EntityRecord, amount: number): EntityRecord {
+  return {
+    ...option,
+    attributes: {
+      ...option.attributes,
+      price: {
+        definitionId: 'price',
+        label: 'Price',
+        value: { type: 'money', amount, currency: 'USD' },
+        origin: 'user',
+        sourceIds: [],
+        status: 'asserted',
+        updatedAt: '2026-08-27T00:00:00.000Z',
+      },
+    },
+  };
+}
+
+const OPTIONS_SAME_PRICE: EntityRecord[] = [
+  withPrice(OPTIONS[0]!, 30000),
+  withPrice(OPTIONS[1]!, 30000),
+  withPrice(OPTIONS[2]!, 30000),
+];
+
 function buildCaseExtension(overrides: Partial<CaseExtension> = {}): CaseExtension {
   return {
     id: 'ext-1',
@@ -644,6 +713,233 @@ describe('OptionCompareView', () => {
       expect(
         screen.getByTestId('option-compare-view-row-custom.laptop_work_fit'),
       ).toBeInTheDocument();
+    });
+  });
+
+  // Problem 1: an identity/label descriptor merely restates the option's own column header
+  // ("2022 Toyota RAV4 XLE Hybrid AWD" -> "Make: Toyota" underneath it says nothing new), so it is
+  // excluded from Compare's DEFAULT row set -- but Compare is configurable, so it must stay
+  // reachable through either narrowing lever a caller already has.
+  describe('identity attributes are excluded from the default row set, but stay reachable (Problem 1)', () => {
+    it('excludes an identity attribute (isIdentityAttribute) from the default visible rows', () => {
+      render(
+        <OptionCompareView
+          options={OPTIONS_WITH_IDENTITY}
+          attributeDefinitions={DEFINITIONS_WITH_IDENTITY}
+          presentation={null}
+          selectedOptionId={null}
+          layout="expanded"
+        />,
+      );
+
+      expect(screen.queryByTestId('option-compare-view-row-make')).not.toBeInTheDocument();
+      // Non-identity rows are unaffected.
+      expect(screen.getByTestId('option-compare-view-row-price')).toBeInTheDocument();
+    });
+
+    it('still renders an identity attribute when a caller explicitly names it in visibleAttributeIds', () => {
+      render(
+        <OptionCompareView
+          options={OPTIONS_WITH_IDENTITY}
+          attributeDefinitions={DEFINITIONS_WITH_IDENTITY}
+          presentation={null}
+          selectedOptionId={null}
+          visibleAttributeIds={['make', 'price']}
+          layout="expanded"
+        />,
+      );
+
+      expect(screen.getByTestId('option-compare-view-row-make')).toBeInTheDocument();
+      expect(screen.getByTestId('option-compare-view-row-make')).toHaveTextContent('Make');
+    });
+
+    it('still renders an identity attribute when it is pinned, even with visibleAttributeIds absent', () => {
+      render(
+        <OptionCompareView
+          options={OPTIONS_WITH_IDENTITY}
+          attributeDefinitions={DEFINITIONS_WITH_IDENTITY}
+          presentation={null}
+          selectedOptionId={null}
+          pinnedAttributeIds={['make']}
+          layout="expanded"
+        />,
+      );
+
+      const row = screen.getByTestId('option-compare-view-row-make');
+      expect(row).toBeInTheDocument();
+      expect(row).toHaveAttribute('data-pinned', 'true');
+      // Every other default row (none of which are identity attributes here) still renders too --
+      // pinning one identity row must not narrow anything else.
+      expect(screen.getByTestId('option-compare-view-row-price')).toBeInTheDocument();
+    });
+  });
+
+  // Problem 2: a row where every rendered option resolves to the identical value carries no
+  // comparison signal (the motivating case: car.standard_features is identical across all four
+  // demo car candidates, and is also the longest row on the page) but must not be deleted -- it
+  // collapses to a de-emphasized, reversible single-cell summary instead.
+  describe('rows where every rendered option has the same value are de-emphasized, not deleted (Problem 2)', () => {
+    it('collapses an all-equal row to one shared, muted cell and marks it data-all-equal', () => {
+      render(
+        <OptionCompareView
+          options={OPTIONS_SAME_PRICE}
+          attributeDefinitions={DEFINITIONS}
+          presentation={null}
+          selectedOptionId={null}
+          layout="expanded"
+        />,
+      );
+
+      const row = screen.getByTestId('option-compare-view-row-price');
+      expect(row).toHaveAttribute('data-all-equal', 'true');
+      expect(screen.getByTestId('option-compare-view-same-badge-price')).toHaveTextContent(
+        /same for all/i,
+      );
+
+      // The value is shown once, not once per option -- but it is still shown (never deleted).
+      const collapsedCell = screen.getByTestId('option-compare-view-collapsed-cell-price');
+      expect(collapsedCell).toHaveTextContent('$30,000');
+      expect(
+        screen.queryByTestId('option-compare-view-cell-price-candidate-rav4'),
+      ).not.toBeInTheDocument();
+
+      // A row with real per-option differences is completely unaffected.
+      const mileageRow = screen.getByTestId('option-compare-view-row-mileage');
+      expect(mileageRow).toHaveAttribute('data-all-equal', 'false');
+      expect(
+        screen.getByTestId('option-compare-view-cell-mileage-candidate-rav4'),
+      ).toBeInTheDocument();
+    });
+
+    it('is reversible: toggling the row open reveals the per-option cells, and toggling again re-collapses it', async () => {
+      const user = userEvent.setup();
+      render(
+        <OptionCompareView
+          options={OPTIONS_SAME_PRICE}
+          attributeDefinitions={DEFINITIONS}
+          presentation={null}
+          selectedOptionId={null}
+          layout="expanded"
+        />,
+      );
+
+      const toggle = screen.getByTestId('option-compare-view-row-toggle-price');
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+      await user.click(toggle);
+
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(
+        screen.queryByTestId('option-compare-view-collapsed-cell-price'),
+      ).not.toBeInTheDocument();
+      // Every option's (identical) value is visible individually now -- nothing was lost.
+      expect(screen.getByTestId('option-compare-view-cell-price-candidate-rav4')).toHaveTextContent(
+        '$30,000',
+      );
+      expect(screen.getByTestId('option-compare-view-cell-price-candidate-crv')).toHaveTextContent(
+        '$30,000',
+      );
+      expect(
+        screen.getByTestId('option-compare-view-cell-price-candidate-forester'),
+      ).toHaveTextContent('$30,000');
+      // Still explicitly marked as agreeing, even while expanded -- "they are all the same" stays
+      // visible information, it is just no longer collapsed.
+      expect(screen.getByTestId('option-compare-view-same-badge-price')).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('option-compare-view-row-toggle-price'));
+
+      expect(screen.getByTestId('option-compare-view-row-toggle-price')).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+      expect(screen.getByTestId('option-compare-view-collapsed-cell-price')).toBeInTheDocument();
+    });
+
+    it('never collapses a row when only one option is rendered -- nothing to compare against', () => {
+      render(
+        <OptionCompareView
+          options={[OPTIONS_SAME_PRICE[0]!]}
+          attributeDefinitions={DEFINITIONS}
+          presentation={null}
+          selectedOptionId={null}
+          layout="expanded"
+        />,
+      );
+
+      const row = screen.getByTestId('option-compare-view-row-price');
+      expect(row).toHaveAttribute('data-all-equal', 'false');
+      expect(screen.getByTestId('option-compare-view-cell-price-candidate-rav4')).toHaveTextContent(
+        '$30,000',
+      );
+      expect(
+        screen.queryByTestId('option-compare-view-collapsed-cell-price'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not collapse a row where every option is unresolved -- "no one knows" is not "everyone agrees"', () => {
+      const optionsMissingPrice = OPTIONS_SAME_PRICE.map((option) => {
+        const { price: _price, ...rest } = option.attributes;
+        return { ...option, attributes: rest };
+      });
+
+      render(
+        <OptionCompareView
+          options={optionsMissingPrice}
+          attributeDefinitions={DEFINITIONS}
+          presentation={null}
+          selectedOptionId={null}
+          layout="expanded"
+        />,
+      );
+
+      const row = screen.getByTestId('option-compare-view-row-price');
+      expect(row).toHaveAttribute('data-all-equal', 'false');
+      expect(screen.getByTestId('option-compare-view-cell-price-candidate-rav4')).toHaveTextContent(
+        /unknown/i,
+      );
+    });
+
+    it('evaluates all-equal against the two options actually rendered in narrow head-to-head, not the full option set', () => {
+      // rav4 and crv share the same price; forester (excluded from the narrow head-to-head pair
+      // by the default first-two rule) has a different one -- a naive check over every option
+      // would wrongly call this row unequal.
+      const options = [
+        withPrice(OPTIONS[0]!, 30000),
+        withPrice(OPTIONS[1]!, 30000),
+        withPrice(OPTIONS[2]!, 99999),
+      ];
+
+      render(
+        <OptionCompareView
+          options={options}
+          attributeDefinitions={DEFINITIONS}
+          presentation={null}
+          selectedOptionId={null}
+          layout="narrow"
+        />,
+      );
+
+      expect(screen.getByTestId('option-compare-view-row-price')).toHaveAttribute(
+        'data-all-equal',
+        'true',
+      );
+    });
+
+    it('has no axe violations with an all-equal row in both its collapsed and expanded states', async () => {
+      const { container: collapsed } = render(
+        <OptionCompareView
+          options={OPTIONS_SAME_PRICE}
+          attributeDefinitions={DEFINITIONS}
+          presentation={null}
+          selectedOptionId={null}
+          layout="expanded"
+        />,
+      );
+      expect(await axe(collapsed)).toHaveNoViolations();
+
+      const user = userEvent.setup();
+      await user.click(screen.getByTestId('option-compare-view-row-toggle-price'));
+      expect(await axe(collapsed)).toHaveNoViolations();
     });
   });
 });

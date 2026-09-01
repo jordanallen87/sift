@@ -149,8 +149,11 @@ export interface WorkspaceViewSwitcherProps {
   onMoveOption: (optionId: string, toColumnId: string) => void;
 }
 
+// `quick_pick`'s visible tab label is "Best Match" -- Cars.com's own sort-order label for its
+// default-ranked results (see shopping-ux-research.md row 1) -- even though the `mode` value and
+// every `data-testid` stay the internal `quick_pick` identifier; only the rendered copy changed.
 const VIEW_TAB_LABEL: Record<WorkspaceViewMode, string> = {
-  quick_pick: 'Quick Pick',
+  quick_pick: 'Best Match',
   list: 'List',
   compare: 'Compare',
   board: 'Board',
@@ -210,6 +213,7 @@ export function WorkspaceViewSwitcher({
             onPass={onQuickPickPass}
             onMaybe={onQuickPickMaybe}
             onShortlist={onQuickPickShortlist}
+            layout={widthMode}
             onFocusChange={onQuickPickFocusChange}
           />
         </TabsContent>

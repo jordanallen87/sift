@@ -166,9 +166,19 @@ export function ApprovalCard({
             // `form-measure`: these are the case's consequential controls, so
             // they stay full-bleed in the narrow pane where that reads as
             // emphasis. At the widened desktop shell an 1180px-wide
-            // "Approve" reads as a stretched layout rather than a decisive
+            // "Choose this" reads as a stretched layout rather than a decisive
             // action, and a control's width should suggest its weight, not
             // the container's.
+            //
+            // Shopping-UX terminology pass (shopping-ux-research.md row 9): "Approve" / "Reject" /
+            // "Request revision" are procurement/PR-review verbs no shopping site uses for a
+            // human's own buy/pass/keep-looking decision. Deliberately "Choose this," not "Choose
+            // this car": `ApprovalCard` is the one shared approval surface both hero Decision
+            // Packs mount through `RecommendationHero`/`App.tsx` (`snapshot.proposal`), with no
+            // `optionLabel` prop threaded in, so a car-specific noun here would misrender for Home
+            // Energy Guardian's response-option proposals. This is copy only -- the underlying
+            // `ReviewProposalDecision` values (`'approve'`/`'reject'`/`'request_revision'`), every
+            // `data-testid`, and the human-only `actor` literal below are all unchanged.
             <div className="form-measure flex flex-col gap-[var(--space-2)]">
               <Button
                 type="button"
@@ -181,7 +191,7 @@ export function ApprovalCard({
                 variant="default"
                 className="min-h-[var(--size-touch-target-min)]"
               >
-                {reviewPending ? 'Submitting…' : 'Approve'}
+                {reviewPending ? 'Submitting…' : 'Choose this'}
               </Button>
 
               <div className="flex flex-wrap gap-[var(--space-2)]">
@@ -195,7 +205,7 @@ export function ApprovalCard({
                   variant="destructive"
                   className="min-h-[var(--size-touch-target-min)] flex-1"
                 >
-                  Reject
+                  Pass
                 </Button>
                 <Button
                   type="button"
@@ -215,7 +225,7 @@ export function ApprovalCard({
                   // this same backdrop.
                   className="min-h-[var(--size-touch-target-min)] flex-1 bg-card text-card-foreground hover:bg-card/90"
                 >
-                  Request revision
+                  Keep researching
                 </Button>
               </div>
             </div>

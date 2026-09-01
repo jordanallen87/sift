@@ -8,7 +8,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
 import { installConsoleGuard } from './helpers/console-guard.js';
 import { disableAnimations } from './helpers/layout-assertions.js';
-import { SiftPage } from './pages/sift-page.js';
+import { isNarrowLayout, SiftPage } from './pages/sift-page.js';
 
 /** Presses Tab (bounded) until `target` is focused, or fails with a clear message -- avoids a magic single-Tab assumption about exactly how many focusable ancestors precede the target. */
 async function tabUntilFocused(page: Page, target: Locator, maxPresses = 15): Promise<void> {
@@ -64,10 +64,12 @@ test.describe('keyboard operation and accessibility', () => {
     await sift.waitForInvestigationCompleted(round1.runId);
     await sift.waitForRecommendationReady();
 
-    // "Add something Sift should check" is a closed-by-default disclosure
-    // row (ADR 0002) -- opened before the form fields below become
-    // reachable at all.
-    await sift.openDisclosure('add-concern');
+    // "Add a question" is reached differently per layout (ADR 0008): a
+    // closed-by-default disclosure row in pane mode (ADR 0002), or a
+    // main-column toolbar Sheet in web-app mode -- `openAddConcern` picks
+    // the right one for the current viewport before the form fields below
+    // become reachable at all.
+    await sift.openAddConcern();
 
     // --- Fill CustomConcernForm using real keystrokes, not `.fill()` ---
     const form = page.getByTestId('custom-concern-form');
@@ -86,6 +88,16 @@ test.describe('keyboard operation and accessibility', () => {
     await tabUntilFocused(page, submit);
     await page.keyboard.press('Enter');
     await expect(form.getByTestId('custom-concern-form-success')).toBeVisible();
+
+    // Web-app mode's "Add a question" region is a real modal Sheet (ADR
+    // 0008): closed here via Escape, not a click -- keeps this journey
+    // fully keyboard-operable end to end, and a still-open modal would
+    // otherwise intercept the "Request investigation" click below. Pane
+    // mode's disclosure has no modal to close.
+    if (!isNarrowLayout(page)) {
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('workspace-add-concern-sheet')).not.toBeVisible();
+    }
 
     // --- Round 2, then keyboard-activated approval ---
     const round2 = await sift.requestInvestigation();

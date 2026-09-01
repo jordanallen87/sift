@@ -101,29 +101,44 @@ export async function assertElementsWithinViewport(
 
 /**
  * No `position: fixed`/`position: sticky` element's bounding box overlaps
- * any of `protectedTestIds`' bounding boxes. The current right-pane layout
- * (`apps/web/src/app/App.tsx`, `CaseHeader.tsx`, ...) has no sticky/fixed
- * chrome at all, so this genuinely exercises the rule (it enumerates real
- * computed styles rather than hardcoding an expected selector) and passes
- * trivially today -- it will start actually constraining layout the moment
- * a sticky header or bottom bar is introduced.
+ * any of `protectedTestIds`' bounding boxes -- UNLESS that sticky/fixed
+ * element is an ANCESTOR of the protected element itself. Originally
+ * written when the right-pane layout (`apps/web/src/app/App.tsx`,
+ * `CaseHeader.tsx`, ...) had no sticky/fixed chrome at all, so it passed
+ * trivially; `docs/decisions/0008-two-mode-product-architecture.md`
+ * introduced the first real one, `WorkspaceAppBar`, deliberately pinned
+ * (`sticky top-0`) so the case title/connection status/"Add option"/
+ * "Findings"/"Reset demo"/"Developer view" controls it owns stay reachable
+ * even after the page scrolls -- the literal fix for the project owner's
+ * "these should be at the top... they'll never even see it" complaint (see
+ * that component's own header comment).
+ *
+ * A control that lives INSIDE that pinned bar (e.g.
+ * `workspace-app-bar-reset-demo`) is not "covered by" it in any meaningful
+ * sense -- it is part of the same element, always exactly as visible as the
+ * bar itself, which is the intended behavior, not the layout defect this
+ * assertion exists to catch (a SEPARATE overlay hiding an unrelated
+ * control, e.g. a bottom nav bar drawn over a form's submit button). The
+ * ancestor check below is what makes that distinction; without it, this
+ * assertion would fail for every single control a sticky header legitimately
+ * contains, which is not the rule's own stated contract ("must not be
+ * covered BY a fixed/sticky control" -- being part of one is not being
+ * covered by it).
  */
 export async function assertNoStickyOverlap(
   page: Page,
   protectedTestIds: readonly string[],
 ): Promise<void> {
-  const stickyBoxes = await page.evaluate(() => {
-    const boxes: { x: number; y: number; width: number; height: number }[] = [];
+  const hasStickyChrome = await page.evaluate(() => {
     for (const element of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
       const style = getComputedStyle(element);
       if (style.position !== 'fixed' && style.position !== 'sticky') continue;
       const rect = element.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) continue;
-      boxes.push({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+      if (rect.width > 0 && rect.height > 0) return true;
     }
-    return boxes;
+    return false;
   });
-  if (stickyBoxes.length === 0) return;
+  if (!hasStickyChrome) return;
 
   for (const testId of protectedTestIds) {
     const locator = page.getByTestId(testId).first();
@@ -131,14 +146,37 @@ export async function assertNoStickyOverlap(
     if (!(await locator.isVisible())) continue;
     const box = await locator.boundingBox();
     if (box === null) continue;
-    for (const sticky of stickyBoxes) {
-      const overlaps =
-        box.x < sticky.x + sticky.width &&
-        box.x + box.width > sticky.x &&
-        box.y < sticky.y + sticky.height &&
-        box.y + box.height > sticky.y;
-      expect(overlaps, `${testId} must not be covered by a fixed/sticky control`).toBe(false);
-    }
+
+    const coveringTag = await locator.evaluate((protectedEl, protectedBox) => {
+      for (const element of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
+        const style = getComputedStyle(element);
+        if (style.position !== 'fixed' && style.position !== 'sticky') continue;
+        // A sticky/fixed ANCESTOR of the protected element is not covering
+        // it -- the control is legitimately part of that pinned chrome, not
+        // obscured by a separate overlay. Only a sticky/fixed element that
+        // is not an ancestor can genuinely cover another control.
+        if (element.contains(protectedEl)) continue;
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) continue;
+        const overlaps =
+          protectedBox.x < rect.x + rect.width &&
+          protectedBox.x + protectedBox.width > rect.x &&
+          protectedBox.y < rect.y + rect.height &&
+          protectedBox.y + protectedBox.height > rect.y;
+        if (overlaps) return element.tagName;
+      }
+      return null;
+      // `box` is captured as of the `boundingBox()` call above, not
+      // re-measured inside the browser -- both sides of the comparison must
+      // agree on one snapshot in time, and passing it in as an argument
+      // (rather than re-deriving `protectedEl.getBoundingClientRect()`
+      // in-page) keeps this a single source of truth for "the protected
+      // element's box" shared with the touch-target/viewport assertions
+      // above, rather than reintroducing the exact two-separate-reads race
+      // this rewrite otherwise avoids.
+    }, box);
+
+    expect(coveringTag, `${testId} must not be covered by a fixed/sticky control`).toBeNull();
   }
 }
 

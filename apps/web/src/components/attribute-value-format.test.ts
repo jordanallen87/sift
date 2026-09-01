@@ -48,6 +48,21 @@ describe('formatAttributeValue', () => {
       '$450 per month',
     ],
     [{ type: 'money', amount: 0, currency: 'USD' } satisfies AttributeValue, '$0'],
+    // A money amount is quoted in whole units or in exactly two decimals --
+    // never one. A derived out-the-door price of 33291.3 was rendering live
+    // as "$33,291.3", which reads as a truncation or a typo.
+    [{ type: 'money', amount: 33291.3, currency: 'USD' } satisfies AttributeValue, '$33,291.30'],
+    [{ type: 'money', amount: 5296.3, currency: 'USD' } satisfies AttributeValue, '$5,296.30'],
+    // Float-representation noise on a computed amount collapses too, rather
+    // than rendering a thirteen-decimal string.
+    [
+      { type: 'money', amount: 5296.299999999999, currency: 'USD' } satisfies AttributeValue,
+      '$5,296.30',
+    ],
+    [{ type: 'money', amount: -1234.5, currency: 'USD' } satisfies AttributeValue, '-$1,234.50'],
+    // A bare number keeps its verbatim fraction -- 37.6 cu ft must NOT
+    // become 37.60. Only money is normalised.
+    [{ type: 'number', value: 37.6, unit: 'cu ft' } satisfies AttributeValue, '37.6 cu ft'],
     [{ type: 'money', amount: -500, currency: 'USD' } satisfies AttributeValue, '-$500'],
     [{ type: 'money', amount: 1000, currency: 'USD' } satisfies AttributeValue, '$1,000'],
     [{ type: 'money', amount: 999, currency: 'USD' } satisfies AttributeValue, '$999'],

@@ -68,13 +68,15 @@ function buildProps(overrides: Partial<RecommendationHeroProps> = {}): Recommend
 }
 
 describe('RecommendationHero', () => {
-  it('renders the not_started headline and a primary Request investigation action for a fresh case', () => {
+  it('renders the not_started headline and a primary "Ask Sift to look into this" action for a fresh case', () => {
     render(<RecommendationHero {...buildProps()} />);
 
     expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
       "Nothing's been looked into yet.",
     );
-    expect(screen.getByTestId('request-investigation')).toHaveTextContent('Request investigation');
+    expect(screen.getByTestId('request-investigation')).toHaveTextContent(
+      'Ask Sift to look into this',
+    );
   });
 
   // ADR 0004 decision item 1: this is the one machine-checkable proof that
@@ -211,7 +213,7 @@ describe('RecommendationHero', () => {
     expect(onInspectRun).toHaveBeenCalledWith('run-42');
   });
 
-  it('disables Request investigation while a request is pending or explicitly disabled', () => {
+  it('disables the "Ask Sift to look into this" action while a request is pending or explicitly disabled', () => {
     const { rerender } = render(<RecommendationHero {...buildProps({ requestPending: true })} />);
     expect(screen.getByTestId('request-investigation')).toBeDisabled();
 

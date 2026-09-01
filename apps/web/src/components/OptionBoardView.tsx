@@ -21,12 +21,15 @@
  * re-renders with an updated `optionColumnIds`. That is the same "report intent, never decide"
  * shape `OptionCompareView`'s `onFocusOption` already uses.
  *
- * **"Out" is a working arrangement, not a verdict.** The default `out` column keeps the plain
- * label "Out" (the change set's own wording at §12), but carries a `hint` --
- * "Set aside for now. This is your call, not a verdict -- move it back anytime." -- rendered under
- * the column heading, because §12 requires that "an option in Out is NOT presented as objectively
- * eliminated." A caller-supplied `columns` override may supply its own `hint` (or omit one); this
- * component never invents wording for a column it did not define itself.
+ * **"Ruled out" is a working arrangement, not a verdict.** The default `out` column's label was
+ * "Out" (the change set's own wording at §12); a shopping-UX terminology pass renamed it to
+ * "Ruled out" -- plain shopping-site register (row 11, shopping-ux-research.md) -- while keeping
+ * the column's own `id: 'out'` unchanged (a machine contract, not visible copy). It still carries
+ * a `hint` -- "Set aside for now. This is your call, not a verdict -- move it back anytime." --
+ * rendered under the column heading, because §12 requires that an option here is NOT presented as
+ * objectively eliminated; the more decisive-sounding label makes that reassurance hint load-bearing
+ * rather than optional. A caller-supplied `columns` override may supply its own `hint` (or omit
+ * one); this component never invents wording for a column it did not define itself.
  *
  * **Keyboard-accessible move control is mandatory, drag is optional (§49).** "Board changes must
  * not rely solely on drag-and-drop." This implementation does not attempt drag at all -- only a
@@ -50,7 +53,7 @@
  *   2. A Kanban board's core value is seeing several columns' relative population at a glance --
  *      "where does each option currently stand?" (§12). Vertical stacking would hide every column
  *      but the first behind a scroll; horizontal paging at least keeps column headers visible as
- *      a scroll affordance and lets a quick swipe reveal "Top choices" next to "Out".
+ *      a scroll affordance and lets a quick swipe reveal "Favorites" next to "Ruled out".
  *   3. Each column has a fixed, modest width (well under the 390px narrow floor), so this
  *      component introduces no hard-coded width wider than the canonical narrow pane. The actual
  *      *scrolling* is real-browser layout behavior exercised by the Playwright cross-viewport
@@ -61,6 +64,36 @@
  * `definition.label` ever renders here); nor do raw entity or column ids -- `option.label` and
  * `column.label` render everywhere a person can read, id strings appear only inside
  * `data-testid`/`id`/`value` attributes, never as text content.
+ *
+ * **Card visual hierarchy and identity-attribute exclusion.** A design pass found three concrete
+ * defects in the shipped card: (1) `pickFacts` read every applicable attribute definition in order,
+ * including a car's own `make`/`model`/`trim`/`body_style` -- fields already spelled out, unabridged,
+ * in `option.label` itself (e.g. a card titled "2022 Toyota RAV4 XLE Hybrid AWD" then spent its
+ * entire fact budget re-stating "Make: Toyota / Model: RAV4 / Trim: XLE Hybrid AWD"). `pickFacts` now
+ * skips `isIdentityAttribute(definition)` (`../lib/evidence-expectation.js`) exactly the way
+ * `QuickPickView.tsx` and `OptionListView.tsx` already do, so a card's fact budget goes to
+ * attributes that actually distinguish where the option stands, not ones already legible in its own
+ * title. (2) Facts rendered as one flat, same-size, same-color "Label: value" line with no visual
+ * priority between the two halves. Each fact now splits into two `<span>`s -- the label smaller
+ * (`--font-size-xs`) and in the existing muted `--color-ink-secondary` token, the value keeping the
+ * card's base size but gaining `--font-weight-medium` and the full-strength `--color-ink` token --
+ * the same "label small/muted, value emphasised" relationship `OptionListView.tsx`'s fact row already
+ * establishes. (3) Columns were bare headings with cards floating directly on the section's own white
+ * background, and the default "Out" column's `hint` paragraph stacked on top of a second, generic
+ * "Nothing here yet." line whenever Out was empty -- the visual imbalance ("Out... alone carries a
+ * long explanatory paragraph") the design pass called out. Columns now render as a tinted `bg-muted`
+ * "bin" (`--color-surface-sunken`) so white `bg-card` option cards visibly pop out of their column --
+ * the identical figure/ground relationship `tokens.css`'s own revision note already establishes at
+ * the page level ("pure white cards on the tinted paper background"), applied one level in -- and an
+ * empty column renders exactly one caption line (the column's own `hint` when it has one, the generic
+ * "Nothing here yet." otherwise), never both stacked. None of this touches `optionColumnIds`,
+ * `onMoveOption`, or the keyboard-accessible `<select>`'s markup/behavior -- see the "human authority"
+ * and "Keyboard-accessible move control" sections above, both fully unchanged by this pass. Selected-
+ * card styling and the "Selected" indicator now read their ink/bg pair from `STATUS_TONE_META.ready`
+ * (`./activity-labels.js`) instead of hand-written `var(--color-status-ready-*)` strings -- the same
+ * shared status-tone registry `RecommendationCard.tsx`/`ApprovalCard.tsx` already use for every other
+ * "ready for your attention" treatment in the app, so this is one more consumer of that single
+ * registry rather than a component-local duplicate of the same three values.
  *
  * **Narrow vs. expanded (§7, ADR 0005 Decision 4, product.md's "List and Board currently render one
  * layout across both width modes" gap).** `layout` is a caller-supplied prop, not something this
@@ -91,6 +124,8 @@
 import { useMemo } from 'react';
 import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
 import { formatAttributeValue } from './attribute-value-format.js';
+import { isIdentityAttribute } from '../lib/evidence-expectation.js';
+import { STATUS_TONE_META } from './activity-labels.js';
 
 export interface OptionBoardColumn {
   id: string;
@@ -104,7 +139,7 @@ export interface OptionBoardViewProps {
   attributeDefinitions: AttributeDefinition[];
   /** Maps optionId -> the id of the column it currently sits in. An option with no entry, or whose entry names a column id not present in the effective `columns`, falls back to the first column -- every option renders in exactly one column, never silently dropped (§12). */
   optionColumnIds: Record<string, string>;
-  /** Falls back to `DEFAULT_BOARD_COLUMNS` (Considering / Top choices / Need to verify / Out) when omitted or empty, per §12 "should be configurable where appropriate" -- a pack or the model may supply its own set. */
+  /** Falls back to `DEFAULT_BOARD_COLUMNS` (Comparing / Favorites / Need to check / Ruled out) when omitted or empty, per §12 "should be configurable where appropriate" -- a pack or the model may supply its own set. */
   columns?: OptionBoardColumn[];
   /** Maps optionId -> a short caller-supplied reason surfaced on its card (§12's "Dealer offer conflicts with advertised price"). Never invented here -- an option with no entry (or an empty string) renders no reason text at all. */
   reasons?: Record<string, string>;
@@ -129,12 +164,12 @@ const MAX_FACTS_PER_CARD_EXPANDED = 4;
 const COLUMN_WIDTH_CLASS = 'w-[220px]';
 
 export const DEFAULT_BOARD_COLUMNS: OptionBoardColumn[] = [
-  { id: 'considering', label: 'Considering' },
-  { id: 'top_choices', label: 'Top choices' },
-  { id: 'need_to_verify', label: 'Need to verify' },
+  { id: 'considering', label: 'Comparing' },
+  { id: 'top_choices', label: 'Favorites' },
+  { id: 'need_to_verify', label: 'Need to check' },
   {
     id: 'out',
-    label: 'Out',
+    label: 'Ruled out',
     hint: 'Set aside for now. This is your call, not a verdict -- move it back anytime.',
   },
 ];
@@ -147,8 +182,12 @@ interface OptionFact {
 
 /**
  * "A couple of decision-relevant facts" (§12) -- the first `maxFacts` attribute definitions, in
- * caller-supplied `attributeDefinitions` order, that both apply to this option's `kind` and have a
- * defined value on it. Order is the caller's lever for prominence (the same convention
+ * caller-supplied `attributeDefinitions` order, that apply to this option's `kind`, have a defined
+ * value on it, and are not a plain identity/label descriptor (`isIdentityAttribute`,
+ * `../lib/evidence-expectation.js` -- see the header comment's "Card visual hierarchy" section for
+ * why this view needed the same skip `QuickPickView.tsx`/`OptionListView.tsx` already apply: a fact
+ * budget spent re-stating a value already spelled out in `option.label` itself helps nobody decide
+ * where the option stands). Order is the caller's lever for prominence (the same convention
  * `OptionCompareView`'s `pinnedAttributeIds` uses to control row priority): put the attributes that
  * matter most for a quick glance first. Definitions with no value on this option are skipped rather
  * than shown as "Unknown" -- a compact card favors facts that are actually known over an inventory of
@@ -164,6 +203,7 @@ function pickFacts(
   const facts: OptionFact[] = [];
   for (const definition of attributeDefinitions) {
     if (!definition.appliesTo.includes(option.kind)) continue;
+    if (isIdentityAttribute(definition)) continue;
     const record = option.attributes[definition.id];
     if (record?.value === undefined) continue;
     facts.push({
@@ -237,10 +277,16 @@ export function OptionBoardView({
     layout === 'expanded'
       ? { gridTemplateColumns: `repeat(${effectiveColumns.length}, minmax(240px, 1fr))` }
       : undefined;
+  // §12's "consistent, calm visual container" fix (see the header comment's
+  // "Card visual hierarchy" section): every column now renders as a tinted
+  // `bg-muted` (`--color-surface-sunken`) "bin" instead of a bare heading
+  // with cards floating directly on the section's own white background --
+  // white `bg-card` option cards (below) pop out of it instead of column and
+  // card sharing the identical white the section already sits on.
   const columnClassName =
     layout === 'expanded'
-      ? 'flex min-w-0 flex-col gap-[var(--space-2)]'
-      : `flex ${COLUMN_WIDTH_CLASS} shrink-0 flex-col gap-[var(--space-2)]`;
+      ? 'flex min-w-0 flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-muted p-[var(--space-3)]'
+      : `flex ${COLUMN_WIDTH_CLASS} shrink-0 flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-muted p-[var(--space-3)]`;
 
   return (
     <section
@@ -286,12 +332,26 @@ export function OptionBoardView({
                 </div>
 
                 {columnOptions.length === 0 ? (
-                  <p
-                    data-testid={`board-column-empty-${column.id}`}
-                    className="text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]"
-                  >
-                    Nothing here yet.
-                  </p>
+                  // Consistency fix (see the header comment's "Card visual
+                  // hierarchy" section): a column that already carries a
+                  // `hint` (the default "Out" column's reassurance that it
+                  // is "not a verdict") does NOT also stack the generic
+                  // "Nothing here yet." line underneath it -- the hint
+                  // already IS that column's honest explanation for
+                  // emptiness, so repeating a second, generic one directly
+                  // beneath it added bulk without adding information and
+                  // made Out visually heavier than every other empty column.
+                  // Every column's empty state is now exactly one caption
+                  // line: the pack/column-supplied hint when one exists,
+                  // "Nothing here yet." otherwise.
+                  column.hint === undefined ? (
+                    <p
+                      data-testid={`board-column-empty-${column.id}`}
+                      className="text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]"
+                    >
+                      Nothing here yet.
+                    </p>
+                  ) : null
                 ) : (
                   <ul
                     data-testid={`board-column-list-${column.id}`}
@@ -308,12 +368,23 @@ export function OptionBoardView({
                           key={option.id}
                           data-testid={`board-card-${option.id}`}
                           data-selected={isSelected ? 'true' : 'false'}
-                          className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] bg-muted p-[var(--space-2)] text-[length:var(--font-size-sm)]"
+                          // A white `bg-card` tile inside the now-tinted
+                          // `bg-muted` column (see `columnClassName` above)
+                          // -- the figure/ground pairing that makes a card
+                          // read as a distinct object sitting IN its column
+                          // rather than floating loose. Selected still
+                          // overrides ink and fill with the shared `ready`
+                          // status tone via `STATUS_TONE_META` -- the same
+                          // registry `RecommendationCard.tsx`/
+                          // `ApprovalCard.tsx` use -- rather than the
+                          // hand-written `var(--color-status-ready-*)`
+                          // strings this line used before.
+                          className="flex flex-col gap-[var(--space-1-5)] rounded-[var(--radius-md)] bg-card p-[var(--space-2-5)] text-[length:var(--font-size-sm)]"
                           style={
                             isSelected
                               ? {
-                                  color: 'var(--color-status-ready-ink)',
-                                  backgroundColor: 'var(--color-status-ready-bg)',
+                                  color: STATUS_TONE_META.ready.ink,
+                                  backgroundColor: STATUS_TONE_META.ready.bg,
                                 }
                               : undefined
                           }
@@ -323,22 +394,50 @@ export function OptionBoardView({
                             data-testid={`board-focus-${option.id}`}
                             onClick={() => onFocusOption(option.id)}
                             aria-pressed={isSelected}
-                            className="w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-[inherit] text-[inherit]"
+                            // `min-h-[var(--size-touch-target-min)]` keeps
+                            // this row a real >=44px hit area even though
+                            // its content is a single line of text -- the
+                            // same "row is just text, but the tap target is
+                            // still 44px via padding" contract
+                            // `DisclosureSection.tsx`'s row buttons already
+                            // use.
+                            className="flex min-h-[var(--size-touch-target-min)] w-full min-w-0 cursor-pointer items-center gap-[var(--space-1)] border-0 bg-transparent p-0 text-left font-[inherit] text-[inherit]"
                           >
-                            {option.label}
+                            <span className="min-w-0 flex-1 truncate font-[var(--font-weight-semibold)]">
+                              {option.label}
+                            </span>
                             {isSelected ? (
-                              <span className="label-caps ml-[var(--space-1)]">Selected</span>
+                              <span
+                                className="label-caps inline-flex shrink-0 items-center gap-[var(--space-0-5)]"
+                                style={{ color: STATUS_TONE_META.ready.ink }}
+                              >
+                                <span aria-hidden="true">{STATUS_TONE_META.ready.icon}</span>
+                                Selected
+                              </span>
                             ) : null}
                           </button>
 
                           {facts.length > 0 ? (
+                            // Label/value hierarchy fix (see the header
+                            // comment): the label renders smaller and in the
+                            // existing muted `--color-ink-secondary` token;
+                            // the value keeps the card's base size but gains
+                            // `--font-weight-medium` and the full-strength
+                            // `--color-ink` token, so it visibly outranks its
+                            // own label instead of both halves reading as one
+                            // flat, same-weight line.
                             <ul
                               data-testid={`board-facts-${option.id}`}
-                              className="flex flex-col gap-[var(--space-0-5)] text-[var(--color-ink-secondary)]"
+                              className="flex flex-col gap-[var(--space-0-5)]"
                             >
                               {facts.map((fact) => (
-                                <li key={fact.id}>
-                                  {fact.label}: {fact.display}
+                                <li key={fact.id} className="truncate">
+                                  <span className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]">
+                                    {fact.label}:
+                                  </span>{' '}
+                                  <span className="font-[var(--font-weight-medium)] text-[var(--color-ink)]">
+                                    {fact.display}
+                                  </span>
                                 </li>
                               ))}
                             </ul>
@@ -347,7 +446,7 @@ export function OptionBoardView({
                           {reason !== undefined && reason.length > 0 ? (
                             <p
                               data-testid={`board-reason-${option.id}`}
-                              className="text-[var(--color-ink-secondary)]"
+                              className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]"
                             >
                               {reason}
                             </p>
@@ -362,7 +461,17 @@ export function OptionBoardView({
                               data-testid={`board-move-${option.id}`}
                               value={resolveColumnId(option.id, optionColumnIds, effectiveColumns)}
                               onChange={(event) => onMoveOption(option.id, event.target.value)}
-                              className="rounded-[var(--radius-sm)] bg-card px-[var(--space-1)] py-[var(--space-0-5)] text-[length:var(--font-size-xs)]"
+                              // `bg-muted` (not `bg-card`): the same "a field
+                              // reads as editable via a distinct muted fill
+                              // against the white card it sits on" contract
+                              // `ui/input.tsx`/`ui/select.tsx` already use --
+                              // now load-bearing here too, since the card
+                              // itself switched from `bg-muted` to `bg-card`
+                              // above and a `bg-card` select would otherwise
+                              // sit flush, invisible, against it (the global
+                              // reset in `global.css` deliberately strips
+                              // every native `<select>` border).
+                              className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-1)] py-[var(--space-0-5)] text-[length:var(--font-size-xs)]"
                             >
                               {effectiveColumns.map((targetColumn) => (
                                 <option key={targetColumn.id} value={targetColumn.id}>

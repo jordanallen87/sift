@@ -1,6 +1,8 @@
 /**
- * The "What Sift found" review surface (docs/specs/product.md "Workspace
- * layout" region 4, evidence half), reached from the closed-by-default
+ * The "Research" review surface (docs/specs/product.md "Workspace
+ * layout" region 4, evidence half) -- labeled "What Sift found" prior to a shopping-UX
+ * terminology pass that renamed it to "Research," Edmunds/KBB's own nav term for this same
+ * content (shopping-ux-research.md row 4) -- reached from the closed-by-default
  * `DisclosureSection` row. Unlike `EvidenceList`'s always-inline rendering,
  * this is a controlled `Sheet` with three tab views over the same
  * `EvidenceItemData[]` -- List, Table, and Kanban -- so a case with many
@@ -135,7 +137,7 @@ export function FindingsSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent data-testid="findings-sheet">
         <SheetHeader>
-          <SheetTitle>What Sift found</SheetTitle>
+          <SheetTitle>Research</SheetTitle>
           <SheetDescription className="visually-hidden">
             Review the evidence Sift has gathered for this case.
           </SheetDescription>

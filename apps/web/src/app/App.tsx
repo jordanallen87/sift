@@ -22,77 +22,119 @@
  * mutation path (CLAUDE.md "Visible UI controls and WebMCP callbacks use
  * the same command implementation").
  *
- * REGION ORDER (rewritten this task per `docs/decisions/
- * 0004-consumer-workspace-information-architecture.md`, replacing the
- * eleven-region stack `docs/audits/2026-08-30-generic-decision-workspace-
- * audit.md` §1-§2 measured at 2040px tall with the answer starting below
- * the fold at 430px):
+ * TWO-MODE LAYOUT (rewritten this task per `docs/decisions/
+ * 0008-two-mode-product-architecture.md`, replacing the single "one column
+ * that gets wider" stack the ADR's own screenshot -- five identical
+ * collapsible rows crammed at the bottom of the page -- was built on top
+ * of). The project owner's verdict, quoted directly in the ADR: "These
+ * bottom sections should be at the top, but not in this format... if it
+ * finds things, wouldn't we want to surface that at the top and stand out
+ * so the user clicks on it? Right now you've got it at the bottom - they'll
+ * never even see it... You literally just crammed everything into a
+ * collapsible section." And on the product as a whole: "It's supposed to
+ * emulate a shopping website at full width. When it's in the side pane,
+ * it's in WebMCP mode."
  *
- *  1. `CaseHeader` -- title, live connection status, reset, and (Task A5)
- *     a small "Developer view" control. No Decision Pack badge/id/hash, no
- *     pack-selection sentence (ADR 0004 item 1/3; those move to developer
- *     detail -- now a real, explicit, discoverable entry point rather than
- *     detail with no way in, see the Runtime Inspector paragraph below).
- *  2. `WebMcpStatus` -- unchanged, already a single quiet line (audit §5:
- *     "already matches §45's 'keep subtle'").
- *  3. `ErrorState` -- only while the live stream has actually errored.
- *  4. `RecommendationHero` -- the answer-first hero (ADR 0004 item 1): one
- *     region, one state machine (`workspace-status.ts`'s extended
- *     `deriveWorkspaceStatus`), merging what used to be three separate,
- *     occasionally-contradicting regions (the retired `WorkspaceStatusHeader`
- *     tracker/banner, `RecommendationCard`, `ApprovalCard`). This is
- *     deliberately the first substantial content below the header --
- *     verified directly by this task's own DOM-order test, and every region
- *     below it (including the two added since, item 6a and the developer
- *     view) stays below it too, by construction of DOM order.
- *  5. "Manage options" -- a closed-by-default `DisclosureSection` wrapping
- *     `OptionEditor` (add/edit candidates), with a live option count.
- *     Kept as its own disclosure, separate from viewing/comparing them,
- *     since ADR 0005 elevates comparison itself to a top-level primary
- *     surface (next).
- *  6. `WorkspaceViewSwitcher` -- the primary workspace view switcher (ADR
- *     0004 item 5; change-set §6, §8-§13): Quick Pick / List / Compare /
- *     Board tabs. Always expanded, never a disclosure row -- this is the
- *     region ADR 0005 elevates to replace `OptionComparison`'s old
- *     unconditional table, which this file no longer renders at all. Its
- *     `mode` derives from the persisted `CaseState.view` (Task A11 -- see
- *     that state's own header comment further below), not an independent
- *     local default.
- *  6a. "What you're looking for" (`DecisionProfileView`, change-set §15/16)
- *      -- a closed-by-default `DisclosureSection` wrapping a PURE
- *      projection of already-canonical case state (`deriveDecisionProfile`,
- *      no new stored state). Mounted and exported for the first time this
- *      task (a separate spec-audit finding: the component was fully built
- *      and fully tested but never reachable in the shipped product,
- *      matching this task's own A11-shaped "each half is individually
- *      correct" defect class). Absent entirely, not merely empty, when the
- *      derived profile has nothing to show (global constraint 4) -- gated
- *      here at the orchestration level, the same pattern this file already
- *      uses for `CaseExtensionReviewCard` below.
- *  6b. "Notes" (`CaseNotes`, change-set §28/§63) -- NOT a `DisclosureSection`;
- *      the component renders `null` itself when `CaseState.notes` is empty
- *      (global constraint 4), so no wrapping/gating is needed at this call
- *      site the way region 6a needs it. A note is real content but
- *      deliberately not evidence (`CaseNoteSchema`'s own doc comment); this
- *      region only displays what already exists.
- *  6c. "Add a note" (`AddNoteForm`) -- a closed-by-default `DisclosureSection`
- *      immediately after 6b, giving a person at the keyboard the write half
- *      of §28/§63 that previously existed only through the `sift_add_note`
- *      WebMCP tool (`register-sift-tools.ts`). Kept as its own row rather
- *      than folded into `CaseNotes` (which stays read-only by design) so the
- *      affordance is reachable even when `CaseNotes` renders nothing --
- *      `AddNoteForm.tsx`'s own header comment has the full reasoning.
- *  7. "What Sift found" -- a `DisclosureSection` trigger opening
- *     `FindingsSheet` (unchanged from the prior design).
- *  8. "Still checking" -- a closed-by-default `DisclosureSection` wrapping
- *     `ReadinessPanel`.
- *  9. "Add something Sift should check" -- a `DisclosureSection` (opens
- *     itself only while an agent-proposed extension awaits confirmation)
- *     wrapping `CustomConcernForm` and, only when one is actually pending,
- *     `CaseExtensionReviewCard` (ADR 0004 item 2: an empty conceptual
- *     region must be absent, not a card announcing its own emptiness --
- *     applied here at the orchestration level rather than editing that
- *     component's own internals).
+ * `layout = useWidthMode()` is read exactly ONCE, here, and threaded down
+ * as a plain prop -- the same discipline `WorkspaceAppBar.tsx`/
+ * `WorkspaceAlertBanner.tsx`/`WorkspaceSidebar.tsx`/`OptionCompareView.tsx`
+ * already establish ("this component never calls matchMedia itself"). jsdom
+ * has no `matchMedia`, so every test in this file that does not explicitly
+ * `vi.stubGlobal('matchMedia', ...)` exercises the `narrow` branch below --
+ * expanded-mode behavior is covered by the tests that do stub it (see
+ * `stubExpandedLayout()`).
+ *
+ * GLOBAL CHROME (both modes, rendered once, above the layout branch):
+ *
+ *  1. `WorkspaceAppBar` -- supersedes `CaseHeader` (title, connection
+ *     status, reset, developer view) AND absorbs two former bottom-of-page
+ *     actions with real top-of-page visual weight: "Add option" (formerly
+ *     the "Manage options" disclosure wrapping `OptionEditor`) and
+ *     "Findings" (formerly the "What Sift found" disclosure-as-button).
+ *     `CaseHeader.tsx` itself is UNCHANGED and still exported/tested on its
+ *     own (`CaseHeader.test.tsx`) -- nothing else in the app renders it any
+ *     more (confirmed: `grep -rn '<CaseHeader' apps/web/src` matches only
+ *     this file's own former usage and that component's own test file), so
+ *     it is orphaned-but-intact, not deleted, exactly as this task requires.
+ *  2. `WorkspaceAlertBanner` -- real, differentiated alerts DERIVED from
+ *     canonical state (`alertItems` below): findings needing review, a
+ *     recommendation ready for decision, a pending agent-proposed case
+ *     extension, or a lost connection. Renders nothing at all when none of
+ *     those are true -- never a fabricated "all clear" notice.
+ *  3. `WebMcpStatus` / `ErrorState` -- unchanged content and behavior, only
+ *     moved below the alert banner so the "stand out" chrome the owner
+ *     asked for is never separated from the app bar by quieter status text.
+ *  4. `RecommendationHero` -- unchanged: still the answer-first hero, still
+ *     the first substantial content after the chrome above, in both modes,
+ *     verified by the same DOM-order test this task updates rather than
+ *     removes.
+ *
+ * WEB APP MODE (`layout === 'expanded'`, ADR 0008 decision 2) -- a
+ * persistent left `WorkspaceSidebar` beside a main column holding the
+ * primary view switcher:
+ *
+ *  - Sidebar: priorities (`decisionProfile`, read-only ranked list),
+ *    filters (`snapshot.view.filters`, written through the presentation-
+ *    only path -- see the filters-writer block below), and a "Still
+ *    checking" count/button. All three were disclosure rows before this
+ *    task; ADR 0008 decision 2 moves them into the persistent column a
+ *    "shopping site" shell is expected to have.
+ *  - Main column: a small utility toolbar (this file's own plain buttons,
+ *    not a locked component -- `workspace-expanded-open-*` testids) for the
+ *    three regions that have no natural sidebar slot -- "What you're
+ *    looking for" (the FULL `DecisionProfileView`, including the
+ *    context/personalConcerns/missing/suggestedQuestions fields the
+ *    sidebar's own header comment explicitly excludes from its cut-down
+ *    priorities list), "Notes", and "Add something Sift should check" --
+ *    each opening its own controlled `Sheet` built from this file's owned
+ *    JSX, then `WorkspaceViewSwitcher` (unchanged).
+ *
+ * PANE MODE (`layout === 'narrow'`) -- the existing single-column stack,
+ * MINUS the two regions promoted into the app bar above (options, findings)
+ * PLUS the alert banner. The owner: "I'm not opposed to the collapsable
+ * type design, but this isn't how it's supposed to work" -- the objection
+ * is to *everything* being a collapsible, not to collapsibles existing, so
+ * `WorkspaceViewSwitcher`, then closed-by-default `DisclosureSection` rows
+ * for "What you're looking for," "Notes"/"Add a note," "Still checking,"
+ * and "Add something Sift should check" remain exactly as they were.
+ *
+ * WHERE EACH OF THE FIVE ORIGINAL BOTTOM DISCLOSURES WENT (ADR 0008's own
+ * literal quoted list, in order):
+ *
+ *  - "What you're looking for" -> sidebar priorities (expanded) / unchanged
+ *    disclosure (narrow); the FULL profile is also reachable via a sheet in
+ *    expanded mode (see above).
+ *  - "Add a note" -> unchanged disclosure (narrow, wrapping `CaseNotes` +
+ *    `AddNoteForm` as before) / a "Notes" sheet reached from the main-column
+ *    toolbar (expanded).
+ *  - "What Sift found" -> `WorkspaceAppBar`'s "Findings" control plus the
+ *    alert banner's findings item, in BOTH modes -- the one region this
+ *    task's brief explicitly requires to leave the bottom-of-stack pattern
+ *    even in pane mode, since it is "the single most valuable event in the
+ *    product" (ADR 0008).
+ *  - "Still checking" -> sidebar button + sheet (expanded) / unchanged
+ *    disclosure (narrow).
+ *  - "Add something Sift should check" -> unchanged disclosure (narrow,
+ *    still self-opening via `defaultOpen` while a proposal is pending) /
+ *    main-column toolbar sheet (expanded). The alert banner's own
+ *    "Sift proposed something" action is layout-aware
+ *    (`handleReviewPendingExtension`): in narrow mode the disclosure is
+ *    already auto-open, so the action only scrolls it into view rather than
+ *    mounting a SECOND copy of the same `CustomConcernForm`/
+ *    `CaseExtensionReviewCard` in a sheet, which would double-register their
+ *    testids in the DOM simultaneously.
+ *
+ * "Manage options" (`OptionEditor`) was never one of the five the owner's
+ * screenshot named -- it already sat right below the hero, not at the
+ * bottom -- but it is unambiguously "a create action... disguised as a
+ * disclosure row" in the ADR's own general sense (`WorkspaceAppBar`'s own
+ * header comment attributes its "Add option" control to the owner's "add
+ * action at the top" language), so this task promotes it too, uniformly, in
+ * BOTH modes, into the app bar's "Add option" button opening one controlled
+ * `Sheet` -- eliminating the disclosure row entirely rather than running two
+ * parallel entry points to the same `OptionEditor` instance (which would
+ * double-mount its `option-editor-new` testid whenever both were open at
+ * once).
  *
  * Retired from this file entirely, per ADR 0004:
  *  - `WorkspaceStatusHeader` (the four-stage tracker + next-step banner) --
@@ -142,6 +184,7 @@ import {
   type CompiledDecisionPack,
   type EvidenceDisposition,
   type PublicActivityEvent,
+  type WorkspaceFilter,
   type WorkspaceViewMode,
   type WorkspaceViewState,
 } from '@sift/contracts';
@@ -150,7 +193,6 @@ import { SiftClientError } from '../api/sift-client.js';
 import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active-case-storage.js';
 import { DemoLauncher } from '../components/DemoLauncher.js';
 import { VehicleCatalogFlow } from '../components/VehicleCatalogFlow.js';
-import { CaseHeader, type CaseHeaderConnectionState } from '../components/CaseHeader.js';
 import { DisclosureSection } from '../components/DisclosureSection.js';
 import { RecommendationHero } from '../components/RecommendationHero.js';
 import type { ApprovalCardReview } from '../components/ApprovalCard.js';
@@ -169,6 +211,18 @@ import type { LiveRunStatusReceipt } from '../components/LiveRunStatus.js';
 import { WebMcpStatus } from '../components/WebMcpStatus.js';
 import { ErrorState } from '../components/ErrorState.js';
 import { RuntimeInspector } from '../components/RuntimeInspector.js';
+import {
+  WorkspaceAppBar,
+  type WorkspaceAppBarConnectionState,
+} from '../components/WorkspaceAppBar.js';
+import {
+  WorkspaceAlertBanner,
+  type WorkspaceAlertBannerItem,
+} from '../components/WorkspaceAlertBanner.js';
+import { WorkspaceSidebar } from '../components/WorkspaceSidebar.js';
+import { useWidthMode } from '../hooks/use-width-mode.js';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useApiConfig, useSiftCommands, useWebMcpAdapter } from './AppProviders.js';
 import { useCaseEvents, type CaseEventsConnectionState } from '../hooks/use-case-events.js';
 import {
@@ -275,19 +329,31 @@ function deriveReceiptFromEvents(events: PublicActivityEvent[]): LiveRunStatusRe
   return null;
 }
 
-function mapConnectionState(state: CaseEventsConnectionState): CaseHeaderConnectionState {
-  // `CaseHeader` (built in an earlier pass) has no separate "connecting"
-  // token of its own -- its visual/copy treatment for "attempting to
-  // establish a connection" and "attempting to re-establish one" is
-  // identical (`reconnecting`), so the one genuinely new hook state maps
-  // onto it rather than requiring a `CaseHeader` contract change.
-  return state === 'connecting' ? 'reconnecting' : state;
+// `WorkspaceAppBar`'s `WorkspaceAppBarConnectionState` union
+// (`'live' | 'reconnecting' | 'offline'`) is narrower than the real hook's
+// five-state `CaseEventsConnectionState` -- it has no separate tokens for
+// "still establishing the first connection" or "SSE unsupported, degraded
+// to polling." Both collapse onto `reconnecting`: from the reader's point
+// of view, "we don't have a live stream right now but we're getting you
+// data another way" reads the same either way, and `WorkspaceAppBar`'s own
+// contract has no fourth tone to attach a polling-specific meaning to (this
+// is an explicit, disclosed simplification, not an oversight -- the locked
+// component's prop union is the ceiling here).
+function mapAppBarConnectionState(
+  state: CaseEventsConnectionState,
+): WorkspaceAppBarConnectionState {
+  if (state === 'live' || state === 'offline') return state;
+  return 'reconnecting';
 }
 
 export function App() {
   const commands = useSiftCommands();
   const apiConfig = useApiConfig();
   const webMcpAdapter = useWebMcpAdapter();
+  // Read exactly once, per this file's own header comment -- every region
+  // below that cares about narrow-vs-expanded takes `layout` as a plain
+  // value, never calls `useWidthMode()`/`matchMedia` itself.
+  const layout = useWidthMode();
 
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
   // Pre-case launcher mode (docs/decisions/0003-vehicle-catalog-and-normal-
@@ -321,6 +387,20 @@ export function App() {
     undefined,
   );
   const [findingsSheetOpen, setFindingsSheetOpen] = useState(false);
+  // ADR 0008 sheet-based entry points -- each replaces (expanded mode) or
+  // supplements (narrow mode, via the app bar's now-uniform "Add option")
+  // a former bottom-of-page disclosure. All five are mounted unconditionally
+  // (matching `FindingsSheet`'s own pre-existing "always mounted, controlled
+  // by `open`" pattern) and Radix does not render `SheetContent` into the
+  // DOM at all while `open` is false, so none of these collide with the
+  // narrow-mode disclosures that render the SAME underlying components --
+  // see this file's own header comment for why "Manage options" has no
+  // narrow-mode disclosure any more specifically to avoid that collision.
+  const [manageOptionsSheetOpen, setManageOptionsSheetOpen] = useState(false);
+  const [stillCheckingSheetOpen, setStillCheckingSheetOpen] = useState(false);
+  const [decisionProfileSheetOpen, setDecisionProfileSheetOpen] = useState(false);
+  const [notesSheetOpen, setNotesSheetOpen] = useState(false);
+  const [addConcernSheetOpen, setAddConcernSheetOpen] = useState(false);
   const [resetPending, setResetPending] = useState(false);
   const [runRequestPending, setRunRequestPending] = useState(false);
   const [runRequestError, setRunRequestError] = useState<string | null>(null);
@@ -639,6 +719,98 @@ export function App() {
     },
     [drainViewWrites],
   );
+
+  // `WorkspaceSidebar`'s filter controls (ADR 0008 decision 3, change-set
+  // §54, ADR 0005 decision 1): "every change calls `onFiltersChange` with
+  // the COMPLETE next `WorkspaceFilter[]`... this component never calls a
+  // command itself" (`WorkspaceSidebar.tsx`'s own header comment). This
+  // writes through the exact same `commands.setView`/`updateSelection()`
+  // path `viewMode` above already uses -- narrowing which already-known
+  // options are VISIBLE can never advance `eventSequence` or touch
+  // criteria/weights.
+  //
+  // A SEPARATE serialized single-flight writer, not a generalization of
+  // `desiredViewRef`/`drainViewWrites` above: that mechanism is already
+  // hardened against a real, reproduced race (three failed repair attempts,
+  // see its own comment) and this task does not touch it. Filters get their
+  // own queue/in-flight ref, mirroring the identical "last intent always
+  // wins, at most one request outstanding" shape. A mode write and a filter
+  // write racing each other is a known, disclosed residual limitation --
+  // both spread `snapshotRef.current.view`, which can lag the other
+  // writer's own in-flight change -- exactly the same class of limitation
+  // the mode writer's own comment already discloses for a stale
+  // `expectedSequence`.
+  const persistedFilters = snapshot?.view?.filters;
+  const [optimisticFilters, setOptimisticFilters] = useState<WorkspaceFilter[] | null>(null);
+  const filters = optimisticFilters ?? persistedFilters ?? [];
+
+  // Content-based (not reference-based) comparison, unlike
+  // `lastPersistedViewMode` above: a fresh snapshot poll always constructs a
+  // brand-new `filters` ARRAY even when its contents are unchanged, so
+  // reference equality (correct for `WorkspaceViewMode`, a primitive) would
+  // treat every routine poll as "genuinely changed" here and clear a
+  // just-set optimistic filter before its own write has had any chance to
+  // round-trip -- the exact flicker/revert bug the mode writer's own
+  // comment describes, just triggered by polling cadence instead of a race.
+  const lastPersistedFiltersKey = useRef<string>(JSON.stringify(persistedFilters ?? []));
+  useEffect(() => {
+    const key = JSON.stringify(persistedFilters ?? []);
+    if (key === lastPersistedFiltersKey.current) return;
+    lastPersistedFiltersKey.current = key;
+    setOptimisticFilters(null);
+  }, [persistedFilters]);
+
+  const desiredFiltersRef = useRef<WorkspaceFilter[] | null>(null);
+  const filtersWriteInFlightRef = useRef(false);
+
+  const drainFilterWrites = useCallback(async () => {
+    if (filtersWriteInFlightRef.current) return;
+    filtersWriteInFlightRef.current = true;
+    try {
+      while (desiredFiltersRef.current !== null) {
+        const nextFilters = desiredFiltersRef.current;
+        const caseId = activeCaseIdRef.current;
+        const current = snapshotRef.current;
+        if (caseId === null || current === null) {
+          desiredFiltersRef.current = null;
+          return;
+        }
+        // `mode` is a required field of `WorkspaceViewState` (unlike every
+        // other member, which is optional) -- a case that has never set a
+        // view has no `current.view` to spread from at all, so this always
+        // supplies the exact same 'quick_pick' fallback the read side
+        // already uses (`viewMode` above, Task A10) rather than producing
+        // an invalid patch with no `mode`.
+        const view: WorkspaceViewState = {
+          ...(current.view ?? {}),
+          mode: current.view?.mode ?? 'quick_pick',
+          filters: nextFilters,
+        };
+        try {
+          await commands.setView({ caseId, expectedSequence: current.eventSequence, view });
+        } catch {
+          // Swallowed deliberately, same reasoning as the view-mode writer
+          // above: a stale `expectedSequence` during a live run is expected
+          // and this command changes no decision state, so the visible
+          // filters (still reflecting the user's real choice via
+          // `optimisticFilters`) do not need a blocking error surface.
+        }
+        if (desiredFiltersRef.current === nextFilters) desiredFiltersRef.current = null;
+      }
+    } finally {
+      filtersWriteInFlightRef.current = false;
+    }
+  }, [commands]);
+
+  const handleFiltersChange = useCallback(
+    (nextFilters: WorkspaceFilter[]) => {
+      setOptimisticFilters(nextFilters);
+      desiredFiltersRef.current = nextFilters;
+      void drainFilterWrites();
+    },
+    [drainFilterWrites],
+  );
+
   const installedPacksRef = useRef(installedPacks);
   installedPacksRef.current = installedPacks;
 
@@ -913,6 +1085,28 @@ export function App() {
     [handleFocusOption, handleQuickPickAdvance],
   );
 
+  // Scroll target for the narrow-mode "Add something Sift should check"
+  // disclosure -- only ever used by `handleReviewPendingExtension` below.
+  const addConcernSectionRef = useRef<HTMLDivElement>(null);
+
+  // The alert banner's "Sift proposed something" action (ADR 0008): layout-
+  // aware because the underlying content has two different homes. In
+  // expanded mode there is no narrow-style disclosure at all, so this opens
+  // the main-column sheet. In narrow mode, `defaultOpen={pendingExtension
+  // !== null}` on the "add-concern" disclosure below ALREADY force-opens it
+  // the moment a proposal is pending -- opening `addConcernSheetOpen` here
+  // too would mount a SECOND, simultaneous copy of `CustomConcernForm`/
+  // `CaseExtensionReviewCard`, double-registering their testids in the DOM.
+  // Scrolling the already-open disclosure into view is the real, honest
+  // action available in that mode.
+  const handleReviewPendingExtension = useCallback(() => {
+    if (layout === 'expanded') {
+      setAddConcernSheetOpen(true);
+      return;
+    }
+    addConcernSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [layout]);
+
   if (activeCaseId === null) {
     if (restoringCaseId !== null) {
       // Avoids a launcher-then-workspace flash while the reload-restore
@@ -1024,7 +1218,6 @@ export function App() {
   // inside DisclosureSection or the wrapped child components, which stay
   // generic/unaware of their position in the workspace.
   const optionsCount = snapshot?.entities.length ?? 0;
-  const evidenceCount = evidenceItems?.length ?? 0;
   const decisionProfileConcernCount = decisionProfile
     ? decisionProfile.mustHave.length +
       decisionProfile.important.length +
@@ -1068,6 +1261,58 @@ export function App() {
     withheld: withheld !== null,
   });
 
+  // `WorkspaceAlertBanner` items (ADR 0008 decision 2/req 2 of this task):
+  // DERIVED from real, already-canonical state -- never fabricated. Each
+  // condition below is the exact same signal an existing region already
+  // renders from (flaggedFindingsCount drives the app bar's findings badge
+  // and used to drive the "What Sift found" disclosure meta;
+  // `workspaceStatus.phase` is the hero's own single source of truth for
+  // "a decision is pending human approval," reusing its `headline` text
+  // verbatim rather than composing new copy that could drift from the
+  // hero's; `pendingExtension` already gates `CaseExtensionReviewCard`
+  // below; `connectionState` is the hook's own raw five-state union, not
+  // the app bar's collapsed three-state version, so this only fires on a
+  // genuine `offline`, not a transient `connecting`/`reconnecting` blip the
+  // app bar's own pulsing badge already communicates). An empty array here
+  // renders nothing at all -- `WorkspaceAlertBanner` returns `null` outright
+  // for `items: []`.
+  const alertItems: WorkspaceAlertBannerItem[] = [];
+  if (flaggedFindingsCount > 0) {
+    alertItems.push({
+      id: 'findings',
+      tone: 'attention',
+      message: `${flaggedFindingsCount} finding${flaggedFindingsCount === 1 ? '' : 's'} need${flaggedFindingsCount === 1 ? 's' : ''} your attention.`,
+      actionLabel: 'Review findings',
+      onAction: () => setFindingsSheetOpen(true),
+    });
+  }
+  if (workspaceStatus.phase === 'pending_approval') {
+    alertItems.push({
+      id: 'recommendation-ready',
+      tone: 'ready',
+      // Reuses the hero's own headline text verbatim (see comment above) --
+      // no action, since `RecommendationHero` (with its live `ApprovalCard`
+      // Approve/Reject/Revise controls) is the very next region rendered.
+      message: workspaceStatus.headline,
+    });
+  }
+  if (pendingExtension !== null) {
+    alertItems.push({
+      id: 'pending-extension',
+      tone: 'attention',
+      message: 'Sift proposed something new to check on this case.',
+      actionLabel: 'Review',
+      onAction: handleReviewPendingExtension,
+    });
+  }
+  if (connectionState === 'offline') {
+    alertItems.push({
+      id: 'connection-offline',
+      tone: 'attention',
+      message: 'Connection lost. Sift will keep trying to reconnect.',
+    });
+  }
+
   return (
     <div
       // Keyed by `activeCaseId` (manual QA finding, this task): several
@@ -1085,12 +1330,17 @@ export function App() {
       className="page-shell page-enter flex min-h-screen flex-col gap-[var(--space-4)] p-[var(--space-4)]"
     >
       {snapshot ? (
-        <CaseHeader
+        <WorkspaceAppBar
           title={snapshot.title}
-          connectionState={mapConnectionState(connectionState)}
+          connectionState={mapAppBarConnectionState(connectionState)}
+          findingsCount={flaggedFindingsCount}
+          optionCount={optionsCount}
+          onAddOption={() => setManageOptionsSheetOpen(true)}
+          onReviewFindings={() => setFindingsSheetOpen(true)}
+          onOpenDeveloperView={handleOpenDeveloperView}
           onResetDemo={handleResetDemo}
           resetPending={resetPending}
-          onOpenDeveloperView={handleOpenDeveloperView}
+          layout={layout}
         />
       ) : (
         <div
@@ -1102,6 +1352,8 @@ export function App() {
           Loading case…
         </div>
       )}
+
+      <WorkspaceAlertBanner items={alertItems} layout={layout} />
 
       <WebMcpStatus adapter={webMcpAdapter} />
 
@@ -1126,80 +1378,193 @@ export function App() {
         onInspectRun={handleInspectRun}
       />
 
-      <DisclosureSection
-        testId="options"
-        title="Manage options"
-        meta={`${optionsCount} option${optionsCount === 1 ? '' : 's'}`}
-      >
-        <OptionEditor
-          caseId={activeCaseId}
-          expectedSequence={snapshot?.eventSequence ?? 0}
-          optionKind={optionKind}
-          optionLabel={optionLabel}
-          attributeDefinitions={snapshot?.attributeDefinitions ?? []}
-          options={snapshot?.entities ?? []}
-        />
-      </DisclosureSection>
-
-      <WorkspaceViewSwitcher
-        mode={viewMode}
-        onModeChange={handleViewModeChange}
-        options={snapshot?.entities ?? []}
-        attributeDefinitions={snapshot?.attributeDefinitions ?? []}
-        caseExtensions={snapshot?.caseExtensions ?? []}
-        presentation={activePack?.presentation ?? null}
-        selectedOptionId={snapshot?.selectedOptionId ?? null}
-        onFocusOption={handleFocusOption}
-        compareOptionIds={compareOptionIds}
-        compareVisibleAttributeIds={compareVisibleAttributeIds}
-        comparePinnedAttributeIds={comparePinnedAttributeIds}
-        quickPickPosition={quickPickPosition}
-        onQuickPickPass={handleQuickPickAdvance}
-        onQuickPickMaybe={handleQuickPickAdvance}
-        onQuickPickShortlist={handleQuickPickShortlist}
-        onQuickPickFocusChange={() => undefined}
-        boardPlacement={boardPlacement}
-        onMoveOption={handleMoveOption}
-      />
-
-      {!decisionProfileIsEmpty && decisionProfile !== null ? (
-        <DisclosureSection
-          testId="decision-profile"
-          title="What you're looking for"
-          meta={decisionProfileMeta}
+      {layout === 'expanded' ? (
+        // Web app mode (ADR 0008 decision 2): a persistent left sidebar
+        // (priorities/filters/still-checking) beside a main column holding
+        // a small utility toolbar for the regions with no sidebar slot,
+        // then the primary view switcher. See this file's own header
+        // comment for the full "where did region X go" mapping.
+        <div
+          data-testid="workspace-expanded-layout"
+          // 300px, not 240px: a live-browser check against the real
+          // `car-purchase` pack found `WorkspaceSidebar`'s priority rows
+          // (full pack-authored sentences like "Driver assistance
+          // effectiveness rating," not the ADR mock's single-word "Safety")
+          // truncating hard at 240px. `WorkspaceSidebar.tsx` itself is
+          // locked, so the fix lives here, at the column width this file
+          // owns.
+          className="grid grid-cols-[300px_minmax(0,1fr)] items-start gap-x-[var(--space-6)]"
         >
-          <DecisionProfileView profile={decisionProfile} />
-        </DisclosureSection>
-      ) : null}
+          <WorkspaceSidebar
+            layout={layout}
+            decisionProfile={decisionProfile}
+            attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+            // The real saved cars, so the filter panel can derive its facets
+            // from values that actually exist rather than offering blank
+            // "Search make" boxes over a four-option case. Same array the
+            // option views already receive; without it the sidebar falls back
+            // to its generic per-type controls.
+            options={snapshot?.entities ?? []}
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            openQuestionsCount={remainingObligationCount}
+            onOpenQuestions={() => setStillCheckingSheetOpen(true)}
+          />
+          <div className="flex min-w-0 flex-col gap-[var(--space-4)]">
+            <div
+              role="toolbar"
+              aria-label="More workspace regions"
+              className="flex flex-wrap items-center gap-[var(--space-2)]"
+            >
+              {/* The sidebar only renders `mustHave`/`important`/
+                  `niceToHave` (its own header comment names the exclusion
+                  explicitly); this reaches the FULL profile, including
+                  `context`/`personalConcerns`/`missing`/`suggestedQuestions`,
+                  which would otherwise be unreachable in expanded mode --
+                  same "every capability reachable in both modes" constraint
+                  the app bar's "Add option"/"Findings" controls satisfy for
+                  their own regions. Gated like the narrow disclosure above
+                  it (ADR 0004 item 2: absent, not merely empty). */}
+              {!decisionProfileIsEmpty && decisionProfile !== null ? (
+                <Button
+                  type="button"
+                  data-testid="workspace-expanded-open-decision-profile"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setDecisionProfileSheetOpen(true)}
+                >
+                  Your priorities
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                data-testid="workspace-expanded-open-notes"
+                variant="secondary"
+                size="sm"
+                onClick={() => setNotesSheetOpen(true)}
+              >
+                Notes
+              </Button>
+              <Button
+                type="button"
+                data-testid="workspace-expanded-open-add-concern"
+                variant="secondary"
+                size="sm"
+                onClick={() => setAddConcernSheetOpen(true)}
+              >
+                Add a question
+              </Button>
+            </div>
 
-      {/* CaseNotes (§28/§63) renders `null` itself when there are no notes
-          (global constraint 4) -- mounted unconditionally here rather than
-          gated a second time at this call site, matching how this
-          component is meant to be used. */}
-      <CaseNotes notes={snapshot?.notes ?? []} options={snapshot?.entities ?? []} />
+            <WorkspaceViewSwitcher
+              mode={viewMode}
+              onModeChange={handleViewModeChange}
+              options={snapshot?.entities ?? []}
+              attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+              caseExtensions={snapshot?.caseExtensions ?? []}
+              presentation={activePack?.presentation ?? null}
+              selectedOptionId={snapshot?.selectedOptionId ?? null}
+              onFocusOption={handleFocusOption}
+              compareOptionIds={compareOptionIds}
+              compareVisibleAttributeIds={compareVisibleAttributeIds}
+              comparePinnedAttributeIds={comparePinnedAttributeIds}
+              quickPickPosition={quickPickPosition}
+              onQuickPickPass={handleQuickPickAdvance}
+              onQuickPickMaybe={handleQuickPickAdvance}
+              onQuickPickShortlist={handleQuickPickShortlist}
+              onQuickPickFocusChange={() => undefined}
+              boardPlacement={boardPlacement}
+              onMoveOption={handleMoveOption}
+            />
+          </div>
+        </div>
+      ) : (
+        // Pane mode: the existing single-column stack, minus the two
+        // regions promoted into the app bar above (options, findings) --
+        // see this file's own header comment for the full mapping.
+        <>
+          <WorkspaceViewSwitcher
+            mode={viewMode}
+            onModeChange={handleViewModeChange}
+            options={snapshot?.entities ?? []}
+            attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+            caseExtensions={snapshot?.caseExtensions ?? []}
+            presentation={activePack?.presentation ?? null}
+            selectedOptionId={snapshot?.selectedOptionId ?? null}
+            onFocusOption={handleFocusOption}
+            compareOptionIds={compareOptionIds}
+            compareVisibleAttributeIds={compareVisibleAttributeIds}
+            comparePinnedAttributeIds={comparePinnedAttributeIds}
+            quickPickPosition={quickPickPosition}
+            onQuickPickPass={handleQuickPickAdvance}
+            onQuickPickMaybe={handleQuickPickAdvance}
+            onQuickPickShortlist={handleQuickPickShortlist}
+            onQuickPickFocusChange={() => undefined}
+            boardPlacement={boardPlacement}
+            onMoveOption={handleMoveOption}
+          />
 
-      {/* "Add a note" -- the human-facing add affordance for the write half
-          of §28/§63 (`AddNoteForm.tsx`'s own header comment has the full
-          reasoning for why this is a sibling disclosure row rather than
-          something mounted inside `CaseNotes` itself). A closed-by-default
-          `DisclosureSection`, like every other investigative row, so it
-          stays reachable even when `snapshot.notes` is empty without
-          growing a permanent visible empty region. */}
-      <DisclosureSection testId="add-note" title="Add a note">
-        <AddNoteForm caseId={activeCaseId} expectedSequence={snapshot?.eventSequence ?? 0} />
-      </DisclosureSection>
+          {!decisionProfileIsEmpty && decisionProfile !== null ? (
+            <DisclosureSection
+              testId="decision-profile"
+              title="Your priorities"
+              meta={decisionProfileMeta}
+            >
+              <DecisionProfileView profile={decisionProfile} />
+            </DisclosureSection>
+          ) : null}
 
-      <DisclosureSection
-        testId="findings"
-        title="What Sift found"
-        meta={
-          flaggedFindingsCount > 0
-            ? `${flaggedFindingsCount} need${flaggedFindingsCount === 1 ? 's' : ''} a look`
-            : `${evidenceCount} finding${evidenceCount === 1 ? '' : 's'}`
-        }
-        flagged={flaggedFindingsCount > 0}
-        onTriggerClick={() => setFindingsSheetOpen(true)}
-      />
+          {/* CaseNotes (§28/§63) renders `null` itself when there are no notes
+              (global constraint 4) -- mounted unconditionally here rather than
+              gated a second time at this call site, matching how this
+              component is meant to be used. */}
+          <CaseNotes notes={snapshot?.notes ?? []} options={snapshot?.entities ?? []} />
+
+          {/* "Add a note" -- the human-facing add affordance for the write half
+              of §28/§63 (`AddNoteForm.tsx`'s own header comment has the full
+              reasoning for why this is a sibling disclosure row rather than
+              something mounted inside `CaseNotes` itself). A closed-by-default
+              `DisclosureSection`, like every other investigative row, so it
+              stays reachable even when `snapshot.notes` is empty without
+              growing a permanent visible empty region. */}
+          <DisclosureSection testId="add-note" title="Add a note">
+            <AddNoteForm caseId={activeCaseId} expectedSequence={snapshot?.eventSequence ?? 0} />
+          </DisclosureSection>
+
+          <DisclosureSection testId="still-checking" title="Researching…" meta={stillCheckingMeta}>
+            <ReadinessPanel readiness={readiness} loading={snapshot === null} />
+          </DisclosureSection>
+
+          <div ref={addConcernSectionRef}>
+            <DisclosureSection
+              testId="add-concern"
+              title="Add a question"
+              meta={addConcernMeta}
+              defaultOpen={pendingExtension !== null}
+            >
+              <CustomConcernForm
+                caseId={activeCaseId}
+                expectedSequence={snapshot?.eventSequence ?? 0}
+                applicableKinds={applicableKinds}
+              />
+
+              {/* ADR 0004 item 2 / audit §2: an empty conceptual region must be
+                  absent, not a card announcing its own emptiness. Mounted only
+                  once a real agent-proposed extension is actually pending review
+                  -- fixed here, at the orchestration level, rather than editing
+                  `CaseExtensionReviewCard`'s own internals. */}
+              {pendingExtension !== null ? (
+                <CaseExtensionReviewCard
+                  caseId={activeCaseId}
+                  expectedSequence={snapshot?.eventSequence ?? 0}
+                  extension={pendingExtension}
+                />
+              ) : null}
+            </DisclosureSection>
+          </div>
+        </>
+      )}
+
       {dispositionError ? <ErrorState message={dispositionError} /> : null}
 
       <FindingsSheet
@@ -1210,35 +1575,84 @@ export function App() {
         dispositionPendingId={dispositionPendingId}
       />
 
-      <DisclosureSection testId="still-checking" title="Still checking" meta={stillCheckingMeta}>
-        <ReadinessPanel readiness={readiness} loading={snapshot === null} />
-      </DisclosureSection>
+      {/* Sheet-based entry points for ADR 0008's dismantled create/detail
+          regions -- see this file's own header comment for why each of
+          these five is mounted unconditionally (always controlled by
+          `open`, never duplicated alongside a narrow-mode disclosure over
+          the same underlying component). */}
+      <Sheet open={manageOptionsSheetOpen} onOpenChange={setManageOptionsSheetOpen}>
+        <SheetContent data-testid="workspace-add-option-sheet">
+          <SheetHeader>
+            <SheetTitle>{`Add ${optionLabel}`}</SheetTitle>
+          </SheetHeader>
+          <SheetBody>
+            <OptionEditor
+              caseId={activeCaseId}
+              expectedSequence={snapshot?.eventSequence ?? 0}
+              optionKind={optionKind}
+              optionLabel={optionLabel}
+              attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+              options={snapshot?.entities ?? []}
+            />
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
 
-      <DisclosureSection
-        testId="add-concern"
-        title="Add something Sift should check"
-        meta={addConcernMeta}
-        defaultOpen={pendingExtension !== null}
-      >
-        <CustomConcernForm
-          caseId={activeCaseId}
-          expectedSequence={snapshot?.eventSequence ?? 0}
-          applicableKinds={applicableKinds}
-        />
+      <Sheet open={stillCheckingSheetOpen} onOpenChange={setStillCheckingSheetOpen}>
+        <SheetContent data-testid="workspace-still-checking-sheet">
+          <SheetHeader>
+            <SheetTitle>Still checking</SheetTitle>
+          </SheetHeader>
+          <SheetBody>
+            <ReadinessPanel readiness={readiness} loading={snapshot === null} />
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
 
-        {/* ADR 0004 item 2 / audit §2: an empty conceptual region must be
-            absent, not a card announcing its own emptiness. Mounted only
-            once a real agent-proposed extension is actually pending review
-            -- fixed here, at the orchestration level, rather than editing
-            `CaseExtensionReviewCard`'s own internals. */}
-        {pendingExtension !== null ? (
-          <CaseExtensionReviewCard
-            caseId={activeCaseId}
-            expectedSequence={snapshot?.eventSequence ?? 0}
-            extension={pendingExtension}
-          />
-        ) : null}
-      </DisclosureSection>
+      <Sheet open={decisionProfileSheetOpen} onOpenChange={setDecisionProfileSheetOpen}>
+        <SheetContent data-testid="workspace-decision-profile-sheet">
+          <SheetHeader>
+            <SheetTitle>Your priorities</SheetTitle>
+          </SheetHeader>
+          <SheetBody>
+            {decisionProfile !== null ? <DecisionProfileView profile={decisionProfile} /> : null}
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={notesSheetOpen} onOpenChange={setNotesSheetOpen}>
+        <SheetContent data-testid="workspace-notes-sheet">
+          <SheetHeader>
+            <SheetTitle>Notes</SheetTitle>
+          </SheetHeader>
+          <SheetBody className="flex flex-col gap-[var(--space-4)]">
+            <CaseNotes notes={snapshot?.notes ?? []} options={snapshot?.entities ?? []} />
+            <AddNoteForm caseId={activeCaseId} expectedSequence={snapshot?.eventSequence ?? 0} />
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={addConcernSheetOpen} onOpenChange={setAddConcernSheetOpen}>
+        <SheetContent data-testid="workspace-add-concern-sheet">
+          <SheetHeader>
+            <SheetTitle>Add a question</SheetTitle>
+          </SheetHeader>
+          <SheetBody className="flex flex-col gap-[var(--space-4)]">
+            <CustomConcernForm
+              caseId={activeCaseId}
+              expectedSequence={snapshot?.eventSequence ?? 0}
+              applicableKinds={applicableKinds}
+            />
+            {pendingExtension !== null ? (
+              <CaseExtensionReviewCard
+                caseId={activeCaseId}
+                expectedSequence={snapshot?.eventSequence ?? 0}
+                extension={pendingExtension}
+              />
+            ) : null}
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
 
       {runtimeInspectorOpen ? (
         <RuntimeInspector

@@ -163,7 +163,7 @@ export function ReadinessPanel({ readiness, loading = false }: ReadinessPanelPro
         aria-labelledby="readiness-panel-heading"
         className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
       >
-        <h2 id="readiness-panel-heading">Still checking</h2>
+        <h2 id="readiness-panel-heading">Researching…</h2>
         {loading ? (
           <div
             data-testid="readiness-panel-loading"
@@ -198,7 +198,7 @@ export function ReadinessPanel({ readiness, loading = false }: ReadinessPanelPro
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
       <div className="flex items-center justify-between gap-[var(--space-2)]">
-        <h2 id="readiness-panel-heading">Still checking</h2>
+        <h2 id="readiness-panel-heading">Researching…</h2>
         {loading ? (
           <span
             data-testid="readiness-panel-updating"

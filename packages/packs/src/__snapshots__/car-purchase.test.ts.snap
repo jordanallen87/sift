@@ -560,7 +560,7 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
       ],
       "description": "One shortlisted vehicle listing under comparison (e.g. a specific model year/trim at a specific dealer).",
       "id": "candidate",
-      "label": "Candidate vehicle",
+      "label": "Saved car",
     },
   ],
   "evaluation": {
@@ -823,8 +823,8 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
         "label": "Household fit",
       },
     ],
-    "optionLabel": "Candidate vehicle",
-    "optionLabelPlural": "Candidate vehicles",
+    "optionLabel": "Saved car",
+    "optionLabelPlural": "Saved cars",
   },
   "schemaVersion": "1.0",
   "skills": [

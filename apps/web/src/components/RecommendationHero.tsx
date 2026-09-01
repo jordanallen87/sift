@@ -133,7 +133,7 @@ export function RecommendationHero({
           variant={status.phase === 'not_started' ? 'default' : 'secondary'}
           className="min-h-[var(--size-touch-target-min)]"
         >
-          {requestPending ? 'Requesting…' : 'Request investigation'}
+          {requestPending ? 'Asking…' : 'Ask Sift to look into this'}
         </Button>
 
         {status.action?.kind === 'review_findings' ? (

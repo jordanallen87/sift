@@ -110,15 +110,15 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     // journeys.
     await assertRecommendationHeroAboveTheFold(page);
 
-    // --- See those exact vehicles in "Manage options" (renamed from
-    // "Compare the options" by `docs/decisions/
-    // 0004-consumer-workspace-information-architecture.md`; it now wraps
-    // only `OptionEditor`, not the comparison table) ---
-    await sift.openDisclosure('options');
+    // --- See those exact vehicles in the "Add option" Sheet (ADR 0008;
+    // supersedes "Manage options"/"Compare the options" -- `OptionEditor`
+    // now lives in a modal Sheet reached from the app bar, in both
+    // layouts, rather than an inline disclosure) ---
+    await sift.openManageOptionsSheet();
     for (const entity of entities) {
       await expect(page.getByTestId('option-editor-list')).toContainText(entity.label);
     }
-    await assertNoSeriousAxeViolations(page, 'case workspace, options open');
+    await assertNoSeriousAxeViolations(page, 'case workspace, add-option sheet open');
 
     // --- Add listing-specific information to one candidate (the existing
     // OptionEditor -- spec brief §11) ---
@@ -130,6 +130,10 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     await page.getByLabel('Mileage').fill('12');
     await page.getByTestId('option-editor-save').click();
     await expect(page.getByTestId('option-editor-form')).not.toContainText('Saving');
+    // Closed before the criteria reweight/custom-concern steps below: the
+    // Sheet is a real modal (ADR 0008) and would otherwise intercept the
+    // custom concern region's own trigger control.
+    await sift.closeManageOptionsSheet();
 
     await expect
       .poll(async () => {
@@ -182,8 +186,8 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     // rigor: a genuine full-page reload, not a soft client-side
     // transition). ---
     await page.reload();
-    await expect(page.getByTestId('case-header')).toBeVisible({ timeout: 15_000 });
-    await sift.openDisclosure('options');
+    await expect(page.getByTestId('workspace-app-bar')).toBeVisible({ timeout: 15_000 });
+    await sift.openManageOptionsSheet();
     for (const entity of entities) {
       await expect(page.getByTestId('option-editor-list')).toContainText(entity.label);
     }

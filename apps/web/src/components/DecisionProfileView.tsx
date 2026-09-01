@@ -324,7 +324,7 @@ export function DecisionProfileView({
       aria-labelledby="decision-profile-view-heading"
       className="flex flex-col gap-[var(--space-4)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
-      <h2 id="decision-profile-view-heading">What you&rsquo;re looking for</h2>
+      <h2 id="decision-profile-view-heading">Your priorities</h2>
 
       {isEmpty ? (
         <p

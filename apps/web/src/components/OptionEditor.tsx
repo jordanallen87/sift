@@ -113,8 +113,18 @@ export function OptionEditor({
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
     >
       <div className="flex items-center justify-between gap-[var(--space-2)]">
+        {/* Naive "+s" pluralization, not a fixed "candidates" suffix: the previous
+            `{optionLabel} candidates` composition assumed `optionLabel` was always a bare
+            singular noun like "car" -- for the car-purchase pack, whose own `optionLabel` is
+            itself "Saved car" (a Decision Pack terminology choice, not a bare noun), that
+            produced a literal doubled heading ("Candidate vehicle candidates" before the rename;
+            still a mismatched "Saved car candidates" after it). Appending "s" to whatever
+            `optionLabel` the active pack declares reads correctly for every pack in this
+            repository (car -> cars, Saved car -> Saved cars, Response option -> Response
+            options) without needing a second `optionLabelPlural` prop threaded through from
+            `App.tsx`. */}
         <h2 id="option-editor-heading" className="capitalize">
-          {optionLabel} candidates
+          {optionLabel}s
         </h2>
         <Button
           type="button"

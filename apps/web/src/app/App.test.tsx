@@ -20,6 +20,15 @@ const CASE_ID = 'case-live-1';
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());
+// Defensive, independent of any individual test's own `vi.unstubAllGlobals()`
+// call: several tests in this file `vi.stubGlobal('matchMedia', ...)` (see
+// `stubExpandedLayout()` above) to exercise ADR 0008's expanded layout. If
+// one of those tests fails/throws BEFORE reaching its own cleanup call, the
+// stub would otherwise silently leak into every later test in this file --
+// forcing `useWidthMode()` to `'expanded'` everywhere else too, which
+// reads as an unrelated cascade of failures far from the real cause. This
+// runs after every test regardless of how it exits.
+afterEach(() => vi.unstubAllGlobals());
 afterAll(() => server.close());
 
 beforeEach(() => {
@@ -145,19 +154,37 @@ async function startDemoAndWait() {
     expect(screen.getByTestId('case-workspace')).toBeInTheDocument();
   });
   await waitFor(() => {
-    expect(screen.getByTestId('case-header')).toBeInTheDocument();
+    expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument();
   });
   return user;
 }
 
-// "What Sift found" is now a FindingsSheet trigger, not an inline
-// DisclosureSection (round-2 design review) -- tests that need to reach a
-// real evidence-card control open the sheet first.
+// "What Sift found" is now the `WorkspaceAppBar`'s "Findings" control, not
+// a disclosure row at all (ADR 0008: the one region promoted out of the
+// bottom-of-page stack in BOTH layout modes) -- tests that need to reach a
+// real evidence-card control open the sheet through it first.
 async function openFindingsSheet(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByTestId('disclosure-findings-summary'));
+  await user.click(screen.getByTestId('workspace-app-bar-findings'));
   await waitFor(() => {
     expect(screen.getByTestId('findings-sheet')).toBeInTheDocument();
   });
+}
+
+// ADR 0008: `layout === 'expanded'` (web app / "shopping site" mode) is
+// only reachable in jsdom by stubbing `matchMedia`, since jsdom has no real
+// implementation and `useWidthMode()` falls back to `'narrow'` otherwise
+// (`use-width-mode.ts`'s own header comment). Hoisted here (rather than
+// duplicated per describe block) so every expanded-mode test in this file
+// shares one implementation.
+function stubExpandedLayout() {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+  }));
 }
 
 describe('App', () => {
@@ -292,9 +319,9 @@ describe('App', () => {
       expect(screen.queryByTestId('demo-launcher')).not.toBeInTheDocument();
 
       await waitFor(() => {
-        expect(screen.getByTestId('case-header')).toBeInTheDocument();
+        expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument();
       });
-      expect(screen.getByTestId('case-header-title')).toHaveTextContent('Restored case');
+      expect(screen.getByTestId('workspace-app-bar-title')).toHaveTextContent('Restored case');
     });
 
     it('clears a stale stored caseId and falls back to the launcher when the server no longer has that case', async () => {
@@ -319,12 +346,12 @@ describe('App', () => {
   });
 
   describe('live workspace wiring', () => {
-    it('renders CaseHeader with the real streamed snapshot title, and never leaks the pack id/badge to the consumer surface', async () => {
+    it('renders WorkspaceAppBar with the real streamed snapshot title, and never leaks the pack id/badge to the consumer surface', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID, title: 'Choose our next car (live)' });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
-      expect(screen.getByTestId('case-header-title')).toHaveTextContent(
+      expect(screen.getByTestId('workspace-app-bar-title')).toHaveTextContent(
         'Choose our next car (live)',
       );
       // ADR 0004 decision item 1: the Decision Pack badge/id/hash and the
@@ -488,7 +515,7 @@ describe('App', () => {
       );
     });
 
-    it('reflects the real SSE connectionState in the CaseHeader connection indicator', async () => {
+    it('reflects the real SSE connectionState in the WorkspaceAppBar connection indicator', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
@@ -497,7 +524,9 @@ describe('App', () => {
       FakeEventSource.instances.at(-1)!.triggerOpen();
 
       await waitFor(() => {
-        expect(screen.getByTestId('case-header-connection-status')).toHaveTextContent(/live/i);
+        expect(screen.getByTestId('workspace-app-bar-connection-status')).toHaveTextContent(
+          /live/i,
+        );
       });
     });
 
@@ -526,10 +555,10 @@ describe('App', () => {
       );
       const user = await startDemoAndWait();
 
-      await user.click(screen.getByTestId('case-header-reset-demo'));
+      await user.click(screen.getByTestId('workspace-app-bar-reset-demo'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('case-header-title')).toHaveTextContent('Second case');
+        expect(screen.getByTestId('workspace-app-bar-title')).toHaveTextContent('Second case');
       });
       expect(capturedBody).toMatchObject({ demoId: 'car-purchase' });
     });
@@ -573,7 +602,7 @@ describe('App', () => {
       );
       const user = await startDemoAndWait();
       await waitFor(() => {
-        expect(screen.getByTestId('case-header-title')).toHaveTextContent('First case');
+        expect(screen.getByTestId('workspace-app-bar-title')).toHaveTextContent('First case');
       });
 
       await user.click(screen.getByTestId('disclosure-add-concern-summary'));
@@ -585,9 +614,9 @@ describe('App', () => {
         expect(screen.getByTestId('custom-concern-form-success')).toBeInTheDocument();
       });
 
-      await user.click(screen.getByTestId('case-header-reset-demo'));
+      await user.click(screen.getByTestId('workspace-app-bar-reset-demo'));
       await waitFor(() => {
-        expect(screen.getByTestId('case-header-title')).toHaveTextContent('Second case');
+        expect(screen.getByTestId('workspace-app-bar-title')).toHaveTextContent('Second case');
       });
 
       expect(screen.queryByTestId('custom-concern-form-success')).not.toBeInTheDocument();
@@ -617,7 +646,7 @@ describe('App', () => {
         </AppProviders>,
       );
       await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
-      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument());
 
       await user.click(screen.getByTestId('request-investigation'));
 
@@ -686,7 +715,7 @@ describe('App', () => {
         </AppProviders>,
       );
       await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
-      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument());
 
       await user.click(screen.getByTestId('request-investigation'));
 
@@ -923,15 +952,23 @@ describe('App', () => {
     it('resolves the active installed pack (by identity.id) and passes its real optionLabel/presentation down to OptionEditor and the option views', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
-      await startDemoAndWait();
+      const user = await startDemoAndWait();
 
       // `DEFAULT_PACK.presentation.optionLabel` is `'car'` -- if the active
       // pack were not correctly resolved (e.g. matched on the wrong field),
       // this would silently fall back to the generic `'option'` label.
+      // `OptionEditor` now only mounts inside the app bar's "Add option"
+      // sheet (ADR 0008) -- open it first.
+      expect(screen.getByTestId('workspace-app-bar-add-option')).toHaveAccessibleName('Add option');
+      await user.click(screen.getByTestId('workspace-app-bar-add-option'));
       await waitFor(() => {
         expect(screen.getByTestId('option-editor-new')).toHaveTextContent('Add car');
       });
-      expect(screen.getByRole('heading', { name: 'car candidates' })).toBeInTheDocument();
+      // `OptionEditor`'s own heading is `{optionLabel}s` (its own header
+      // comment: naive "+s" pluralization of whatever the pack declares,
+      // not a fixed "candidates" suffix) -- copy owned by that component,
+      // not this file.
+      expect(screen.getByRole('heading', { name: 'cars' })).toBeInTheDocument();
     });
 
     it('shows the WebMcpStatus "ready" confirmation when the injected adapter reports supported', async () => {
@@ -942,7 +979,7 @@ describe('App', () => {
       expect(screen.getByTestId('webmcp-status-supported')).toBeInTheDocument();
     });
 
-    it('shows a recoverable ErrorState while preserving the last valid CaseHeader title when the stream errors', async () => {
+    it('shows a recoverable ErrorState while preserving the last valid WorkspaceAppBar title when the stream errors', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID, title: 'Resilient case' });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
@@ -954,8 +991,8 @@ describe('App', () => {
         expect(screen.getByTestId('error-state')).toBeInTheDocument();
       });
       // Last valid case state is preserved -- the header title never blanks.
-      expect(screen.getByTestId('case-header-title')).toHaveTextContent('Resilient case');
-      expect(screen.getByTestId('case-header-connection-status')).toHaveTextContent(
+      expect(screen.getByTestId('workspace-app-bar-title')).toHaveTextContent('Resilient case');
+      expect(screen.getByTestId('workspace-app-bar-connection-status')).toHaveTextContent(
         /reconnecting/i,
       );
     });
@@ -1190,7 +1227,7 @@ describe('App', () => {
       await startDemoAndWait();
 
       await waitFor(() => {
-        expect(screen.getByTestId('case-header')).toBeInTheDocument();
+        expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument();
       });
       expect(screen.queryByTestId('live-run-status')).not.toBeInTheDocument();
       expect(screen.queryByTestId('live-run-status-empty')).not.toBeInTheDocument();
@@ -1284,9 +1321,9 @@ describe('App', () => {
       // Only track calls made *after* the initial launcher click's own
       // (expected) startDemo call.
       startDemoCalled = false;
-      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument());
 
-      await user.click(screen.getByTestId('case-header-reset-demo'));
+      await user.click(screen.getByTestId('workspace-app-bar-reset-demo'));
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(startDemoCalled).toBe(false);
@@ -1300,13 +1337,13 @@ describe('App', () => {
       // launcher (already completed above) must succeed normally.
       server.use(http.post('/api/cases/demo', () => new HttpResponse(null, { status: 500 })));
 
-      await user.click(screen.getByTestId('case-header-reset-demo'));
+      await user.click(screen.getByTestId('workspace-app-bar-reset-demo'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('case-header-reset-demo')).not.toBeDisabled();
+        expect(screen.getByTestId('workspace-app-bar-reset-demo')).not.toBeDisabled();
       });
       // Never blanked -- the same case stays displayed after a failed reset.
-      expect(screen.getByTestId('case-header-title')).toHaveTextContent('Still here');
+      expect(screen.getByTestId('workspace-app-bar-title')).toHaveTextContent('Still here');
     });
 
     it('disposes the WebMCP tool registration handle cleanly on unmount', async () => {
@@ -1344,8 +1381,12 @@ describe('App', () => {
       await waitFor(() => {
         expect(screen.getByTestId('request-investigation')).toBeEnabled();
       });
+      // Copy owned by `RecommendationHero.tsx` (a concurrent terminology
+      // pass, unrelated to this task) -- asserting it returns to its real
+      // default label rather than staying stuck on a "requesting..." state,
+      // not asserting a specific wording this file does not own.
       expect(screen.getByTestId('request-investigation')).toHaveTextContent(
-        'Request investigation',
+        'Ask Sift to look into this',
       );
       expect(screen.getByTestId('request-investigation-error')).toBeInTheDocument();
     });
@@ -1408,10 +1449,13 @@ describe('App', () => {
       await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
 
       await waitFor(() => {
-        expect(screen.getByTestId('case-header')).toBeInTheDocument();
+        expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument();
       });
       // Falls back to the generic 'option' label rather than blocking.
-      expect(screen.getByTestId('option-editor-new')).toHaveTextContent('Add option');
+      await user.click(screen.getByTestId('workspace-app-bar-add-option'));
+      await waitFor(() => {
+        expect(screen.getByTestId('option-editor-new')).toHaveTextContent('Add option');
+      });
     });
 
     it('has no axe violations in the live workspace', async () => {
@@ -1465,7 +1509,7 @@ describe('App', () => {
           </AppProviders>,
         );
         await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
-        await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument());
 
         // Not reachable before any run has ever been requested this session.
         expect(screen.queryByTestId('open-runtime-inspector')).not.toBeInTheDocument();
@@ -1488,7 +1532,7 @@ describe('App', () => {
         // the stable, always-present region proving this (ADR 0004 item 5
         // deleted the current-focus card entirely).
         expect(screen.getByTestId('recommendation-hero')).toBeInTheDocument();
-        expect(screen.getByTestId('case-header')).toBeInTheDocument();
+        expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument();
 
         await waitFor(() => {
           expect(screen.getByTestId('runtime-inspector-status')).toHaveTextContent('completed');
@@ -1530,7 +1574,7 @@ describe('App', () => {
           </AppProviders>,
         );
         await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
-        await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+        await waitFor(() => expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument());
         await user.click(screen.getByTestId('request-investigation'));
         await waitFor(() =>
           expect(screen.getByTestId('open-runtime-inspector')).toBeInTheDocument(),
@@ -1548,7 +1592,7 @@ describe('App', () => {
   // Task A5 ("a real developer-mode entry point") and Task I2b (the
   // trigger half of I2, "a consumer event opens its exact runtime event").
   describe('developer view entry point (Task A5 / I2b)', () => {
-    it('opens the Runtime Inspector via the CaseHeader developer-view control with no run in hand, defaulting to the Activity tab', async () => {
+    it('opens the Runtime Inspector via the WorkspaceAppBar developer-view control with no run in hand, defaulting to the Activity tab', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
       const user = await startDemoAndWait();
@@ -1556,7 +1600,7 @@ describe('App', () => {
       // Reachable even though no run has ever happened this session --
       // unlike the pre-existing run-scoped "Inspect run" control.
       expect(screen.queryByTestId('open-runtime-inspector')).not.toBeInTheDocument();
-      await user.click(screen.getByTestId('case-header-developer-view'));
+      await user.click(screen.getByTestId('workspace-app-bar-developer-view'));
 
       await waitFor(() => {
         expect(screen.getByTestId('runtime-inspector')).toBeInTheDocument();
@@ -1596,7 +1640,7 @@ describe('App', () => {
       server.use(debugRunHandler('run-prior-1'));
       const user = await startDemoAndWait();
 
-      await user.click(screen.getByTestId('case-header-developer-view'));
+      await user.click(screen.getByTestId('workspace-app-bar-developer-view'));
       await waitFor(() => {
         expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
       });
@@ -1637,7 +1681,7 @@ describe('App', () => {
       renderLiveWorkspace(snapshot, priorRunEvents);
       const user = await startDemoAndWait();
 
-      await user.click(screen.getByTestId('case-header-developer-view'));
+      await user.click(screen.getByTestId('workspace-app-bar-developer-view'));
       await waitFor(() => {
         expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
       });
@@ -1652,7 +1696,7 @@ describe('App', () => {
       const { container } = renderLiveWorkspace(snapshot);
       const user = await startDemoAndWait();
 
-      await user.click(screen.getByTestId('case-header-developer-view'));
+      await user.click(screen.getByTestId('workspace-app-bar-developer-view'));
       await waitFor(() => {
         expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
       });
@@ -1667,16 +1711,18 @@ describe('App', () => {
   // for, in DOM order rather than only visual position. Each disclosure
   // row's closed `<summary>` still carries an accurate live summary even
   // while collapsed (a property ADR 0002 established and ADR 0004 keeps).
-  describe('workspace layout (ADR 0004, answer-first hero + disclosure rows)', () => {
-    it('renders the recommendation hero before every disclosure row, in real DOM order', async () => {
+  describe('workspace layout (ADR 0004/0008, answer-first hero + disclosure rows)', () => {
+    it('renders the recommendation hero before every remaining disclosure row, in real DOM order', async () => {
+      // "Manage options" and "What Sift found" are no longer disclosure rows
+      // at all (ADR 0008 -- both promoted into `WorkspaceAppBar`), so they
+      // are not in this list any more; the remaining narrow-mode rows must
+      // still all follow the hero.
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
       const hero = screen.getByTestId('recommendation-hero');
       for (const testId of [
-        'disclosure-options',
-        'disclosure-findings',
         'disclosure-still-checking',
         'disclosure-add-note',
         'disclosure-add-concern',
@@ -1691,20 +1737,19 @@ describe('App', () => {
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
-      for (const testId of [
-        'disclosure-options',
-        'disclosure-still-checking',
-        'disclosure-add-note',
-      ]) {
+      for (const testId of ['disclosure-still-checking', 'disclosure-add-note']) {
         expect(screen.getByTestId<HTMLDetailsElement>(testId).open).toBe(false);
       }
-      // "What Sift found" is a FindingsSheet trigger, not a native disclosure
-      // (round-2 design review) -- "closed by default" for this row means
-      // the sheet is not open yet.
+      // "What Sift found" is the app bar's "Findings" control now (ADR
+      // 0008), not a disclosure at all -- "closed by default" for this
+      // region means the sheet is not open yet.
       expect(screen.queryByTestId('findings-sheet')).not.toBeInTheDocument();
+      // "Manage options" likewise has no disclosure row any more -- it is
+      // the app bar's "Add option" sheet, also closed by default.
+      expect(screen.queryByTestId('workspace-add-option-sheet')).not.toBeInTheDocument();
     });
 
-    it('shows a live option count on the closed "Manage options" row', async () => {
+    it('shows a live option count on the app bar (ADR 0008: "Manage options" is no longer a disclosure row)', async () => {
       const snapshot = buildFixtureCaseState({
         id: CASE_ID,
         entities: [
@@ -1730,11 +1775,12 @@ describe('App', () => {
       await startDemoAndWait();
 
       await waitFor(() => {
-        expect(screen.getByTestId('disclosure-options-meta')).toHaveTextContent('2 options');
+        expect(screen.getByTestId('workspace-app-bar-option-count')).toHaveTextContent('2 options');
       });
+      expect(screen.queryByTestId('disclosure-options')).not.toBeInTheDocument();
     });
 
-    it('shows a live finding count on the closed "What Sift found" row', async () => {
+    it('shows a live finding count on the app bar\'s Findings control and the alert banner (ADR 0008: "What Sift found" is no longer a disclosure row)', async () => {
       const snapshot = buildFixtureCaseState({
         id: CASE_ID,
         sources: [
@@ -1754,9 +1800,9 @@ describe('App', () => {
             obligationId: 'obl-1',
             sourceId: 'source-1',
             level: 'E1',
-            verdict: 'pass',
+            verdict: 'fail',
             disposition: 'included',
-            summary: 'Confirmed via dealer quote.',
+            summary: 'Price could not be confirmed.',
             stale: false,
             createdAt: '2026-08-27T00:00:00.000Z',
             updatedAt: '2026-08-27T00:00:00.000Z',
@@ -1767,7 +1813,13 @@ describe('App', () => {
       await startDemoAndWait();
 
       await waitFor(() => {
-        expect(screen.getByTestId('disclosure-findings-meta')).toHaveTextContent('1 finding');
+        expect(screen.getByTestId('workspace-app-bar-findings-count')).toHaveTextContent('1');
+      });
+      expect(screen.queryByTestId('disclosure-findings')).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-alert-banner-item-findings')).toHaveTextContent(
+          '1 finding needs your attention.',
+        );
       });
     });
 
@@ -2339,20 +2391,11 @@ describe('App', () => {
       };
     }
 
-    // Forces expanded layout so `OptionCompareView`'s own narrow-layout
+    // `stubExpandedLayout()` (module scope, near `openFindingsSheet` above)
+    // forces expanded layout so `OptionCompareView`'s own narrow-layout
     // head-to-head auto-pairing (which independently limits to 2 columns)
     // cannot masquerade as this test's real subject: the persisted
     // `compare.optionIds`/`visibleAttributeIds`/`pinnedAttributeIds` wiring.
-    function stubExpandedLayout() {
-      vi.stubGlobal('matchMedia', (query: string) => ({
-        matches: false,
-        media: query,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-      }));
-    }
 
     it('renders every option and attribute unchanged when the persisted view has no compare configuration', async () => {
       stubExpandedLayout();
@@ -2512,6 +2555,400 @@ describe('App', () => {
     });
   });
 
+  // ADR 0008 "Two Modes, One Product": `WorkspaceAppBar`/`WorkspaceAlertBanner`
+  // replace `CaseHeader` and the former bottom-of-page "Manage options"/
+  // "What Sift found" disclosures in BOTH layout modes; `WorkspaceSidebar`
+  // plus this file's own sheet-based utility controls are the web-app-mode
+  // (`layout: 'expanded'`) equivalent of the narrow-mode disclosures that
+  // remain elsewhere in this file.
+  describe('ADR 0008 two-mode product architecture', () => {
+    describe('WorkspaceAlertBanner (derived from real state, never fabricated)', () => {
+      it('renders no alert banner at all when nothing warrants attention', async () => {
+        const snapshot = buildFixtureCaseState({ id: CASE_ID });
+        renderLiveWorkspace(snapshot);
+        await startDemoAndWait();
+
+        expect(screen.queryByTestId('workspace-alert-banner')).not.toBeInTheDocument();
+      });
+
+      it('shows a findings alert (from the same flaggedFindingsCount the app bar badge uses) with a working "Review findings" action', async () => {
+        const snapshot = buildFixtureCaseState({
+          id: CASE_ID,
+          sources: [
+            {
+              id: 'source-1',
+              url: 'https://dealer.example.com',
+              title: 'Dealer quote',
+              retrievedAt: '2026-08-27T00:00:00.000Z',
+              origin: 'user_submitted',
+              verification: 'unverified',
+              createdAt: '2026-08-27T00:00:00.000Z',
+            },
+          ],
+          evidenceLinks: [
+            {
+              id: 'evidence-1',
+              obligationId: 'obl-1',
+              sourceId: 'source-1',
+              level: 'E1',
+              verdict: 'fail',
+              disposition: 'included',
+              summary: 'Price could not be confirmed.',
+              stale: false,
+              createdAt: '2026-08-27T00:00:00.000Z',
+              updatedAt: '2026-08-27T00:00:00.000Z',
+            },
+          ],
+        });
+        renderLiveWorkspace(snapshot);
+        const user = await startDemoAndWait();
+
+        const item = await screen.findByTestId('workspace-alert-banner-item-findings');
+        expect(item).toHaveTextContent('1 finding needs your attention.');
+
+        await user.click(screen.getByTestId('workspace-alert-banner-action-findings'));
+        await waitFor(() => {
+          expect(screen.getByTestId('findings-sheet')).toBeInTheDocument();
+        });
+      });
+
+      it("shows a recommendation-ready alert that reuses the hero's own headline verbatim (never a second, independently-composed copy of it)", async () => {
+        const snapshot = buildFixtureCaseState({
+          id: CASE_ID,
+          recommendation: {
+            id: 'rec-1',
+            status: 'ready',
+            favoredOptionId: null,
+            rationale: 'Best overall fit.',
+            facts: [],
+            hypotheses: [],
+            confidence: 0.8,
+            limitations: [],
+            sourceIds: [],
+            resolvedObligationIds: [],
+            acceptedUncertaintyObligationIds: [],
+            generatedAt: '2026-08-27T00:00:00.000Z',
+          },
+          proposal: {
+            id: 'prop-1',
+            recommendationId: 'rec-1',
+            status: 'pending',
+            createdAt: '2026-08-27T00:00:00.000Z',
+          },
+        });
+        renderLiveWorkspace(snapshot);
+        await startDemoAndWait();
+
+        const item = await screen.findByTestId('workspace-alert-banner-item-recommendation-ready');
+        expect(item).toHaveTextContent('Sift has a recommendation ready for your decision.');
+        expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
+          'Sift has a recommendation ready for your decision.',
+        );
+        // Purely informational: the hero directly below already carries the
+        // real Approve/Reject/Revise controls, so this item has no action.
+        expect(
+          screen.queryByTestId('workspace-alert-banner-action-recommendation-ready'),
+        ).not.toBeInTheDocument();
+      });
+
+      it('shows a pending-extension alert whose action opens the "Add something Sift should check" sheet in expanded mode', async () => {
+        stubExpandedLayout();
+        const snapshot = buildFixtureCaseState({
+          id: CASE_ID,
+          caseExtensions: [
+            {
+              id: 'ext-1',
+              caseId: CASE_ID,
+              definition: {
+                id: 'custom.pet_sensory_fit',
+                label: 'Pet sensory fit',
+                valueType: 'string',
+                required: false,
+                appliesTo: ['car'],
+                evidenceExpectation: 'assertion',
+                comparison: 'none',
+                sensitive: false,
+                origin: 'agent_proposed',
+                reason: 'The household mentioned a sound-sensitive dog.',
+                confirmation: 'pending',
+                proposedBy: 'lead-investigator',
+                createdAt: '2026-08-27T00:00:00.000Z',
+              },
+              createdAt: '2026-08-27T00:00:00.000Z',
+            },
+          ],
+        });
+        renderLiveWorkspace(snapshot);
+        const user = await startDemoAndWait();
+
+        const item = await screen.findByTestId('workspace-alert-banner-item-pending-extension');
+        expect(item).toHaveTextContent('Sift proposed something new to check on this case.');
+
+        await user.click(screen.getByTestId('workspace-alert-banner-action-pending-extension'));
+        await waitFor(() => {
+          expect(screen.getByTestId('workspace-add-concern-sheet')).toBeInTheDocument();
+        });
+        expect(screen.getByTestId('case-extension-review-card-label')).toHaveTextContent(
+          'Pet sensory fit',
+        );
+      });
+
+      it('in narrow (pane) mode, the pending-extension alert action scrolls the already-auto-open disclosure into view instead of opening a second, duplicate sheet', async () => {
+        // The disclosure below already auto-opens via
+        // `defaultOpen={pendingExtension !== null}` -- the alert's action
+        // must NOT also open `addConcernSheetOpen` here, which would mount
+        // a second `CaseExtensionReviewCard` over the same extension and
+        // double-register `case-extension-review-card-label` in the DOM.
+        const scrollIntoView = vi.fn();
+        Element.prototype.scrollIntoView = scrollIntoView;
+        const snapshot = buildFixtureCaseState({
+          id: CASE_ID,
+          caseExtensions: [
+            {
+              id: 'ext-1',
+              caseId: CASE_ID,
+              definition: {
+                id: 'custom.pet_sensory_fit',
+                label: 'Pet sensory fit',
+                valueType: 'string',
+                required: false,
+                appliesTo: ['car'],
+                evidenceExpectation: 'assertion',
+                comparison: 'none',
+                sensitive: false,
+                origin: 'agent_proposed',
+                reason: 'The household mentioned a sound-sensitive dog.',
+                confirmation: 'pending',
+                proposedBy: 'lead-investigator',
+                createdAt: '2026-08-27T00:00:00.000Z',
+              },
+              createdAt: '2026-08-27T00:00:00.000Z',
+            },
+          ],
+        });
+        renderLiveWorkspace(snapshot);
+        const user = await startDemoAndWait();
+
+        await waitFor(() => {
+          expect(screen.getByTestId<HTMLDetailsElement>('disclosure-add-concern').open).toBe(true);
+        });
+        expect(screen.getAllByTestId('case-extension-review-card-label')).toHaveLength(1);
+
+        await user.click(screen.getByTestId('workspace-alert-banner-action-pending-extension'));
+
+        expect(scrollIntoView).toHaveBeenCalled();
+        expect(screen.queryByTestId('workspace-add-concern-sheet')).not.toBeInTheDocument();
+        expect(screen.getAllByTestId('case-extension-review-card-label')).toHaveLength(1);
+      });
+
+      it('shows a connection-offline alert when the live event stream cannot be reached at all, and clears once it recovers', async () => {
+        server.use(
+          http.post('/api/cases/demo', () =>
+            HttpResponse.json(buildFakeCommandReceipt({ caseId: CASE_ID })),
+          ),
+          http.get(`/api/cases/${CASE_ID}/events`, () => new HttpResponse(null, { status: 500 })),
+          packsHandler([DEFAULT_PACK]),
+        );
+        const user = userEvent.setup();
+        render(
+          <AppProviders caseEventsConfig={{ createEventSource: createFakeEventSource }}>
+            <App />
+          </AppProviders>,
+        );
+        await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
+        await waitFor(() => expect(screen.getByTestId('case-workspace')).toBeInTheDocument());
+
+        await waitFor(() => {
+          expect(
+            screen.getByTestId('workspace-alert-banner-item-connection-offline'),
+          ).toHaveTextContent('Connection lost. Sift will keep trying to reconnect.');
+        });
+      });
+    });
+
+    describe('WorkspaceSidebar (web app mode filters/priorities/still-checking)', () => {
+      const AWD_DEFINITION = {
+        id: 'awd',
+        label: 'AWD',
+        valueType: 'boolean' as const,
+        required: false,
+        appliesTo: ['car'],
+        evidenceExpectation: 'assertion' as const,
+        comparison: 'none' as const,
+        sensitive: false,
+      };
+
+      it('renders the sidebar only in expanded layout, never in narrow', async () => {
+        const snapshot = buildFixtureCaseState({ id: CASE_ID });
+        renderLiveWorkspace(snapshot);
+        await startDemoAndWait();
+
+        expect(screen.queryByTestId('workspace-sidebar')).not.toBeInTheDocument();
+      });
+
+      it('writes a filter toggle through the real setView command as presentation state -- filters only, never a criteria/weight mutation', async () => {
+        stubExpandedLayout();
+        const snapshot = buildFixtureCaseState({
+          id: CASE_ID,
+          attributeDefinitions: [AWD_DEFINITION],
+        });
+        let capturedBody: unknown;
+        renderLiveWorkspace(snapshot);
+        server.use(
+          commandHandler('setView', buildFakeCommandReceipt({ caseId: CASE_ID }), (body) => {
+            capturedBody = body;
+          }),
+        );
+        const user = await startDemoAndWait();
+
+        await waitFor(() => expect(screen.getByTestId('workspace-sidebar')).toBeInTheDocument());
+        await user.click(screen.getByTestId('workspace-sidebar-filter-awd'));
+
+        await waitFor(() => {
+          expect(capturedBody).toMatchObject({
+            caseId: CASE_ID,
+            expectedSequence: snapshot.eventSequence,
+            view: {
+              mode: 'quick_pick',
+              filters: [{ fieldId: 'awd', operator: 'equals', value: 'true' }],
+            },
+          });
+        });
+        // Presentation-only, by construction: this is a `setView` payload,
+        // never a `criteria`/weight-bearing command -- there is no other
+        // command endpoint this test registers a handler for, so any such
+        // call would surface as an unhandled-request error (`server.listen`
+        // is configured `onUnhandledRequest: 'error'` at the top of this
+        // file).
+      });
+
+      it('renders real priorities from the derived DecisionProfile, and opens "Still checking" (with the real ReadinessPanel) via the sidebar button', async () => {
+        stubExpandedLayout();
+        const snapshot = buildFixtureCaseState({
+          id: CASE_ID,
+          criteria: [
+            {
+              id: 'crit-budget',
+              label: 'Budget',
+              kind: 'hard_constraint',
+              weight: 20,
+              direction: 'higher_better',
+              origin: 'pack',
+              status: 'active',
+              target: { type: 'money', amount: 40000, currency: 'USD' },
+            },
+          ],
+        });
+        renderLiveWorkspace(snapshot);
+        const user = await startDemoAndWait();
+
+        await waitFor(() => {
+          expect(screen.getByTestId('workspace-sidebar-priority-crit-budget')).toHaveTextContent(
+            'Budget',
+          );
+        });
+
+        await user.click(screen.getByTestId('workspace-sidebar-still-checking-button'));
+        await waitFor(() => {
+          expect(screen.getByTestId('workspace-still-checking-sheet')).toBeInTheDocument();
+        });
+        expect(screen.getByTestId('readiness-panel-status')).toBeInTheDocument();
+      });
+    });
+
+    describe('expanded-mode reachability for regions with no sidebar slot (Notes, full Decision Profile, Add a concern)', () => {
+      it('reaches Notes, the FULL Decision Profile (including fields the sidebar excludes), and "Add something Sift should check" via the main-column toolbar', async () => {
+        stubExpandedLayout();
+        const snapshot = buildFixtureCaseState({
+          id: CASE_ID,
+          criteria: [
+            {
+              id: 'crit-budget',
+              label: 'Budget',
+              kind: 'hard_constraint',
+              weight: 20,
+              direction: 'higher_better',
+              origin: 'pack',
+              status: 'active',
+              target: { type: 'money', amount: 40000, currency: 'USD' },
+            },
+          ],
+          notes: [
+            {
+              id: 'note-1',
+              body: 'The seat position felt wrong on the test drive.',
+              kind: 'observation',
+              origin: 'user',
+              authoredBy: 'user',
+              optionIds: [],
+              sourceIds: [],
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+        });
+        renderLiveWorkspace(snapshot);
+        const user = await startDemoAndWait();
+
+        await user.click(screen.getByTestId('workspace-expanded-open-notes'));
+        await waitFor(() => {
+          expect(screen.getByTestId('workspace-notes-sheet')).toBeInTheDocument();
+        });
+        expect(screen.getByTestId('case-note-body-note-1')).toHaveTextContent(
+          'The seat position felt wrong on the test drive.',
+        );
+        await user.click(screen.getByTestId('sheet-close'));
+        await waitFor(() => {
+          expect(screen.queryByTestId('workspace-notes-sheet')).not.toBeInTheDocument();
+        });
+
+        await user.click(screen.getByTestId('workspace-expanded-open-decision-profile'));
+        await waitFor(() => {
+          expect(screen.getByTestId('workspace-decision-profile-sheet')).toBeInTheDocument();
+        });
+        expect(screen.getByTestId('decision-profile-view-concern-crit-budget')).toHaveTextContent(
+          'Budget',
+        );
+        await user.click(screen.getByTestId('sheet-close'));
+        await waitFor(() => {
+          expect(screen.queryByTestId('workspace-decision-profile-sheet')).not.toBeInTheDocument();
+        });
+
+        await user.click(screen.getByTestId('workspace-expanded-open-add-concern'));
+        await waitFor(() => {
+          expect(screen.getByTestId('workspace-add-concern-sheet')).toBeInTheDocument();
+        });
+        expect(screen.getByTestId('custom-concern-form')).toBeInTheDocument();
+      });
+
+      it('omits the "What you\'re looking for" toolbar button entirely (not merely a disabled one) when the derived DecisionProfile is empty', async () => {
+        stubExpandedLayout();
+        const snapshot = buildFixtureCaseState({ id: CASE_ID, criteria: [], caseExtensions: [] });
+        renderLiveWorkspace(snapshot);
+        await startDemoAndWait();
+
+        expect(
+          screen.queryByTestId('workspace-expanded-open-decision-profile'),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    describe('"Add option" / "Manage options" (ADR 0008: promoted into the app bar in BOTH layouts, no disclosure row any more)', () => {
+      it('remains reachable via the app bar in expanded layout too, saving a real option through the same OptionEditor/upsertOption path', async () => {
+        stubExpandedLayout();
+        const snapshot = buildFixtureCaseState({ id: CASE_ID });
+        renderLiveWorkspace(snapshot);
+        const user = await startDemoAndWait();
+
+        expect(screen.queryByTestId('disclosure-options')).not.toBeInTheDocument();
+        await user.click(screen.getByTestId('workspace-app-bar-add-option'));
+        await waitFor(() => {
+          expect(screen.getByTestId('workspace-add-option-sheet')).toBeInTheDocument();
+        });
+        expect(screen.getByTestId('option-editor')).toBeInTheDocument();
+      });
+    });
+  });
+
   // Defensive branches this file's other tests do not naturally exercise --
   // mostly "a promise resolves/rejects after this component (or its case
   // generation) has already been torn down" guards, plus a handful of
@@ -2525,7 +2962,7 @@ describe('App', () => {
   // .length ?? 0` fallback) are NOT covered here because they are
   // structurally unreachable from any real user interaction as this file
   // currently wires things: their triggering control either never mounts
-  // (`CaseHeader`/`ApprovalCard`/`EvidenceList`'s action controls all
+  // (`WorkspaceAppBar`/`ApprovalCard`/`EvidenceList`'s action controls all
   // require non-null data derived from `snapshot` before they render at
   // all -- unlike "Request investigation", which always mounts, just
   // disabled) or the value in question (`obligationId`, `review.reason`) is
@@ -2574,11 +3011,14 @@ describe('App', () => {
         </AppProviders>,
       );
       await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
-      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument());
 
       // Falls back to the generic 'option' label -- the malformed payload
       // never made it past `InstalledPacksResponseSchema.safeParse`.
-      expect(screen.getByTestId('option-editor-new')).toHaveTextContent('Add option');
+      await user.click(screen.getByTestId('workspace-app-bar-add-option'));
+      await waitFor(() => {
+        expect(screen.getByTestId('option-editor-new')).toHaveTextContent('Add option');
+      });
     });
 
     it('unmounting before the reload-restore verification fetch resolves does not apply a late activeCaseId/clear update', async () => {
@@ -2743,7 +3183,7 @@ describe('App', () => {
         </AppProviders>,
       );
       await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
-      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument());
 
       await user.click(screen.getByTestId('request-investigation'));
 
@@ -2772,7 +3212,7 @@ describe('App', () => {
         </AppProviders>,
       );
       await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
-      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument());
 
       await user.click(screen.getByTestId('request-investigation'));
 
@@ -2919,7 +3359,7 @@ describe('App', () => {
         </AppProviders>,
       );
       await user.click(screen.getByRole('button', { name: 'Choose our next car' }));
-      await waitFor(() => expect(screen.getByTestId('case-header')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument());
       await openFindingsSheet(user);
 
       await waitFor(() =>

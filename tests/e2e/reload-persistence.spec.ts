@@ -31,7 +31,7 @@ test.describe('reload persistence', () => {
     await sift.waitForInvestigationCompleted(round1.runId);
     await sift.waitForRecommendationReady();
 
-    const titleBefore = await page.getByTestId('case-header-title').textContent();
+    const titleBefore = await page.getByTestId('workspace-app-bar-title').textContent();
     const rationaleBefore = await page.getByTestId('recommendation-card-rationale').textContent();
     expect(titleBefore, 'a real title must exist before reload').toBeTruthy();
     expect(
@@ -44,7 +44,7 @@ test.describe('reload persistence', () => {
     // decision item 1) -- confirmed absent before reload too, so the
     // negative assertion after reload below is a genuine "still absent"
     // proof, not merely "never existed to begin with here."
-    await expect(page.getByTestId('case-header-pack-badge')).toHaveCount(0);
+    await expect(page.getByTestId('workspace-app-bar-pack-badge')).toHaveCount(0);
 
     // Track every "start a new case" call across the reload -- if
     // restoration accidentally fell back to creating a fresh case instead
@@ -62,9 +62,9 @@ test.describe('reload persistence', () => {
     // verified against the server.
     await expect(page.getByTestId('demo-launcher')).not.toBeVisible();
 
-    await expect(page.getByTestId('case-header')).toBeVisible({ timeout: 15_000 });
-    expect(await page.getByTestId('case-header-title').textContent()).toBe(titleBefore);
-    await expect(page.getByTestId('case-header-pack-badge')).toHaveCount(0);
+    await expect(page.getByTestId('workspace-app-bar')).toBeVisible({ timeout: 15_000 });
+    expect(await page.getByTestId('workspace-app-bar-title').textContent()).toBe(titleBefore);
+    await expect(page.getByTestId('workspace-app-bar-pack-badge')).toHaveCount(0);
     await expect(page.getByTestId('recommendation-card-rationale')).toHaveText(
       rationaleBefore ?? '',
     );

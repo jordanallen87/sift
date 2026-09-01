@@ -13,19 +13,31 @@
  * `CustomConcernForm` -> round-2 investigation -> a revised recommendation
  * -> human-only approval of the pending proposal.
  *
- * Rewritten this task for `docs/decisions/
+ * Rewritten for `docs/decisions/
  * 0004-consumer-workspace-information-architecture.md`: the answer-first
  * `RecommendationHero` (merging the retired `WorkspaceStatusHeader`,
  * `RecommendationCard`, and `ApprovalCard` into one region) replaces the old
- * "current focus" card and stacked recommendation/approval regions; "Compare
- * the options" is renamed to "Manage options" (`disclosure-options`) and no
- * longer contains the comparison table, which moved to the always-expanded
- * `WorkspaceViewSwitcher` (Quick Pick / List / Compare / Board tabs); the
- * Decision Pack badge and the raw chronological activity ledger ("Sift's
- * work so far") both left the consumer surface entirely. Each removed
- * region is proven gone with an explicit negative assertion below, not
- * silently dropped, per this task's own rule for preserving regression
- * value on a deliberate removal.
+ * "current focus" card and stacked recommendation/approval regions; the
+ * comparison table moved to the always-expanded `WorkspaceViewSwitcher`
+ * (Quick Pick / List / Compare / Board tabs); the Decision Pack badge and
+ * the raw chronological activity ledger ("Sift's work so far") both left
+ * the consumer surface entirely. Each removed region is proven gone with an
+ * explicit negative assertion below, not silently dropped, per this task's
+ * own rule for preserving regression value on a deliberate removal.
+ *
+ * Rewritten again for `docs/decisions/0008-two-mode-product-architecture.md`:
+ * "Manage options" (the disclosure ADR 0004 renamed "Compare the options"
+ * to) is dismantled entirely, in BOTH layouts -- `OptionEditor` now lives in
+ * a modal Sheet opened from `WorkspaceAppBar`'s always-visible "Add option"
+ * control (`sift.openManageOptionsSheet()`/`closeManageOptionsSheet()`
+ * below), never left open across unrelated steps the way the old inline
+ * disclosure safely was. "What Sift found" moved the same way, onto the app
+ * bar's "Findings" control (`sift.openFindingsSheet()`). At `desktop-1440`
+ * this spec exercises ADR 0008's web-app mode (a persistent left
+ * `WorkspaceSidebar` beside the main column) rather than a merely-wider
+ * pane; the three narrow projects exercise pane mode, where the surviving
+ * disclosures (priorities, notes, still-checking, add-a-question) are
+ * unchanged from ADR 0004.
  *
  * "Criteria reweight" has no dedicated visible control yet (confirmed: no
  * criteria-editing UI exists anywhere in `apps/web/src/components` today --
@@ -55,6 +67,7 @@ import {
   CAR_PURCHASE_CANDIDATE_IDS,
   CAR_PURCHASE_CRITERION_IDS,
   getCaseState,
+  isNarrowLayout,
   SiftPage,
   postCommand,
 } from './pages/sift-page.js';
@@ -114,11 +127,12 @@ test.describe('Choose our next car -- full demo journey', () => {
     // "Browser adapter"; CLAUDE.md "Non-negotiable product truths").
     await expect(page.getByTestId('webmcp-status-unsupported')).toBeVisible();
 
-    // --- 4 seeded candidates (ADR 0004: "Manage options" -- renamed from
-    // "Compare the options" -- is a closed-by-default disclosure row; the
-    // seeded count is proven from its own live meta summary rather than the
-    // options list itself, which is not yet in the DOM's visible flow). ---
-    await expect(page.getByTestId('disclosure-options-meta')).toHaveText(
+    // --- 4 seeded candidates. "Manage options" (ADR 0004's rename of
+    // "Compare the options") is gone entirely (ADR 0008): options are now
+    // reached only through the app bar's "Add option" Sheet in both modes,
+    // so the seeded count is proven from the app bar's own live status
+    // line rather than opening anything. ---
+    await expect(page.getByTestId('workspace-app-bar-option-count')).toHaveText(
       `${CAR_PURCHASE_CANDIDATE_IDS.length} options`,
     );
 
@@ -147,8 +161,8 @@ test.describe('Choose our next car -- full demo journey', () => {
     await expect(page.getByTestId('current-focus-empty')).toHaveCount(0);
     // The Decision Pack badge/id/compiled-hash and the case-status badge:
     // moved to developer-only detail entirely, per ADR 0004 decision item 1.
-    await expect(page.getByTestId('case-header-pack-badge')).toHaveCount(0);
-    await expect(page.getByTestId('case-header-run-status')).toHaveCount(0);
+    await expect(page.getByTestId('workspace-app-bar-pack-badge')).toHaveCount(0);
+    await expect(page.getByTestId('workspace-app-bar-run-status')).toHaveCount(0);
 
     // ADR 0004 decision item 6: the answer must be reachable without
     // scrolling at each canonical narrow width -- the machine-checked
@@ -160,6 +174,21 @@ test.describe('Choose our next car -- full demo journey', () => {
     // window -- see ADR 0007 for why every other gate stayed green.
     await assertExpandedLayoutUsesWidth(page, 'case-workspace');
 
+    // ADR 0008: the two layouts are genuinely different shells, not the same
+    // stack merely made wider -- proven directly, not just inferred from the
+    // width assertion above. Web-app mode gets a persistent left
+    // `WorkspaceSidebar` (priorities/filters/still-checking) the pane never
+    // has; pane mode keeps the narrow disclosure stack ADR 0004 already
+    // established, which web-app mode has none of at all (its equivalent
+    // content lives in the main-column toolbar's Sheets instead).
+    if (!isNarrowLayout(page)) {
+      await expect(page.getByTestId('workspace-expanded-layout')).toBeVisible();
+      await expect(page.getByTestId('workspace-sidebar')).toBeVisible();
+      await expect(page.getByTestId('disclosure-decision-profile')).toHaveCount(0);
+    } else {
+      await expect(page.getByTestId('workspace-sidebar')).toHaveCount(0);
+    }
+
     await expectNamedScreenshot(
       page,
       page.getByTestId('case-workspace'),
@@ -169,8 +198,9 @@ test.describe('Choose our next car -- full demo journey', () => {
     );
 
     // --- Workspace view switcher (ADR 0004 item 5; ADR 0005): always
-    // expanded, never a disclosure -- renders directly below "Manage
-    // options" and replaces the old unconditional comparison table.
+    // expanded, never a disclosure -- renders directly below
+    // `RecommendationHero` and replaces the old unconditional comparison
+    // table.
     //
     // Compare is no longer the DEFAULT tab -- task A10 changed the opening
     // view to Quick Pick because an always-fully-expanded attribute table
@@ -226,12 +256,13 @@ test.describe('Choose our next car -- full demo journey', () => {
     // would first reach it, not a tab this test happened to select last.
     await sift.selectWorkspaceView('compare');
 
-    // Opened once here and left open for the rest of the journey (the
-    // "Manage options" row) -- every later step that reaches `OptionEditor`
-    // content depends on it, and re-toggling it closed and open again
-    // between each step would add fragile sequencing with no real coverage
-    // benefit.
-    await sift.openDisclosure('options');
+    // "Manage options" (ADR 0008): no longer an inline disclosure row --
+    // `OptionEditor` now lives inside the app bar's "Add option" Sheet, a
+    // real modal dialog. Unlike the old disclosure, it is not safe to leave
+    // open across the rest of the journey (its overlay would intercept the
+    // "Request investigation" click below), so this opens it just for this
+    // check and closes it again immediately after.
+    await sift.openManageOptionsSheet();
     for (const candidateId of CAR_PURCHASE_CANDIDATE_IDS) {
       await expect(page.getByTestId(`option-editor-option-${candidateId}`)).toBeVisible();
     }
@@ -249,6 +280,7 @@ test.describe('Choose our next car -- full demo journey', () => {
     await assertPrimaryTouchTargets(page, ['option-editor-save', 'option-editor-cancel']);
     await page.getByTestId('option-editor-cancel').click();
     await expect(page.getByTestId('option-editor-cancel')).toBeHidden();
+    await sift.closeManageOptionsSheet();
 
     // --- Round 1: real live streaming investigation ---
     const round1 = await sift.requestInvestigation();
@@ -264,13 +296,22 @@ test.describe('Choose our next car -- full demo journey', () => {
     await expect(page.getByTestId('disclosure-work-so-far')).toHaveCount(0);
     await expect(page.getByTestId('activity-timeline')).toHaveCount(0);
     await assertNoSeriousAxeViolations(page, 'mid-investigation');
-    await assertRightPaneIntegrity(page, [
-      'request-investigation',
-      'case-header-reset-demo',
+    await assertRightPaneIntegrity(page, ['request-investigation', 'workspace-app-bar-reset-demo']);
+
+    // The Add option Sheet stays genuinely reachable and usable while a run
+    // streams live -- opened and closed again here rather than left open
+    // across the whole journey (see the "Manage options" step above for
+    // why), so this still proves real rendered geometry for
+    // `option-editor-new`/`option-editor-save`/`option-editor-edit-*`
+    // mid-investigation, not merely that they are skipped because the sheet
+    // happens to be closed.
+    await sift.openManageOptionsSheet();
+    await assertPrimaryTouchTargets(page, [
       'option-editor-new',
       'option-editor-save',
       `option-editor-edit-${CAR_PURCHASE_CANDIDATE_IDS[0]}`,
     ]);
+    await sift.closeManageOptionsSheet();
 
     // Runtime Inspector: `open-runtime-inspector` only becomes visible once
     // a run has been requested (`liveRunStatusReceipt?.runId`, `App.tsx`),
@@ -382,6 +423,13 @@ test.describe('Choose our next car -- full demo journey', () => {
       ).some((extension) => extension.definition.confirmation === 'confirmed'),
     ).toBe(true);
 
+    // Closed before round 2's click below: in web-app mode "Add a question"
+    // is a real modal Sheet (ADR 0008) left open by `submitCustomConcern`
+    // (it only fills and submits, never closes what it opened), which would
+    // otherwise intercept the "Request investigation" click and hang the
+    // journey. Pane mode's disclosure has no modal to close.
+    await sift.closeAddConcern();
+
     // --- Round 2: independently detected from the confirmed concern (car-purchase-engine.ts) ---
     const round2 = await sift.requestInvestigation();
     expect(round2.runId).not.toBe(round1.runId);
@@ -410,13 +458,19 @@ test.describe('Choose our next car -- full demo journey', () => {
     await page.getByTestId('sheet-close').click();
     await expect(page.getByTestId('findings-sheet')).not.toBeVisible();
 
-    await assertRightPaneIntegrity(page, [
-      'approval-card-approve',
-      'approval-card-reject',
+    await assertRightPaneIntegrity(page, ['approval-card-approve', 'approval-card-reject']);
+
+    // As above: the Add option Sheet stays reachable while a proposal is
+    // pending, checked and closed again rather than left open through the
+    // screenshot below.
+    await sift.openManageOptionsSheet();
+    await assertPrimaryTouchTargets(page, [
       'option-editor-new',
       'option-editor-save',
       `option-editor-edit-${CAR_PURCHASE_CANDIDATE_IDS[0]}`,
     ]);
+    await sift.closeManageOptionsSheet();
+
     await withVolatileRegionsHidden(page, () =>
       expectNamedScreenshot(
         page,

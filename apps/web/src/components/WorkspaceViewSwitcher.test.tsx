@@ -82,7 +82,7 @@ function buildCaseExtension(overrides: Partial<CaseExtension> = {}): CaseExtensi
 describe('WorkspaceViewSwitcher', () => {
   it('renders all four view tabs with consumer-facing labels', () => {
     render(<WorkspaceViewSwitcher {...buildProps()} />);
-    expect(screen.getByTestId('workspace-view-tab-quick_pick')).toHaveTextContent('Quick Pick');
+    expect(screen.getByTestId('workspace-view-tab-quick_pick')).toHaveTextContent('Best Match');
     expect(screen.getByTestId('workspace-view-tab-list')).toHaveTextContent('List');
     expect(screen.getByTestId('workspace-view-tab-compare')).toHaveTextContent('Compare');
     expect(screen.getByTestId('workspace-view-tab-board')).toHaveTextContent('Board');

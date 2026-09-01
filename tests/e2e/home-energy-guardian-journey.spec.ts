@@ -48,15 +48,19 @@
  * `sift-page.ts`'s `postRunRequest`/`waitForRecommendationRationaleContains`
  * for the full mechanics.
  *
- * Rewritten this task for `docs/decisions/
- * 0004-consumer-workspace-information-architecture.md` -- see
+ * Rewritten for `docs/decisions/
+ * 0004-consumer-workspace-information-architecture.md`, then again for
+ * `docs/decisions/0008-two-mode-product-architecture.md` -- see
  * `car-purchase-journey.spec.ts`'s own header comment for the full list of
  * information-architecture changes both hero journeys share (the
- * answer-first `RecommendationHero`, "Manage options" replacing "Compare the
- * options", the always-expanded `WorkspaceViewSwitcher` replacing the old
- * unconditional comparison table, the Decision Pack badge and raw activity
- * ledger leaving the consumer surface). Each removed region is proven gone
- * with an explicit negative assertion below.
+ * answer-first `RecommendationHero`, the always-expanded
+ * `WorkspaceViewSwitcher` replacing the old unconditional comparison table,
+ * the Decision Pack badge and raw activity ledger leaving the consumer
+ * surface, "Manage options"/"What Sift found" dismantled into the app bar's
+ * "Add option"/"Findings" Sheets in both layouts, and the web-app-mode
+ * `WorkspaceSidebar` this spec's `desktop-1440` project now exercises).
+ * Each removed region is proven gone with an explicit negative assertion
+ * below.
  */
 import { expect, test } from '@playwright/test';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
@@ -75,6 +79,7 @@ import {
   HOME_ENERGY_RESPONSE_OPTION_ENTITY_ORDER,
   HOME_ENERGY_RESPONSE_OPTION_IDS,
   HOME_ENERGY_RESPONSE_OPTIONS_OBLIGATION_ID,
+  isNarrowLayout,
   SiftPage,
   postCommand,
   postRunRequest,
@@ -135,7 +140,10 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     // from "Compare the options" -- is a closed-by-default disclosure row;
     // the seeded count is proven from its own live meta summary rather than
     // the options list itself, which is not yet in the DOM's visible flow). ---
-    await expect(page.getByTestId('disclosure-options-meta')).toHaveText(
+    // The "Manage options" disclosure and its meta summary are gone (ADR
+    // 0008): options are now reached through the app bar in both modes, so
+    // the live seeded count is proven from the app bar's own status line.
+    await expect(page.getByTestId('workspace-app-bar-option-count')).toHaveText(
       `${HOME_ENERGY_RESPONSE_OPTION_IDS.length} options`,
     );
 
@@ -158,11 +166,22 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     // for the same checks and their full rationale). ---
     await expect(page.getByTestId('current-focus')).toHaveCount(0);
     await expect(page.getByTestId('current-focus-empty')).toHaveCount(0);
-    await expect(page.getByTestId('case-header-pack-badge')).toHaveCount(0);
-    await expect(page.getByTestId('case-header-run-status')).toHaveCount(0);
+    await expect(page.getByTestId('workspace-app-bar-pack-badge')).toHaveCount(0);
+    await expect(page.getByTestId('workspace-app-bar-run-status')).toHaveCount(0);
 
     // ADR 0004 decision item 6: above-the-fold invariant.
     await assertRecommendationHeroAboveTheFold(page);
+
+    // ADR 0008: the two layouts are genuinely different shells -- see
+    // `car-purchase-journey.spec.ts` for the full rationale (this journey
+    // mirrors it exactly).
+    if (!isNarrowLayout(page)) {
+      await expect(page.getByTestId('workspace-expanded-layout')).toBeVisible();
+      await expect(page.getByTestId('workspace-sidebar')).toBeVisible();
+      await expect(page.getByTestId('disclosure-decision-profile')).toHaveCount(0);
+    } else {
+      await expect(page.getByTestId('workspace-sidebar')).toHaveCount(0);
+    }
 
     await expectNamedScreenshot(
       page,
@@ -218,10 +237,11 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     }
     await sift.selectWorkspaceView('compare');
 
-    // Opened once here and left open for the rest of the journey (the
-    // "Manage options" row) -- every later step that reaches `OptionEditor`
-    // content depends on it.
-    await sift.openDisclosure('options');
+    // "Manage options" (ADR 0008): `OptionEditor` now lives inside the app
+    // bar's "Add option" Sheet, a real modal dialog -- opened just for this
+    // check and closed again immediately after (see
+    // `car-purchase-journey.spec.ts` for the full rationale).
+    await sift.openManageOptionsSheet();
     for (const optionId of HOME_ENERGY_RESPONSE_OPTION_IDS) {
       await expect(page.getByTestId(`option-editor-option-${optionId}`)).toBeVisible();
     }
@@ -239,6 +259,7 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     await assertPrimaryTouchTargets(page, ['option-editor-save', 'option-editor-cancel']);
     await page.getByTestId('option-editor-cancel').click();
     await expect(page.getByTestId('option-editor-cancel')).toBeHidden();
+    await sift.closeManageOptionsSheet();
 
     // --- Round 1: real live streaming investigation, driven by the visible control ---
     const round1 = await sift.requestInvestigation();
@@ -254,13 +275,18 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     await expect(page.getByTestId('disclosure-work-so-far')).toHaveCount(0);
     await expect(page.getByTestId('activity-timeline')).toHaveCount(0);
     await assertNoSeriousAxeViolations(page, 'mid-investigation');
-    await assertRightPaneIntegrity(page, [
-      'request-investigation',
-      'case-header-reset-demo',
+    await assertRightPaneIntegrity(page, ['request-investigation', 'workspace-app-bar-reset-demo']);
+
+    // The Add option Sheet stays genuinely reachable and usable while a run
+    // streams live -- see `car-purchase-journey.spec.ts` for the full
+    // rationale for opening/closing it here rather than leaving it open.
+    await sift.openManageOptionsSheet();
+    await assertPrimaryTouchTargets(page, [
       'option-editor-new',
       'option-editor-save',
       `option-editor-edit-${HOME_ENERGY_RESPONSE_OPTION_IDS[0]}`,
     ]);
+    await sift.closeManageOptionsSheet();
 
     // Runtime Inspector: `open-runtime-inspector` only becomes visible once
     // a run has been requested (`liveRunStatusReceipt?.runId`, `App.tsx`),
@@ -404,13 +430,19 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     await page.getByTestId('sheet-close').click();
     await expect(page.getByTestId('findings-sheet')).not.toBeVisible();
 
-    await assertRightPaneIntegrity(page, [
-      'approval-card-approve',
-      'approval-card-reject',
+    await assertRightPaneIntegrity(page, ['approval-card-approve', 'approval-card-reject']);
+
+    // As above: the Add option Sheet stays reachable while a proposal is
+    // pending, checked and closed again rather than left open through the
+    // screenshot below.
+    await sift.openManageOptionsSheet();
+    await assertPrimaryTouchTargets(page, [
       'option-editor-new',
       'option-editor-save',
       `option-editor-edit-${HOME_ENERGY_RESPONSE_OPTION_IDS[0]}`,
     ]);
+    await sift.closeManageOptionsSheet();
+
     await withVolatileRegionsHidden(page, async () => {
       await expectNamedScreenshot(
         page,

@@ -105,12 +105,37 @@
  *      task's own instruction is "pack presentation metadata already drives which fields are
  *      prominent -- respect that, don't bypass it." Expanded mode does not invent a new selection
  *      source; it simply has room to honor more of what the pack author already ordered.
+ *
+ * **Visual hierarchy redesign.** The original card rendered every prominent fact as one
+ * `${label}: ${value}` string at identical size/weight/color, so a reader had to parse ~25 lines of
+ * undifferentiated grey text to find the one number (price) and the one judgment (strengths vs.
+ * concerns vs. unresolved) that actually matter. Three structural changes fix this, all still built
+ * strictly on top of the same `pickProminentDefinitions`-selected fact set -- nothing here changes
+ * *which* attributes appear, only how the ones already chosen are laid out and colored:
+ *   1. **Identity -> price -> verdict, in that reading order.** `CardFact.headline` (see
+ *      `buildFacts`) promotes the first `money`-typed prominent fact -- almost always the option's
+ *      price -- out of the label/value grid into its own larger, bolder callout directly under the
+ *      option name, so the two facts a reader needs first (what is this, what does it cost) sit
+ *      together at the top before any other spec. Deliberately typographic emphasis only (size,
+ *      weight, `--font-display`), never a status color: design-system.md reserves saturated color
+ *      for the nine semantic status tokens, and a price is a plain fact, not a state.
+ *   2. **Specs as data, not sentences.** The remaining facts render as a `<dl>` definition grid --
+ *      a small muted caps label (`<dt>`) stacked over an emphasized value (`<dd>`), two columns wide
+ *      -- instead of a run-on "Label: value" clause. A `string_list` value long enough to blow out
+ *      the card (e.g. "Standard features") is capped at `MAX_LIST_VALUES_SHOWN` entries plus an
+ *      honest "+N more" suffix, never silently dropped and never fabricated.
+ *   3. **Strengths/concerns/unresolved get three different colors, not one.** `INSIGHT_SECTION_TONE`
+ *      maps each bucket onto an existing `activity-labels.ts` status tone -- the same
+ *      ink/bg/border/icon vocabulary `RecommendationCard.tsx` and `ApprovalCard.tsx` already use, so
+ *      this card joins a pattern rather than inventing a fourth color language. See that constant's
+ *      own comment for the specific tone reasoning per bucket.
  */
 import { useMemo } from 'react';
 import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
 import { formatAttributeValue } from './attribute-value-format.js';
 import { Badge } from '@/components/ui/badge';
 import { isIdentityAttribute, meetsEvidenceExpectation } from '../lib/evidence-expectation.js';
+import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 
 export interface OptionListViewProps {
   options: EntityRecord[];
@@ -231,21 +256,71 @@ function pickProminentDefinitions(
 interface CardFact {
   definitionId: string;
   label: string;
+  /** The value text actually rendered -- already capped for an over-long `string_list` (see `MAX_LIST_VALUES_SHOWN`), never the full uncapped join. */
   display: string;
+  /**
+   * Count of additional `string_list` entries beyond `display`'s capped preview, rendered as an
+   * explicit "+N more" suffix. Zero for every non-list value and for a list at or under the cap.
+   * Existing to keep a long value honest: CLAUDE.md's "an unknown stays explicitly unknown; never
+   * invent a value or a placeholder" extends naturally to "never silently truncate without saying
+   * so" -- a reader can always tell more values exist even when they aren't all shown.
+   */
+  overflowCount: number;
   known: boolean;
   custom: boolean;
+  /**
+   * True for the single `money`-typed prominent fact this card promotes out of the label/value grid
+   * into the identity-tier price callout directly under the option name (see the header comment's
+   * "Visual hierarchy redesign" §1 and `OptionListCard`'s render). Deliberately derived only from
+   * `definition.valueType` on a definition that already survived `pickProminentDefinitions` -- this
+   * never widens *which* attributes are prominent, only *where on the card* one of them, already
+   * selected, gets laid out. At most one fact per card is ever `headline: true`: `buildFacts` claims
+   * the first money-typed prominent definition it encounters, in the pack's own order, and leaves
+   * any further money-typed field (rare -- e.g. a pack that also promotes "estimated monthly
+   * payment") in the ordinary grid rather than stacking a second oversized callout.
+   */
+  headline: boolean;
 }
+
+// A `string_list` value (e.g. a car's full standard-features list) can run to a dozen-plus entries.
+// Rendered in full, one fact could wrap across several lines and crowd out the strengths/concerns/
+// unresolved sections below it -- defeating "avoid dumping every available field" (§10) one section
+// later than `pickProminentDefinitions` already enforces it for *which* attributes appear at all.
+// Capping the visible entries and naming the remainder ("+N more", see `CardFact.overflowCount`)
+// keeps the card's promised "compact, information-dense" shape (this file's own header comment)
+// without ever hiding that more values exist.
+const MAX_LIST_VALUES_SHOWN = 4;
 
 /** Every prominent definition becomes exactly one fact -- known values format through the shared formatter, missing values render the explicit "Unknown" string (§10, CLAUDE.md), never blank or invented. */
 function buildFacts(option: EntityRecord, prominentDefinitions: AttributeDefinition[]): CardFact[] {
+  let headlineClaimed = false;
   return prominentDefinitions.map((definition) => {
     const value = option.attributes[definition.id]?.value;
+    const known = value !== undefined;
+
+    let display: string;
+    let overflowCount = 0;
+    if (known && value.type === 'string_list' && value.values.length > MAX_LIST_VALUES_SHOWN) {
+      display = value.values.slice(0, MAX_LIST_VALUES_SHOWN).join(', ');
+      overflowCount = value.values.length - MAX_LIST_VALUES_SHOWN;
+    } else {
+      display = known ? formatAttributeValue(value) : 'Unknown';
+    }
+
+    // First money-typed prominent field wins the headline slot -- see the `CardFact.headline` doc
+    // comment above for why this can never bypass prominence and why only one fact per card is ever
+    // promoted.
+    const headline = definition.valueType === 'money' && !headlineClaimed;
+    if (headline) headlineClaimed = true;
+
     return {
       definitionId: definition.id,
       label: definition.label,
-      display: value !== undefined ? formatAttributeValue(value) : 'Unknown',
-      known: value !== undefined,
+      display,
+      overflowCount,
+      known,
       custom: isCustomAttributeId(definition.id),
+      headline,
     };
   });
 }
@@ -333,22 +408,71 @@ function buildInsights(
   };
 }
 
+type InsightSection = 'strengths' | 'concerns' | 'unresolved';
+
+/**
+ * Maps each of the three honest insight buckets (see `buildInsights`'s header comment) onto one of
+ * `activity-labels.ts`'s nine established status tones -- the same shared ink/bg/border/icon
+ * vocabulary `RecommendationCard.tsx` and `ApprovalCard.tsx` already use, per this task's explicit
+ * instruction not to invent new colors. None of these three is a literal 1:1 rename of the tone's
+ * original product.md meaning (there is no "strength"/"concern" row in that table); each is chosen
+ * for the closest honest semantic match to an *existing* tone already in use elsewhere in the app, so
+ * a strength/concern/unresolved item reads with a color a user has already learned to associate with
+ * roughly the right feeling, rather than a fourth, competing color language:
+ *   - strengths -> `satisfied`: literally the same "required evidence is in and sufficient" state
+ *     `buildInsights` already tested for (`meetsEvidenceExpectation`) before adding to this bucket --
+ *     the most direct possible tone match of the three.
+ *   - concerns -> `blocked`: `activity-labels.ts` already maps the single closest real event,
+ *     `evidence.conflicted`, to `blocked` ("Research disagrees"), and every concern here is either
+ *     that exact conflicted state or a present-but-under-evidenced value -- both "something here
+ *     needs your attention before it can be trusted," which is `blocked`'s case-domain meaning, not a
+ *     technical `error`.
+ *   - unresolved -> `open`: no value exists yet -- the same "not yet started" state
+ *     `activity-labels.ts` gives `obligation.updated` ("Question to resolve"), and deliberately the
+ *     quietest of the three (design-system.md: "`open` ... intentionally the quietest token").
+ */
+const INSIGHT_SECTION_TONE: Record<InsightSection, StatusTone> = {
+  strengths: 'satisfied',
+  concerns: 'blocked',
+  unresolved: 'open',
+};
+
 interface InsightSectionProps {
   optionId: string;
-  section: 'strengths' | 'concerns' | 'unresolved';
+  section: InsightSection;
   heading: string;
   emptyText: string;
   items: CardInsight[];
 }
 
 function InsightSection({ optionId, section, heading, emptyText, items }: InsightSectionProps) {
+  const tone = STATUS_TONE_META[INSIGHT_SECTION_TONE[section]];
+  const hasItems = items.length > 0;
+
   return (
     <div
       data-testid={`option-list-view-${section}-${optionId}`}
-      className="flex flex-col gap-[var(--space-1)]"
+      // Tinted (background tint + left border-accent, the token triad's own "-bg"/"-border" roles)
+      // only once there is something to say -- an empty bucket ("Nothing flagged.") is not itself a
+      // status worth a colored block, matching `RecommendationCard.tsx`'s facts/hypotheses blocks,
+      // which are likewise only rendered -- and only tinted -- when non-empty.
+      className={
+        hasItems
+          ? 'flex flex-col gap-[var(--space-1)] rounded-[var(--radius-sm)] p-[var(--space-2)]'
+          : 'flex flex-col gap-[var(--space-1)]'
+      }
+      style={
+        hasItems ? { backgroundColor: tone.bg, borderLeft: `3px solid ${tone.border}` } : undefined
+      }
     >
-      <h3 className="label-caps text-[var(--color-ink-secondary)]">{heading}</h3>
-      {items.length > 0 ? (
+      <h3
+        className="label-caps flex items-center gap-[var(--space-1)]"
+        style={{ color: hasItems ? tone.ink : 'var(--color-ink-secondary)' }}
+      >
+        {hasItems ? <span aria-hidden="true">{tone.icon}</span> : null}
+        {heading}
+      </h3>
+      {hasItems ? (
         <ul className="flex flex-col gap-[var(--space-0-5)]">
           {items.map((item) => (
             <li
@@ -406,6 +530,12 @@ function OptionListCard({
     () => buildFacts(option, prominentDefinitions),
     [option, prominentDefinitions],
   );
+  // Split, never re-select: `headlineFact` is whichever single fact `buildFacts` already flagged
+  // `headline: true` (or none), and `gridFacts` is everything else in its original prominence order
+  // -- see `CardFact.headline`'s doc comment for why this can only reshuffle *layout*, never *which*
+  // facts exist.
+  const headlineFact = facts.find((fact) => fact.headline);
+  const gridFacts = facts.filter((fact) => !fact.headline);
   const insights = useMemo(() => {
     const prominentIds = new Set(prominentDefinitions.map((definition) => definition.id));
     return buildInsights(option, applicableDefinitions, prominentIds);
@@ -415,7 +545,10 @@ function OptionListCard({
     <li
       data-testid={`option-list-view-card-${option.id}`}
       data-selected={isSelected ? 'true' : 'false'}
-      className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-muted p-[var(--space-3)]"
+      // gap-3 (not the original gap-2): the redesigned card now stacks four visually distinct
+      // chunks -- identity, the price callout, the spec grid, and three tinted insight blocks --
+      // and each needs enough breathing room to read as its own unit rather than a cramped list.
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-muted p-[var(--space-3)]"
       style={
         isSelected
           ? {
@@ -430,25 +563,56 @@ function OptionListCard({
         data-testid={`option-list-view-focus-${option.id}`}
         onClick={() => onFocusOption(option.id)}
         aria-pressed={isSelected}
-        className="w-full min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-[family-name:var(--font-display)] text-[length:var(--font-size-md)] font-semibold text-[inherit]"
+        // `py-2-5` (not the original `p-0`): the un-padded button's box was only ~27px tall --
+        // below `--size-touch-target-min` (44px, testing.md's 44x44 CSS-pixel requirement). Padding,
+        // not a fixed height, per tokens.css's own guidance ("must resolve to a real >=44px box via
+        // padding or min-height/min-width, independent of how small its label or icon looks").
+        className="w-full min-w-0 cursor-pointer truncate border-0 bg-transparent px-0 py-[var(--space-2-5)] text-left font-[family-name:var(--font-display)] text-[length:var(--font-size-md)] font-semibold text-[inherit]"
       >
         {option.label}
         {isSelected ? <span className="label-caps ml-[var(--space-1)]">Selected</span> : null}
       </button>
 
-      {facts.length > 0 ? (
-        <ul
-          data-testid={`option-list-view-facts-${option.id}`}
+      {/* Visual hierarchy redesign §1 (this file's header comment): the identity-tier price callout.
+          Same testid scheme as an ordinary grid fact (`option-list-view-fact-{optionId}-{defId}`) --
+          this is still the pack's own prominent fact, only relocated and re-styled, so every test
+          written against "the price fact" keeps working regardless of where on the card it renders.
+          Typographic emphasis only (size/weight/display-font), deliberately no status color -- a
+          price is a plain fact, not a state (design-system.md reserves saturated color for the nine
+          status tokens). */}
+      {headlineFact ? (
+        <div
+          data-testid={`option-list-view-fact-${option.id}-${headlineFact.definitionId}`}
           className="flex flex-col gap-[var(--space-0-5)]"
         >
-          {facts.map((fact) => (
-            <li
+          <span className="label-caps text-[var(--color-ink-secondary)]">{headlineFact.label}</span>
+          <span
+            className="font-[family-name:var(--font-display)] text-[length:var(--font-size-lg)] leading-[var(--line-height-tight)] font-bold"
+            style={{ color: headlineFact.known ? 'var(--color-ink)' : 'var(--color-ink-muted)' }}
+          >
+            {headlineFact.display}
+          </span>
+        </div>
+      ) : null}
+
+      {/* Visual hierarchy redesign §2: specs as data, not sentences. A real `<dl>` -- label (`<dt>`,
+          small/muted/caps) stacked over an emphasized value (`<dd>`) -- laid out two columns wide, so
+          a reader scans values (the bold row) rather than parsing "Label: value" clauses one at a
+          time. `min-w-0` on every grid cell keeps a long unbroken value from forcing the column, and
+          therefore the card, wider than its allotted space at the 390px canonical viewport. */}
+      {gridFacts.length > 0 ? (
+        <dl
+          data-testid={`option-list-view-facts-${option.id}`}
+          className="m-0 grid grid-cols-2 gap-x-[var(--space-3)] gap-y-[var(--space-2)]"
+        >
+          {gridFacts.map((fact) => (
+            <div
               key={fact.definitionId}
               data-testid={`option-list-view-fact-${option.id}-${fact.definitionId}`}
-              className="text-[length:var(--font-size-sm)]"
+              className="flex min-w-0 flex-col gap-[var(--space-0-5)]"
             >
-              <span className="inline-flex min-w-0 items-center gap-[var(--space-1)] text-[var(--color-ink-secondary)]">
-                {fact.label}
+              <dt className="label-caps flex min-w-0 items-center gap-[var(--space-1)] text-[var(--color-ink-secondary)]">
+                <span className="truncate">{fact.label}</span>
                 {fact.custom ? (
                   <Badge
                     variant="outline"
@@ -459,34 +623,42 @@ function OptionListCard({
                     Custom
                   </Badge>
                 ) : null}
-                :
-              </span>{' '}
-              <span style={fact.known ? undefined : { color: 'var(--color-ink-muted)' }}>
+              </dt>
+              <dd
+                className="m-0 text-[length:var(--font-size-sm)] font-medium break-words"
+                style={{ color: fact.known ? 'var(--color-ink)' : 'var(--color-ink-muted)' }}
+              >
                 {fact.display}
-              </span>
-            </li>
+                {fact.overflowCount > 0 ? (
+                  <span
+                    className="font-normal"
+                    style={{ color: 'var(--color-ink-muted)' }}
+                  >{` +${fact.overflowCount} more`}</span>
+                ) : null}
+              </dd>
+            </div>
           ))}
-        </ul>
+        </dl>
       ) : null}
 
       <InsightSection
         optionId={option.id}
         section="strengths"
-        heading="Strengths"
+        heading="What we like"
         emptyText="Nothing strongly supported yet."
         items={insights.strengths}
       />
       <InsightSection
         optionId={option.id}
         section="concerns"
-        heading="Concerns"
+        heading="What to watch for"
         emptyText="Nothing flagged."
         items={insights.concerns}
       />
       <InsightSection
         optionId={option.id}
         section="unresolved"
-        heading="Still unresolved"
+        heading="Still researching"
         emptyText="Nothing outstanding."
         items={insights.unresolved}
       />

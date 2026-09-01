@@ -139,13 +139,13 @@ describe('FindingsSheet', () => {
   it('does not render its content when closed', () => {
     render(<FindingsSheet open={false} onOpenChange={vi.fn()} items={buildMixedItems()} />);
     expect(screen.queryByTestId('findings-sheet')).not.toBeInTheDocument();
-    expect(screen.queryByText('What Sift found')).not.toBeInTheDocument();
+    expect(screen.queryByText('Research')).not.toBeInTheDocument();
   });
 
-  it('renders its content, titled "What Sift found", when open', () => {
+  it('renders its content, titled "Research", when open', () => {
     render(<FindingsSheet open onOpenChange={vi.fn()} items={buildMixedItems()} />);
     expect(screen.getByTestId('findings-sheet')).toBeInTheDocument();
-    expect(screen.getByText('What Sift found')).toBeInTheDocument();
+    expect(screen.getByText('Research')).toBeInTheDocument();
   });
 
   it('renders the empty state instead of chips/tabs when there is no evidence yet', () => {

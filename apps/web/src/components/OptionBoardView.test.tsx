@@ -134,10 +134,10 @@ describe('OptionBoardView', () => {
       />,
     );
 
-    expect(screen.getByTestId('board-column-considering')).toHaveTextContent('Considering');
-    expect(screen.getByTestId('board-column-top_choices')).toHaveTextContent('Top choices');
-    expect(screen.getByTestId('board-column-need_to_verify')).toHaveTextContent('Need to verify');
-    expect(screen.getByTestId('board-column-out')).toHaveTextContent('Out');
+    expect(screen.getByTestId('board-column-considering')).toHaveTextContent('Comparing');
+    expect(screen.getByTestId('board-column-top_choices')).toHaveTextContent('Favorites');
+    expect(screen.getByTestId('board-column-need_to_verify')).toHaveTextContent('Need to check');
+    expect(screen.getByTestId('board-column-out')).toHaveTextContent('Ruled out');
   });
 
   it('honors custom columns', () => {
@@ -184,7 +184,7 @@ describe('OptionBoardView', () => {
     expect(
       within(screen.getByTestId('board-column-list-out')).getByTestId('board-card-option-2'),
     ).toBeInTheDocument();
-    // option-3 has no entry in optionColumnIds -- falls back to the first column (Considering).
+    // option-3 has no entry in optionColumnIds -- falls back to the first column (Comparing).
     expect(
       within(screen.getByTestId('board-column-list-considering')).getByTestId(
         'board-card-option-3',
@@ -232,7 +232,7 @@ describe('OptionBoardView', () => {
     await user.selectOptions(select, 'top_choices');
 
     // The callback fired, but nothing about the rendered board moved on its own: option-1 is
-    // still in Considering because the component holds no internal placement state.
+    // still in Comparing because the component holds no internal placement state.
     expect(
       within(screen.getByTestId('board-column-list-considering')).getByTestId(
         'board-card-option-1',
@@ -259,7 +259,7 @@ describe('OptionBoardView', () => {
         'board-card-option-1',
       ),
     ).toBeInTheDocument();
-    // option-1 no longer sits in Considering -- only the still-unassigned option-2/option-3 do.
+    // option-1 no longer sits in Comparing -- only the still-unassigned option-2/option-3 do.
     expect(
       within(screen.getByTestId('board-column-list-considering')).queryByTestId(
         'board-card-option-1',
@@ -328,6 +328,85 @@ describe('OptionBoardView', () => {
     expect(facts).toHaveTextContent('Mileage: 15,000 mi');
   });
 
+  // Regression test for the "cards restate their own title" defect: a
+  // `valueType: 'string'`/`comparison: 'none'` attribute like `make` is a
+  // plain catalog/identity descriptor -- exactly the shape
+  // `isIdentityAttribute` (../lib/evidence-expectation.ts) exists to flag,
+  // and the same helper `QuickPickView.tsx`/`OptionListView.tsx` already use
+  // -- and must never consume a card's scarce fact budget, even when it
+  // sorts earlier in `attributeDefinitions` than a genuinely
+  // decision-relevant attribute.
+  it("excludes plain identity attributes already spelled out in the option's own label from its facts", () => {
+    const identityDefinition: AttributeDefinition = {
+      id: 'make',
+      label: 'Make',
+      valueType: 'string',
+      required: true,
+      appliesTo: ['car'],
+      evidenceExpectation: 'source',
+      comparison: 'none',
+      sensitive: false,
+    };
+    const optionWithIdentity: EntityRecord = {
+      id: 'option-5',
+      kind: 'car',
+      label: 'Toyota RAV4',
+      attributes: {
+        make: {
+          definitionId: 'make',
+          label: 'Make',
+          value: { type: 'string', value: 'Toyota' },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+        price: {
+          definitionId: 'price',
+          label: 'Price',
+          value: { type: 'money', amount: 28500, currency: 'USD' },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+        mileage: {
+          definitionId: 'mileage',
+          label: 'Mileage',
+          value: { type: 'number', value: 15000, unit: 'mi' },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+      },
+      createdAt: '2026-08-27T00:00:00.000Z',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    };
+
+    render(
+      <OptionBoardView
+        options={[optionWithIdentity]}
+        // `identityDefinition` is listed FIRST -- proves the skip actually
+        // happens rather than merely never being reached because it lost a
+        // race for one of narrow layout's two fact slots.
+        attributeDefinitions={[identityDefinition, ...DEFINITIONS]}
+        optionColumnIds={{}}
+        selectedOptionId={null}
+        layout="narrow"
+        onMoveOption={noop}
+        onFocusOption={noop}
+      />,
+    );
+
+    const facts = screen.getByTestId('board-facts-option-5');
+    expect(facts).not.toHaveTextContent('Make');
+    expect(facts).not.toHaveTextContent('Toyota');
+    // Both narrow-layout slots go to genuinely decision-relevant facts instead.
+    expect(facts).toHaveTextContent('Price: $28,500');
+    expect(facts).toHaveTextContent('Mileage: 15,000 mi');
+  });
+
   it('never renders raw internal ids as user-visible text', () => {
     const { container } = render(
       <OptionBoardView
@@ -346,8 +425,8 @@ describe('OptionBoardView', () => {
     expect(visibleText).not.toContain('option-2');
     expect(visibleText).not.toContain('option-3');
     expect(visibleText).not.toContain('custom.laptop_work_fit');
-    // These ids differ in casing/spacing from their rendered labels ("Top choices", "Need to
-    // verify"), so this is a genuine check and not an accidental match against the label itself.
+    // These ids differ in casing/spacing from their rendered labels ("Favorites", "Need to
+    // check"), so this is a genuine check and not an accidental match against the label itself.
     expect(visibleText).not.toContain('top_choices');
     expect(visibleText).not.toContain('need_to_verify');
   });
