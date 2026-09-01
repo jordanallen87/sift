@@ -8,9 +8,10 @@
  * module for any WRITE/EXECUTION/PRESENTATION tool.
  *
  * The two global read-only tools (`sift_get_case_context`, `sift_list_packs`)
- * and the five case-scoped read tools (`sift_get_option_details`,
+ * and the six case-scoped read tools (`sift_get_option_details`,
  * `sift_list_research`, `sift_search_catalog`, `sift_get_decision_guide`,
- * `sift_list_notes`) are the deliberate exception: `SiftCommands`
+ * `sift_list_notes`, `sift_explain_ranking`) are the deliberate exception:
+ * `SiftCommands`
  * (`apps/web/src/api/sift-client.ts`)
  * only covers the architecture.md "Shared command client" interface -- it has
  * no query methods at all. Rather than inventing an ad hoc `fetch` for routes
@@ -23,7 +24,11 @@
  * `sift_get_decision_guide` reuses the same `listPacks` accessor to resolve
  * the active case's pack manifest (`CompiledDecisionPack.decisionGuide`,
  * `packages/contracts/src/packs.ts`) rather than adding a third data-fetch
- * mechanism.
+ * mechanism. `sift_explain_ranking` (ADR 0012) needs no accessor beyond
+ * `getActiveCase` at all: the deterministic scoreboard is a pure function of
+ * the snapshot, computed in the browser by the same `@sift/core` entry point
+ * the workspace and the recommendation validator use, so there is nothing to
+ * fetch and no second ranking that could disagree with the first.
  *
  * **`sift_set_view`/`sift_configure_comparison`/`sift_focus_question`
  * genuinely persist now (previously session-only in-memory state -- see
@@ -172,8 +177,10 @@ import {
   type CatalogAdapter,
   type CatalogSearchOutput,
 } from './catalog-search-adapter.js';
+import { buildRankingExplanation, type RankingExplanation } from './ranking-context.js';
 import {
   ConfigureComparisonInputSchema,
+  ExplainRankingInputSchema,
   FocusQuestionInputSchema,
   GetDecisionGuideInputSchema,
   GetOptionDetailsInputSchema,
@@ -182,6 +189,7 @@ import {
   SearchCatalogInputSchema,
   SetViewInputSchema,
   type ConfigureComparisonInput,
+  type ExplainRankingInput,
   type FocusQuestionInput,
   type GetDecisionGuideInput,
   type GetOptionDetailsInput,
@@ -223,6 +231,7 @@ export const CASE_SCOPED_SIFT_TOOL_NAMES = [
   'sift_set_option_attribute',
   'sift_list_notes',
   'sift_add_note',
+  'sift_explain_ranking',
 ] as const;
 
 export const SIFT_WEBMCP_TOOL_NAMES = [
@@ -933,6 +942,96 @@ function buildAddNoteTool(commands: SiftCommands, activeCaseId: string): WebMcpT
   });
 }
 
+// --- sift_explain_ranking (READ; ADR 0012 "Still open") ---
+//
+// The one tool in this catalog that returns an ANALYSIS rather than the
+// facts an analysis would be built from. ADR 0012 built a full deterministic
+// scoreboard and then recorded the gap this closes: "No WebMCP read tool
+// exposes the board, so the model cannot read Sift's analysis and must still
+// re-derive it from raw attributes -- the exact duplication this ADR's
+// thesis argues against."
+//
+// Shaped exactly like `sift_get_option_details`/`sift_list_research` above:
+// case-scoped, no `SiftCommands` dependency of any kind, a pure projection
+// of `getActiveCase()`. Its read-only guarantee therefore rests on the same
+// structural facts theirs do, not on a promise in a description --
+// `buildCaseScopedReadTool` has no `call` parameter to route anywhere,
+// `ExplainRankingInputSchema` carries no `expectedSequence` for a mutation
+// to use, and `scoreCase` (`packages/core/src/scoring.ts`) is a pure
+// function of the snapshot it is handed. Nothing here can append an event,
+// advance `eventSequence`, or change what the page highlights.
+//
+// It is also, deliberately, not a decision surface. The board it returns
+// ranks and explains; it never approves, and `reviewProposal` is as
+// unreachable from here as from every other tool in this file.
+
+function buildExplainRankingTool(
+  getActiveCase: () => CaseState | null,
+  activeCaseId: string,
+): WebMcpToolDefinition {
+  return buildCaseScopedReadTool<ExplainRankingInput, RankingExplanation>({
+    name: 'sift_explain_ranking',
+    description:
+      "Returns Sift's own ranking of this case's options with the reasoning attached: each option's rank, overall score, coverage, and per-criterion breakdown -- every line carrying the plain-English reason Sift recorded for it -- plus any hard constraint an option violates, any criterion whose sources contradict each other, the criteria that separate nothing, and the insights Sift derived (which option leads and by how much, whether the top two are a genuine toss-up, which single criterion is what puts the leader ahead, and whether that lead rests on contested evidence). Call this whenever the user asks why an option ranks where it does, which one is best, what would change the order, or how two options really differ, and before offering any comparative judgment of your own. This ranking is computed deterministically by Sift from the case's weighted criteria, by the same shared scoring function that validates its recommendations; no model produces it. Quote these numbers, do not re-derive them from raw attribute values, never contradict them, and never present a ranking of your own as Sift's. Four things you must read correctly. An unknown is not a zero: a criterion Sift could not measure for an option lowers that option's coverage and is left out of its score entirely rather than counted against it, so low coverage means under-researched and never bad -- calling such an option weak asserts a measurement nobody made. A disputed measurement is not a settled one: a line whose status is 'disputed' did score, but from a value whose sources contradict each other, and it is listed in that option's disputedCriterionIds -- coverage answers how much was measured and never how much is settled, so report such a line with the disagreement attached rather than as established fact, and when the disputed_evidence insight is present the leader's lead actually depends on a contested value and you must say so before calling the ranking settled. A violated hard constraint is a flag, not an elimination: the option stays ranked and stays visible, and whether a requirement is genuinely non-negotiable is the user's decision, never yours. A non-empty warnings list means a number here is less trustworthy than it looks (mixed currencies, a rating scale with no declared order), so pass the warning on rather than the number. The payload is bounded: every list reports its true total, and each breakdown reports shownWeight and omittedWeight, the share of the decision its listed lines actually account for, so say so when a breakdown explains only part of the ranking. Pass optionId for one option's fuller breakdown. Read-only: it changes nothing, including which option the page highlights -- call sift_focus_option for that.",
+    inputSchema: ExplainRankingInputSchema,
+    activeCaseId,
+    read: (input) => {
+      const caseState = getActiveCase();
+      if (caseState === null) {
+        return {
+          ok: true,
+          message: 'No case is currently active.',
+          ui: { changed: false },
+        };
+      }
+      const explanation = buildRankingExplanation(caseState, input.optionId);
+      if (explanation === null) {
+        return {
+          ok: false,
+          message: `Option "${input.optionId ?? ''}" was not found in case "${input.caseId}".`,
+          caseId: caseState.id,
+          sequence: caseState.eventSequence,
+          ui: { changed: false },
+          error: { code: 'NOT_FOUND', retryable: false },
+        };
+      }
+      return {
+        ok: true,
+        message: buildRankingMessage(explanation),
+        data: explanation,
+        caseId: caseState.id,
+        sequence: caseState.eventSequence,
+        ui: { changed: false },
+      };
+    },
+  });
+}
+
+/**
+ * The one-sentence receipt the model's next turn is written from, so it
+ * states the two things a caller most easily gets wrong about this payload:
+ * whether there is a ranking at all, and whether what came back is the whole
+ * analysis or part of one. A receipt reading "Ranking returned." after a
+ * board that explained 3% of the weight would invite exactly the confident,
+ * incomplete answer the bounds exist to prevent.
+ */
+function buildRankingMessage(explanation: RankingExplanation): string {
+  if (explanation.requested !== undefined && !explanation.requested.ranked) {
+    return `Option "${explanation.requested.optionId}" is not ranked in this case: no active criterion measures anything recorded for it. Ranking returned for the ${explanation.options.items.length} option(s) that are ranked.`;
+  }
+  if (!explanation.isRankable) {
+    return 'This case cannot be ranked yet: fewer than two options have anything the active criteria can measure.';
+  }
+  const shown = explanation.options.items.length;
+  const total = explanation.options.total;
+  const scope = shown === total ? `all ${total} option(s)` : `${shown} of ${total} option(s)`;
+  const truncated =
+    explanation.omitted.criterionLines > 0
+      ? ` ${explanation.omitted.criterionLines} lower-weighted criterion line(s) were omitted -- see each breakdown's omittedWeight for the share of the decision they carry.`
+      : '';
+  return `Deterministic ranking returned for ${scope}.${truncated}`;
+}
+
 function buildCaseScopedTools(
   commands: SiftCommands,
   activeCaseId: string,
@@ -961,6 +1060,7 @@ function buildCaseScopedTools(
     buildSetOptionAttributeTool(commands, activeCaseId),
     buildListNotesTool(getActiveCase, activeCaseId),
     buildAddNoteTool(commands, activeCaseId),
+    buildExplainRankingTool(getActiveCase, activeCaseId),
   ];
 }
 

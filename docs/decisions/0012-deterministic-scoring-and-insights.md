@@ -270,5 +270,10 @@ It is pinned as a scenario assertion rather than left as an accident of the fixt
   adapter the workspace does, so there is no second ranking to disagree with the first; it carries no
   `expectedSequence` and no `SiftCommands` dependency, so it is structurally incapable of writing;
   and its bounds report what they dropped, including the *share of weight* each truncated breakdown
-  left out — a silently truncated analysis being a lying analysis.
+  left out — a silently truncated analysis being a lying analysis. All six honesty rules survive the
+  projection rather than being restated in it: `CriterionScoreStatus` round-trips faithfully (a
+  `disputed` line is never collapsed into `scored`, since both carry a number), `disputedCriterionIds`
+  is carried beside `coverage` rather than folded into it, and the tool description tells the model in
+  as many words that an unknown is not a zero, a disputed measurement is not a settled one, and a
+  violated constraint is a flag rather than an elimination.
 - Live what-if (reweight → watch the order move) is computable but has no control surface.

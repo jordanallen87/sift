@@ -20,13 +20,23 @@
  * - `sift_get_decision_guide` and `sift_set_option_attribute` are brand new;
  *   webmcp.md's "Tool catalog — specified, not yet implemented" section
  *   sketches both without an exact description string to copy.
- * - `sift_set_view`/`sift_configure_comparison`/`sift_focus_question` now
+ * - `sift_set_view`/`sift_configure_comparison`/`sift_focus_question`
  *   genuinely persist through the real `commands.setView` (see
- *   `register-sift-tools.ts`'s header comment for the history), so their
- *   session-only "not yet saved across a reload" disclaimer -- still present
- *   in webmcp.md's own copy -- has been removed from the implementation
- *   (leaving it in would itself be the overclaiming defect this whole task
- *   exists to prevent, just in the opposite direction).
+ *   `register-sift-tools.ts`'s header comment for the history), so the
+ *   session-only "not yet saved across a reload" disclaimer was removed
+ *   from the implementation -- leaving it in would itself be the
+ *   overclaiming defect this whole task exists to prevent, just in the
+ *   opposite direction.
+ *
+ *   This bullet previously added that the stale disclaimer was "still
+ *   present in webmcp.md's own copy". It is not, and has not been since
+ *   webmcp.md's `sift_set_view` section was rewritten around the durable
+ *   `setView` write -- that section now reads "Effect, genuinely durable".
+ *   These three remain listed here for the narrower reason that their
+ *   model-facing description strings are deliberately richer than the
+ *   spec's human-facing prose (operator vocabulary, the string-valued
+ *   `value` rule, the AND/replace-whole-set semantics) rather than verbatim
+ *   copies of it.
  * - `sift_list_notes` and `sift_add_note` (this task, change-set §28/§29):
  *   webmcp.md's own "Notes tools" section explicitly documents these two as
  *   NOT YET IMPLEMENTED, blocked purely on the `CaseNote` concept it says
@@ -41,6 +51,12 @@
  * `register-sift-tools.ts`'s own source -- the reverse direction from every
  * other entry -- until a docs-owning pass brings webmcp.md in line with what
  * is actually implemented.
+ *
+ * `sift_explain_ranking` is deliberately NOT an eighth such exception: its
+ * `docs/specs/webmcp.md` section was written as part of the same change that
+ * added the tool, so its entry below is a genuine spec mirror like the
+ * original fifteen -- copied from webmcp.md's "### `sift_explain_ranking` --
+ * READ" paragraph, not from the implementation.
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -65,6 +81,7 @@ import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-si
 import { SIFT_WEBMCP_TOOL_NAMES, registerSiftTools } from './register-sift-tools.js';
 import {
   ConfigureComparisonInputSchema,
+  ExplainRankingInputSchema,
   FocusQuestionInputSchema,
   GetDecisionGuideInputSchema,
   GetOptionDetailsInputSchema,
@@ -214,6 +231,12 @@ const CATALOG: CatalogFixture[] = [
       "Records a CaseNote: a human's or ChatGPT's informal observation, preference, reminder, or open question attached to the case -- for example 'the seat position felt wrong on the test drive' or 'need to check this Saturday.' A note is NOT evidence, NOT a criterion, and NOT a comparison field, and adding one never satisfies an obligation, changes readiness, or invalidates the recommendation -- Sift's evidence validity and readiness stay entirely under deterministic control. Use sift_submit_source instead when the content is externally verifiable research that should influence the decision; use sift_update_criteria when the user wants a factor to start or stop mattering to the decision itself; use sift_define_case_attribute or sift_set_option_attribute when the user wants a new typed comparison field populated with a provenance-aware value. A note may optionally reference one or more options and one unresolved question (obligation), and may cite existing source ids purely for context -- doing so creates no evidence link and changes no source's verification.",
     sourceSchema: AddNoteInputSchema,
   },
+  {
+    name: 'sift_explain_ranking',
+    description:
+      "Returns Sift's own ranking of this case's options with the reasoning attached: each option's rank, overall score, coverage, and per-criterion breakdown -- every line carrying the plain-English reason Sift recorded for it -- plus any hard constraint an option violates, any criterion whose sources contradict each other, the criteria that separate nothing, and the insights Sift derived (which option leads and by how much, whether the top two are a genuine toss-up, which single criterion is what puts the leader ahead, and whether that lead rests on contested evidence). Call this whenever the user asks why an option ranks where it does, which one is best, what would change the order, or how two options really differ, and before offering any comparative judgment of your own. This ranking is computed deterministically by Sift from the case's weighted criteria, by the same shared scoring function that validates its recommendations; no model produces it. Quote these numbers, do not re-derive them from raw attribute values, never contradict them, and never present a ranking of your own as Sift's. Four things you must read correctly. An unknown is not a zero: a criterion Sift could not measure for an option lowers that option's coverage and is left out of its score entirely rather than counted against it, so low coverage means under-researched and never bad -- calling such an option weak asserts a measurement nobody made. A disputed measurement is not a settled one: a line whose status is 'disputed' did score, but from a value whose sources contradict each other, and it is listed in that option's disputedCriterionIds -- coverage answers how much was measured and never how much is settled, so report such a line with the disagreement attached rather than as established fact, and when the disputed_evidence insight is present the leader's lead actually depends on a contested value and you must say so before calling the ranking settled. A violated hard constraint is a flag, not an elimination: the option stays ranked and stays visible, and whether a requirement is genuinely non-negotiable is the user's decision, never yours. A non-empty warnings list means a number here is less trustworthy than it looks (mixed currencies, a rating scale with no declared order), so pass the warning on rather than the number. The payload is bounded: every list reports its true total, and each breakdown reports shownWeight and omittedWeight, the share of the decision its listed lines actually account for, so say so when a breakdown explains only part of the ranking. Pass optionId for one option's fuller breakdown. Read-only: it changes nothing, including which option the page highlights -- call sift_focus_option for that.",
+    sourceSchema: ExplainRankingInputSchema,
+  },
 ];
 
 interface ReceiptLikeToolResult {
@@ -249,12 +272,12 @@ async function registerFullCatalog(): Promise<InMemoryModelContextAdapter> {
 }
 
 describe('WebMCP tool catalog: exact names, descriptions, and JSON schemas', () => {
-  it('registers exactly the twenty-two catalog tool names this module defines, no more and no fewer', async () => {
+  it('registers exactly the twenty-three catalog tool names this module defines, no more and no fewer', async () => {
     const adapter = await registerFullCatalog();
     expect([...adapter.registeredToolNames].sort()).toEqual(
       [...CATALOG.map((fixture) => fixture.name)].sort(),
     );
-    expect(SIFT_WEBMCP_TOOL_NAMES).toHaveLength(22);
+    expect(SIFT_WEBMCP_TOOL_NAMES).toHaveLength(23);
   });
 
   it.each(CATALOG)(
@@ -354,7 +377,7 @@ describe('No tool can approve or reject a decision proposal', () => {
     expect(jsonSchema.properties['actor']).toBeUndefined();
   });
 
-  it('none of the twenty-two registered tools ever calls the one SiftCommands method that can approve a proposal (reviewProposal)', async () => {
+  it('none of the twenty-three registered tools ever calls the one SiftCommands method that can approve a proposal (reviewProposal)', async () => {
     const reviewProposal = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
     const adapter = new InMemoryModelContextAdapter();
     const commands = createFakeSiftCommands({ reviewProposal });

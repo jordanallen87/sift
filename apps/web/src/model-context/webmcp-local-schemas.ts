@@ -1,9 +1,11 @@
 /**
- * Zod input schemas for the eight WebMCP tools defined locally rather than in
+ * Zod input schemas for the nine WebMCP tools defined locally rather than in
  * `@sift/contracts` (`sift_get_option_details`, `sift_list_research`,
  * `sift_set_view`, `sift_configure_comparison`, `sift_search_catalog`,
- * `sift_get_decision_guide`, `sift_focus_question`, `sift_list_notes`;
+ * `sift_get_decision_guide`, `sift_focus_question`, `sift_list_notes`,
+ * `sift_explain_ranking`;
  * docs/decisions/0006-webmcp-two-way-collaboration-contract.md,
+ * docs/decisions/0012-deterministic-scoring-and-insights.md,
  * docs/specs/webmcp.md "Tool catalog — specified, not yet implemented").
  * `sift_add_note`, the write counterpart, is NOT here: unlike every read
  * tool in this file, it has a real `@sift/contracts` command counterpart
@@ -13,10 +15,11 @@
  *
  * Defined locally rather than in `@sift/contracts`, unlike every other tool
  * in this catalog: `packages/contracts` is out of scope for this task (see
- * this task's own file-ownership boundary), and none of these seven tools has
- * a `SiftCommands` counterpart there to alias with an IDENTICAL shape -- four
- * are pure reads over `CaseState`/the injected pack catalog with no existing
- * command shape at all, and the three view-shaped tools
+ * this task's own file-ownership boundary), and none of these nine tools has
+ * a `SiftCommands` counterpart there to alias with an IDENTICAL shape -- six
+ * are pure reads over `CaseState`/the injected pack catalog/the deterministic
+ * scoreboard with no existing command shape at all, and the three
+ * view-shaped tools
  * (`sift_set_view`/`sift_configure_comparison`/`sift_focus_question`) are
  * each a deliberately narrower, more ergonomic PARTIAL patch than the real
  * `setView` wire command's own input (`SetViewInputSchema` in
@@ -254,3 +257,35 @@ export const FocusQuestionInputSchema = z
   })
   .strict();
 export type FocusQuestionInput = z.infer<typeof FocusQuestionInputSchema>;
+
+// --- sift_explain_ranking (READ; docs/decisions/0012-deterministic-scoring-
+// and-insights.md "Still open") ---
+//
+// Case-scoped, matching every sibling read tool: the board is derived from
+// the active case's own options/criteria/attribute definitions, so there is
+// nothing further to key it by.
+//
+// Deliberately carries NO `expectedSequence`. That is not an omission for
+// ergonomics -- it is the structural half of this tool's read-only guarantee.
+// `expectedSequence` exists so a mutation can be rejected when it was written
+// against a stale view (webmcp.md "Cancellation and concurrency": "Mutations
+// include `expectedSequence`"). A tool whose input schema has no such field
+// cannot be routed to any `SiftCommands` method that requires one, so the
+// absence of these two characters is itself an assertion that this tool never
+// writes -- reinforced by `register-sift-tools-ranking.test.ts`'s own
+// property test over the generated JSON Schema.
+//
+// `optionId` is optional and changes only DEPTH, never authority: supplying
+// it asks for one option's fuller per-criterion breakdown instead of a
+// shallower breakdown across the whole board (see `ranking-context.ts`'s
+// bounds). It cannot focus, select, or otherwise touch that option -- the
+// tool has no `SiftCommands` dependency at all; `sift_focus_option` remains
+// the only way to change what the shared page highlights.
+
+export const ExplainRankingInputSchema = z
+  .object({
+    caseId: idString(),
+    optionId: idString().optional(),
+  })
+  .strict();
+export type ExplainRankingInput = z.infer<typeof ExplainRankingInputSchema>;

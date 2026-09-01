@@ -70,12 +70,13 @@ export interface BoundedList<T> {
   total: number;
 }
 
-function bound<T>(items: readonly T[], max: number): BoundedList<T> {
+/** Exported for `ranking-context.ts`, the one sibling read-side projection that lives outside this file (it projects `@sift/core`'s scoreboard rather than `CaseState`, so it does not belong here) -- reusing this helper is what keeps every model-facing collection bounded the same way, rather than a second near-identical `slice`-and-count appearing beside it. */
+export function bound<T>(items: readonly T[], max: number): BoundedList<T> {
   return { items: items.slice(0, max), total: items.length };
 }
 
-/** Truncates free text to `maxLength`, appending a single-character ellipsis marker when truncated. Never used on titles/labels short enough to fit their own schema bound untouched -- only on longer free text (claim statements, stale-signal labels) that could otherwise carry an unbounded amount of content into model context. */
-function truncate(text: string, maxLength: number): string {
+/** Truncates free text to `maxLength`, appending a single-character ellipsis marker when truncated. Never used on titles/labels short enough to fit their own schema bound untouched -- only on longer free text (claim statements, stale-signal labels) that could otherwise carry an unbounded amount of content into model context. Exported for `ranking-context.ts` for the same reason as `bound` above. */
+export function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, Math.max(0, maxLength - 1))}…`;
 }
