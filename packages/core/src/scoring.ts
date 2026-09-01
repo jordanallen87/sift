@@ -29,12 +29,14 @@
  *     assert. `total` is the weighted mean over scored criteria only.
  *  2. **The attribute owns what "better" means.** A criterion's `direction`
  *     is a claim about the criterion; an attribute's `comparison` is a
- *     property of the measurement. When they disagree the attribute wins
- *     and the disagreement is reported. (The car pack ships exactly this
- *     contradiction: `pref.deal_value` says `higher_better` about
- *     `car.out_the_door_price`, whose own comparison is `lower_better`.
- *     Read literally, a 20%-weight criterion ranks the most expensive car
- *     as the best deal.)
+ *     property of the measurement, and it wins. (The car pack ships exactly
+ *     this asymmetry: `pref.deal_value` says `higher_better` — more deal
+ *     value is better — about `car.out_the_door_price`, whose comparison is
+ *     `lower_better`, because a lower price is a better deal. Read the
+ *     criterion literally and a 20%-weight criterion ranks the most
+ *     expensive car as the best deal. Every line states the direction it
+ *     actually scored by, so the resolution is visible rather than
+ *     silent.)
  *  3. **Enums are not ordinal until a pack says so.** See
  *     `AttributeDefinition.orderedValues`.
  *  4. **A hard constraint flags; it never silently eliminates.** A
@@ -45,6 +47,12 @@
  *     free text, and unlisted enum grades are reported as not comparable.
  *     An engine that ranks 25,000 JPY as cheaper than 30,000 USD has
  *     invented an exchange rate it does not have.
+ *  6. **A disputed fact is not a settled one.** A value whose sources
+ *     contradict each other still scores — refusing to use a value that
+ *     exists is its own distortion — but it is marked `disputed`, and an
+ *     insight fires when the leader's lead actually depends on it. Found on
+ *     the real car scenario, where the Outback leads every measured
+ *     criterion and its lead rests on a contested reliability rating.
  *
  * No filesystem, network, wall-clock, or randomness: the same inputs always
  * produce the identical board, which is what makes it testable and what
@@ -67,6 +75,18 @@ export type CriterionScoreStatus =
   | 'scored'
   /** Measured, but every option came out the same — it separates nothing. */
   | 'tied'
+  /**
+   * Scored from a value whose sources CONTRADICT each other
+   * (`AttributeStatus: 'conflicted'`).
+   *
+   * Still scored, because refusing to use a value that exists is its own
+   * distortion — but never silently equated with an established one. Found
+   * on the real car scenario: the Subaru Outback leads every measured
+   * criterion, and its safety-and-reliability lead rests on a reliability
+   * rating the sources disagree about. A board that reported that lead
+   * without saying so would be laundering a dispute into a ranking.
+   */
+  | 'disputed'
   /** This option has no usable value. NOT a zero. */
   | 'unknown'
   /** Values exist but cannot be put in order (free text, mixed currency, an unlisted enum grade, a qualitative criterion). */
@@ -101,6 +121,14 @@ export interface OptionScore {
   /** Share of total active criterion weight that was actually measurable for this option, 0..1. */
   readonly coverage: number;
   readonly violatedConstraintIds: readonly string[];
+  /**
+   * Criteria this option scored on, but from at least one value whose
+   * sources contradict each other. Separate from `coverage` on purpose:
+   * coverage answers "how much did we measure", and this answers "how much
+   * of what we measured is actually settled" — two different questions a
+   * single number cannot honestly answer.
+   */
+  readonly disputedCriterionIds: readonly string[];
   readonly criteria: readonly CriterionScore[];
 }
 
@@ -505,6 +533,7 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
   const scored: OptionScore[] = input.options.map((option) => {
     const lines: CriterionScore[] = [];
     const violated: string[] = [];
+    const disputed: string[] = [];
 
     for (const criterion of active) {
       const weight = normalizedWeights.get(criterion.id) ?? 0;
@@ -628,13 +657,25 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
             ? ` (averaged across ${parts.length} of ${attributeIds.length} measures)`
             : '';
 
+      // A single contradicted part is enough to make the whole line
+      // disputed. Averaging a contested rating together with two settled
+      // ones and reporting the result as settled is exactly how a dispute
+      // gets laundered into a ranking.
+      const disputedAttributeIds = attributeIds.filter(
+        (attributeId) => option.attributes[attributeId]?.status === 'conflicted',
+      );
+      if (disputedAttributeIds.length > 0) disputed.push(criterion.id);
+
       lines.push({
         ...base,
         score: mean,
-        status: allTied ? 'tied' : 'scored',
-        reason: allTied
-          ? 'every option is the same here, so this does not separate them'
-          : `${rankLabel(mean)}, where ${describeDirection(direction.direction)}${basis}`,
+        status: disputedAttributeIds.length > 0 ? 'disputed' : allTied ? 'tied' : 'scored',
+        reason:
+          disputedAttributeIds.length > 0
+            ? `${rankLabel(mean)}, where ${describeDirection(direction.direction)}${basis} — but the sources behind this contradict each other, so it is not settled`
+            : allTied
+              ? 'every option is the same here, so this does not separate them'
+              : `${rankLabel(mean)}, where ${describeDirection(direction.direction)}${basis}`,
         ...valueFields,
         constraintViolated: false,
       });
@@ -653,6 +694,7 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
       total,
       coverage,
       violatedConstraintIds: violated,
+      disputedCriterionIds: disputed,
       criteria: lines,
     };
   });
@@ -761,6 +803,7 @@ export const INSIGHT_KINDS = [
   'close_call',
   'decisive_criterion',
   'coverage_gap',
+  'disputed_evidence',
   'constraint_violation',
   'non_discriminating',
 ] as const;
@@ -864,6 +907,44 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
         detail: `Take ${labels.length === 1 ? 'it' : 'them'} out of the weighting and ${runnerUp.optionLabel} comes first instead. If ${labels.length === 1 ? 'that factor matters' : 'those factors matter'} less to you than the weights currently say, this ranking changes.`,
         optionIds: [leader.optionId, runnerUp.optionId],
         criterionIds: flipping,
+      });
+    }
+  }
+
+  // A dispute is only worth interrupting someone over when it is
+  // LOAD-BEARING. The same leave-one-out experiment `decisive_criterion`
+  // uses answers that precisely: if removing the contested criterion would
+  // hand the lead to someone else, the lead depends on a fact nobody has
+  // settled. If it would not, the dispute is real but immaterial, and
+  // saying so anyway would train people to ignore the warning.
+  if (leader !== undefined && runnerUp !== undefined) {
+    const loadBearing = leader.disputedCriterionIds.filter((criterionId) => {
+      const withoutLeader = totalWithout(leader, criterionId);
+      const withoutRunnerUp = totalWithout(runnerUp, criterionId);
+      // Nothing left to score once it is removed: the lead rests ENTIRELY
+      // on the contested criterion, which is the strongest form of
+      // load-bearing rather than an inconclusive result. (`decisive_
+      // criterion` treats the same case as false, and correctly so — "drop
+      // it and the other one wins" would be a false statement when dropping
+      // it leaves no ranking at all. Here the claim is about dependence,
+      // not about what would win instead.)
+      if (withoutLeader === null && withoutRunnerUp === null) return true;
+      if (withoutLeader === null || withoutRunnerUp === null) return false;
+      return withoutRunnerUp > withoutLeader + 1e-9;
+    });
+
+    if (loadBearing.length > 0) {
+      const labels = leader.criteria
+        .filter((line) => loadBearing.includes(line.criterionId))
+        .map((line) => line.criterionLabel);
+      insights.push({
+        id: 'insight.disputed_evidence',
+        kind: 'disputed_evidence',
+        severity: 'attention',
+        headline: `${leader.optionLabel} leads on ${labels.join(' and ')}, but the sources behind that disagree.`,
+        detail: `It is the reason ${leader.optionLabel} is ahead of ${runnerUp.optionLabel} — resolve the disagreement and the order may change. Nothing has been decided on the strength of a contested fact.`,
+        optionIds: [leader.optionId],
+        criterionIds: loadBearing,
       });
     }
   }

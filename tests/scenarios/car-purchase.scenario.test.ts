@@ -12,7 +12,8 @@
  * tests").
  */
 import { describe, expect, it } from 'vitest';
-import { applyCaseEvent } from '../../packages/core/src/index.js';
+import { applyCaseEvent, scoreCaseState } from '../../packages/core/src/index.js';
+import { deriveScoredRecommendationFields } from '../../apps/agent/src/runtime/recommendation-scoring.js';
 import {
   DemoScenarioSchema,
   type CaseEvent,
@@ -146,6 +147,91 @@ describe('Choose Our Next Car scenario: real causal trajectory', () => {
       recommendationReadyEvents[0]?.type === 'recommendation.ready' &&
         recommendationReadyEvents[0].payload.recommendation.favoredOptionId,
     ).toBe('candidate-rav4');
+
+    // --- The ranking is the deterministic core's, not the model's ---
+    //
+    // CLAUDE.md gives the core "case state, evidence validity, readiness,
+    // and human authority", and a ranking is a claim about a case. Until
+    // `scoreCase` existed, the persisted recommendation carried
+    // `confidence: 0.85` and `facts: []` -- a constant and an empty list,
+    // both presented to a person as findings. These assertions prove, on
+    // the real end-to-end trajectory rather than on unit fixtures, that
+    // every number attached to the recommendation is now a reproducible
+    // function of the case.
+    const recommendation = finalCaseState.recommendation;
+    expect(recommendation).toBeDefined();
+
+    // Recomputing from the final snapshot must reproduce exactly what was
+    // persisted during the run. If a constant had survived anywhere, or if
+    // the engine and the workspace scored differently, this diverges.
+    const recomputed = deriveScoredRecommendationFields(
+      finalCaseState,
+      recommendation?.favoredOptionId ?? null,
+    );
+    expect(recommendation?.confidence).toBe(recomputed.confidence);
+    expect(recommendation?.facts).toEqual(recomputed.facts);
+    expect(recommendation?.facts.length).toBeGreaterThan(0);
+
+    // The scoreboard the workspace renders is the same computation.
+    const board = scoreCaseState(finalCaseState);
+    expect(board.options.length).toBeGreaterThan(1);
+    const favored = board.options.find(
+      (option) => option.optionId === recommendation?.favoredOptionId,
+    );
+    expect(favored?.total).not.toBeNull();
+
+    // --- "an unknown is never a zero", proven against real fixture data ---
+    //
+    // The scenario deliberately leaves driving comfort and crate fit as
+    // explicit unknowns (asserted above). The criteria that measure them
+    // must therefore be reported as UNSCORED rather than scored zero, and
+    // the resulting shortfall must show up as reduced coverage. A scorer
+    // that quietly treated those unknowns as zeros would still produce a
+    // ranking, a confidence figure, and a plausible-looking board -- this
+    // is the assertion that catches it.
+    const comfortLine = favored?.criteria.find(
+      (line) => line.criterionId === 'pref.driving_comfort',
+    );
+    expect(comfortLine?.status).toBe('unknown');
+    expect(comfortLine?.score).toBeNull();
+    expect(favored?.coverage).toBeLessThan(1);
+    expect(favored?.coverage).toBeGreaterThan(0);
+
+    // Confidence is bounded by coverage, so an incompletely-researched
+    // recommendation can never claim certainty.
+    expect(recommendation?.confidence).toBeLessThan(1);
+    expect(recommendation?.confidence).toBeGreaterThan(0);
+
+    // --- "a disputed fact is not a settled one", proven against real
+    // fixture data ---
+    //
+    // The Outback's `car.reliability_rating` lands `conflicted` in this
+    // trajectory (the `car.safety_reliability` obligation ends
+    // `accepted_uncertainty`), and it is a part of the composite
+    // `pref.safety_reliability` criterion. Averaging a contested rating in
+    // with two settled ones and reporting the result as settled is how a
+    // dispute disappears into a ranking, so the whole line must read
+    // `disputed`.
+    const outback = board.options.find((option) => option.optionId === 'candidate-outback');
+    const safetyLine = outback?.criteria.find(
+      (line) => line.criterionId === 'pref.safety_reliability',
+    );
+    expect(safetyLine?.status).toBe('disputed');
+    expect(safetyLine?.score).not.toBeNull();
+    expect(outback?.disputedCriterionIds).toContain('pref.safety_reliability');
+
+    // --- The model's favorite is NOT the deterministic leader here, and
+    // the product says so ---
+    //
+    // Worth pinning as a scenario assertion rather than treating as an
+    // accident of the fixtures: the model recommends the CR-V on grounds
+    // (driving comfort, crate fit) that nobody has established, while the
+    // Outback leads everything that WAS measured. Silently overwriting the
+    // model's pick, or silently accepting it, would each hide a real
+    // disagreement between two things this product asks people to trust.
+    expect(recomputed.agreesWithScoreboard).toBe(false);
+    expect(board.options[0]?.optionId).toBe('candidate-outback');
+    expect(recommendation?.limitations.join(' ')).toContain('scoring your criteria puts');
 
     // --- "no decision.approved-shaped event ever has actor agent" ---
     expect(trajectory.agentApprovedProposalAttempts).toBe(0);

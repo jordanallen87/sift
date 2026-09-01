@@ -202,18 +202,36 @@ export function deriveScoredRecommendationFields(
   }
 
   for (const insight of deriveInsights(board)) {
-    if (insight.kind === 'decisive_criterion' && insight.optionIds.includes(favored.optionId)) {
+    if (
+      (insight.kind === 'decisive_criterion' || insight.kind === 'disputed_evidence') &&
+      insight.optionIds.includes(favored.optionId)
+    ) {
       limitations.push(`${insight.headline} ${insight.detail}`);
     }
   }
 
-  const confidence = agrees
+  // A recommendation resting on a fact the sources contradict is a weaker
+  // claim than one resting on settled evidence, and the confidence figure
+  // has to reflect that or it is not a measurement of anything. Scaled by
+  // the share of the favored option's weight that is contested, so a
+  // disputed 5% criterion barely moves it and a disputed 30% one does.
+  const disputedWeight = favored.criteria
+    .filter((line) => favored.disputedCriterionIds.includes(line.criterionId))
+    .reduce((sum, line) => sum + line.weight, 0);
+  if (disputedWeight > 0) {
+    limitations.push(
+      `${percent(disputedWeight)} of the weight behind this recommendation comes from measurements whose sources disagree with each other.`,
+    );
+  }
+
+  const base = agrees
     ? deriveConfidence(favored, comparisonPeer)
     : // A recommendation its own scoreboard contradicts is capped hard.
       // Not zero: the model may be accounting for something unmeasured, and
       // reporting no confidence at all would overstate the disagreement as
       // much as ignoring it would understate it.
       Math.min(0.4, deriveConfidence(favored, undefined));
+  const confidence = base * (1 - disputedWeight);
 
   return {
     confidence: Number(confidence.toFixed(4)),

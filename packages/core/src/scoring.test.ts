@@ -852,3 +852,118 @@ describe('scoreCaseState (the form both the agent and the workspace call)', () =
     expect(board.options).toEqual([]);
   });
 });
+
+describe('a disputed fact is not a settled one', () => {
+  // Found on the REAL car scenario, not invented for a test: the Subaru
+  // Outback leads every measured criterion, and its safety-and-reliability
+  // lead rests on a reliability rating whose sources contradict each other.
+  // The board reported that lead as settled, which launders a dispute into
+  // a ranking.
+  function conflicted(id: string, value: number): EntityRecord {
+    const built = option(id, { 'a.rating': { type: 'number', value } });
+    return {
+      ...built,
+      attributes: {
+        ...built.attributes,
+        'a.rating': { ...(built.attributes['a.rating'] as never), status: 'conflicted' },
+      },
+    };
+  }
+
+  const definitions = [definition('a.rating'), definition('a.price', { comparison: 'lower_better' })];
+
+  it('still scores the value — refusing to use a value that exists is its own distortion', () => {
+    const board = scoreCase({
+      options: [conflicted('a', 9), option('b', { 'a.rating': { type: 'number', value: 1 } })],
+      criteria: [criterion('c.rating', { appliesToAttribute: 'a.rating' })],
+      definitions,
+    });
+
+    expect(criterionScore(board, 'a', 'c.rating').score).toBe(1);
+  });
+
+  it('marks the line disputed and says so in its own reason', () => {
+    const board = scoreCase({
+      options: [conflicted('a', 9), option('b', { 'a.rating': { type: 'number', value: 1 } })],
+      criteria: [criterion('c.rating', { appliesToAttribute: 'a.rating' })],
+      definitions,
+    });
+
+    const line = criterionScore(board, 'a', 'c.rating');
+    expect(line.status).toBe('disputed');
+    expect(line.reason).toContain('contradict');
+    expect(board.options.find((entry) => entry.optionId === 'a')?.disputedCriterionIds).toEqual([
+      'c.rating',
+    ]);
+  });
+
+  it('marks a whole composite disputed when any one part is contested', () => {
+    // Averaging a contested rating with two settled ones and reporting the
+    // result as settled is exactly how the dispute disappears.
+    const built = option('a', {
+      'a.rating': { type: 'number', value: 9 },
+      'a.price': { type: 'number', value: 1 },
+    });
+    const partiallyContested: EntityRecord = {
+      ...built,
+      attributes: {
+        ...built.attributes,
+        'a.rating': { ...(built.attributes['a.rating'] as never), status: 'conflicted' },
+      },
+    };
+
+    const board = scoreCase({
+      options: [
+        partiallyContested,
+        option('b', { 'a.rating': { type: 'number', value: 1 }, 'a.price': { type: 'number', value: 9 } }),
+      ],
+      criteria: [criterion('c.composite', { composedOfAttributes: ['a.rating', 'a.price'] })],
+      definitions,
+    });
+
+    expect(criterionScore(board, 'a', 'c.composite').status).toBe('disputed');
+  });
+
+  it('raises an insight only when the disputed criterion is what carries the lead', () => {
+    const board = scoreCase({
+      options: [conflicted('leader', 9), option('other', { 'a.rating': { type: 'number', value: 1 } })],
+      criteria: [criterion('c.rating', { appliesToAttribute: 'a.rating' })],
+      definitions,
+    });
+
+    const insight = deriveInsights(board).find((entry) => entry.kind === 'disputed_evidence');
+    expect(insight?.severity).toBe('attention');
+    expect(insight?.criterionIds).toEqual(['c.rating']);
+  });
+
+  it('stays quiet when the dispute is real but immaterial to the order', () => {
+    // The leader wins on price by enough that the contested rating is not
+    // what puts it ahead. Warning anyway trains people to ignore the
+    // warning.
+    const built = option('leader', {
+      'a.rating': { type: 'number', value: 9 },
+      'a.price': { type: 'number', value: 1 },
+    });
+    const leaderWithDispute: EntityRecord = {
+      ...built,
+      attributes: {
+        ...built.attributes,
+        'a.rating': { ...(built.attributes['a.rating'] as never), status: 'conflicted' },
+      },
+    };
+
+    const board = scoreCase({
+      options: [
+        leaderWithDispute,
+        option('other', { 'a.rating': { type: 'number', value: 1 }, 'a.price': { type: 'number', value: 9 } }),
+      ],
+      criteria: [
+        criterion('c.rating', { weight: 5, appliesToAttribute: 'a.rating' }),
+        criterion('c.price', { weight: 95, appliesToAttribute: 'a.price' }),
+      ],
+      definitions,
+    });
+
+    expect(deriveInsights(board).some((entry) => entry.kind === 'disputed_evidence')).toBe(false);
+  });
+});

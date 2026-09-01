@@ -140,6 +140,10 @@ import {
   saveCaseSnapshot,
 } from './session-adapter.js';
 import { createSequenceCounter, type RuntimeEvent } from './event-normalizer.js';
+import {
+  deriveScoredRecommendationFields,
+  mergeLimitations,
+} from './recommendation-scoring.js';
 
 export interface HomeEnergyGuardianScenarioDeps {
   readonly clock: Clock;
@@ -495,6 +499,10 @@ export async function runHomeEnergyGuardianScenario(
   );
 
   // --- Round 1 recommendation: a soft initial lean toward monitor-one-cycle (no proposal yet -- home-energy-guardian's one consequential effect is only ever exercised in round 2) ---
+  // The model proposed the favorite; the deterministic scoreboard supplies
+  // the numbers attached to it. See recommendation-scoring.ts for why a
+  // disagreement is stated rather than resolved in either direction.
+  const scoredRound1 = deriveScoredRecommendationFields(snapshot, ROUND1_FAVORED_OPTION_ID);
   const recommendation1Event: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -507,10 +515,13 @@ export async function runHomeEnergyGuardianScenario(
         status: 'ready',
         favoredOptionId: ROUND1_FAVORED_OPTION_ID,
         rationale: humanizeDecisionText(round1Result.decisionSynthesizerText, optionLabels),
-        facts: [],
+        facts: scoredRound1.facts,
         hypotheses: [],
-        confidence: 0.75,
-        limitations: collectLimitations(round1Result.contexts),
+        confidence: scoredRound1.confidence,
+        limitations: mergeLimitations(
+          collectLimitations(round1Result.contexts),
+          scoredRound1.limitations,
+        ),
         sourceIds: round1SourceIds,
         resolvedObligationIds: obligationIdsByStatus(snapshot, 'satisfied'),
         acceptedUncertaintyObligationIds: obligationIdsByStatus(snapshot, 'accepted_uncertainty'),
@@ -615,6 +626,10 @@ export async function runHomeEnergyGuardianScenario(
   }
   const favoredRound2 = round2Result.proposedInspection.optionId;
 
+  // The model proposed the favorite; the deterministic scoreboard supplies
+  // the numbers attached to it. See recommendation-scoring.ts for why a
+  // disagreement is stated rather than resolved in either direction.
+  const scoredRound2 = deriveScoredRecommendationFields(snapshot, favoredRound2);
   const recommendation2Event: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -627,10 +642,13 @@ export async function runHomeEnergyGuardianScenario(
         status: 'ready',
         favoredOptionId: favoredRound2,
         rationale: humanizeDecisionText(round2Result.decisionSynthesizerText, optionLabels),
-        facts: [],
+        facts: scoredRound2.facts,
         hypotheses: [],
-        confidence: 0.85,
-        limitations: collectLimitations(round2Result.contexts),
+        confidence: scoredRound2.confidence,
+        limitations: mergeLimitations(
+          collectLimitations(round2Result.contexts),
+          scoredRound2.limitations,
+        ),
         sourceIds: round2SourceIds,
         resolvedObligationIds: obligationIdsByStatus(snapshot, 'satisfied'),
         acceptedUncertaintyObligationIds: obligationIdsByStatus(snapshot, 'accepted_uncertainty'),

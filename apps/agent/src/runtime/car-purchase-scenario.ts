@@ -111,6 +111,10 @@ import {
   type CarPurchaseScriptedProviders,
 } from './scripted-beats/car-purchase.js';
 import type { RuntimeEvent } from './event-normalizer.js';
+import {
+  deriveScoredRecommendationFields,
+  mergeLimitations,
+} from './recommendation-scoring.js';
 
 export interface CarPurchaseScenarioDeps {
   readonly clock: Clock;
@@ -737,6 +741,10 @@ export async function runCarPurchaseScenario(
   );
   snapshot = loadSnapshotOrThrow(caseStore, caseId);
   const recommendation1Id = deps.idGenerator.next('rec');
+  // The model proposed the favorite; the deterministic scoreboard supplies
+  // the numbers attached to it. See recommendation-scoring.ts for why a
+  // disagreement is stated rather than resolved in either direction.
+  const scoredRound1 = deriveScoredRecommendationFields(snapshot, round1Result.proposedRecommendation.candidateIds[0] ?? null);
   const recommendation1Event: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -749,9 +757,9 @@ export async function runCarPurchaseScenario(
         status: 'ready',
         favoredOptionId: round1Result.proposedRecommendation.candidateIds[0] ?? null,
         rationale: humanizeDecisionText(round1Result.decisionSynthesizerText, candidateLabels),
-        facts: [],
+        facts: scoredRound1.facts,
         hypotheses: [],
-        confidence: 0.75,
+        confidence: scoredRound1.confidence,
         limitations: [
           humanizeDecisionText(
             "candidate-rav4's deal terms are still under review.",
@@ -1130,6 +1138,10 @@ export async function runCarPurchaseScenario(
   );
 
   // --- Revised recommendation: candidate-crv (recommendation.invalidated already fired inside updateCriteria) ---
+  // The model proposed the favorite; the deterministic scoreboard supplies
+  // the numbers attached to it. See recommendation-scoring.ts for why a
+  // disagreement is stated rather than resolved in either direction.
+  const scoredRound2 = deriveScoredRecommendationFields(snapshot, round2Result.proposedRecommendation.candidateIds[0] ?? null);
   const recommendation2Event: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -1142,13 +1154,16 @@ export async function runCarPurchaseScenario(
         status: 'ready',
         favoredOptionId: round2Result.proposedRecommendation.candidateIds[0] ?? null,
         rationale: humanizeDecisionText(round2Result.decisionSynthesizerText, candidateLabels),
-        facts: [],
+        facts: scoredRound2.facts,
         hypotheses: [],
-        confidence: 0.85,
-        limitations: [
-          'Whether both dog crates fit behind the second row remains unverified for every candidate.',
-          'Driving comfort remains unverified for every candidate.',
-        ],
+        confidence: scoredRound2.confidence,
+        limitations: mergeLimitations(
+          [
+            'Whether both dog crates fit behind the second row remains unverified for every candidate.',
+            'Driving comfort remains unverified for every candidate.',
+          ],
+          scoredRound2.limitations,
+        ),
         sourceIds: shortlistSourceIds,
         resolvedObligationIds: [
           'car.hard_constraints',
