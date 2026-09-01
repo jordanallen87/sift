@@ -1009,3 +1009,331 @@ describe('a disputed fact is not a settled one', () => {
     expect(deriveInsights(board).some((entry) => entry.kind === 'disputed_evidence')).toBe(false);
   });
 });
+
+describe('every value type the contracts allow', () => {
+  // These are not coverage padding: each is a distinct way an option's
+  // value can reach the scorer, and each has a wrong answer that looks
+  // plausible (an hour ranked against a day by raw amount, a range scored
+  // by its floor, a date compared as a string).
+  const criteria = [criterion('c.x', { appliesToAttribute: 'a.x' })];
+
+  it('converts durations to a common scale before ranking them', () => {
+    // 90 minutes is longer than 1 hour. Compared by raw `amount`, 1 would
+    // beat 90 and the faster option would lose.
+    const board = scoreCase({
+      options: [
+        option('quick', { 'a.x': { type: 'duration', amount: 1, unit: 'hour' } }),
+        option('slow', { 'a.x': { type: 'duration', amount: 90, unit: 'minute' } }),
+      ],
+      criteria,
+      definitions: [definition('a.x', { valueType: 'duration', comparison: 'lower_better' })],
+    });
+
+    expect(criterionScore(board, 'quick', 'c.x').score).toBe(1);
+    expect(criterionScore(board, 'slow', 'c.x').score).toBe(0);
+  });
+
+  it('uses a range’s midpoint, and either bound when only one is given', () => {
+    const board = scoreCase({
+      options: [
+        option('wide', { 'a.x': { type: 'range', minimum: 0, maximum: 10 } }),
+        option('high', { 'a.x': { type: 'range', minimum: 10 } }),
+      ],
+      criteria,
+      definitions: [definition('a.x', { valueType: 'range' })],
+    });
+
+    expect(criterionScore(board, 'high', 'c.x').score).toBe(1);
+    expect(criterionScore(board, 'wide', 'c.x').score).toBe(0);
+  });
+
+  it('refuses a range that declares neither bound rather than treating it as zero', () => {
+    const board = scoreCase({
+      options: [
+        option('bounded', { 'a.x': { type: 'range', minimum: 5, maximum: 5 } }),
+        option('unbounded', { 'a.x': { type: 'range' } }),
+      ],
+      criteria,
+      definitions: [definition('a.x', { valueType: 'range' })],
+    });
+
+    expect(criterionScore(board, 'unbounded', 'c.x').score).toBeNull();
+  });
+
+  it('orders dates chronologically, not lexically', () => {
+    const board = scoreCase({
+      options: [
+        option('newer', { 'a.x': { type: 'date', value: '2026-01-02' } }),
+        option('older', { 'a.x': { type: 'date', value: '2025-12-31' } }),
+      ],
+      criteria,
+      definitions: [definition('a.x', { valueType: 'date' })],
+    });
+
+    expect(criterionScore(board, 'newer', 'c.x').score).toBe(1);
+    expect(criterionScore(board, 'older', 'c.x').score).toBe(0);
+  });
+
+  it('refuses a list of strings, which has no ordering', () => {
+    const board = scoreCase({
+      options: [
+        option('a', { 'a.x': { type: 'string_list', values: ['one', 'two'] } }),
+        option('b', { 'a.x': { type: 'string_list', values: ['one'] } }),
+      ],
+      criteria,
+      definitions: [definition('a.x', { valueType: 'string_list' })],
+    });
+
+    expect(criterionScore(board, 'a', 'c.x').status).toBe('not_comparable');
+  });
+
+  it('refuses numbers recorded in different units, naming both', () => {
+    const board = scoreCase({
+      options: [
+        option('inches', { 'a.x': { type: 'number', value: 40, unit: 'in' } }),
+        option('centimetres', { 'a.x': { type: 'number', value: 100, unit: 'cm' } }),
+      ],
+      criteria,
+      definitions: [definition('a.x')],
+    });
+
+    expect(criterionScore(board, 'inches', 'c.x').status).toBe('not_comparable');
+    expect(board.warnings.join(' ')).toContain('cm');
+  });
+
+  it('says "no unit" rather than printing an empty pair of parentheses', () => {
+    // An empty unit string is a REAL value -- what a bare number carries --
+    // so the message has to name it rather than coerce it away.
+    const board = scoreCase({
+      options: [
+        option('bare', { 'a.x': { type: 'number', value: 40 } }),
+        option('united', { 'a.x': { type: 'number', value: 100, unit: 'cm' } }),
+      ],
+      criteria,
+      definitions: [definition('a.x')],
+    });
+
+    expect(board.warnings.join(' ')).toContain('no unit');
+  });
+});
+
+describe('target-shaped criteria', () => {
+  it('scores closeness to the target, not magnitude', () => {
+    // "About 30 miles of range" -- 60 is not twice as good as 30, it is
+    // just as wrong as 0 in the other direction.
+    const board = scoreCase({
+      options: [
+        option('on-target', { 'a.x': { type: 'number', value: 30 } }),
+        option('under', { 'a.x': { type: 'number', value: 10 } }),
+        option('over', { 'a.x': { type: 'number', value: 50 } }),
+      ],
+      criteria: [
+        criterion('c.x', {
+          direction: 'target',
+          target: { type: 'number', value: 30 },
+          appliesToAttribute: 'a.x',
+        }),
+      ],
+      definitions: [definition('a.x', { comparison: 'target' })],
+    });
+
+    expect(criterionScore(board, 'on-target', 'c.x').score).toBe(1);
+    expect(criterionScore(board, 'under', 'c.x').score).toBe(0);
+    expect(criterionScore(board, 'over', 'c.x').score).toBe(0);
+  });
+
+  it('cannot score a target criterion with no target declared', () => {
+    const board = scoreCase({
+      options: [
+        option('a', { 'a.x': { type: 'number', value: 30 } }),
+        option('b', { 'a.x': { type: 'number', value: 10 } }),
+      ],
+      criteria: [criterion('c.x', { direction: 'target', appliesToAttribute: 'a.x' })],
+      definitions: [definition('a.x', { comparison: 'target' })],
+    });
+
+    expect(criterionScore(board, 'a', 'c.x').score).toBeNull();
+  });
+});
+
+describe('hard constraints with an explicit threshold', () => {
+  // The absolute path (rule 4). Without a target, a boolean carries its own
+  // poles; with one, the threshold is the test.
+  const definitions = [definition('a.price', { valueType: 'money', comparison: 'lower_better' })];
+
+  function boardWithBudget(limit: number) {
+    return scoreCase({
+      options: [
+        option('under', { 'a.price': money(30_000) }),
+        option('over', { 'a.price': money(45_000) }),
+      ],
+      criteria: [
+        criterion('c.budget', {
+          kind: 'hard_constraint',
+          target: money(limit),
+          appliesToAttribute: 'a.price',
+        }),
+      ],
+      definitions,
+    });
+  }
+
+  it('passes an option within the limit and fails one over it', () => {
+    const board = boardWithBudget(35_000);
+    expect(criterionScore(board, 'under', 'c.budget').constraintViolated).toBe(false);
+    expect(criterionScore(board, 'over', 'c.budget').constraintViolated).toBe(true);
+  });
+
+  it('does not fail the most expensive option merely for being the maximum of the set', () => {
+    // The whole reason constraints are absolute. Scored relatively, `over`
+    // would violate a budget it comfortably meets, purely because someone
+    // else is cheaper.
+    const board = boardWithBudget(50_000);
+    expect(board.options.every((entry) => entry.violatedConstraintIds.length === 0)).toBe(true);
+  });
+
+  it('reads a higher_better threshold as a minimum', () => {
+    const board = scoreCase({
+      options: [
+        option('meets', { 'a.range': { type: 'number', value: 300 } }),
+        option('short', { 'a.range': { type: 'number', value: 100 } }),
+      ],
+      criteria: [
+        criterion('c.range', {
+          kind: 'hard_constraint',
+          direction: 'higher_better',
+          target: { type: 'number', value: 250 },
+          appliesToAttribute: 'a.range',
+        }),
+      ],
+      definitions: [definition('a.range', { comparison: 'higher_better' })],
+    });
+
+    expect(criterionScore(board, 'short', 'c.range').reason).toContain('minimum');
+    expect(criterionScore(board, 'short', 'c.range').constraintViolated).toBe(true);
+    expect(criterionScore(board, 'meets', 'c.range').constraintViolated).toBe(false);
+  });
+
+  it('reads a target threshold as an exact match', () => {
+    const board = scoreCase({
+      options: [
+        option('exact', { 'a.seats': { type: 'number', value: 7 } }),
+        option('other', { 'a.seats': { type: 'number', value: 5 } }),
+      ],
+      criteria: [
+        criterion('c.seats', {
+          kind: 'hard_constraint',
+          direction: 'target',
+          target: { type: 'number', value: 7 },
+          appliesToAttribute: 'a.seats',
+        }),
+      ],
+      definitions: [definition('a.seats', { comparison: 'target' })],
+    });
+
+    expect(criterionScore(board, 'exact', 'c.seats').constraintViolated).toBe(false);
+    expect(criterionScore(board, 'other', 'c.seats').constraintViolated).toBe(true);
+  });
+
+  it('falls back to a relative score when a constraint cannot be decided absolutely', () => {
+    // No target and a non-boolean value: there is no threshold to test
+    // against, so the line must not claim a violation it cannot establish.
+    const board = scoreCase({
+      options: [
+        option('a', { 'a.price': money(30_000) }),
+        option('b', { 'a.price': money(45_000) }),
+      ],
+      criteria: [criterion('c.budget', { kind: 'hard_constraint', appliesToAttribute: 'a.price' })],
+      definitions,
+    });
+
+    expect(board.options.every((entry) => entry.violatedConstraintIds.length === 0)).toBe(true);
+    expect(criterionScore(board, 'a', 'c.budget').score).toBe(1);
+  });
+
+  it('reads a higher_better boolean constraint as "must be true"', () => {
+    const board = scoreCase({
+      options: [
+        option('has', { 'a.awd': { type: 'boolean', value: true } }),
+        option('lacks', { 'a.awd': { type: 'boolean', value: false } }),
+      ],
+      criteria: [
+        criterion('c.awd', {
+          kind: 'hard_constraint',
+          direction: 'higher_better',
+          appliesToAttribute: 'a.awd',
+        }),
+      ],
+      definitions: [definition('a.awd', { valueType: 'boolean', comparison: 'higher_better' })],
+    });
+
+    expect(criterionScore(board, 'lacks', 'c.awd').constraintViolated).toBe(true);
+    expect(criterionScore(board, 'has', 'c.awd').constraintViolated).toBe(false);
+  });
+});
+
+describe('the remaining insights', () => {
+  const definitions = [definition('a.x'), definition('a.y')];
+
+  it('calls a near-tie a toss-up rather than announcing a winner', () => {
+    // Reporting "X leads" on a 1% margin is technically true and
+    // practically misleading — it invites a decision the numbers do not
+    // support.
+    const board = scoreCase({
+      options: [
+        option('a', { 'a.x': { type: 'number', value: 100 }, 'a.y': { type: 'number', value: 0 } }),
+        option('b', { 'a.x': { type: 'number', value: 99 }, 'a.y': { type: 'number', value: 1 } }),
+      ],
+      criteria: [
+        criterion('c.x', { weight: 51, appliesToAttribute: 'a.x' }),
+        criterion('c.y', { weight: 49, appliesToAttribute: 'a.y' }),
+      ],
+      definitions,
+    });
+
+    const insight = deriveInsights(board).find((entry) => entry.kind === 'close_call');
+    expect(insight).toBeDefined();
+    expect(insight?.optionIds).toHaveLength(2);
+  });
+
+  it('says outright when a weighted criterion is not changing the order', () => {
+    // A person reading a 50%-weight row assumes it is doing work. When
+    // every option scores the same on it, it is not.
+    const board = scoreCase({
+      options: [
+        option('a', { 'a.x': { type: 'number', value: 5 }, 'a.y': { type: 'number', value: 9 } }),
+        option('b', { 'a.x': { type: 'number', value: 5 }, 'a.y': { type: 'number', value: 1 } }),
+      ],
+      criteria: [
+        criterion('c.x', { label: 'Everyone the same', appliesToAttribute: 'a.x' }),
+        criterion('c.y', { appliesToAttribute: 'a.y' }),
+      ],
+      definitions,
+    });
+
+    const insight = deriveInsights(board).find((entry) => entry.kind === 'non_discriminating');
+    expect(insight?.criterionIds).toEqual(['c.x']);
+    expect(insight?.headline).toContain('Everyone the same');
+  });
+
+  it('scores a composite from its usable parts when one part cannot be ordered at all', () => {
+    const board = scoreCase({
+      options: [
+        option('a', {
+          'a.x': { type: 'number', value: 9 },
+          'a.note': { type: 'text', value: 'roomy' },
+        }),
+        option('b', {
+          'a.x': { type: 'number', value: 1 },
+          'a.note': { type: 'text', value: 'cramped' },
+        }),
+      ],
+      criteria: [criterion('c.mix', { composedOfAttributes: ['a.x', 'a.note'] })],
+      definitions: [definition('a.x'), definition('a.note', { valueType: 'text' })],
+    });
+
+    const line = criterionScore(board, 'a', 'c.mix');
+    expect(line.score).toBe(1);
+    expect(line.reason).toContain('1 of 2');
+  });
+});

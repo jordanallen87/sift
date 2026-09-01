@@ -396,24 +396,40 @@ function buildScale(
  * where 1 is always "best under this direction". Returns `null` when every
  * option sits at the same point, which is a tie rather than a score.
  */
+type Normalized =
+  | { readonly kind: 'score'; readonly value: number }
+  /** Every option sits at the same point — a real measurement that separates nothing. */
+  | { readonly kind: 'tied' }
+  /** The normalization could not be performed at all. NOT the same as a tie. */
+  | { readonly kind: 'unscorable'; readonly reason: string };
+
 function normalize(
   magnitude: number,
   scale: AttributeScale,
   direction: 'higher_better' | 'lower_better' | 'target',
   target: number | null,
-): number | null {
+): Normalized {
   if (direction === 'target') {
-    if (target === null) return null;
+    // Conflating this with a tie was a real defect: a target-shaped
+    // criterion with no target declared scored EVERY option 1.0 and
+    // labelled it "every option is the same here" — an invented
+    // measurement wearing the words of a real one.
+    if (target === null) {
+      return {
+        kind: 'unscorable',
+        reason: 'this is measured against a target value, and no target has been set for it',
+      };
+    }
     const distances = [...scale.magnitudes.values()].map((value) => Math.abs(value - target));
     const worst = Math.max(...distances);
-    if (worst === 0) return null;
-    return 1 - Math.abs(magnitude - target) / worst;
+    if (worst === 0) return { kind: 'tied' };
+    return { kind: 'score', value: 1 - Math.abs(magnitude - target) / worst };
   }
 
   const span = scale.maximum - scale.minimum;
-  if (span === 0) return null;
+  if (span === 0) return { kind: 'tied' };
   const fraction = (magnitude - scale.minimum) / span;
-  return direction === 'higher_better' ? fraction : 1 - fraction;
+  return { kind: 'score', value: direction === 'higher_better' ? fraction : 1 - fraction };
 }
 
 // --- Hard constraints --------------------------------------------------
@@ -500,10 +516,13 @@ function scorePart(
   }
 
   const normalized = normalize(magnitude, scale, direction, target);
-  if (normalized === null) {
+  if (normalized.kind === 'unscorable') {
+    return { score: null, tied: false, reason: normalized.reason };
+  }
+  if (normalized.kind === 'tied') {
     return { score: 1, tied: true, reason: null };
   }
-  return { score: normalized, tied: false, reason: null };
+  return { score: normalized.value, tied: false, reason: null };
 }
 
 function describeDirection(direction: 'higher_better' | 'lower_better' | 'target'): string {
