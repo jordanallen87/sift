@@ -16,12 +16,26 @@
  * owner's framing: "the way you have these grids setup - it's cramming a lot of information in them
  * when we should keep that focused and keep the extra detail in the profiles."
  *
- * So a card now holds exactly four things, in reading order:
+ * So a card now holds exactly five things, in reading order:
  *
  *   1. the option's own label, never truncated;
- *   2. one headline stat -- the first entry `pickCardAttributeIds` returns;
- *   3. two to three more prominent facts;
- *   4. one compact signal row (`OptionCardSignals`) of counts, and a "View details" affordance.
+ *   2. where it stands (`OptionRankBadge`) -- its position, its score, and the
+ *      share of the weighting that score rests on;
+ *   3. one headline stat -- the first entry `pickCardAttributeIds` returns;
+ *   4. two to three more prominent facts;
+ *   5. one compact signal row (`OptionCardSignals`) of counts, and a "View details" affordance.
+ *
+ * ## The ranking is rendered, not computed
+ *
+ * Item 2 is the deterministic scoreboard (`packages/core/src/scoring.ts`),
+ * which until now only the recommendation consumed -- so the first question
+ * a person opens the workspace with ("which of these is ahead, and how sure
+ * is that?") was the one thing these cards did not answer. This component
+ * calls `selectOptionRanking` and hands the result to `OptionRankBadge`;
+ * every rule about what a rank may and may not claim lives there, and no
+ * scoring logic of any kind lives here. The `scoreboard` prop is optional, so
+ * a caller that has not wired the board renders exactly the card it had
+ * before rather than an empty rank slot.
  *
  * Everything the three deleted sections used to spell out -- which attribute, what status, what
  * origin, which sources, which evidence bar it missed -- now lives in the per-option profile, which
@@ -94,7 +108,9 @@ import type {
 import { formatAttributeValue } from './attribute-value-format.js';
 import { Badge } from '@/components/ui/badge';
 import { OptionCardSignals } from './OptionCardSignals.js';
+import { OptionRankBadge } from './OptionRankBadge.js';
 import { pickCardAttributeIds } from './option-profile.js';
+import { selectOptionRanking, type WorkspaceScoreboard } from './case-scoreboard.js';
 
 export interface OptionListViewProps {
   options: EntityRecord[];
@@ -108,6 +124,20 @@ export interface OptionListViewProps {
   visibleOptionIds?: string[];
   /** Explicit caller-chosen prominent attribute ids, outranking the pack/criteria derivation for every rendered card. `undefined` or empty falls through to `pickCardAttributeIds`. See the header comment for why an explicit instruction also bypasses the identity-attribute exclusion. */
   prominentAttributeIds?: string[];
+  /**
+   * The deterministic scoreboard for this case (`buildWorkspaceScoreboard`).
+   *
+   * Optional, and `undefined` renders no ranking at all rather than an empty
+   * rank slot -- a caller that has not wired the board yet gets exactly the
+   * card it had before. The narrower gate ("nothing to rank") is not this
+   * component's to remember either: `selectOptionRanking` returns `null` for
+   * an unrankable case and `OptionRankBadge` renders `null` for that, so
+   * there is one place the rule lives rather than one per view.
+   *
+   * Read-only, like `criteria` beside it. A card never scores anything, never
+   * appends a `CaseEvent`, and never advances `eventSequence`.
+   */
+  scoreboard?: WorkspaceScoreboard | undefined;
   /** Caller-decided information architecture (ADR 0005 Decision 4) -- this component never calls `matchMedia` itself. */
   layout: 'narrow' | 'expanded';
   /** Fired when a user or WebMCP-driven caller focuses a card. This component never decides focus itself. */
@@ -233,6 +263,7 @@ interface OptionListCardProps {
   presentation: PresentationDefinition | null;
   criteria: Criterion[];
   prominentAttributeIds: string[] | undefined;
+  scoreboard: WorkspaceScoreboard | undefined;
   layout: 'narrow' | 'expanded';
   isSelected: boolean;
   onFocusOption: (optionId: string) => void;
@@ -245,6 +276,7 @@ function OptionListCard({
   presentation,
   criteria,
   prominentAttributeIds,
+  scoreboard,
   layout,
   isSelected,
   onFocusOption,
@@ -314,6 +346,19 @@ function OptionListCard({
         {option.label}
         {isSelected ? <span className="label-caps ml-[var(--space-1)]">Selected</span> : null}
       </button>
+
+      {/* Where this option actually stands, directly under its name.
+          Deliberately BELOW the label rather than above it: this card's own
+          reading order starts with "the option's own label, never
+          truncated", and a block of numbers ahead of the name would bury the
+          one thing that identifies the card. Everything about what it does
+          and does not claim -- an unranked option is not last, a flagged
+          constraint is not an elimination, a disputed measurement is not a
+          settled one -- lives in `OptionRankBadge`, not here. */}
+      <OptionRankBadge
+        optionId={option.id}
+        ranking={scoreboard === undefined ? null : selectOptionRanking(scoreboard, option.id)}
+      />
 
       {/* The headline stat. Same testid scheme as an ordinary grid fact
           (`option-list-view-fact-{optionId}-{defId}`) -- this is still one of the pack's own
@@ -450,6 +495,7 @@ export function OptionListView({
   selectedOptionId,
   visibleOptionIds,
   prominentAttributeIds,
+  scoreboard,
   layout,
   onFocusOption,
   onOpenProfile,
@@ -492,6 +538,7 @@ export function OptionListView({
               presentation={presentation}
               criteria={criteria}
               prominentAttributeIds={prominentAttributeIds}
+              scoreboard={scoreboard}
               layout={layout}
               isSelected={option.id === selectedOptionId}
               onFocusOption={onFocusOption}

@@ -235,6 +235,8 @@ import { FilterBar } from '../components/FilterBar.js';
 import { FilterSheet } from '../components/FilterSheet.js';
 import { applyAssistantNarrowing, applyWorkspaceFilters } from '../components/workspace-filters.js';
 import { OptionProfileSheet } from '../components/OptionProfileSheet.js';
+import { CaseInsightsPanel } from '../components/CaseInsightsPanel.js';
+import { buildWorkspaceScoreboard, selectOptionRanking } from '../components/case-scoreboard.js';
 import { ReferenceLibrarySheet } from '../components/ReferenceLibrary.js';
 import { deriveOptionProfile } from '../components/option-profile.js';
 import { useWidthMode } from '../hooks/use-width-mode.js';
@@ -1090,6 +1092,30 @@ export function App() {
     [snapshot, profileOptionId, activePack],
   );
 
+  // The deterministic ranking (ADR 0012), computed IN THE BROWSER from the
+  // snapshot this component already holds rather than fetched. That is not an
+  // optimization: `scoreCaseState` is pure and cheap, so a reweight arriving
+  // over SSE re-renders the ranking in the same frame as every other
+  // snapshot-derived value -- no request, no cache to invalidate, and no
+  // window in which the visible order disagrees with the visible weights.
+  // It is also the SAME function `apps/agent` calls when it validates a
+  // recommendation, so the workspace can never show one leader while the
+  // recommendation names another.
+  //
+  // Built from `snapshot`, deliberately never from `visibleOptions`: a rank
+  // is a claim about the whole candidate set, and recomputing it over a
+  // filtered subset would silently renumber "#2 of 4" to "#1 of 2" the moment
+  // someone hid a car -- a different claim, made without saying so.
+  const scoreboard = useMemo(() => buildWorkspaceScoreboard(snapshot), [snapshot]);
+
+  // Read through the shared selector rather than off the board directly, so
+  // the "no ranking when there is nothing to rank" gate lives in exactly one
+  // place for all three surfaces that render it.
+  const openProfileRanking = useMemo(
+    () => (profileOptionId === null ? null : selectOptionRanking(scoreboard, profileOptionId)),
+    [scoreboard, profileOptionId],
+  );
+
   const installedPacksRef = useRef(installedPacks);
   installedPacksRef.current = installedPacks;
 
@@ -1658,6 +1684,14 @@ export function App() {
         onInspectRun={handleInspectRun}
       />
 
+      {/* What the deterministic scoreboard found -- rendered once, outside
+          both layout branches, for the same reason the alert banner and the
+          hero are: it is a summary of the whole case rather than a region
+          either shell owns. `CaseInsightsPanel` returns `null` outright when
+          the engine found nothing, so an uninteresting case grows no empty
+          region (product.md's "Empty regions" rule). */}
+      <CaseInsightsPanel insights={scoreboard.insights} layout={layout} />
+
       {layout === 'expanded' ? (
         // Web app mode (ADR 0008 decision 2): a persistent left sidebar
         // (priorities/filters/still-checking) beside a main column holding
@@ -1764,6 +1798,10 @@ export function App() {
               // the person actually said matters whenever a pack declares no
               // `prominentAttributeIds` of its own.
               criteria={snapshot?.criteria ?? []}
+              // The FULL board, not one narrowed to `visibleOptions` -- see
+              // the `scoreboard` memo above for why a rank must not be
+              // recomputed over a filtered subset.
+              scoreboard={scoreboard}
               onOpenProfile={setProfileOptionId}
               boardPlacement={boardPlacement}
               onMoveOption={handleMoveOption}
@@ -1810,6 +1848,7 @@ export function App() {
             onQuickPickShortlist={handleQuickPickShortlist}
             onQuickPickFocusChange={() => undefined}
             criteria={snapshot?.criteria ?? []}
+            scoreboard={scoreboard}
             onOpenProfile={setProfileOptionId}
             boardPlacement={boardPlacement}
             onMoveOption={handleMoveOption}
@@ -1906,6 +1945,7 @@ export function App() {
         }}
         profile={openProfile}
         presentation={activePack?.presentation ?? null}
+        ranking={openProfileRanking}
       />
 
       <ReferenceLibrarySheet

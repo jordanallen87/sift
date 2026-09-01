@@ -10,6 +10,19 @@ import type {
 } from '@sift/contracts';
 import { OptionBoardView, type OptionBoardViewProps } from './OptionBoardView.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
+import { buildWorkspaceScoreboard } from './case-scoreboard.js';
+import {
+  buildCarCaseState,
+  buildEnergyCaseState,
+  CAR_CRITERIA,
+  CAR_DEFINITIONS,
+  CAR_OPTIONS,
+  CAR_PRESENTATION,
+  ENERGY_CRITERIA,
+  ENERGY_DEFINITIONS,
+  ENERGY_OPTIONS,
+  ENERGY_PRESENTATION,
+} from '../test/scoreboard-fixtures.js';
 
 const DEFINITIONS: AttributeDefinition[] = [
   {
@@ -608,5 +621,121 @@ describe('OptionBoardView', () => {
     await user.selectOptions(select, 'top_choices');
 
     expect(onMoveOption).toHaveBeenCalledExactlyOnceWith('option-1', 'top_choices');
+  });
+});
+
+/**
+ * The deterministic ranking on a Board card.
+ *
+ * A board column is 220px and the card already leads with a headline stat,
+ * so this is the `compact` density: the same facts, one size down, no
+ * coverage meter. The words are the contract; the bar is reinforcement.
+ */
+describe('OptionBoardView ranking', () => {
+  const CAR_SCOREBOARD = buildWorkspaceScoreboard(buildCarCaseState());
+  const ENERGY_SCOREBOARD = buildWorkspaceScoreboard(buildEnergyCaseState());
+
+  function carBoard(overrides: Partial<OptionBoardViewProps> = {}) {
+    return (
+      <OptionBoardView
+        options={CAR_OPTIONS}
+        attributeDefinitions={CAR_DEFINITIONS}
+        presentation={CAR_PRESENTATION}
+        criteria={CAR_CRITERIA}
+        optionColumnIds={{}}
+        selectedOptionId={null}
+        layout="narrow"
+        onMoveOption={vi.fn()}
+        onFocusOption={vi.fn()}
+        scoreboard={CAR_SCOREBOARD}
+        {...overrides}
+      />
+    );
+  }
+
+  function energyBoard(overrides: Partial<OptionBoardViewProps> = {}) {
+    return (
+      <OptionBoardView
+        options={ENERGY_OPTIONS}
+        attributeDefinitions={ENERGY_DEFINITIONS}
+        presentation={ENERGY_PRESENTATION}
+        criteria={ENERGY_CRITERIA}
+        optionColumnIds={{}}
+        selectedOptionId={null}
+        layout="narrow"
+        onMoveOption={vi.fn()}
+        onFocusOption={vi.fn()}
+        scoreboard={ENERGY_SCOREBOARD}
+        {...overrides}
+      />
+    );
+  }
+
+  it('shows the position, the score, and the coverage it rests on, at compact density', () => {
+    render(carBoard());
+
+    const badge = screen.getByTestId('option-rank-candidate-crv');
+    expect(badge).toHaveAttribute('data-density', 'compact');
+    expect(screen.getByTestId('option-rank-position-candidate-crv')).toHaveTextContent('#1 of 3');
+    expect(screen.getByTestId('option-rank-score-candidate-crv')).toHaveTextContent('75%');
+    // The meter is the one thing a 220px column drops. The number never is.
+    expect(screen.queryByTestId('option-rank-meter-candidate-crv')).toBeNull();
+    expect(screen.getByTestId('option-rank-coverage-candidate-crv')).toHaveTextContent(
+      'on everything you said matters',
+    );
+  });
+
+  it('renders the unmeasured option as unranked rather than last', () => {
+    render(carBoard());
+
+    expect(screen.queryByTestId('option-rank-position-candidate-outback')).toBeNull();
+    expect(screen.getByTestId('option-rank-unranked-candidate-outback')).toHaveTextContent(
+      /not last/i,
+    );
+  });
+
+  it('renders no ranking at all when the caller supplies no scoreboard', () => {
+    render(carBoard({ scoreboard: undefined }));
+
+    expect(screen.queryByTestId('option-rank-candidate-crv')).toBeNull();
+    expect(screen.getByTestId('board-card-candidate-crv')).toBeInTheDocument();
+  });
+
+  it('keeps a constraint-violating option on the board, movable and focusable', () => {
+    // Rule 4: flagged, never eliminated. Every control it had, it keeps.
+    render(energyBoard());
+
+    expect(screen.getByTestId('board-card-option-audit')).toBeInTheDocument();
+    expect(screen.getByTestId('board-focus-option-audit')).toBeEnabled();
+    expect(screen.getByTestId('board-move-option-audit')).toBeEnabled();
+    expect(screen.getByTestId('option-rank-constraint-flags-option-audit')).toHaveTextContent(
+      'Misses',
+    );
+  });
+
+  it('flags a disputed measurement in a 220px column without clipping its label', () => {
+    render(energyBoard());
+
+    const label = screen.getByTestId('option-rank-disputed-label-option-thermostat-energy.cost');
+    expect(label).toHaveTextContent('Lowest immediate cost');
+    expect(label.className).toContain('break-words');
+    expect(label.className).not.toContain('truncate');
+  });
+
+  it('adds no fixed width wider than the narrow pane, in either pack', () => {
+    for (const ui of [carBoard(), energyBoard()]) {
+      const { renderResult, overflowRisks } = renderAtNarrowWidth(ui);
+      expect(overflowRisks).toEqual([]);
+      renderResult.unmount();
+    }
+  });
+
+  it('has no accessibility violations with the ranking rendered, in either pack', async () => {
+    const car = render(carBoard({ layout: 'expanded' }));
+    expect(await axe(car.container)).toHaveNoViolations();
+    car.unmount();
+
+    const energy = render(energyBoard());
+    expect(await axe(energy.container)).toHaveNoViolations();
   });
 });

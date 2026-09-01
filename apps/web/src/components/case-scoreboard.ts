@@ -166,7 +166,7 @@ export function selectOptionRanking(
 export function topContributions(option: OptionScore, limit = 2) {
   return [...option.criteria]
     .filter((line) => line.score !== null && line.status !== 'tied')
-    .sort((a, b) => b.weight * (b.score!) - a.weight * (a.score!))
+    .sort((a, b) => b.weight * b.score! - a.weight * a.score!)
     .slice(0, limit);
 }
 

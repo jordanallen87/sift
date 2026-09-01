@@ -15,6 +15,7 @@ import { FakeEventSource, createFakeEventSource } from '../test/fake-event-sourc
 import { InMemoryModelContextAdapter } from '../model-context/adapter.js';
 import { CASE_SCOPED_SIFT_TOOL_NAMES } from '../model-context/register-sift-tools.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
+import { buildCarCaseState } from '../test/scoreboard-fixtures.js';
 
 const CASE_ID = 'case-live-1';
 
@@ -3935,5 +3936,57 @@ describe('App', () => {
     // 'live workspace wiring' > "renders nothing from activeFocus even when
     // the snapshot carries a real (never-production-written) value", which
     // proves the deletion holds even for a fully-populated `activeFocus`).
+  });
+});
+
+/**
+ * The deterministic ranking, end to end.
+ *
+ * Every other test for these surfaces hands a component a scoreboard
+ * directly. These prove the workspace actually BUILDS one from the live
+ * snapshot and routes it to all three places it belongs -- which is the
+ * wiring ADR 0012 listed as still open ("the workspace does not yet render
+ * the scoreboard: option cards show pack-declared prominent attributes, not
+ * rank, score, or the per-criterion breakdown").
+ */
+describe('App scoreboard', () => {
+  const RANKED_CASE = buildCarCaseState({ id: CASE_ID });
+
+  it('surfaces the computed insights near the top of the workspace', async () => {
+    renderLiveWorkspace(RANKED_CASE);
+    await startDemoAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('case-insights')).toBeInTheDocument();
+    });
+
+    // The leave-one-out result, which is the single most compelling thing
+    // the engine computes, and the one the panel leads with.
+    const decisive = screen.getByTestId('case-insight-decisive_criterion');
+    expect(decisive).toHaveAttribute('data-lead', 'true');
+    expect(decisive).toHaveTextContent('is what puts 2022 Honda CR-V EX-L AWD ahead.');
+  });
+
+  it('ranks the option cards and explains the rank in the profile', async () => {
+    renderLiveWorkspace(RANKED_CASE);
+    const user = await startDemoAndWait();
+
+    await user.click(screen.getByTestId('workspace-view-tab-list'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('option-rank-position-candidate-crv')).toHaveTextContent('#1 of 3');
+    });
+    // The unmeasured car is unranked, not fourth.
+    expect(screen.queryByTestId('option-rank-position-candidate-outback')).toBeNull();
+    expect(screen.getByTestId('option-rank-unranked-candidate-outback')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('option-card-open-profile-candidate-crv'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('option-rank-breakdown-candidate-crv')).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId('option-rank-criterion-candidate-crv-pref.ownership_cost'),
+    ).toHaveAttribute('data-status', 'disputed');
   });
 });

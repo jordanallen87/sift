@@ -126,6 +126,7 @@ import { OptionCompareView } from './OptionCompareView.js';
 import { OptionListView } from './OptionListView.js';
 import { OptionBoardView } from './OptionBoardView.js';
 import { useWidthMode } from '../hooks/use-width-mode.js';
+import type { WorkspaceScoreboard } from './case-scoreboard.js';
 
 export interface WorkspaceViewSwitcherProps {
   mode: WorkspaceViewMode;
@@ -138,6 +139,20 @@ export interface WorkspaceViewSwitcherProps {
   /** The case's criteria (`CaseState.criteria`). Forwarded to the two browse grids, whose cards rank which attributes to lead with by the heaviest `Criterion.appliesToAttribute` weight when the pack declares no `presentation.prominentAttributeIds` (see `option-profile.ts`'s `pickCardAttributeIds`). This component neither reads nor mutates them itself -- it is still a router. */
   criteria: Criterion[];
   selectedOptionId: string | null;
+  /**
+   * The case's deterministic scoreboard (`buildWorkspaceScoreboard`),
+   * forwarded to the two browse grids that render a rank.
+   *
+   * Routed, never derived -- this component stays the thin router it has
+   * always been, exactly as it does for `presentation` and
+   * `compareOptionIds`. It deliberately does NOT reach `OptionCompareView` or
+   * `QuickPickView`: ADR 0005 Decision 2's point is that the four views are
+   * four different decision tasks, and neither of those two answers "where
+   * does this rank" (Compare answers "how do these differ", Quick Pick
+   * answers "keep or pass"). Adding a rank to them would be the cosmetic
+   * sameness that ADR argues against.
+   */
+  scoreboard?: WorkspaceScoreboard | undefined;
   onFocusOption: (optionId: string) => void;
   /** Opens the full per-option profile for one option. Optional the whole way down: a caller with no profile surface wired yet gets cards with no dead "View details" control on them. */
   onOpenProfile?: ((optionId: string) => void) | undefined;
@@ -191,6 +206,7 @@ export function WorkspaceViewSwitcher({
   presentation,
   criteria,
   selectedOptionId,
+  scoreboard,
   onFocusOption,
   onOpenProfile,
   compareOptionIds,
@@ -265,6 +281,7 @@ export function WorkspaceViewSwitcher({
             presentation={presentation}
             criteria={criteria}
             selectedOptionId={selectedOptionId}
+            scoreboard={scoreboard}
             layout={widthMode}
             onFocusOption={onFocusOption}
             onOpenProfile={onOpenProfile}
@@ -279,6 +296,7 @@ export function WorkspaceViewSwitcher({
             criteria={criteria}
             optionColumnIds={boardPlacement}
             selectedOptionId={selectedOptionId}
+            scoreboard={scoreboard}
             layout={widthMode}
             onMoveOption={onMoveOption}
             onFocusOption={onFocusOption}

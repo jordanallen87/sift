@@ -10,6 +10,19 @@ import type {
 } from '@sift/contracts';
 import { OptionListView, type OptionListViewProps } from './OptionListView.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
+import { buildWorkspaceScoreboard } from './case-scoreboard.js';
+import {
+  buildCarCaseState,
+  buildEnergyCaseState,
+  CAR_CRITERIA,
+  CAR_DEFINITIONS,
+  CAR_OPTIONS,
+  CAR_PRESENTATION,
+  ENERGY_CRITERIA,
+  ENERGY_DEFINITIONS,
+  ENERGY_OPTIONS,
+  ENERGY_PRESENTATION,
+} from '../test/scoreboard-fixtures.js';
 
 const DEFINITIONS: AttributeDefinition[] = [
   {
@@ -732,5 +745,170 @@ describe('OptionListView', () => {
     expect(
       screen.getByTestId('option-list-view-fact-candidate-rav4-reliability'),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The deterministic ranking on a List card.
+ *
+ * These use the pack-shaped fixtures rather than this file's own minimal
+ * ones, because a rank is only meaningful against a real criteria set -- and
+ * because the same assertions have to hold for both shipped packs, which is
+ * where every previous genericity claim in this repository has failed.
+ */
+describe('OptionListView ranking', () => {
+  const CAR_SCOREBOARD = buildWorkspaceScoreboard(buildCarCaseState());
+  const ENERGY_SCOREBOARD = buildWorkspaceScoreboard(buildEnergyCaseState());
+
+  function carView(overrides: Partial<OptionListViewProps> = {}) {
+    return (
+      <OptionListView
+        options={CAR_OPTIONS}
+        attributeDefinitions={CAR_DEFINITIONS}
+        presentation={CAR_PRESENTATION}
+        criteria={CAR_CRITERIA}
+        selectedOptionId={null}
+        layout="narrow"
+        onFocusOption={vi.fn()}
+        scoreboard={CAR_SCOREBOARD}
+        {...overrides}
+      />
+    );
+  }
+
+  it('shows each option`s position and score on its card', () => {
+    render(carView());
+
+    expect(screen.getByTestId('option-rank-position-candidate-crv')).toHaveTextContent('#1 of 3');
+    expect(screen.getByTestId('option-rank-position-candidate-rav4')).toHaveTextContent('#2 of 3');
+    expect(screen.getByTestId('option-rank-score-candidate-crv')).toHaveTextContent('75%');
+  });
+
+  it('shows the coverage a score rests on beside every score', () => {
+    render(carView());
+
+    expect(screen.getByTestId('option-rank-coverage-candidate-crv')).toHaveTextContent(
+      'on everything you said matters',
+    );
+    expect(screen.getByTestId('option-rank-coverage-candidate-forester')).toHaveTextContent(
+      'on 50% of what you said matters',
+    );
+  });
+
+  it('renders the unmeasured option as unranked rather than last', () => {
+    render(carView());
+
+    expect(screen.queryByTestId('option-rank-position-candidate-outback')).toBeNull();
+    expect(screen.getByTestId('option-rank-unranked-candidate-outback')).toHaveTextContent(
+      /not last/i,
+    );
+  });
+
+  it('renders no ranking at all when the caller supplies no scoreboard', () => {
+    // The backward-compatible default: a caller that has not wired the board
+    // yet gets exactly the card it had before, not an empty rank slot.
+    render(carView({ scoreboard: undefined }));
+
+    expect(screen.queryByTestId('option-rank-candidate-crv')).toBeNull();
+    expect(screen.getByTestId('option-list-view-card-candidate-crv')).toBeInTheDocument();
+  });
+
+  it('renders no ranking when there is nothing to rank', () => {
+    // One option is a score, not a ranking. An empty "#1 of 1" would read as
+    // "we compared them and it won".
+    const single = buildWorkspaceScoreboard(
+      buildCarCaseState({ entities: CAR_OPTIONS.slice(0, 1) }),
+    );
+    render(carView({ options: CAR_OPTIONS.slice(0, 1), scoreboard: single }));
+
+    expect(screen.queryByTestId('option-rank-candidate-rav4')).toBeNull();
+  });
+
+  it('flags a violated requirement on the card without removing the option', () => {
+    render(
+      <OptionListView
+        options={ENERGY_OPTIONS}
+        attributeDefinitions={ENERGY_DEFINITIONS}
+        presentation={ENERGY_PRESENTATION}
+        criteria={ENERGY_CRITERIA}
+        selectedOptionId={null}
+        layout="narrow"
+        onFocusOption={vi.fn()}
+        scoreboard={ENERGY_SCOREBOARD}
+      />,
+    );
+
+    // Still on the board, still focusable, still ranked.
+    expect(screen.getByTestId('option-list-view-card-option-audit')).toBeInTheDocument();
+    expect(screen.getByTestId('option-list-view-focus-option-audit')).toBeEnabled();
+    expect(screen.getByTestId('option-rank-position-option-audit')).toHaveTextContent('#4 of 4');
+    expect(screen.getByTestId('option-rank-constraint-flags-option-audit')).toHaveTextContent(
+      'Misses',
+    );
+  });
+
+  it('flags a disputed measurement on the card in both packs', () => {
+    const { unmount } = render(carView());
+    expect(screen.getByTestId('option-rank-disputed-flags-candidate-crv')).toHaveTextContent(
+      'Disputed',
+    );
+    unmount();
+
+    render(
+      <OptionListView
+        options={ENERGY_OPTIONS}
+        attributeDefinitions={ENERGY_DEFINITIONS}
+        presentation={ENERGY_PRESENTATION}
+        criteria={ENERGY_CRITERIA}
+        selectedOptionId={null}
+        layout="narrow"
+        onFocusOption={vi.fn()}
+        scoreboard={ENERGY_SCOREBOARD}
+      />,
+    );
+    expect(screen.getByTestId('option-rank-disputed-flags-option-thermostat')).toHaveTextContent(
+      'Disputed',
+    );
+  });
+
+  it('adds no fixed width wider than the narrow pane, in either pack', () => {
+    for (const ui of [
+      carView(),
+      <OptionListView
+        key="energy"
+        options={ENERGY_OPTIONS}
+        attributeDefinitions={ENERGY_DEFINITIONS}
+        presentation={ENERGY_PRESENTATION}
+        criteria={ENERGY_CRITERIA}
+        selectedOptionId={null}
+        layout="narrow"
+        onFocusOption={vi.fn()}
+        scoreboard={ENERGY_SCOREBOARD}
+      />,
+    ]) {
+      const { renderResult, overflowRisks } = renderAtNarrowWidth(ui);
+      expect(overflowRisks).toEqual([]);
+      renderResult.unmount();
+    }
+  });
+
+  it('has no accessibility violations with the ranking rendered, in either pack and layout', async () => {
+    const car = render(carView({ layout: 'expanded' }));
+    expect(await axe(car.container)).toHaveNoViolations();
+    car.unmount();
+
+    const energy = render(
+      <OptionListView
+        options={ENERGY_OPTIONS}
+        attributeDefinitions={ENERGY_DEFINITIONS}
+        presentation={ENERGY_PRESENTATION}
+        criteria={ENERGY_CRITERIA}
+        selectedOptionId={null}
+        layout="narrow"
+        onFocusOption={vi.fn()}
+        scoreboard={ENERGY_SCOREBOARD}
+      />,
+    );
+    expect(await axe(energy.container)).toHaveNoViolations();
   });
 });

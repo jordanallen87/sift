@@ -1052,7 +1052,16 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
     });
   }
 
-  const thin = board.options.filter((option) => option.coverage < COVERAGE_ATTENTION_THRESHOLD);
+  // Deliberately restricted to options that were actually SCORED. An option
+  // with no total was not scored thinly, it was not scored at all, and
+  // saying it "is scored on as little as 0% of the weight you assigned"
+  // describes a measurement that never happened — the exact shape of claim
+  // rule 1 exists to prevent, made by the insight meant to warn about it.
+  // That option's real state is already stated where it belongs: it is
+  // unranked, and the workspace says so on its own card.
+  const thin = board.options.filter(
+    (option) => option.total !== null && option.coverage < COVERAGE_ATTENTION_THRESHOLD,
+  );
   if (thin.length > 0) {
     const worst = Math.min(...thin.map((option) => option.coverage));
     insights.push({

@@ -270,6 +270,14 @@ function buildProfile(
   return profile;
 }
 
+import { buildWorkspaceScoreboard, selectOptionRanking } from './case-scoreboard.js';
+import {
+  buildCarCaseState,
+  buildEnergyCaseState,
+  CAR_PRESENTATION,
+  ENERGY_PRESENTATION,
+} from '../test/scoreboard-fixtures.js';
+
 function props(overrides: Partial<OptionProfileSheetProps> = {}): OptionProfileSheetProps {
   return {
     open: true,
@@ -1206,5 +1214,100 @@ describe('OptionProfileSheet', () => {
       );
       expect(await axe(container)).toHaveNoViolations();
     });
+  });
+});
+
+/**
+ * "Why this rank" -- the deterministic scoreboard's per-criterion argument,
+ * inside the sheet a person opened to find out why.
+ *
+ * Built from the pack-shaped scoreboard fixtures rather than this file's own
+ * domain-free ones, because a breakdown is only meaningful against a real
+ * criteria set -- and because the two shipped packs produce genuinely
+ * different rows (a composite, a hard constraint, a criterion measuring
+ * something that is not an option at all).
+ */
+describe('OptionProfileSheet ranking', () => {
+  const CAR_SCOREBOARD = buildWorkspaceScoreboard(buildCarCaseState());
+  const ENERGY_SCOREBOARD = buildWorkspaceScoreboard(buildEnergyCaseState());
+
+  function sheetFor(
+    caseState: ReturnType<typeof buildCarCaseState>,
+    scoreboard: typeof CAR_SCOREBOARD,
+    optionId: string,
+    presentation: PresentationDefinition,
+    overrides: Partial<OptionProfileSheetProps> = {},
+  ) {
+    const profile = deriveOptionProfile(caseState, optionId, presentation);
+    if (profile === null) throw new Error(`fixture has no option ${optionId}`);
+    return (
+      <OptionProfileSheet
+        open
+        onOpenChange={vi.fn()}
+        profile={profile}
+        presentation={presentation}
+        ranking={selectOptionRanking(scoreboard, optionId)}
+        {...overrides}
+      />
+    );
+  }
+
+  it('explains the rank criterion by criterion', () => {
+    render(sheetFor(buildCarCaseState(), CAR_SCOREBOARD, 'candidate-rav4', CAR_PRESENTATION));
+
+    expect(screen.getByTestId('option-rank-breakdown-candidate-rav4')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('option-rank-criterion-candidate-rav4-pref.deal_value'),
+    ).toHaveTextContent('Deal value (normalized out-the-door price vs. market)');
+    expect(screen.getByTestId('option-rank-position-candidate-rav4')).toHaveTextContent('#2 of 3');
+  });
+
+  it('renders no ranking section when the caller passes none', () => {
+    render(
+      sheetFor(buildCarCaseState(), CAR_SCOREBOARD, 'candidate-rav4', CAR_PRESENTATION, {
+        ranking: null,
+      }),
+    );
+
+    expect(screen.queryByTestId('option-rank-breakdown-candidate-rav4')).toBeNull();
+    // ...and the rest of the sheet is untouched.
+    expect(screen.getByTestId('option-profile-title')).toBeInTheDocument();
+  });
+
+  it('explains an unranked option instead of leaving the section blank', () => {
+    render(sheetFor(buildCarCaseState(), CAR_SCOREBOARD, 'candidate-outback', CAR_PRESENTATION));
+
+    expect(screen.getByTestId('option-rank-unranked-candidate-outback')).toHaveTextContent(
+      /not last/i,
+    );
+    expect(
+      screen.getByTestId('option-rank-criterion-candidate-outback-pref.ownership_cost'),
+    ).toHaveTextContent(/left out of the score rather than counted against it/i);
+  });
+
+  it('renders the second pack`s rows, long labels and all', () => {
+    render(
+      sheetFor(buildEnergyCaseState(), ENERGY_SCOREBOARD, 'option-audit', ENERGY_PRESENTATION),
+    );
+
+    expect(
+      screen.getByTestId('option-rank-criterion-label-option-audit-energy.no_emergency_risk'),
+    ).toHaveTextContent('No electrical, gas, fire, or medical-equipment emergency risk');
+    expect(
+      screen.getByTestId('option-rank-criterion-option-audit-custom.no_consequential_action'),
+    ).toHaveTextContent('Requirement');
+  });
+
+  it('has no accessibility violations with the breakdown rendered, in either pack', async () => {
+    const car = render(
+      sheetFor(buildCarCaseState(), CAR_SCOREBOARD, 'candidate-crv', CAR_PRESENTATION),
+    );
+    expect(await axe(car.container)).toHaveNoViolations();
+    car.unmount();
+
+    const energy = render(
+      sheetFor(buildEnergyCaseState(), ENERGY_SCOREBOARD, 'option-audit', ENERGY_PRESENTATION),
+    );
+    expect(await axe(energy.container)).toHaveNoViolations();
   });
 });

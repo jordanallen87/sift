@@ -294,7 +294,9 @@ function boundValue(value: AttributeValue): AttributeValue {
  */
 function orderByWeight(lines: readonly CriterionScore[]): CriterionScore[] {
   return [...lines].sort(
-    (a, b) => b.weight - a.weight || (a.criterionId < b.criterionId ? -1 : a.criterionId > b.criterionId ? 1 : 0),
+    (a, b) =>
+      b.weight - a.weight ||
+      (a.criterionId < b.criterionId ? -1 : a.criterionId > b.criterionId ? 1 : 0),
   );
 }
 

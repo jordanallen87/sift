@@ -151,7 +151,9 @@ import type {
 import { formatAttributeValue } from './attribute-value-format.js';
 import { STATUS_TONE_META } from './activity-labels.js';
 import { OptionCardSignals } from './OptionCardSignals.js';
+import { OptionRankBadge } from './OptionRankBadge.js';
 import { pickCardAttributeIds } from './option-profile.js';
+import { selectOptionRanking, type WorkspaceScoreboard } from './case-scoreboard.js';
 
 export interface OptionBoardColumn {
   id: string;
@@ -174,6 +176,21 @@ export interface OptionBoardViewProps {
   /** Maps optionId -> a short caller-supplied reason surfaced on its card (§12's "Dealer offer conflicts with advertised price"). Never invented here -- an option with no entry (or an empty string) renders no reason text at all. */
   reasons?: Record<string, string>;
   selectedOptionId: string | null;
+  /**
+   * The deterministic scoreboard for this case (`buildWorkspaceScoreboard`).
+   *
+   * Optional, and `undefined` renders no ranking at all rather than an empty
+   * rank slot. Rendered at `compact` density here: a 220px column has no room
+   * for the coverage meter, and the card already leads with a headline stat
+   * that a second display-size number would compete with. Density changes how
+   * much reinforcement the claim gets, never which facts appear.
+   *
+   * Read-only, like `criteria` above it. Where an option SITS on this board is
+   * the user's working arrangement (§12); where it RANKS is arithmetic. The
+   * two are deliberately independent -- a ranking never moves a card, and
+   * moving a card never changes a rank.
+   */
+  scoreboard?: WorkspaceScoreboard | undefined;
   /** Caller-decided information architecture (ADR 0005 Decision 4) -- this component never calls `matchMedia` itself. See the header comment's "Narrow vs. expanded" section for exactly what changes at each value. */
   layout: 'narrow' | 'expanded';
   /** Reports an intended move. This component never applies the move itself -- see the header comment's "human authority" note; the caller decides whether/how to persist it. */
@@ -300,6 +317,7 @@ export function OptionBoardView({
   columns,
   reasons,
   selectedOptionId,
+  scoreboard,
   layout,
   onMoveOption,
   onFocusOption,
@@ -486,6 +504,21 @@ export function OptionBoardView({
                               </span>
                             ) : null}
                           </button>
+
+                          {/* Where this option stands, directly under its
+                              name and above the headline stat -- the same
+                              reading order the List card uses, so the two
+                              grids stay one family. Compact density: see the
+                              `scoreboard` prop's own comment. */}
+                          <OptionRankBadge
+                            optionId={option.id}
+                            ranking={
+                              scoreboard === undefined
+                                ? null
+                                : selectOptionRanking(scoreboard, option.id)
+                            }
+                            density="compact"
+                          />
 
                           {headlineFact !== undefined ? (
                             // The headline stat the shipped card never had --

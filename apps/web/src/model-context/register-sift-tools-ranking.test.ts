@@ -30,12 +30,7 @@
  *     at all, `eventSequence` untouched.
  */
 import { describe, expect, it, vi } from 'vitest';
-import type {
-  AttributeDefinition,
-  CaseState,
-  Criterion,
-  EntityRecord,
-} from '@sift/contracts';
+import type { AttributeDefinition, CaseState, Criterion, EntityRecord } from '@sift/contracts';
 import { deriveInsights, scoreCaseState } from '@sift/core';
 import type { SiftCommands } from '../api/sift-client.js';
 import { createFakeSiftCommands } from '../test/fake-sift-commands.js';
@@ -129,7 +124,11 @@ function buildOption(
   };
 }
 
-function money(definitionId: string, label: string, amount: number): EntityRecord['attributes'][string] {
+function money(
+  definitionId: string,
+  label: string,
+  amount: number,
+): EntityRecord['attributes'][string] {
   return {
     definitionId,
     label,
@@ -401,17 +400,13 @@ describe('sift_explain_ranking: the honesty rules survive the projection', () =>
     });
     const board = scoreCaseState(caseState);
 
-    const outback = result.data?.options.items.find(
-      (option) => option.optionId === 'opt-outback',
-    );
+    const outback = result.data?.options.items.find((option) => option.optionId === 'opt-outback');
     expect(outback?.disputedCriterionIds).toEqual(
       board.options.find((option) => option.optionId === 'opt-outback')?.disputedCriterionIds,
     );
     expect(outback?.disputedCriterionIds).toEqual(['pref.safety']);
 
-    const safetyLine = outback?.criteria?.items.find(
-      (line) => line.criterionId === 'pref.safety',
-    );
+    const safetyLine = outback?.criteria?.items.find((line) => line.criterionId === 'pref.safety');
     expect(safetyLine?.status).toBe('disputed');
     // Still scored -- refusing to use a value that exists is its own
     // distortion -- but never presented as settled.
@@ -676,7 +671,7 @@ describe('sift_explain_ranking: bounded, with the truncation visible in the payl
     const others = (result.data?.options.items ?? []).filter(
       (option) => option.optionId !== 'opt-00',
     );
-    expect(requested!.criteria!.items.length).toBeGreaterThan(others[0]!.criteria!.items.length);
+    expect(requested?.criteria.items.length).toBeGreaterThan(others[0]?.criteria.items.length ?? 0);
   });
 
   it('never emits a raw 20 000-character text value or an enum’s whole allowedValues membership set', async () => {
@@ -814,9 +809,7 @@ describe('sift_explain_ranking: honest failure modes', () => {
 
     expect(result.ok).toBe(true);
     expect(result.data?.requested).toEqual({ optionId: 'bill-1', ranked: false });
-    expect(
-      result.data?.options.items.some((option) => option.optionId === 'bill-1'),
-    ).toBe(false);
+    expect(result.data?.options.items.some((option) => option.optionId === 'bill-1')).toBe(false);
   });
 
   it('reports an unrankable case honestly rather than returning an empty ranking that reads as "we found no difference"', async () => {

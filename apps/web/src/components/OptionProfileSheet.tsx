@@ -125,6 +125,8 @@ import type {
 } from '@sift/contracts';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 import { MarkdownText } from './MarkdownText.js';
+import { OptionRankBreakdown } from './OptionRankBreakdown.js';
+import type { OptionRanking } from './case-scoreboard.js';
 import type {
   OptionProfile,
   OptionProfileAttribute,
@@ -148,6 +150,19 @@ export interface OptionProfileSheetProps {
   profile: OptionProfile | null;
   /** The active pack's `PresentationDefinition`, for `optionLabel` in headings. `null` before a pack resolves. */
   presentation: PresentationDefinition | null;
+  /**
+   * This option's row on the deterministic scoreboard
+   * (`selectOptionRanking(...)`), or `null` when the case has no ranking to
+   * show.
+   *
+   * Optional so a caller that has not wired the board gets exactly the sheet
+   * it had before. When present it renders `OptionRankBreakdown` -- the
+   * per-criterion argument behind the number on the card -- above the
+   * provenance detail below, because "why is this ahead" is the question a
+   * person clicked through from and "where did this value come from" is the
+   * one they ask next.
+   */
+  ranking?: OptionRanking | null;
 }
 
 /**
@@ -891,6 +906,7 @@ export function OptionProfileSheet({
   onOpenChange,
   profile,
   presentation,
+  ranking = null,
 }: OptionProfileSheetProps) {
   // No option, or an id that matches no entity: render nothing at all. An
   // empty shell would look like a real option about which nothing is known,
@@ -966,6 +982,15 @@ export function OptionProfileSheet({
               ))
             )}
           </div>
+
+          {/* Renders nothing at all when there is no ranking -- see
+              `OptionRankBreakdown`, which owns that gate along with every
+              rule about what a rank may and may not claim. Placed above
+              "Details" deliberately: a person opening a profile from a
+              ranked card is asking "why is this ahead of the others", and
+              the provenance section below answers the different, later
+              question of where each individual value came from. */}
+          <OptionRankBreakdown optionId={profile.option.id} ranking={ranking} />
 
           <Section id="option-profile-details" heading="Details">
             {profile.groups.length === 0 ? (

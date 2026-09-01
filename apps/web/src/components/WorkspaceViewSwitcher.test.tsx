@@ -5,6 +5,14 @@ import { axe } from 'jest-axe';
 import type { AttributeDefinition, CaseExtension, Criterion, EntityRecord } from '@sift/contracts';
 import { WorkspaceViewSwitcher, type WorkspaceViewSwitcherProps } from './WorkspaceViewSwitcher.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
+import { buildWorkspaceScoreboard } from './case-scoreboard.js';
+import {
+  buildCarCaseState,
+  CAR_CRITERIA,
+  CAR_DEFINITIONS,
+  CAR_OPTIONS,
+  CAR_PRESENTATION,
+} from '../test/scoreboard-fixtures.js';
 
 function buildOption(overrides: Partial<EntityRecord> = {}): EntityRecord {
   return {
@@ -414,5 +422,45 @@ describe('WorkspaceViewSwitcher', () => {
     );
 
     expect(screen.getByTestId('option-compare-view-row-custom.trunk_space')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The scoreboard is routed, not derived.
+ *
+ * This component stays the thin router it has always been: it takes an
+ * already-computed `WorkspaceScoreboard` and forwards it, exactly like
+ * `presentation` and `selectedOptionId`. The point of these tests is that it
+ * reaches the two browse grids that render a rank and stops there -- Compare
+ * and Quick Pick answer different questions and have no rank surface.
+ */
+describe('WorkspaceViewSwitcher scoreboard routing', () => {
+  const SCOREBOARD = buildWorkspaceScoreboard(buildCarCaseState());
+
+  function rankedProps(overrides: Partial<WorkspaceViewSwitcherProps> = {}) {
+    return buildProps({
+      options: CAR_OPTIONS,
+      attributeDefinitions: CAR_DEFINITIONS,
+      presentation: CAR_PRESENTATION,
+      criteria: CAR_CRITERIA,
+      scoreboard: SCOREBOARD,
+      ...overrides,
+    });
+  }
+
+  it('forwards the scoreboard to the List view', () => {
+    render(<WorkspaceViewSwitcher {...rankedProps({ mode: 'list' })} />);
+    expect(screen.getByTestId('option-rank-position-candidate-crv')).toHaveTextContent('#1 of 3');
+  });
+
+  it('forwards the scoreboard to the Board view', () => {
+    render(<WorkspaceViewSwitcher {...rankedProps({ mode: 'board' })} />);
+    expect(screen.getByTestId('option-rank-position-candidate-crv')).toHaveTextContent('#1 of 3');
+  });
+
+  it('renders both grids unchanged when no scoreboard is supplied', () => {
+    render(<WorkspaceViewSwitcher {...rankedProps({ mode: 'list', scoreboard: undefined })} />);
+    expect(screen.getByTestId('option-list-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('option-rank-candidate-crv')).toBeNull();
   });
 });

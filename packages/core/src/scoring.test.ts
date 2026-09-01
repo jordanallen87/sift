@@ -1375,3 +1375,64 @@ describe('a criterion measured on something other than the options', () => {
     expect(criterionScore(board, 'b', 'c.x').status).toBe('scored');
   });
 });
+
+describe('coverage_gap describes only options that were actually scored', () => {
+  const definitions = [definition('a.x'), definition('a.y')];
+  const criteria = [
+    criterion('c.x', { appliesToAttribute: 'a.x' }),
+    criterion('c.y', { appliesToAttribute: 'a.y' }),
+  ];
+
+  it('does not claim an unscored option "is scored on as little as 0%"', () => {
+    // Caught while rendering the board: the insight meant to warn that
+    // something was under-measured was itself asserting a measurement that
+    // never happened -- rule 1's own failure mode, inside rule 1's warning.
+    const board = scoreCase({
+      options: [
+        option('measured', {
+          'a.x': { type: 'number', value: 9 },
+          'a.y': { type: 'number', value: 9 },
+        }),
+        option('untouched', { 'a.x': null, 'a.y': null }),
+      ],
+      criteria,
+      definitions,
+    });
+
+    const gap = deriveInsights(board).find((insight) => insight.kind === 'coverage_gap');
+    expect(gap?.optionIds ?? []).not.toContain('untouched');
+  });
+
+  it('still raises the gap for an option that was scored, but thinly', () => {
+    const board = scoreCase({
+      options: [
+        option('thin', { 'a.x': { type: 'number', value: 9 }, 'a.y': null }),
+        option('other', {
+          'a.x': { type: 'number', value: 1 },
+          'a.y': { type: 'number', value: 1 },
+        }),
+      ],
+      criteria,
+      definitions,
+    });
+
+    const gap = deriveInsights(board).find((insight) => insight.kind === 'coverage_gap');
+    expect(gap?.optionIds).toContain('thin');
+  });
+
+  it('emits no coverage gap at all when the only thin option is one nothing was measured on', () => {
+    const board = scoreCase({
+      options: [
+        option('full', {
+          'a.x': { type: 'number', value: 9 },
+          'a.y': { type: 'number', value: 9 },
+        }),
+        option('untouched', { 'a.x': null, 'a.y': null }),
+      ],
+      criteria,
+      definitions,
+    });
+
+    expect(deriveInsights(board).some((insight) => insight.kind === 'coverage_gap')).toBe(false);
+  });
+});
