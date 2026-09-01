@@ -80,6 +80,27 @@ maximum of the set.
 grades are reported as not comparable. An engine that ranks 25,000 JPY as cheaper than 30,000 USD
 has invented an exchange rate it does not have.
 
+**A disputed fact is not a settled one.** This rule was not designed; it was *found*, by running the
+finished engine against the real car scenario rather than against its own fixtures. The Subaru
+Outback leads every measured criterion — cheapest out-the-door, lowest five-year ownership cost,
+Top Safety Pick+ — and its safety-and-reliability lead rests on a `car.reliability_rating` that
+lands `conflicted` in that trajectory, which is why the `car.safety_reliability` obligation ends
+`accepted_uncertainty`. The board reported that lead as settled. That is laundering a dispute into a
+ranking.
+
+A `conflicted` value still scores — refusing to use a value that exists is its own distortion — but
+the line is marked `disputed`, says so in its own `reason`, and appears in
+`OptionScore.disputedCriterionIds`. That list is deliberately separate from `coverage`: coverage
+answers "how much did we measure", this answers "how much of what we measured is settled", and one
+number cannot honestly answer both. **A single contested part marks a whole composite**, because
+averaging a contested rating together with two settled ones and reporting the result as settled is
+exactly how the dispute disappears.
+
+The `disputed_evidence` insight fires only when the dispute is **load-bearing**, established by the
+same leave-one-out experiment `decisive_criterion` uses. On the real scenario it correctly stays
+quiet — the Outback still leads without that criterion — because warning on an immaterial dispute
+trains people to ignore the warning.
+
 ### 3. Two latent pack defects, visible only once something read these fields
 
 Neither was reachable before: nothing in the product had ever consumed `direction` or ordered an
@@ -177,9 +198,45 @@ whichever the tiebreak put first, and the divergence branch emitted the flatly f
 "scoring puts X ahead (100% to 100%)". Agreement is now about **score**, not identity — choosing
 among co-leaders is the judgment the model is there to exercise.
 
+A second one: the two **scenario runners** (`car-purchase-scenario.ts`,
+`home-energy-guardian-scenario.ts`) carry their own recommendation-writing paths, separate from the
+engines. Patching the engines alone left the demo the product actually executes still shipping
+`confidence: 0.85` and `facts: []`. All four sites now derive from the board.
+
+### 7. What the hero demo now says, and why that is better
+
+On the real car trajectory the model favors the CR-V, the deterministic leader is the Outback, and
+the product says so:
+
+> This recommendation favors 2022 Honda CR-V EX-L AWD, but scoring your criteria puts 2022 Subaru
+> Outback Premium AWD ahead (94% to 59%). The reasoning above may account for something the scoring
+> does not — it is worth reading before deciding.
+>
+> Driving comfort carries 20% of the weight on this case but is not part of the score: nobody has
+> established this for this option yet, so it is left out of the score rather than counted against
+> it.
+
+Confidence: 0.4, down from a hardcoded 0.85.
+
+This was initially alarming — the hero demo's headline outcome now carries a caveat — and it is in
+fact the strongest thing the product does. The model recommends the CR-V on grounds (driving
+comfort, dog-crate fit) that nobody has established; those two criteria are 36% of the case's weight
+and entirely unmeasured. The Outback leads everything that *was* measured, and its lead depends
+partly on a contested rating. All of that is true, none of it was visible before, and no LLM-only
+product says any of it.
+
+It is pinned as a scenario assertion rather than left as an accident of the fixtures.
+
 ## Consequences
 
-- `@sift/core` 362 tests (was 323), `@sift/agent` 838 (was 823), `@sift/packs` 175, contracts 233.
+- `@sift/core` 367 tests (was 323), `@sift/agent` 839 (was 823), `@sift/packs` 175, contracts 233,
+  scenarios 4.
+- The car scenario test gained end-to-end assertions no unit fixture can make: that the persisted
+  `confidence` and `facts` reproduce **exactly** when recomputed from the final snapshot (a
+  surviving constant anywhere would diverge); that the deliberately-unknown driving comfort scores
+  `unknown` with a null score and coverage below 1; that the Outback's composite safety line reads
+  `disputed`; and that the model's favorite is not the deterministic leader, with the disagreement
+  present in the persisted limitations.
 - Two pack manifest snapshots updated: **40 insertions, 0 deletions** — purely the new optional
   fields, no existing manifest content altered.
 - Both new contract fields are optional, so packs authored before them keep their meaning and their

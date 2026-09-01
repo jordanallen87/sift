@@ -120,9 +120,57 @@ selectNextObligation(caseState): ObligationSelection
 applyCaseEvent(caseState, event): CaseState
 evaluateReadiness(caseState): ReadinessResult
 reviewProposal(caseState, decision): CaseState
+scoreCaseState(caseState): CaseScoreboard
+deriveInsights(board): Insight[]
 ```
 
 The model may supply structured candidate events, but only `applyCaseEvent` can change canonical state.
+
+#### Scoring and insights
+
+A ranking is a claim about a case, so it belongs to the core alongside state, evidence validity, and
+readiness. `scoreCaseState` produces a `CaseScoreboard`: every option ranked, each with a
+per-criterion line carrying a normalized score, a status, a plain-English reason, the underlying
+value, and that value's evidential standing. `deriveInsights` is a pure function of the board.
+
+Both are pure — no filesystem, network, clock, or randomness — so the same inputs always produce the
+identical board, including the ordering. That is what lets a re-render after a reweight be trusted
+as the consequence of the reweight rather than of anything else, and it is why the browser computes
+the board locally from the snapshot it already holds rather than fetching it. `apps/agent` and
+`apps/web` call the same function: two implementations that agree today can drift, and the failure
+mode is a workspace showing one leader while the recommendation names another.
+
+The engine is governed by six honesty rules, each of which exists because the obvious implementation
+gets it wrong in a way nobody notices:
+
+1. **An unknown is never a zero.** Missing data lowers `coverage`, never `total`. `total` is the
+   weighted mean over scored criteria only. Scoring an unresearched option as 0 turns "we did not
+   look" into "it is bad".
+2. **The attribute owns what "better" means.** `AttributeDefinition.comparison` is authoritative
+   over `Criterion.direction` when they differ; a criterion phrased as a benefit over a cost
+   measurement is an ordinary pattern, not an error. Every line states the direction it scored by.
+3. **Enums are not ordinal until a pack says so**, via `AttributeDefinition.orderedValues` — values
+   in ascending order along their natural scale, with `comparison` supplying the direction. A value
+   absent from that list is unscorable, not worst.
+4. **A hard constraint flags; it never silently eliminates.** A violating option stays on the board,
+   fully scored and visibly labelled, ranked below every compliant one. Constraints are evaluated
+   absolutely, never relatively.
+5. **Refuse rather than invent.** Mixed currencies, mismatched units, free text, and unlisted enum
+   grades are reported as not comparable.
+6. **A disputed fact is not a settled one.** A `conflicted` value still scores but is marked
+   `disputed`; a single contested part marks a whole composite; and an insight fires only when the
+   leader's lead actually depends on it.
+
+`Criterion.composedOfAttributes` lets a composite criterion be measured from several attributes,
+each normalized by its own `comparison`, with the partial basis stated when some parts are
+unestablished.
+
+A recommendation's `confidence`, `facts`, and `limitations` are derived from the board rather than
+asserted. When a model-proposed favorite is not the deterministic leader, the proposal stands, the
+disagreement is stated in `limitations`, and confidence is capped — silently overwriting the model's
+pick and silently accepting it both hide a real disagreement.
+
+See `docs/decisions/0012-deterministic-scoring-and-insights.md`.
 
 ### Strands adapter
 
