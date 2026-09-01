@@ -282,3 +282,109 @@ describe('facts and limitations come from the board', () => {
     expect(result.confidence).toBe(0);
   });
 });
+
+describe('when the recommendation rests on shaky ground', () => {
+  function withStatus(
+    entity: EntityRecord,
+    definitionId: string,
+    status: 'conflicted',
+  ): EntityRecord {
+    return {
+      ...entity,
+      attributes: {
+        ...entity.attributes,
+        [definitionId]: { ...entity.attributes[definitionId]!, status },
+      },
+    };
+  }
+
+  it('reduces confidence in proportion to how much of the weight is contested', () => {
+    // A recommendation built partly on facts the sources disagree about is
+    // a weaker claim than one built on settled evidence, and a confidence
+    // figure that ignored that would not be a measurement of anything.
+    const settled = deriveScoredRecommendationFields(scorableCase(), 'winner');
+    const contested = deriveScoredRecommendationFields(
+      scorableCase({
+        entities: [
+          withStatus(option('winner', { 'a.score': 90, 'a.space': 90 }), 'a.score', 'conflicted'),
+          option('runner-up', { 'a.score': 40, 'a.space': 40 }),
+        ],
+      }),
+      'winner',
+    );
+
+    expect(contested.confidence).toBeLessThan(settled.confidence);
+    expect(contested.limitations.join(' ')).toContain('sources disagree with each other');
+  });
+
+  it('states a violated non-negotiable requirement rather than only ranking it last', () => {
+    const violating = deriveScoredRecommendationFields(
+      {
+        attributeDefinitions: [
+          definition('a.risk', { valueType: 'boolean', comparison: 'lower_better' }),
+          definition('a.score'),
+        ],
+        caseExtensions: [],
+        criteria: [
+          criterion('c.risk', {
+            kind: 'hard_constraint',
+            direction: 'lower_better',
+            appliesToAttribute: 'a.risk',
+          }),
+          criterion('c.score', { appliesToAttribute: 'a.score' }),
+        ],
+        entities: [
+          {
+            ...option('risky', { 'a.score': 90 }),
+            attributes: {
+              ...option('risky', { 'a.score': 90 }).attributes,
+              'a.risk': {
+                definitionId: 'a.risk',
+                label: 'a.risk',
+                value: { type: 'boolean', value: true },
+                origin: 'pack',
+                sourceIds: ['src-1'],
+                status: 'supported',
+                updatedAt: AT,
+              },
+            },
+          },
+          {
+            ...option('safe', { 'a.score': 10 }),
+            attributes: {
+              ...option('safe', { 'a.score': 10 }).attributes,
+              'a.risk': {
+                definitionId: 'a.risk',
+                label: 'a.risk',
+                value: { type: 'boolean', value: false },
+                origin: 'pack',
+                sourceIds: ['src-1'],
+                status: 'supported',
+                updatedAt: AT,
+              },
+            },
+          },
+        ],
+      },
+      'risky',
+    );
+
+    expect(violating.limitations.join(' ')).toContain('non-negotiable');
+    // Still recommended, still scored -- a flag, never an elimination.
+    expect(violating.facts.length).toBeGreaterThan(0);
+  });
+
+  it('carries a decisive-criterion finding into the limitations, since it is a caveat about the pick', () => {
+    const result = deriveScoredRecommendationFields(
+      scorableCase({
+        entities: [
+          option('winner', { 'a.score': 90, 'a.space': 10 }),
+          option('runner-up', { 'a.score': 40, 'a.space': 90 }),
+        ],
+      }),
+      'winner',
+    );
+
+    expect(result.limitations.join(' ')).toContain('what puts');
+  });
+});
