@@ -1,6 +1,6 @@
 # Sift
 
-Sift is a real-time, source-linked decision workspace. A person and a bounded [Strands](https://github.com/strands-agents) agent runtime work in the same browser-visible case: the agent investigates unresolved questions, changes technique when evidence warrants it, and pauses whenever human judgment or approval is required. A deterministic TypeScript core — not the model — owns case state, evidence validity, and readiness; the model may propose a recommendation but can never approve one on the user's behalf.
+Sift is a real-time, source-linked decision workspace. A person and a bounded [Strands](https://github.com/strands-agents) agent runtime work in the same browser-visible case: the agent investigates unresolved questions, changes technique when evidence warrants it, and pauses whenever human judgment or approval is required. A deterministic TypeScript core — not the model — owns case state, evidence validity, readiness, and the ranking itself; the model may propose a recommendation but can never approve one on the user's behalf, and every number attached to that recommendation is computed rather than asserted.
 
 Sift ships two versioned **Decision Packs**, each pinned by ID/version/compiled hash on the case that uses it:
 
@@ -69,6 +69,34 @@ Sift's underlying engine is domain-generic: a **Decision Pack** supplies the voc
 
 Inside any comparison-shaped case (Choose Our Next Car today), the workspace offers four purpose-built ways to work through options — **Quick Pick** (one-at-a-time triage with Pass/Maybe/Shortlist), **List** (a compact card per option), **Compare** (a configurable table, head-to-head at narrow widths), and **Board** (movable status columns) — switchable by the user or by ChatGPT through WebMCP, sharing one view state so the two stay in sync. When a user raises a concern the pack never anticipated (`"I work on my laptop in the car and need the console to support that"`), Sift creates a typed, provenance-tracked custom comparison field on the spot rather than forcing the conversation into free text; the field renders beside native fields, ChatGPT can populate it with sourced research, and an unsupported subjective judgment stays honestly unknown rather than becoming a fabricated value. See `docs/specs/product.md` for the full consumer-facing contract and `docs/specs/webmcp.md` for exactly which of this is reachable from ChatGPT today.
 
+## The ranking is computed, not asserted
+
+Ask most AI shopping tools why something came first and you get a paragraph the model wrote. Sift
+computes the ranking deterministically in `packages/core` from your criteria and the evidence
+actually gathered, and can show its work line by line: what each criterion contributed, which way it
+was scored, and what it could not score at all. Change a weight and the order moves immediately,
+with no model call.
+
+That machinery is built around a handful of rules that matter more than the arithmetic:
+
+- **An unknown is never a zero.** An option nobody has finished researching is not ranked last
+  _because_ nobody finished researching it. Missing evidence lowers the stated **coverage**, never
+  the score — so "82% of your criteria, measured across 45% of what matters" reads as the weaker
+  claim it is.
+- **A hard requirement flags; it never silently eliminates.** An option that fails something you
+  called non-negotiable stays on the board, fully scored and clearly labelled, ranked last. Removing
+  it on your behalf is not the software's call.
+- **A disputed fact is not a settled one.** When sources contradict each other, the value still
+  counts but is marked as contested — and Sift tells you when the leader's lead actually _depends_
+  on it, verified by removing that criterion and checking whether the order flips.
+- **Refuse rather than invent.** Mixed currencies, incomparable units, and free-text judgments are
+  reported as not comparable instead of being coerced into a number.
+
+The same engine validates the model's own recommendation. When the model's favorite is not the
+option your criteria put first, Sift says so in plain words and caps its own confidence rather than
+quietly overriding the model or quietly agreeing with it. On the shipped car demo it does exactly
+that. See [`docs/decisions/0012-deterministic-scoring-and-insights.md`](docs/decisions/0012-deterministic-scoring-and-insights.md).
+
 ## WebMCP
 
 Sift registers structured tools on `document.modelContext` (the WebMCP browser API) so an agent host can operate the live page directly through the same command layer the visible UI uses — there is no WebMCP-only mutation path. The full tool catalog (`sift_get_case_context`, `sift_focus_evidence`, `sift_upsert_option`, `sift_update_criteria`, `sift_request_investigation`, and more) is documented in [`docs/specs/webmcp.md`](docs/specs/webmcp.md).
@@ -131,7 +159,7 @@ sift/
     agent/       Express + Strands TypeScript service; also serves the built web app in production
   packages/
     contracts/   Zod schemas and shared API/event types
-    core/        Pure case reducer, routing, obligations, evidence, readiness (no React/Express/Strands/model deps)
+    core/        Pure case reducer, routing, obligations, evidence, readiness, scoring (no React/Express/Strands/model deps)
     packs/       Decision Pack compiler, registry, built-in manifests, authoring tools
     scenarios/   Fixture data, scripted tools, scenario runner, assertions
     ui/          Reusable visual primitives and case components
@@ -140,7 +168,7 @@ sift/
   docs/          specs, architecture diagram, build log, submission materials
 ```
 
-The browser owns visible interaction and WebMCP registration; the Express/Strands service owns agent execution, intervention handling, and persistence; the pure `packages/core` engine owns routing, obligations, evidence, and readiness so it can be tested without a model, browser, or network. Every canonical mutation is an append-only domain event committed transactionally to SQLite alongside its derived snapshot (`better-sqlite3` + Drizzle migrations, WAL mode); a separate sanitized `activity_events` stream feeds the real-time UI over server-sent events, and `runtime_events` feeds the Runtime Inspector — neither can mutate case state.
+The browser owns visible interaction and WebMCP registration; the Express/Strands service owns agent execution, intervention handling, and persistence; the pure `packages/core` engine owns routing, obligations, evidence, readiness, and scoring so it can be tested without a model, browser, or network. Every canonical mutation is an append-only domain event committed transactionally to SQLite alongside its derived snapshot (`better-sqlite3` + Drizzle migrations, WAL mode); a separate sanitized `activity_events` stream feeds the real-time UI over server-sent events, and `runtime_events` feeds the Runtime Inspector — neither can mutate case state.
 
 Full detail — the command/event flow, the canonical `CaseState` shape, the real-time SSE contract, persistence schema, and security boundaries — is in [`docs/specs/architecture.md`](docs/specs/architecture.md). A rendered diagram is at [`docs/architecture.png`](docs/architecture.png) (source: [`docs/architecture.mmd`](docs/architecture.mmd), regenerate with `pnpm docs:diagram`).
 
