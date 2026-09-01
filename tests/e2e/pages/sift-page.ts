@@ -502,6 +502,24 @@ export class SiftPage {
   }
 
   /**
+   * Opens one option's detail profile (ADR 0010) from a browse card's
+   * "View details" control.
+   *
+   * The human counterpart to the `sift_get_option_details` WebMCP tool,
+   * which had been handing ChatGPT a complete per-option profile that no
+   * screen showed. Layout-independent for the same reason the filter sheet
+   * is: mounted once as global chrome above the narrow/expanded split.
+   */
+  async openOptionProfile(optionId: string): Promise<void> {
+    await this.openSheetVia(`option-card-open-profile-${optionId}`, 'option-profile-sheet');
+  }
+
+  /** The `openOptionProfile` counterpart -- closes the Sheet via its own close control. */
+  async closeOptionProfile(): Promise<void> {
+    await this.closeSheet('option-profile-sheet');
+  }
+
+  /**
    * Opens the "your priorities" content -- the FULL `DecisionProfileView`
    * (including `personalConcerns`/`missing`/`suggestedQuestions`, which
    * `WorkspaceSidebar`'s own cut-down priorities list excludes) -- and

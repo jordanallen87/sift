@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { AttributeDefinition, CaseExtension, EntityRecord } from '@sift/contracts';
+import type { AttributeDefinition, CaseExtension, Criterion, EntityRecord } from '@sift/contracts';
 import { WorkspaceViewSwitcher, type WorkspaceViewSwitcherProps } from './WorkspaceViewSwitcher.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
@@ -42,6 +42,7 @@ function buildProps(
     attributeDefinitions: [buildDefinition()],
     caseExtensions: [],
     presentation: null,
+    criteria: [],
     selectedOptionId: null,
     onFocusOption: vi.fn(),
     quickPickPosition: 0,
@@ -331,6 +332,77 @@ describe('WorkspaceViewSwitcher', () => {
 
     expect(screen.getByTestId('option-compare-view-header-candidate-rav4')).toBeInTheDocument();
     expect(screen.getByTestId('option-compare-view-header-candidate-crv')).toBeInTheDocument();
+  });
+
+  // The browse grids were refocused onto a headline stat plus a couple of
+  // prominent facts, with the rest of an option's detail moved into a
+  // per-option profile. Both halves of that wiring pass through this router,
+  // so these two tests prove the props genuinely reach the views rather than
+  // merely being accepted by the interface.
+  it('threads criteria through to the browse grids, where they decide which fact a card leads with', () => {
+    const options = [
+      buildOption({
+        id: 'candidate-rav4',
+        attributes: {
+          price: {
+            definitionId: 'price',
+            label: 'Price',
+            value: { type: 'money', amount: 28500, currency: 'USD' },
+            origin: 'user',
+            sourceIds: [],
+            status: 'asserted',
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+          mileage: {
+            definitionId: 'mileage',
+            label: 'Mileage',
+            value: { type: 'number', value: 15000, unit: 'mi' },
+            origin: 'user',
+            sourceIds: [],
+            status: 'asserted',
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        },
+      }),
+    ];
+    const attributeDefinitions = [
+      buildDefinition({ id: 'price', label: 'Price', valueType: 'money' }),
+      buildDefinition({ id: 'mileage', label: 'Mileage', valueType: 'number', unit: 'mi' }),
+    ];
+    const criteria: Criterion[] = [
+      {
+        id: 'crit-mileage',
+        label: 'Low mileage matters most',
+        kind: 'preference',
+        weight: 80,
+        direction: 'lower_better',
+        appliesToAttribute: 'mileage',
+        origin: 'user',
+        status: 'active',
+      },
+    ];
+
+    render(
+      <WorkspaceViewSwitcher
+        {...buildProps({ mode: 'board', options, attributeDefinitions, criteria })}
+      />,
+    );
+
+    // Ahead of the money-typed `price` the criterion-free fallback would
+    // otherwise have led with.
+    expect(screen.getByTestId('board-headline-candidate-rav4')).toHaveTextContent('Mileage');
+  });
+
+  it('threads onOpenProfile to both browse grids, and renders no affordance at all when it is absent', () => {
+    const onOpenProfile = vi.fn();
+    const { rerender } = render(<WorkspaceViewSwitcher {...buildProps({ mode: 'list' })} />);
+    expect(screen.queryByTestId('option-card-open-profile-candidate-rav4')).not.toBeInTheDocument();
+
+    rerender(<WorkspaceViewSwitcher {...buildProps({ mode: 'list', onOpenProfile })} />);
+    expect(screen.getByTestId('option-card-open-profile-candidate-rav4')).toBeInTheDocument();
+
+    rerender(<WorkspaceViewSwitcher {...buildProps({ mode: 'board', onOpenProfile })} />);
+    expect(screen.getByTestId('option-card-open-profile-candidate-rav4')).toBeInTheDocument();
   });
 
   // Defect 2: confirmed case extensions must reach the Compare table too.

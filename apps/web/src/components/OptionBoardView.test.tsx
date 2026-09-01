@@ -2,8 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
-import { OptionBoardView } from './OptionBoardView.js';
+import type {
+  AttributeDefinition,
+  Criterion,
+  EntityRecord,
+  PresentationDefinition,
+} from '@sift/contracts';
+import { OptionBoardView, type OptionBoardViewProps } from './OptionBoardView.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
 const DEFINITIONS: AttributeDefinition[] = [
@@ -120,19 +125,25 @@ function noop() {
   // intentionally empty default for props this suite does not exercise
 }
 
+function boardView(overrides: Partial<OptionBoardViewProps> = {}) {
+  const props: OptionBoardViewProps = {
+    options: OPTIONS,
+    attributeDefinitions: DEFINITIONS,
+    presentation: null,
+    criteria: [],
+    optionColumnIds: {},
+    selectedOptionId: null,
+    layout: 'narrow',
+    onMoveOption: noop,
+    onFocusOption: noop,
+    ...overrides,
+  };
+  return <OptionBoardView {...props} />;
+}
+
 describe('OptionBoardView', () => {
   it('renders the four default columns when none are supplied', () => {
-    render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
-    );
+    render(boardView());
 
     expect(screen.getByTestId('board-column-considering')).toHaveTextContent('Comparing');
     expect(screen.getByTestId('board-column-top_choices')).toHaveTextContent('Favorites');
@@ -142,19 +153,12 @@ describe('OptionBoardView', () => {
 
   it('honors custom columns', () => {
     render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        columns={[
+      boardView({
+        columns: [
           { id: 'new_arrivals', label: 'New arrivals' },
           { id: 'finalists', label: 'Finalists' },
-        ]}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
+        ],
+      }),
     );
 
     expect(screen.getByTestId('board-column-new_arrivals')).toHaveTextContent('New arrivals');
@@ -164,17 +168,7 @@ describe('OptionBoardView', () => {
   });
 
   it('places each option in its assigned column; unassigned options land in the first column', () => {
-    render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{ 'option-1': 'top_choices', 'option-2': 'out' }}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
-    );
+    render(boardView({ optionColumnIds: { 'option-1': 'top_choices', 'option-2': 'out' } }));
 
     expect(
       within(screen.getByTestId('board-column-list-top_choices')).getByTestId(
@@ -195,17 +189,7 @@ describe('OptionBoardView', () => {
   it('moving an option via the keyboard-accessible control fires onMoveOption with correct args', async () => {
     const user = userEvent.setup();
     const onMoveOption = vi.fn();
-    render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={onMoveOption}
-        onFocusOption={noop}
-      />,
-    );
+    render(boardView({ onMoveOption }));
 
     const select = screen.getByTestId('board-move-option-1');
     await user.selectOptions(select, 'top_choices');
@@ -216,17 +200,7 @@ describe('OptionBoardView', () => {
   it('does not move the option itself -- placement is driven entirely by props', async () => {
     const user = userEvent.setup();
     const onMoveOption = vi.fn();
-    const { rerender } = render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={onMoveOption}
-        onFocusOption={noop}
-      />,
-    );
+    const { rerender } = render(boardView({ onMoveOption }));
 
     const select = screen.getByTestId('board-move-option-1');
     await user.selectOptions(select, 'top_choices');
@@ -242,17 +216,7 @@ describe('OptionBoardView', () => {
 
     // Only re-rendering with new props -- as the caller would after actually persisting the
     // move -- changes what is on screen.
-    rerender(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{ 'option-1': 'top_choices' }}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={onMoveOption}
-        onFocusOption={noop}
-      />,
-    );
+    rerender(boardView({ onMoveOption, optionColumnIds: { 'option-1': 'top_choices' } }));
 
     expect(
       within(screen.getByTestId('board-column-list-top_choices')).getByTestId(
@@ -270,35 +234,14 @@ describe('OptionBoardView', () => {
   it('focusing an option fires onFocusOption', async () => {
     const user = userEvent.setup();
     const onFocusOption = vi.fn();
-    render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={onFocusOption}
-      />,
-    );
+    render(boardView({ onFocusOption }));
 
     await user.click(screen.getByTestId('board-focus-option-2'));
     expect(onFocusOption).toHaveBeenCalledExactlyOnceWith('option-2');
   });
 
   it('renders a supplied reason and invents no reason text when none is supplied', () => {
-    render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        reasons={{ 'option-1': 'Dealer offer conflicts with advertised price' }}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
-    );
+    render(boardView({ reasons: { 'option-1': 'Dealer offer conflicts with advertised price' } }));
 
     expect(screen.getByTestId('board-reason-option-1')).toHaveTextContent(
       'Dealer offer conflicts with advertised price',
@@ -306,36 +249,84 @@ describe('OptionBoardView', () => {
     expect(screen.queryByTestId('board-reason-option-2')).not.toBeInTheDocument();
   });
 
-  it('shows the option label and a couple of decision-relevant facts on each card', () => {
-    render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
-    );
+  // The shipped board card had no headline stat at all -- 2-4 same-size
+  // "Label: value" lines and nothing a person could glance at. The first
+  // attribute `pickCardAttributeIds` returns is now promoted into its own
+  // display-size callout, and the rest follow beneath it.
+  it('leads each card with a headline stat, then the remaining decision-relevant facts', () => {
+    render(boardView());
 
     const card = screen.getByTestId('board-card-option-1');
     expect(card).toHaveTextContent('Toyota RAV4');
-    const facts = screen.getByTestId('board-facts-option-1');
+
+    const headline = screen.getByTestId('board-headline-option-1');
+    expect(headline).toHaveTextContent('Price');
     // Deterministic, comma-grouped, symbol-mapped formatting -- see
     // attribute-value-format.ts's header comment.
-    expect(facts).toHaveTextContent('Price: $28,500');
+    expect(headline).toHaveTextContent('$28,500');
+
+    const facts = screen.getByTestId('board-facts-option-1');
     expect(facts).toHaveTextContent('Mileage: 15,000 mi');
+    // The headline is promoted OUT of the fact list, never duplicated into both.
+    expect(facts).not.toHaveTextContent('Price');
+  });
+
+  it('renders no headline at all for an option whose prominent attributes are all unrecorded, rather than an empty callout', () => {
+    const unknownOption = buildEntity({
+      id: 'option-blank',
+      label: 'Kia Sportage',
+      attributes: {},
+    });
+    render(boardView({ options: [unknownOption] }));
+
+    expect(screen.queryByTestId('board-headline-option-blank')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('board-facts-option-blank')).not.toBeInTheDocument();
+    // The card still says something true about the option: everything is unknown.
+    expect(screen.getByTestId('option-card-signals-option-blank')).toHaveTextContent('3 unknowns');
+  });
+
+  it("follows the pack's prominentAttributeIds order rather than raw attributeDefinitions order", () => {
+    const presentation: PresentationDefinition = {
+      optionLabel: 'car',
+      optionLabelPlural: 'cars',
+      // Mileage first, deliberately against both definition order and the
+      // money-first fallback, so only the pack field can produce this result.
+      prominentAttributeIds: ['mileage', 'price'],
+      attributeGroups: [],
+    };
+    render(boardView({ options: [buildEntity()], presentation, layout: 'expanded' }));
+
+    expect(screen.getByTestId('board-headline-option-1')).toHaveTextContent('Mileage');
+    expect(screen.getByTestId('board-facts-option-1')).toHaveTextContent('Price: $28,500');
+  });
+
+  it('with no pack prominentAttributeIds, the heaviest criterion decides the headline', () => {
+    const criteria: Criterion[] = [
+      {
+        id: 'crit-mileage',
+        label: 'Low mileage matters most',
+        kind: 'preference',
+        weight: 80,
+        direction: 'lower_better',
+        appliesToAttribute: 'mileage',
+        origin: 'user',
+        status: 'active',
+      },
+    ];
+    render(boardView({ options: [buildEntity()], criteria }));
+
+    // Ahead of the money-typed `price` the last-resort fallback would otherwise
+    // have chosen -- proof that `criteria` genuinely reaches the selection.
+    expect(screen.getByTestId('board-headline-option-1')).toHaveTextContent('Mileage');
   });
 
   // Regression test for the "cards restate their own title" defect: a
   // `valueType: 'string'`/`comparison: 'none'` attribute like `make` is a
   // plain catalog/identity descriptor -- exactly the shape
   // `isIdentityAttribute` (../lib/evidence-expectation.ts) exists to flag,
-  // and the same helper `QuickPickView.tsx`/`OptionListView.tsx` already use
-  // -- and must never consume a card's scarce fact budget, even when it
-  // sorts earlier in `attributeDefinitions` than a genuinely
-  // decision-relevant attribute.
+  // now applied inside the shared `pickCardAttributeIds` -- and must never
+  // consume a card's scarce fact budget, even when it sorts earlier in
+  // `attributeDefinitions` than a genuinely decision-relevant attribute.
   it("excludes plain identity attributes already spelled out in the option's own label from its facts", () => {
     const identityDefinition: AttributeDefinition = {
       id: 'make',
@@ -347,9 +338,8 @@ describe('OptionBoardView', () => {
       comparison: 'none',
       sensitive: false,
     };
-    const optionWithIdentity: EntityRecord = {
+    const optionWithIdentity = buildEntity({
       id: 'option-5',
-      kind: 'car',
       label: 'Toyota RAV4',
       attributes: {
         make: {
@@ -380,45 +370,129 @@ describe('OptionBoardView', () => {
           updatedAt: '2026-08-27T00:00:00.000Z',
         },
       },
-      createdAt: '2026-08-27T00:00:00.000Z',
-      updatedAt: '2026-08-27T00:00:00.000Z',
-    };
+    });
 
     render(
-      <OptionBoardView
-        options={[optionWithIdentity]}
+      boardView({
+        options: [optionWithIdentity],
         // `identityDefinition` is listed FIRST -- proves the skip actually
         // happens rather than merely never being reached because it lost a
         // race for one of narrow layout's two fact slots.
-        attributeDefinitions={[identityDefinition, ...DEFINITIONS]}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
+        attributeDefinitions: [identityDefinition, ...DEFINITIONS],
+      }),
     );
 
-    const facts = screen.getByTestId('board-facts-option-5');
-    expect(facts).not.toHaveTextContent('Make');
-    expect(facts).not.toHaveTextContent('Toyota');
+    const card = screen.getByTestId('board-card-option-5');
+    expect(card).not.toHaveTextContent('Make');
+    expect(card).not.toHaveTextContent('Toyota RAV4 Toyota');
     // Both narrow-layout slots go to genuinely decision-relevant facts instead.
-    expect(facts).toHaveTextContent('Price: $28,500');
-    expect(facts).toHaveTextContent('Mileage: 15,000 mi');
+    expect(screen.getByTestId('board-headline-option-5')).toHaveTextContent('$28,500');
+    expect(screen.getByTestId('board-facts-option-5')).toHaveTextContent('Mileage: 15,000 mi');
+  });
+
+  // THE SHIPPED DEFECT the shared `pickCardAttributeIds` was introduced to fix.
+  // `OptionListView`'s deleted `pickProminentDefinitions` read only
+  // `presentation.attributeGroups[0]` at narrow width; for the real
+  // `car-purchase` pack that group is `basics`, so a 390px card showed six
+  // restatements of its own title and no decision-relevant number at all.
+  // Board never had that code, but it reads the same pack metadata now, so the
+  // same pack shape is pinned here too.
+  it('regression: a pack whose FIRST attribute group is entirely identity fields still leads with a real non-identity fact', () => {
+    const identityDefinitions: AttributeDefinition[] = ['make', 'model', 'trim'].map((id) => ({
+      id,
+      label: id === 'make' ? 'Make' : id === 'model' ? 'Model' : 'Trim',
+      valueType: 'string' as const,
+      required: false,
+      appliesTo: ['car'],
+      evidenceExpectation: 'assertion' as const,
+      comparison: 'none' as const,
+      sensitive: false,
+    }));
+    // No `prominentAttributeIds` -- exactly the pack shape the old
+    // `attributeGroups[0]` rule was reading when it produced the defect.
+    const identityFirstPresentation: PresentationDefinition = {
+      optionLabel: 'car',
+      optionLabelPlural: 'cars',
+      attributeGroups: [
+        { id: 'basics', label: 'Basics', attributeIds: ['make', 'model', 'trim'] },
+        { id: 'numbers', label: 'Numbers', attributeIds: ['price', 'mileage'] },
+      ],
+    };
+    const option = buildEntity({
+      id: 'option-identity',
+      label: 'Toyota RAV4 XLE Hybrid AWD',
+      attributes: {
+        ...buildEntity().attributes,
+        make: {
+          definitionId: 'make',
+          label: 'Make',
+          value: { type: 'string', value: 'Toyota' },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+      },
+    });
+
+    render(
+      boardView({
+        options: [option],
+        attributeDefinitions: [...identityDefinitions, ...DEFINITIONS],
+        presentation: identityFirstPresentation,
+      }),
+    );
+
+    expect(screen.getByTestId('board-headline-option-identity')).toHaveTextContent('$28,500');
+    expect(screen.getByTestId('board-card-option-identity')).not.toHaveTextContent('Make');
+  });
+
+  it('carries the same compact signal row the list cards use, omitting any zero count', () => {
+    render(boardView());
+
+    // option-1 knows its price and mileage (both clearing their `assertion`
+    // bar) and nothing about the custom field.
+    const signals = screen.getByTestId('option-card-signals-option-1');
+    expect(signals).toHaveTextContent('2 supported');
+    expect(signals).toHaveTextContent('1 unknown');
+    // Nothing is wrong with this option, so no concerns chip is printed --
+    // "0 concerns" would read as a measured achievement.
+    expect(screen.queryByTestId('option-card-signal-concerns-option-1')).not.toBeInTheDocument();
+    expect(signals).not.toHaveTextContent('0');
+  });
+
+  it('renders the View details affordance only when the caller supplied onOpenProfile', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(boardView());
+    expect(screen.queryByTestId('option-card-open-profile-option-1')).not.toBeInTheDocument();
+
+    const onOpenProfile = vi.fn();
+    const onFocusOption = vi.fn();
+    rerender(boardView({ onOpenProfile, onFocusOption }));
+    const affordance = screen.getByTestId('option-card-open-profile-option-1');
+    expect(affordance).toHaveTextContent('View details');
+
+    await user.click(affordance);
+    expect(onOpenProfile).toHaveBeenCalledExactlyOnceWith('option-1');
+    expect(onFocusOption).not.toHaveBeenCalled();
+  });
+
+  it('never truncates the option label, however long it is', () => {
+    const longLabel = '2022 Toyota RAV4 XLE Hybrid AWD with the Weather and Convenience package';
+    render(boardView({ options: [buildEntity({ id: 'option-long', label: longLabel })] }));
+
+    const focusButton = screen.getByTestId('board-focus-option-long');
+    expect(focusButton).toHaveTextContent(longLabel);
+    // The board shipped titles clipped to "2022 Toyota RAV4 XLE Hyb…". jsdom
+    // cannot measure the ellipsis, so guard the mechanism that produces it: the
+    // label may wrap, it may not be clipped.
+    const labelSpan = focusButton.firstElementChild;
+    expect(labelSpan?.className).not.toContain('truncate');
+    expect(labelSpan?.className).toContain('break-words');
   });
 
   it('never renders raw internal ids as user-visible text', () => {
-    const { container } = render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{ 'option-3': 'need_to_verify' }}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
-    );
+    const { container } = render(boardView({ optionColumnIds: { 'option-3': 'need_to_verify' } }));
 
     const visibleText = container.textContent ?? '';
     expect(visibleText).not.toContain('option-1');
@@ -433,32 +507,18 @@ describe('OptionBoardView', () => {
 
   it('has no axe violations', async () => {
     const { container } = render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{ 'option-1': 'top_choices', 'option-2': 'out' }}
-        reasons={{ 'option-2': 'Dealer offer conflicts with advertised price' }}
-        selectedOptionId="option-1"
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
+      boardView({
+        optionColumnIds: { 'option-1': 'top_choices', 'option-2': 'out' },
+        reasons: { 'option-2': 'Dealer offer conflicts with advertised price' },
+        selectedOptionId: 'option-1',
+        onOpenProfile: vi.fn(),
+      }),
     );
     expect(await axe(container)).toHaveNoViolations();
   });
 
   it('renders at 390px width with no fixed-width overflow risk (the board scrolls within its own container)', () => {
-    const { overflowRisks } = renderAtNarrowWidth(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
-    );
+    const { overflowRisks } = renderAtNarrowWidth(boardView({ onOpenProfile: vi.fn() }));
     expect(overflowRisks).toEqual([]);
   });
 
@@ -469,34 +529,14 @@ describe('OptionBoardView', () => {
   // row -> a real single-row CSS grid sized to the actual column count),
   // not just a different className string.
   it('narrow renders fixed-width columns in a flex row; expanded renders a single-row grid sized to the real column count', () => {
-    const { rerender } = render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
-    );
+    const { rerender } = render(boardView({ layout: 'narrow' }));
     const narrowColumns = screen.getByTestId('board-columns');
     expect(narrowColumns).toHaveAttribute('data-layout', 'narrow');
     expect(narrowColumns.className).toContain('flex');
     expect(narrowColumns.className).not.toContain('grid');
     expect(screen.getByTestId('board-column-considering').className).toContain('w-[220px]');
 
-    rerender(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="expanded"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
-    );
+    rerender(boardView({ layout: 'expanded' }));
     const expandedColumns = screen.getByTestId('board-columns');
     expect(expandedColumns).toHaveAttribute('data-layout', 'expanded');
     expect(expandedColumns.className).toContain('grid');
@@ -507,10 +547,9 @@ describe('OptionBoardView', () => {
     expect(screen.getByTestId('board-column-considering').className).not.toContain('w-[220px]');
   });
 
-  it('narrow caps card facts at two; expanded raises the per-card fact budget', () => {
-    const threeFactOption: EntityRecord = {
+  it('narrow caps card facts at two (headline included); expanded raises the per-card fact budget', () => {
+    const threeFactOption = buildEntity({
       id: 'option-4',
-      kind: 'car',
       label: 'Mazda CX-5',
       attributes: {
         price: {
@@ -541,39 +580,17 @@ describe('OptionBoardView', () => {
           updatedAt: '2026-08-27T00:00:00.000Z',
         },
       },
-      createdAt: '2026-08-27T00:00:00.000Z',
-      updatedAt: '2026-08-27T00:00:00.000Z',
-    };
+    });
 
-    const { rerender } = render(
-      <OptionBoardView
-        options={[threeFactOption]}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="narrow"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
-    );
+    const { rerender } = render(boardView({ options: [threeFactOption], layout: 'narrow' }));
+    expect(screen.getByTestId('board-headline-option-4')).toHaveTextContent('$29,500');
     const narrowFacts = screen.getByTestId('board-facts-option-4');
-    expect(narrowFacts).toHaveTextContent('Price: $29,500');
     expect(narrowFacts).toHaveTextContent('Mileage: 18,000 mi');
     expect(narrowFacts).not.toHaveTextContent('Laptop work fit');
 
-    rerender(
-      <OptionBoardView
-        options={[threeFactOption]}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="expanded"
-        onMoveOption={noop}
-        onFocusOption={noop}
-      />,
-    );
+    rerender(boardView({ options: [threeFactOption], layout: 'expanded' }));
+    expect(screen.getByTestId('board-headline-option-4')).toHaveTextContent('$29,500');
     const expandedFacts = screen.getByTestId('board-facts-option-4');
-    expect(expandedFacts).toHaveTextContent('Price: $29,500');
     expect(expandedFacts).toHaveTextContent('Mileage: 18,000 mi');
     expect(expandedFacts).toHaveTextContent('Laptop work fit: Good');
   });
@@ -585,17 +602,7 @@ describe('OptionBoardView', () => {
   it('the keyboard-accessible move control keeps working identically in expanded layout', async () => {
     const user = userEvent.setup();
     const onMoveOption = vi.fn();
-    render(
-      <OptionBoardView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        optionColumnIds={{}}
-        selectedOptionId={null}
-        layout="expanded"
-        onMoveOption={onMoveOption}
-        onFocusOption={noop}
-      />,
-    );
+    render(boardView({ layout: 'expanded', onMoveOption }));
 
     const select = screen.getByTestId('board-move-option-1');
     await user.selectOptions(select, 'top_choices');

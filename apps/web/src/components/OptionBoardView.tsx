@@ -65,15 +65,35 @@
  * `column.label` render everywhere a person can read, id strings appear only inside
  * `data-testid`/`id`/`value` attributes, never as text content.
  *
- * **Card visual hierarchy and identity-attribute exclusion.** A design pass found three concrete
- * defects in the shipped card: (1) `pickFacts` read every applicable attribute definition in order,
- * including a car's own `make`/`model`/`trim`/`body_style` -- fields already spelled out, unabridged,
- * in `option.label` itself (e.g. a card titled "2022 Toyota RAV4 XLE Hybrid AWD" then spent its
- * entire fact budget re-stating "Make: Toyota / Model: RAV4 / Trim: XLE Hybrid AWD"). `pickFacts` now
- * skips `isIdentityAttribute(definition)` (`../lib/evidence-expectation.js`) exactly the way
- * `QuickPickView.tsx` and `OptionListView.tsx` already do, so a card's fact budget goes to
- * attributes that actually distinguish where the option stands, not ones already legible in its own
- * title. (2) Facts rendered as one flat, same-size, same-color "Label: value" line with no visual
+ * **Card content: a headline stat, a couple of supporting facts, and a signal row.** Where List's
+ * cards crammed, Board's starved -- two to four "Label: value" lines, *no headline stat at all*, and
+ * a title that truncated mid-word ("2022 Toyota RAV4 XLE Hyb…"). All three are fixed here:
+ *   1. **The label never truncates.** It may wrap onto a second line; it may not become an
+ *      unreadable stub. This defect has shipped once already, so `OptionBoardView.test.tsx` asserts
+ *      the absence of the truncation class directly rather than trusting the markup to stay put.
+ *   2. **A headline stat leads the card** (`board-headline-{optionId}`) -- the first id
+ *      `pickCardAttributeIds` (`./option-profile.js`) returns for this option's kind, rendered at
+ *      display size with its label above it, the same identity -> stat reading order
+ *      `OptionListView`'s card uses. A card that says only "where does this stand" without saying
+ *      what the thing costs/rates/measures cannot support the glance §12 asks it to support.
+ *   3. **A compact signal row** (`OptionCardSignals`) puts this option's strength/concern/unknown
+ *      counts on the card, with a "View details" affordance to the full profile beside it -- the
+ *      same row and the same affordance List uses, so the two grids stay one family.
+ *
+ * **Attribute selection is shared, not derived here.** `pickFacts` used to walk
+ * `attributeDefinitions` in raw caller order. It now walks `pickCardAttributeIds`'s order instead --
+ * pack `presentation.prominentAttributeIds` first, then heaviest `Criterion.appliesToAttribute`
+ * weight, then money-first plus declaration order -- so a board card leads with the same facts a
+ * list card and the option profile lead with, by construction rather than by coincidence. Identity
+ * attributes (`isIdentityAttribute`) are excluded inside that shared picker, which is what keeps a
+ * card titled "2022 Toyota RAV4 XLE Hybrid AWD" from spending its entire budget re-stating
+ * "Make: Toyota / Model: RAV4 / Trim: XLE Hybrid AWD". `pickFacts` keeps exactly one behaviour of
+ * its own: an attribute with no value on this option is skipped rather than rendered as "Unknown" --
+ * a compact card favours facts that are actually known over an inventory of what is missing (List,
+ * per §10, is the place for that).
+ *
+ * **Earlier card-hierarchy pass, still in force.** (2) Facts rendered as one flat, same-size,
+ * same-color "Label: value" line with no visual
  * priority between the two halves. Each fact now splits into two `<span>`s -- the label smaller
  * (`--font-size-xs`) and in the existing muted `--color-ink-secondary` token, the value keeping the
  * card's base size but gaining `--font-weight-medium` and the full-strength `--color-ink` token --
@@ -122,10 +142,16 @@
  * rely solely on drag-and-drop" requirement exactly as before.
  */
 import { useMemo } from 'react';
-import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
+import type {
+  AttributeDefinition,
+  Criterion,
+  EntityRecord,
+  PresentationDefinition,
+} from '@sift/contracts';
 import { formatAttributeValue } from './attribute-value-format.js';
-import { isIdentityAttribute } from '../lib/evidence-expectation.js';
 import { STATUS_TONE_META } from './activity-labels.js';
+import { OptionCardSignals } from './OptionCardSignals.js';
+import { pickCardAttributeIds } from './option-profile.js';
 
 export interface OptionBoardColumn {
   id: string;
@@ -137,6 +163,10 @@ export interface OptionBoardColumn {
 export interface OptionBoardViewProps {
   options: EntityRecord[];
   attributeDefinitions: AttributeDefinition[];
+  /** `CompiledDecisionPack.presentation`, or `null` if not yet available. Its `prominentAttributeIds` is the pack author's own answer to "what should a card lead with" and outranks every derived signal (see `pickCardAttributeIds`). */
+  presentation: PresentationDefinition | null;
+  /** The case's criteria. Read only to rank attributes by the heaviest `appliesToAttribute` weight when the pack declares no `prominentAttributeIds`. Never mutated, never scored against -- a board card is a way of looking at an option, never a change to it. */
+  criteria: Criterion[];
   /** Maps optionId -> the id of the column it currently sits in. An option with no entry, or whose entry names a column id not present in the effective `columns`, falls back to the first column -- every option renders in exactly one column, never silently dropped (§12). */
   optionColumnIds: Record<string, string>;
   /** Falls back to `DEFAULT_BOARD_COLUMNS` (Comparing / Favorites / Need to check / Ruled out) when omitted or empty, per §12 "should be configurable where appropriate" -- a pack or the model may supply its own set. */
@@ -149,13 +179,16 @@ export interface OptionBoardViewProps {
   /** Reports an intended move. This component never applies the move itself -- see the header comment's "human authority" note; the caller decides whether/how to persist it. */
   onMoveOption: (optionId: string, toColumnId: string) => void;
   onFocusOption: (optionId: string) => void;
+  /** Opens the full per-option profile. Optional on purpose: when a caller has no profile surface to open, the affordance is not rendered at all -- a dead control is worse than no control. */
+  onOpenProfile?: ((optionId: string) => void) | undefined;
 }
 
-// Narrow keeps the original per-card fact budget exactly. Expanded's grid
-// columns (see the header comment's "Narrow vs. expanded" section) are
-// genuinely wider, so this cap is raised rather than leaving the extra room
-// unused -- "room for more per card" is this task's own wording for exactly
-// this.
+// The TOTAL fact budget per card, headline stat included -- narrow therefore
+// renders one headline plus one supporting fact, expanded one headline plus
+// three. Narrow keeps the original number exactly; expanded's grid columns
+// (see the header comment's "Narrow vs. expanded" section) are genuinely
+// wider, so this cap is raised rather than leaving the extra room unused --
+// "room for more per card".
 const MAX_FACTS_PER_CARD_NARROW = 2;
 const MAX_FACTS_PER_CARD_EXPANDED = 4;
 // Narrow-only: expanded columns are sized by the CSS grid template built in
@@ -181,29 +214,45 @@ interface OptionFact {
 }
 
 /**
- * "A couple of decision-relevant facts" (§12) -- the first `maxFacts` attribute definitions, in
- * caller-supplied `attributeDefinitions` order, that apply to this option's `kind`, have a defined
- * value on it, and are not a plain identity/label descriptor (`isIdentityAttribute`,
- * `../lib/evidence-expectation.js` -- see the header comment's "Card visual hierarchy" section for
- * why this view needed the same skip `QuickPickView.tsx`/`OptionListView.tsx` already apply: a fact
- * budget spent re-stating a value already spelled out in `option.label` itself helps nobody decide
- * where the option stands). Order is the caller's lever for prominence (the same convention
- * `OptionCompareView`'s `pinnedAttributeIds` uses to control row priority): put the attributes that
- * matter most for a quick glance first. Definitions with no value on this option are skipped rather
- * than shown as "Unknown" -- a compact card favors facts that are actually known over an inventory of
- * what is missing (List view, per §10, is the place for that). `maxFacts` is the caller's
- * layout-dependent budget (`MAX_FACTS_PER_CARD_NARROW`/`MAX_FACTS_PER_CARD_EXPANDED`), not a fixed
- * constant read here -- see the header comment's "Narrow vs. expanded" section.
+ * "A couple of decision-relevant facts" (§12) -- the first `maxFacts` attributes, in the shared
+ * `pickCardAttributeIds` prominence order (pack `presentation.prominentAttributeIds`, then heaviest
+ * `Criterion.appliesToAttribute` weight, then money-first plus declaration order; identity
+ * attributes excluded throughout), that have a defined value on this option.
+ *
+ * The picker is asked for every eligible id rather than just `maxFacts` of them, then this function
+ * takes the first `maxFacts` that actually have a value. That ordering matters: asking for exactly
+ * `maxFacts` ids would let a single unanswered high-priority attribute silently shrink the card to
+ * one fact, whereas the shipped behaviour -- "walk the priority order and take the known ones" -- is
+ * preserved exactly, only over a better order than raw `attributeDefinitions` sequence.
+ *
+ * Definitions with no value are skipped rather than shown as "Unknown": a compact card favours facts
+ * that are actually known over an inventory of what is missing (List view, per §10, is the place for
+ * that, and the signal row's "N unknowns" count already says how much is missing without listing
+ * it). `maxFacts` is the caller's layout-dependent budget -- see the header comment's "Narrow vs.
+ * expanded" section.
  */
 function pickFacts(
   option: EntityRecord,
   attributeDefinitions: AttributeDefinition[],
+  presentation: PresentationDefinition | null,
+  criteria: Criterion[],
   maxFacts: number,
 ): OptionFact[] {
+  const orderedIds = pickCardAttributeIds(
+    attributeDefinitions,
+    presentation,
+    criteria,
+    option.kind,
+    attributeDefinitions.length,
+  );
+  const definitionsById = new Map(
+    attributeDefinitions.map((definition) => [definition.id, definition]),
+  );
+
   const facts: OptionFact[] = [];
-  for (const definition of attributeDefinitions) {
-    if (!definition.appliesTo.includes(option.kind)) continue;
-    if (isIdentityAttribute(definition)) continue;
+  for (const attributeId of orderedIds) {
+    const definition = definitionsById.get(attributeId);
+    if (definition === undefined) continue;
     const record = option.attributes[definition.id];
     if (record?.value === undefined) continue;
     facts.push({
@@ -245,6 +294,8 @@ function groupOptionsByColumn(
 export function OptionBoardView({
   options,
   attributeDefinitions,
+  presentation,
+  criteria,
   optionColumnIds,
   columns,
   reasons,
@@ -252,6 +303,7 @@ export function OptionBoardView({
   layout,
   onMoveOption,
   onFocusOption,
+  onOpenProfile,
 }: OptionBoardViewProps) {
   const effectiveColumns =
     columns !== undefined && columns.length > 0 ? columns : DEFAULT_BOARD_COLUMNS;
@@ -359,7 +411,19 @@ export function OptionBoardView({
                   >
                     {columnOptions.map((option) => {
                       const isSelected = option.id === selectedOptionId;
-                      const facts = pickFacts(option, attributeDefinitions, maxFactsPerCard);
+                      // Split, never re-select: the headline is simply the
+                      // first fact `pickFacts` already returned in the shared
+                      // prominence order, promoted out of the list into its own
+                      // display-size callout. Nothing here widens *which*
+                      // attributes appear, only where on the card one of them
+                      // lands.
+                      const [headlineFact, ...supportingFacts] = pickFacts(
+                        option,
+                        attributeDefinitions,
+                        presentation,
+                        criteria,
+                        maxFactsPerCard,
+                      );
                       const reason = reasons?.[option.id];
                       const moveSelectId = `board-move-select-${option.id}`;
 
@@ -403,7 +467,13 @@ export function OptionBoardView({
                             // use.
                             className="flex min-h-[var(--size-touch-target-min)] w-full min-w-0 cursor-pointer items-center gap-[var(--space-1)] border-0 bg-transparent p-0 text-left font-[inherit] text-[inherit]"
                           >
-                            <span className="min-w-0 flex-1 truncate font-[var(--font-weight-semibold)]">
+                            {/* No `truncate`, deliberately and permanently:
+                                this is the one thing on the card a person must
+                                be able to read in full, and it shipped once as
+                                "2022 Toyota RAV4 XLE Hyb…". `break-words` lets
+                                a long unbroken token wrap rather than force the
+                                column wider. */}
+                            <span className="min-w-0 flex-1 font-[var(--font-weight-semibold)] break-words">
                               {option.label}
                             </span>
                             {isSelected ? (
@@ -417,7 +487,28 @@ export function OptionBoardView({
                             ) : null}
                           </button>
 
-                          {facts.length > 0 ? (
+                          {headlineFact !== undefined ? (
+                            // The headline stat the shipped card never had --
+                            // label above, value at display size, so the one
+                            // number a person glances for is legible without
+                            // reading the card. Typographic emphasis only,
+                            // never a status colour: design-system.md reserves
+                            // saturated colour for the nine status tokens, and
+                            // a stat is a plain fact, not a state.
+                            <div
+                              data-testid={`board-headline-${option.id}`}
+                              className="flex min-w-0 flex-col"
+                            >
+                              <span className="label-caps text-[var(--color-ink-secondary)]">
+                                {headlineFact.label}
+                              </span>
+                              <span className="font-[family-name:var(--font-display)] text-[length:var(--font-size-md)] leading-[var(--line-height-tight)] font-bold break-words text-[inherit]">
+                                {headlineFact.display}
+                              </span>
+                            </div>
+                          ) : null}
+
+                          {supportingFacts.length > 0 ? (
                             // Label/value hierarchy fix (see the header
                             // comment): the label renders smaller and in the
                             // existing muted `--color-ink-secondary` token;
@@ -430,8 +521,14 @@ export function OptionBoardView({
                               data-testid={`board-facts-${option.id}`}
                               className="flex flex-col gap-[var(--space-0-5)]"
                             >
-                              {facts.map((fact) => (
-                                <li key={fact.id} className="truncate">
+                              {supportingFacts.map((fact) => (
+                                // `break-words`, not `truncate`: a board column
+                                // is only 220px, so a pack with descriptive
+                                // labels ("Addresses the root cause") clips
+                                // away the very words that say which value
+                                // this is. Wrapping costs a line; clipping
+                                // costs the meaning.
+                                <li key={fact.id} className="min-w-0 break-words">
                                   <span className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]">
                                     {fact.label}:
                                   </span>{' '}
@@ -450,6 +547,33 @@ export function OptionBoardView({
                             >
                               {reason}
                             </p>
+                          ) : null}
+
+                          {/* The same compact count row and the same profile
+                              affordance List's cards carry -- see
+                              `OptionCardSignals`'s header comment for the
+                              zero-count omission rule. */}
+                          <OptionCardSignals
+                            option={option}
+                            attributeDefinitions={attributeDefinitions}
+                          />
+
+                          {onOpenProfile !== undefined ? (
+                            <button
+                              type="button"
+                              data-testid={`option-card-open-profile-${option.id}`}
+                              onClick={() => onOpenProfile(option.id)}
+                              // The accessible name names the option, so a
+                              // screen-reader user moving button to button
+                              // across a whole board hears which card they are
+                              // on; the visible words are the first words of
+                              // that name, satisfying WCAG 2.5.3 "Label in
+                              // Name".
+                              aria-label={`View details for ${option.label}`}
+                              className="inline-flex min-h-[var(--size-touch-target-min)] cursor-pointer items-center self-start border-0 bg-transparent p-0 text-[length:var(--font-size-xs)] font-[var(--font-weight-medium)] text-[var(--color-brand)] underline underline-offset-2"
+                            >
+                              View details
+                            </button>
                           ) : null}
 
                           <div className="flex flex-col gap-[var(--space-0-5)]">

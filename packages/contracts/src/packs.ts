@@ -215,6 +215,35 @@ export const PresentationDefinitionSchema = z
   .object({
     optionLabel: safeString(200),
     optionLabelPlural: safeString(200),
+    /**
+     * The few attributes a browse CARD leads with, in the author's own
+     * priority order -- distinct from `attributeGroups`, which is the
+     * exhaustive, sectioned ordering a detail profile and the comparison
+     * table use.
+     *
+     * Optional, and added because inferring this from group order was
+     * actively wrong. `OptionListView` read only `attributeGroups[0]` at
+     * narrow width, on the assumption that a pack's first group is its most
+     * important. For `car-purchase` the first group is `basics` -- make,
+     * model, model year, trim, body style, drivetrain -- so a 390px card
+     * showed six restatements of its own title and **no price at all**, in
+     * the ChatGPT pane that is the product's primary surface. The fix is to
+     * let the author say which fields matter on a card rather than
+     * reordering their groups behind their back: identity fields genuinely
+     * do belong first in a detail view, and last on a card.
+     *
+     * A pack may omit it. The renderer then falls back to ranking by the
+     * weight of the criteria an attribute feeds, and finally to
+     * money-first -- so an existing pack keeps working and simply gets a
+     * less-informed order.
+     *
+     * `.optional()` with no default is load-bearing for pack identity:
+     * `canonicalize.ts` filters `undefined` keys before hashing, so a pack
+     * that omits this field produces the byte-identical `compiledHash` it
+     * always did and every already-pinned case stays valid. `compiler.test
+     * .ts`'s inline-snapshot hash test guards exactly that property.
+     */
+    prominentAttributeIds: z.array(idString()).max(10).optional(),
     attributeGroups: z
       .array(
         z

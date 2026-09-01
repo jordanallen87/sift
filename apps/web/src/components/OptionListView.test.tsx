@@ -2,8 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { AttributeDefinition, EntityRecord, PresentationDefinition } from '@sift/contracts';
-import { OptionListView } from './OptionListView.js';
+import type {
+  AttributeDefinition,
+  Criterion,
+  EntityRecord,
+  PresentationDefinition,
+} from '@sift/contracts';
+import { OptionListView, type OptionListViewProps } from './OptionListView.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
 const DEFINITIONS: AttributeDefinition[] = [
@@ -28,6 +33,10 @@ const DEFINITIONS: AttributeDefinition[] = [
     comparison: 'lower_better',
     sensitive: false,
   },
+  // A plain `string`/`comparison: 'none'` descriptor -- `isIdentityAttribute`'s
+  // exact shape, and deliberately NOT named in `PRESENTATION`, so it exercises
+  // the "an attribute outside the prominent set never reaches the card" side of
+  // the contract.
   {
     id: 'warranty',
     label: 'Warranty',
@@ -48,12 +57,6 @@ const DEFINITIONS: AttributeDefinition[] = [
     comparison: 'none',
     sensitive: false,
   },
-  // Decision-relevant (not identity: `enum`, not `string`) and deliberately
-  // left out of `PRESENTATION`'s only group, so it never lands in
-  // `prominentDefinitions`/the fact row -- used to prove a genuinely
-  // relevant, under-evidenced, not-already-shown attribute still surfaces
-  // as a concern rather than being swept away by the same fix that
-  // suppresses `mileage` below.
   {
     id: 'reliability',
     label: 'Reliability',
@@ -67,11 +70,13 @@ const DEFINITIONS: AttributeDefinition[] = [
   },
 ];
 
-// First presentation group deliberately omits `warranty`, so it exercises the
-// "not every attribute" side of the prominence contract.
+// The pack author's own answer to "what should a card lead with", in its own
+// order -- deliberately NOT definition order (`reliability` is declared last
+// above but ranks fourth here, and `warranty` is named nowhere).
 const PRESENTATION: PresentationDefinition = {
   optionLabel: 'car',
   optionLabelPlural: 'cars',
+  prominentAttributeIds: ['price', 'mileage', 'custom.laptop_work_fit', 'reliability'],
   attributeGroups: [
     {
       id: 'headline',
@@ -79,6 +84,15 @@ const PRESENTATION: PresentationDefinition = {
       attributeIds: ['price', 'mileage', 'custom.laptop_work_fit'],
     },
   ],
+};
+
+// The same pack with the field omitted entirely (not set to `undefined` --
+// `exactOptionalPropertyTypes` is on, and an absent optional field is the real
+// shape a pack that predates `prominentAttributeIds` has).
+const PRESENTATION_WITHOUT_PROMINENT: PresentationDefinition = {
+  optionLabel: PRESENTATION.optionLabel,
+  optionLabelPlural: PRESENTATION.optionLabelPlural,
+  attributeGroups: PRESENTATION.attributeGroups,
 };
 
 function buildEntity(overrides: Partial<EntityRecord> = {}): EntityRecord {
@@ -93,13 +107,10 @@ function buildEntity(overrides: Partial<EntityRecord> = {}): EntityRecord {
   };
 }
 
-// A well-evidenced strength (price), an under-evidenced value that is ALSO
-// already shown, unqualified, in the fact row -- mileage, which must NOT
-// repeat as a concern (the self-contradiction fix) -- a conflicted concern
-// (the custom field), a genuinely under-evidenced concern that is NOT
-// already shown anywhere else (reliability), and an excluded-but-real value
-// (warranty) that must never reach the rendered card because it falls
-// outside the first presentation group.
+// A well-evidenced value (price), an under-evidenced one (mileage: `asserted`
+// against a `source` bar), a conflicted one (the custom field), another
+// under-evidenced one (reliability), and one that is never prominent at all
+// (warranty).
 const RAV4 = buildEntity({
   id: 'candidate-rav4',
   label: 'Toyota RAV4',
@@ -152,8 +163,9 @@ const RAV4 = buildEntity({
   },
 });
 
-// No attribute records at all -- every prominent field is honestly unknown,
-// so strengths and concerns must both render empty, never fabricated.
+// No attribute records at all -- every prominent field is honestly unknown, so
+// the card must show "Unknown" values and an unknowns-only signal row, never a
+// fabricated strength.
 const CRV = buildEntity({
   id: 'candidate-crv',
   label: 'Honda CR-V',
@@ -178,32 +190,77 @@ const FORESTER = buildEntity({
 
 const OPTIONS: EntityRecord[] = [RAV4, CRV, FORESTER];
 
+/**
+ * Every applicable non-identity attribute present and clearing its own
+ * evidence bar: 4 strengths, 0 concerns, 0 unresolved. Exists solely to prove
+ * the zero-count omission rule -- a card must not print "0 concerns" as if
+ * clean were an achievement it had measured.
+ */
+const FULLY_EVIDENCED = buildEntity({
+  id: 'candidate-clean',
+  label: 'Mazda CX-5',
+  attributes: {
+    price: {
+      definitionId: 'price',
+      label: 'Price',
+      value: { type: 'money', amount: 27100, currency: 'USD' },
+      origin: 'user',
+      sourceIds: [],
+      status: 'asserted',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    },
+    mileage: {
+      definitionId: 'mileage',
+      label: 'Mileage',
+      value: { type: 'number', value: 9000, unit: 'mi' },
+      origin: 'agent_proposed',
+      sourceIds: [],
+      status: 'verified',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    },
+    reliability: {
+      definitionId: 'reliability',
+      label: 'Reliability',
+      value: { type: 'enum', value: 'Above Average' },
+      origin: 'agent_proposed',
+      sourceIds: [],
+      status: 'supported',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    },
+    'custom.laptop_work_fit': {
+      definitionId: 'custom.laptop_work_fit',
+      label: 'Laptop work fit',
+      value: { type: 'string', value: 'Good' },
+      origin: 'user',
+      sourceIds: [],
+      status: 'asserted',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    },
+  },
+});
+
+function listView(overrides: Partial<OptionListViewProps> = {}) {
+  const props: OptionListViewProps = {
+    options: OPTIONS,
+    attributeDefinitions: DEFINITIONS,
+    presentation: PRESENTATION,
+    criteria: [],
+    selectedOptionId: null,
+    layout: 'narrow',
+    onFocusOption: vi.fn(),
+    ...overrides,
+  };
+  return <OptionListView {...props} />;
+}
+
 describe('OptionListView', () => {
   it('renders the empty state when no options are visible', () => {
-    render(
-      <OptionListView
-        options={[]}
-        attributeDefinitions={DEFINITIONS}
-        presentation={null}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
+    render(listView({ options: [], presentation: null }));
     expect(screen.getByTestId('option-list-view-empty')).toBeInTheDocument();
   });
 
   it('renders one card per option', () => {
-    render(
-      <OptionListView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
+    render(listView());
 
     expect(screen.getByTestId('option-list-view-card-candidate-rav4')).toHaveTextContent(
       'Toyota RAV4',
@@ -217,17 +274,7 @@ describe('OptionListView', () => {
   });
 
   it('visibleOptionIds narrows which cards render', () => {
-    render(
-      <OptionListView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        visibleOptionIds={['candidate-rav4', 'candidate-crv']}
-        onFocusOption={vi.fn()}
-      />,
-    );
+    render(listView({ visibleOptionIds: ['candidate-rav4', 'candidate-crv'] }));
 
     expect(screen.getByTestId('option-list-view-card-candidate-rav4')).toBeInTheDocument();
     expect(screen.getByTestId('option-list-view-card-candidate-crv')).toBeInTheDocument();
@@ -236,42 +283,164 @@ describe('OptionListView', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('prominence: only fields from the pack’s first presentation group render, not every applicable attribute', () => {
-    render(
-      <OptionListView
-        options={[RAV4]}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
+  // Supersedes "only fields from the pack's first presentation group render".
+  // The pack field a card reads is now `presentation.prominentAttributeIds`,
+  // not `attributeGroups[0]` -- see the regression test below for the shipped
+  // defect that motivated the change -- but the "an attribute outside the
+  // prominent set cannot appear anywhere on the card" half of that assertion is
+  // preserved here verbatim.
+  it("prominence: the pack's prominentAttributeIds order is exactly what renders, and an attribute outside it never appears", () => {
+    render(listView({ options: [RAV4], layout: 'expanded' }));
 
-    // In the grouped presentation.
-    expect(screen.getByTestId('option-list-view-fact-candidate-rav4-price')).toBeInTheDocument();
-    expect(screen.getByTestId('option-list-view-fact-candidate-rav4-mileage')).toBeInTheDocument();
-    // `warranty` has a real, well-evidenced value but was not placed in the first
-    // presentation group, so it must not render anywhere on the card.
+    const facts = ['price', 'mileage', 'custom.laptop_work_fit', 'reliability'];
+    for (const id of facts) {
+      expect(screen.getByTestId(`option-list-view-fact-candidate-rav4-${id}`)).toBeInTheDocument();
+    }
+
+    // The pack's own declared order -- `reliability` is declared LAST in
+    // `DEFINITIONS` but fourth in `prominentAttributeIds`, so definition order
+    // cannot produce this result by accident.
+    const rendered = Array.from(
+      screen
+        .getByTestId('option-list-view-card-candidate-rav4')
+        .querySelectorAll('[data-testid^="option-list-view-fact-candidate-rav4-"]'),
+    ).map((element) => element.getAttribute('data-testid'));
+    expect(rendered).toEqual(facts.map((id) => `option-list-view-fact-candidate-rav4-${id}`));
+
+    // `warranty` has a real, well-evidenced value but the pack never named it
+    // prominent, so it must not render anywhere on the card.
     expect(
       screen.queryByTestId('option-list-view-fact-candidate-rav4-warranty'),
     ).not.toBeInTheDocument();
-    const card = screen.getByTestId('option-list-view-card-candidate-rav4');
-    expect(card).not.toHaveTextContent('Warranty');
+    expect(screen.getByTestId('option-list-view-card-candidate-rav4')).not.toHaveTextContent(
+      'Warranty',
+    );
   });
 
-  it('an explicit prominentAttributeIds prop takes precedence over presentation grouping', () => {
+  // THE SHIPPED DEFECT this whole change exists to fix. The deleted
+  // `pickProminentDefinitions` read only `presentation.attributeGroups[0]` at
+  // narrow width. For the real `car-purchase` pack that group is `basics`, so a
+  // 390px card showed make / model / model year / trim / body style /
+  // drivetrain -- six restatements of the card's own title -- and no price at
+  // all, in the ChatGPT pane that is this product's primary surface.
+  it('regression: a pack whose FIRST attribute group is entirely identity fields still leads with a real non-identity fact, not restatements of the card title', () => {
+    const identityDefinitions: AttributeDefinition[] = [
+      { id: 'make', label: 'Make' },
+      { id: 'model', label: 'Model' },
+      { id: 'trim', label: 'Trim' },
+      { id: 'body_style', label: 'Body style' },
+    ].map(({ id, label }) => ({
+      id,
+      label,
+      valueType: 'string' as const,
+      required: false,
+      appliesTo: ['car'],
+      evidenceExpectation: 'assertion' as const,
+      comparison: 'none' as const,
+      sensitive: false,
+    }));
+
+    // No `prominentAttributeIds` at all -- exactly the pack shape the old
+    // `attributeGroups[0]` rule was reading when it produced the defect.
+    const identityFirstPresentation: PresentationDefinition = {
+      optionLabel: 'car',
+      optionLabelPlural: 'cars',
+      attributeGroups: [
+        { id: 'basics', label: 'Basics', attributeIds: ['make', 'model', 'trim', 'body_style'] },
+        { id: 'numbers', label: 'Numbers', attributeIds: ['price', 'mileage'] },
+      ],
+    };
+
+    const option = buildEntity({
+      id: 'candidate-identity',
+      label: 'Toyota RAV4 XLE Hybrid AWD',
+      attributes: {
+        make: {
+          definitionId: 'make',
+          label: 'Make',
+          value: { type: 'string', value: 'Toyota' },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+        price: {
+          definitionId: 'price',
+          label: 'Price',
+          value: { type: 'money', amount: 28500, currency: 'USD' },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+      },
+    });
+
     render(
-      <OptionListView
-        options={[RAV4]}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        prominentAttributeIds={['warranty']}
-        onFocusOption={vi.fn()}
-      />,
+      listView({
+        options: [option],
+        attributeDefinitions: [...identityDefinitions, ...DEFINITIONS],
+        presentation: identityFirstPresentation,
+        layout: 'narrow',
+      }),
     );
+
+    const card = screen.getByTestId('option-list-view-card-candidate-identity');
+    expect(screen.getByTestId('option-list-view-fact-candidate-identity-price')).toHaveTextContent(
+      '$28,500',
+    );
+    for (const id of ['make', 'model', 'trim', 'body_style']) {
+      expect(
+        screen.queryByTestId(`option-list-view-fact-candidate-identity-${id}`),
+      ).not.toBeInTheDocument();
+    }
+    // Not one of the card's scarce fact slots restates something already
+    // spelled out, unabridged, in its own heading.
+    expect(card).not.toHaveTextContent('Make');
+    expect(card).not.toHaveTextContent('Body style');
+  });
+
+  it('with no pack prominentAttributeIds, the heaviest criterion decides what the card leads with', () => {
+    const criteria: Criterion[] = [
+      {
+        id: 'crit-reliability',
+        label: 'Reliability matters most',
+        kind: 'preference',
+        weight: 90,
+        direction: 'higher_better',
+        appliesToAttribute: 'reliability',
+        origin: 'user',
+        status: 'active',
+      },
+      {
+        id: 'crit-mileage',
+        label: 'Lower mileage',
+        kind: 'preference',
+        weight: 20,
+        direction: 'lower_better',
+        appliesToAttribute: 'mileage',
+        origin: 'user',
+        status: 'active',
+      },
+    ];
+
+    render(listView({ options: [RAV4], presentation: PRESENTATION_WITHOUT_PROMINENT, criteria }));
+
+    // The heaviest-weighted criterion's attribute leads, ahead of the
+    // money-typed `price` the last-resort fallback would otherwise have put
+    // first -- proving `criteria` genuinely reaches the selection rather than
+    // being accepted and ignored.
+    const rendered = Array.from(
+      screen
+        .getByTestId('option-list-view-card-candidate-rav4')
+        .querySelectorAll('[data-testid^="option-list-view-fact-candidate-rav4-"]'),
+    ).map((element) => element.getAttribute('data-testid'));
+    expect(rendered[0]).toBe('option-list-view-fact-candidate-rav4-reliability');
+    expect(rendered[1]).toBe('option-list-view-fact-candidate-rav4-mileage');
+  });
+
+  it('an explicit prominentAttributeIds prop takes precedence over the pack’s own prominentAttributeIds', () => {
+    render(listView({ options: [RAV4], prominentAttributeIds: ['warranty'] }));
 
     expect(screen.getByTestId('option-list-view-fact-candidate-rav4-warranty')).toBeInTheDocument();
     expect(
@@ -280,16 +449,7 @@ describe('OptionListView', () => {
   });
 
   it('renders a missing value as an explicit "Unknown", never blank or invented', () => {
-    render(
-      <OptionListView
-        options={[CRV]}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
+    render(listView({ options: [CRV] }));
 
     expect(screen.getByTestId('option-list-view-fact-candidate-crv-price')).toHaveTextContent(
       /unknown/i,
@@ -300,16 +460,7 @@ describe('OptionListView', () => {
   });
 
   it('renders a custom.* field by its human label, marked custom, with the raw id absent from rendered text', () => {
-    const { container } = render(
-      <OptionListView
-        options={[RAV4]}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
+    const { container } = render(listView({ options: [RAV4] }));
 
     const fact = screen.getByTestId('option-list-view-fact-candidate-rav4-custom.laptop_work_fit');
     expect(fact).toHaveTextContent('Laptop work fit');
@@ -323,103 +474,185 @@ describe('OptionListView', () => {
     expect(visibleText).not.toContain('custom.laptop_work_fit');
   });
 
-  it('derives strengths and concerns honestly from AttributeRecord.status against each definition’s evidenceExpectation', () => {
+  it('caps an over-long string_list value and says how many more there are, never silently truncating', () => {
+    const featuresDefinition: AttributeDefinition = {
+      id: 'standard_features',
+      label: 'Standard features',
+      valueType: 'string_list',
+      required: false,
+      appliesTo: ['car'],
+      evidenceExpectation: 'assertion',
+      comparison: 'none',
+      sensitive: false,
+    };
+    const option = buildEntity({
+      id: 'candidate-features',
+      label: 'Kia Sportage',
+      attributes: {
+        standard_features: {
+          definitionId: 'standard_features',
+          label: 'Standard features',
+          value: {
+            type: 'string_list',
+            values: ['One', 'Two', 'Three', 'Four', 'Five', 'Six'],
+          },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+      },
+    });
+
     render(
-      <OptionListView
-        options={[RAV4]}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
+      listView({
+        options: [option],
+        attributeDefinitions: [featuresDefinition, ...DEFINITIONS],
+        presentation: { ...PRESENTATION, prominentAttributeIds: ['standard_features', 'price'] },
+      }),
     );
 
-    // price: status "asserted" meets its own "assertion" evidence bar ->
-    // strength (deterministic, comma-grouped, symbol-mapped formatting --
-    // see attribute-value-format.ts's header comment).
-    expect(
-      screen.getByTestId('option-list-view-strengths-item-candidate-rav4-price'),
-    ).toHaveTextContent('Price: $28,500');
+    const fact = screen.getByTestId('option-list-view-fact-candidate-features-standard_features');
+    expect(fact).toHaveTextContent('One, Two, Three, Four');
+    expect(fact).toHaveTextContent('+2 more');
+    expect(fact).not.toHaveTextContent('Five');
+  });
 
-    // mileage: status "asserted" does not meet its declared "source" bar,
-    // but it is already shown, unqualified, in the fact row above
-    // (`option-list-view-fact-candidate-rav4-mileage`) -- repeating it as a
-    // concern would contradict the card in the same glance, so it must not
-    // appear as a concern (or anywhere else) at all.
-    expect(
-      screen.queryByTestId('option-list-view-concerns-item-candidate-rav4-mileage'),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId('option-list-view-strengths-item-candidate-rav4-mileage'),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByTestId('option-list-view-unresolved-item-candidate-rav4-mileage'),
-    ).not.toBeInTheDocument();
+  // Supersedes the three stacked "What we like" / "What to watch for" / "Still
+  // researching" sections. The classification rule itself (which attribute is a
+  // strength, a concern, or unresolved) is now `summarizeOptionSignals` and is
+  // tested exhaustively in `option-profile.test.ts`; what belongs HERE is that
+  // a card renders those counts, with a real word next to each so the row is
+  // never colour-only (docs/design-system.md).
+  it('replaces the three insight sections with one compact signal row of counts', () => {
+    render(listView({ options: [RAV4] }));
 
-    // reliability: same under-evidenced "asserted" vs. "source" gap as
-    // mileage, but it is NOT shown anywhere else on the card (left out of
-    // `PRESENTATION`'s only group) -- a real, not-yet-surfaced problem, so
-    // it must still appear as a concern.
+    const signals = screen.getByTestId('option-card-signals-candidate-rav4');
+    // price (asserted vs. an `assertion` bar) is the only strength; mileage and
+    // reliability are under-evidenced and the custom field is conflicted, so
+    // three concerns; `warranty` is an identity descriptor and is counted in
+    // none of them.
+    expect(screen.getByTestId('option-card-signal-strengths-candidate-rav4')).toHaveTextContent(
+      '1 supported',
+    );
+    expect(signals).toHaveTextContent('3 concerns');
     expect(
-      screen.getByTestId('option-list-view-concerns-item-candidate-rav4-reliability'),
-    ).toHaveTextContent(/needs stronger evidence/i);
-
-    // the custom field is "conflicted" -> concern, not a strength.
-    expect(
-      screen.getByTestId('option-list-view-concerns-item-candidate-rav4-custom.laptop_work_fit'),
-    ).toHaveTextContent(/conflicting information/i);
-    expect(
-      screen.queryByTestId('option-list-view-strengths-item-candidate-rav4-custom.laptop_work_fit'),
+      screen.queryByTestId('option-card-signal-unresolved-candidate-rav4'),
     ).not.toBeInTheDocument();
 
-    // warranty: a plain identity/label string field with no comparison
-    // direction -- never appears in any insight list, regardless of status.
+    // Counts, not lists: none of the deleted per-attribute sentences survives
+    // anywhere on the card.
+    const card = screen.getByTestId('option-list-view-card-candidate-rav4');
+    expect(card).not.toHaveTextContent(/needs stronger evidence/i);
+    expect(card).not.toHaveTextContent(/conflicting information/i);
+    expect(card).not.toHaveTextContent(/still unknown/i);
     expect(
-      screen.queryByTestId('option-list-view-concerns-item-candidate-rav4-warranty'),
+      screen.queryByTestId('option-list-view-strengths-candidate-rav4'),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByTestId('option-list-view-strengths-item-candidate-rav4-warranty'),
+      screen.queryByTestId('option-list-view-concerns-candidate-rav4'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('option-list-view-unresolved-candidate-rav4'),
     ).not.toBeInTheDocument();
   });
 
-  it('renders no fabricated strengths for an option with no well-evidenced values, and lists what is genuinely unresolved', () => {
-    render(
-      <OptionListView
-        options={[CRV]}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
+  it('omits a zero count entirely rather than printing "0 concerns" as if clean were an achievement', () => {
+    render(listView({ options: [FULLY_EVIDENCED, CRV] }));
+
+    // Nothing is wrong with this option, so only the strengths chip renders.
+    const clean = screen.getByTestId('option-card-signals-candidate-clean');
+    expect(clean).toHaveTextContent('4 supported');
+    expect(clean).not.toHaveTextContent('0');
+    expect(clean).not.toHaveTextContent(/concern/i);
+    expect(clean).not.toHaveTextContent(/unknown/i);
+    expect(
+      screen.queryByTestId('option-card-signal-concerns-candidate-clean'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('option-card-signal-unresolved-candidate-clean'),
+    ).not.toBeInTheDocument();
+
+    // And the mirror case: an option with no records at all fabricates no
+    // strength, and says plainly how much is still unknown.
+    const empty = screen.getByTestId('option-card-signals-candidate-crv');
+    expect(empty).toHaveTextContent('4 unknowns');
+    expect(
+      screen.queryByTestId('option-card-signal-strengths-candidate-crv'),
+    ).not.toBeInTheDocument();
+    expect(empty).not.toHaveTextContent('0');
+  });
+
+  it('singularises a count of one rather than printing "1 concerns"', () => {
+    const oneConcern = buildEntity({
+      id: 'candidate-one-concern',
+      label: 'Hyundai Tucson',
+      attributes: {
+        ...FULLY_EVIDENCED.attributes,
+        // `asserted` against this definition's declared `source` bar -- the one
+        // and only concern on the card.
+        mileage: {
+          definitionId: 'mileage',
+          label: 'Mileage',
+          value: { type: 'number', value: 22000, unit: 'mi' },
+          origin: 'user',
+          sourceIds: [],
+          status: 'asserted',
+          updatedAt: '2026-08-27T00:00:00.000Z',
+        },
+      },
+    });
+    render(listView({ options: [oneConcern] }));
 
     expect(
-      screen.getByTestId('option-list-view-strengths-empty-candidate-crv'),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('option-list-view-concerns-empty-candidate-crv')).toBeInTheDocument();
+      screen.getByTestId('option-card-signal-concerns-candidate-one-concern'),
+    ).toHaveTextContent('1 concern');
     expect(
-      screen.getByTestId('option-list-view-unresolved-item-candidate-crv-price'),
-    ).toHaveTextContent(/still unknown/i);
-    expect(
-      screen.getByTestId('option-list-view-unresolved-item-candidate-crv-mileage'),
-    ).toHaveTextContent(/still unknown/i);
+      screen.getByTestId('option-card-signal-concerns-candidate-one-concern'),
+    ).not.toHaveTextContent('1 concerns');
+  });
+
+  it('renders the View details affordance only when the caller supplied onOpenProfile', () => {
+    const { rerender } = render(listView({ options: [RAV4] }));
+    // A dead control is worse than no control: with no profile surface wired,
+    // nothing renders.
+    expect(screen.queryByTestId('option-card-open-profile-candidate-rav4')).not.toBeInTheDocument();
+
+    rerender(listView({ options: [RAV4], onOpenProfile: vi.fn() }));
+    expect(screen.getByTestId('option-card-open-profile-candidate-rav4')).toHaveTextContent(
+      'View details',
+    );
+  });
+
+  it('fires onOpenProfile with the option id, and never confuses it with focus', async () => {
+    const user = userEvent.setup();
+    const onOpenProfile = vi.fn();
+    const onFocusOption = vi.fn();
+    render(listView({ options: [RAV4], onOpenProfile, onFocusOption }));
+
+    await user.click(screen.getByTestId('option-card-open-profile-candidate-rav4'));
+    expect(onOpenProfile).toHaveBeenCalledExactlyOnceWith('candidate-rav4');
+    expect(onFocusOption).not.toHaveBeenCalled();
+  });
+
+  it('never truncates the option label, however long it is', () => {
+    const longLabel = '2022 Toyota RAV4 XLE Hybrid AWD with the Weather and Convenience package';
+    const option = buildEntity({ id: 'candidate-long', label: longLabel });
+    render(listView({ options: [option] }));
+
+    const heading = screen.getByTestId('option-list-view-focus-candidate-long');
+    expect(heading).toHaveTextContent(longLabel);
+    // This product has already shipped a card titled "2022 Toyota RAV4 XLE
+    // Hyb…". jsdom cannot measure the ellipsis, so guard the mechanism that
+    // produces it: the label may wrap, it may not be clipped.
+    expect(heading.className).not.toContain('truncate');
+    expect(heading.className).toContain('break-words');
   });
 
   it('fires onFocusOption when a card is clicked', async () => {
     const user = userEvent.setup();
     const onFocusOption = vi.fn();
-    render(
-      <OptionListView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={onFocusOption}
-      />,
-    );
+    render(listView({ onFocusOption }));
 
     await user.click(screen.getByTestId('option-list-view-focus-candidate-crv'));
     expect(onFocusOption).toHaveBeenCalledExactlyOnceWith('candidate-crv');
@@ -428,16 +661,7 @@ describe('OptionListView', () => {
   it('is keyboard operable: pressing Enter on a focused card button fires onFocusOption', async () => {
     const user = userEvent.setup();
     const onFocusOption = vi.fn();
-    render(
-      <OptionListView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={onFocusOption}
-      />,
-    );
+    render(listView({ onFocusOption }));
 
     const focusButton = screen.getByTestId('option-list-view-focus-candidate-forester');
     focusButton.focus();
@@ -447,16 +671,7 @@ describe('OptionListView', () => {
   });
 
   it('visually distinguishes the selected option', () => {
-    render(
-      <OptionListView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId="candidate-rav4"
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
+    render(listView({ selectedOptionId: 'candidate-rav4' }));
 
     const selectedCard = screen.getByTestId('option-list-view-card-candidate-rav4');
     expect(selectedCard).toHaveAttribute('data-selected', 'true');
@@ -467,125 +682,53 @@ describe('OptionListView', () => {
   });
 
   it('has no axe violations in the empty and populated states', async () => {
-    const { container: empty } = render(
-      <OptionListView
-        options={[]}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
+    const { container: empty } = render(listView({ options: [] }));
     expect(await axe(empty)).toHaveNoViolations();
 
     const { container: populated } = render(
-      <OptionListView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId="candidate-rav4"
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
+      listView({ selectedOptionId: 'candidate-rav4', onOpenProfile: vi.fn() }),
     );
     expect(await axe(populated)).toHaveNoViolations();
   });
 
   it('renders at 390px width with no fixed-width overflow risk', () => {
-    const { overflowRisks } = renderAtNarrowWidth(
-      <OptionListView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
+    const { overflowRisks } = renderAtNarrowWidth(listView({ onOpenProfile: vi.fn() }));
     expect(overflowRisks).toEqual([]);
   });
 
   // §7 "Expanded mode vs narrow mode": expanded must show "more attributes
-  // visible simultaneously" and change information architecture, "not
-  // merely CSS widths" -- these two tests prove both of this view's two
-  // concrete IA changes, not just that a different className string was
-  // produced.
+  // visible simultaneously" and change information architecture, "not merely
+  // CSS widths" -- these two tests prove both of this view's concrete IA
+  // changes, not just that a different className string was produced.
   it('narrow stacks cards in a single column; expanded renders them in the shared option-grid layout', () => {
-    const { rerender } = render(
-      <OptionListView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
+    const { rerender } = render(listView({ layout: 'narrow' }));
     const narrowCards = screen.getByTestId('option-list-view-cards');
     expect(narrowCards).toHaveAttribute('data-layout', 'narrow');
     expect(narrowCards.className).not.toContain('option-grid');
 
-    rerender(
-      <OptionListView
-        options={OPTIONS}
-        attributeDefinitions={DEFINITIONS}
-        presentation={PRESENTATION}
-        selectedOptionId={null}
-        layout="expanded"
-        onFocusOption={vi.fn()}
-      />,
-    );
+    rerender(listView({ layout: 'expanded' }));
     const expandedCards = screen.getByTestId('option-list-view-cards');
     expect(expandedCards).toHaveAttribute('data-layout', 'expanded');
     expect(expandedCards.className).toContain('option-grid');
   });
 
-  it('expanded widens the prominent-field budget to include more of the pack’s own presentation groups; narrow reads only the first group', () => {
-    const multiGroupPresentation: PresentationDefinition = {
-      optionLabel: 'car',
-      optionLabelPlural: 'cars',
-      attributeGroups: [
-        {
-          id: 'headline',
-          label: 'Headline',
-          attributeIds: ['price', 'mileage', 'custom.laptop_work_fit'],
-        },
-        { id: 'secondary', label: 'Secondary', attributeIds: ['warranty', 'reliability'] },
-      ],
-    };
-
-    const { rerender } = render(
-      <OptionListView
-        options={[RAV4]}
-        attributeDefinitions={DEFINITIONS}
-        presentation={multiGroupPresentation}
-        selectedOptionId={null}
-        layout="narrow"
-        onFocusOption={vi.fn()}
-      />,
-    );
-    // Narrow reproduces the original contract exactly: only the first group.
+  // Supersedes "expanded widens the prominent-field budget to include more of
+  // the pack's own presentation groups". The budget is still layout-dependent
+  // and still §7's real IA change; what it draws from is now the pack's
+  // `prominentAttributeIds` rather than its `attributeGroups`.
+  it('expanded shows one more prominent fact per card than narrow, drawn from the same pack-declared order', () => {
+    const { rerender } = render(listView({ options: [RAV4], layout: 'narrow' }));
+    expect(screen.getByTestId('option-list-view-fact-candidate-rav4-price')).toBeInTheDocument();
+    expect(screen.getByTestId('option-list-view-fact-candidate-rav4-mileage')).toBeInTheDocument();
     expect(
-      screen.queryByTestId('option-list-view-fact-candidate-rav4-warranty'),
-    ).not.toBeInTheDocument();
+      screen.getByTestId('option-list-view-fact-candidate-rav4-custom.laptop_work_fit'),
+    ).toBeInTheDocument();
+    // The pack's fourth prominent id does not fit the narrow budget.
     expect(
       screen.queryByTestId('option-list-view-fact-candidate-rav4-reliability'),
     ).not.toBeInTheDocument();
 
-    rerender(
-      <OptionListView
-        options={[RAV4]}
-        attributeDefinitions={DEFINITIONS}
-        presentation={multiGroupPresentation}
-        selectedOptionId={null}
-        layout="expanded"
-        onFocusOption={vi.fn()}
-      />,
-    );
-    // Expanded has room to also honor the pack's second presentation group --
-    // still nothing invented, only more of what the pack itself declared.
-    expect(screen.getByTestId('option-list-view-fact-candidate-rav4-warranty')).toBeInTheDocument();
+    rerender(listView({ options: [RAV4], layout: 'expanded' }));
     expect(
       screen.getByTestId('option-list-view-fact-candidate-rav4-reliability'),
     ).toBeInTheDocument();

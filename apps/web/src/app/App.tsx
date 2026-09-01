@@ -234,6 +234,8 @@ import { WorkspaceSidebar } from '../components/WorkspaceSidebar.js';
 import { FilterBar } from '../components/FilterBar.js';
 import { FilterSheet } from '../components/FilterSheet.js';
 import { applyWorkspaceFilters } from '../components/workspace-filters.js';
+import { OptionProfileSheet } from '../components/OptionProfileSheet.js';
+import { deriveOptionProfile } from '../components/option-profile.js';
 import { useWidthMode } from '../hooks/use-width-mode.js';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -435,6 +437,11 @@ export function App() {
   // what makes filtering exist at all in pane/WebMCP mode, where
   // `WorkspaceSidebar` renders `null` outright.
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  // Which option's detail profile is open, by id -- NOT the option record
+  // itself. Holding the id means the open sheet re-derives from each new
+  // snapshot, so a live run that adds evidence about this option updates the
+  // sheet under the reader instead of freezing a copy taken when it opened.
+  const [profileOptionId, setProfileOptionId] = useState<string | null>(null);
   const [resetPending, setResetPending] = useState(false);
   const [runRequestPending, setRunRequestPending] = useState(false);
   const [runRequestError, setRunRequestError] = useState<string | null>(null);
@@ -927,6 +934,32 @@ export function App() {
     [allOptions, filters, filterableDefinitions],
   );
 
+  // Hoisted above this component's `activeCaseId === null` early return
+  // (the launcher branch) together with `openProfile` below it: a
+  // `useMemo` placed after a conditional return changes hook order
+  // between renders, which React answers by rendering nothing at all.
+  // Both depend only on `installedPacks`/`snapshot`, declared far above.
+  const activePack = installedPacks.find((pack) => pack.identity.id === snapshot?.pack.id) ?? null;
+
+  // The human counterpart to `sift_get_option_details`, the WebMCP tool that
+  // has been handing ChatGPT a complete per-option profile this whole time
+  // while no screen showed one. Re-derived from the live snapshot on every
+  // change (see `profileOptionId` above for why the id, not the record, is
+  // what state holds).
+  //
+  // Deliberately built from `snapshot`, never from `visibleOptions`: a
+  // filter narrows what you are BROWSING, and it must not be able to blank
+  // out a detail view you already have open. `deriveOptionProfile` returns
+  // `null` for an unknown id, which is also what a removed option should
+  // produce -- an honest absence rather than an empty shell.
+  const openProfile = useMemo(
+    () =>
+      snapshot === null || profileOptionId === null
+        ? null
+        : deriveOptionProfile(snapshot, profileOptionId, activePack?.presentation ?? null),
+    [snapshot, profileOptionId, activePack],
+  );
+
   const installedPacksRef = useRef(installedPacks);
   installedPacksRef.current = installedPacks;
 
@@ -1254,7 +1287,6 @@ export function App() {
     );
   }
 
-  const activePack = installedPacks.find((pack) => pack.identity.id === snapshot?.pack.id) ?? null;
   const optionKind = activePack?.entities[0]?.id ?? 'option';
   const optionLabel = activePack?.presentation.optionLabel ?? 'option';
   const applicableKinds =
@@ -1594,6 +1626,11 @@ export function App() {
               onQuickPickMaybe={handleQuickPickAdvance}
               onQuickPickShortlist={handleQuickPickShortlist}
               onQuickPickFocusChange={() => undefined}
+              // Real `Criterion[]`, so a card can rank its few facts by what
+              // the person actually said matters whenever a pack declares no
+              // `prominentAttributeIds` of its own.
+              criteria={snapshot?.criteria ?? []}
+              onOpenProfile={setProfileOptionId}
               boardPlacement={boardPlacement}
               onMoveOption={handleMoveOption}
             />
@@ -1636,6 +1673,8 @@ export function App() {
             onQuickPickMaybe={handleQuickPickAdvance}
             onQuickPickShortlist={handleQuickPickShortlist}
             onQuickPickFocusChange={() => undefined}
+            criteria={snapshot?.criteria ?? []}
+            onOpenProfile={setProfileOptionId}
             boardPlacement={boardPlacement}
             onMoveOption={handleMoveOption}
           />
@@ -1720,6 +1759,19 @@ export function App() {
           either layout branch: the filter surface is the one region that
           must be identical in both modes (ADR 0009), so it is global chrome
           rather than something each shell renders its own copy of. */}
+      {/* The per-option detail surface, mounted as global chrome for the
+          same reason the filter sheet is: both grids open it, in both
+          layouts, so neither shell owns a copy. Closing clears the id
+          rather than leaving a stale option selected behind a shut sheet. */}
+      <OptionProfileSheet
+        open={profileOptionId !== null}
+        onOpenChange={(open) => {
+          if (!open) setProfileOptionId(null);
+        }}
+        profile={openProfile}
+        presentation={activePack?.presentation ?? null}
+      />
+
       <FilterSheet
         open={filterSheetOpen}
         onOpenChange={setFilterSheetOpen}

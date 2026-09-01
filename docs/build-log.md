@@ -5472,3 +5472,33 @@ Two further problems the same investigation surfaced. `WorkspaceSidebar` returns
 - `tsc --noEmit`: clean for `@sift/web` and `@sift/agent`.
 
 **Known gap, recorded not fixed:** `visibleOptionIds` is the same dead write. `WorkspaceViewSwitcher.tsx` states it is "left for a future non-Compare consumer to claim; this component does not read it." ChatGPT can call `sift_set_view` with a list of options to show, get a success receipt, and the page will not move -- the same class of defect as the one fixed here, in a WebMCP-facing path. `sift_set_view` also still does not expose `filters` to the model, so making filters real did not hand it a new capability.
+
+## 2026-09-01 -- ADR 0010: option profiles, focused cards, and pack-declared prominence
+
+Two questions from the project owner, answered together: is there a per-option detail view ("keep the grids focused and keep the extra detail in the profiles"), and "do we have this designed generically? As in, we could easily switch and use this for other shopping use-cases?"
+
+**A full option profile already existed -- for the model only.** `buildOptionDetails` (`case-context.ts:296`) joins an option to its claims and sources and ships as the WebMCP tool `sift_get_option_details`. Nothing rendered it. ChatGPT could ask for a complete per-option profile; a human could not see one. So this was a rendering job on already-tested data.
+
+**Three shipped defects found by looking at the running product:**
+
+1. *Narrow List showed no price.* `pickProminentDefinitions` read only `attributeGroups[0]` at <=480px, assuming a pack's first group is its most important. For `car-purchase` that group is `basics`, so a 390px card showed make/model/model year/trim/body style/drivetrain -- six restatements of its own title -- and no decision-relevant number, in the ChatGPT pane that is this product's primary surface. Fixed by letting the author declare `prominentAttributeIds` rather than reordering their groups behind their back.
+2. *The profile reproduced the cramming one level down.* Measured before touching it: **3858px of scroll in a 749px viewport**, "Stated, not independently checked" rendered **18 times**, "Last updated" **29 times**, all the same date. Reworked to state the exception, not the rule -> **1040px**, 5.1 screens to 1.4. The subagent reproduced the 18 and 29 exactly before changing anything, then mutation-checked all four new guards.
+3. *A label truncation the car pack could never have surfaced.* `Addresses the root cause` clipped to `Addresses the root ca…` -- a fact LABEL carrying `truncate`, missing its 202px column by ten pixels, leaving `…, No` which tells a reader nothing. Found only because genericity was tested by actually switching packs. `car-purchase` happens to have short labels.
+
+**Genericity audited rather than asserted.** The identical component tree was run against `home-energy-guardian` with zero code changes: `4 response options` / `ROUGH COST $250` / effort level and addresses-root-cause as supporting facts / `5 concerns - 1 unknown` (note the correct singular). A grep for domain vocabulary in component logic, comments stripped, matches exactly three files -- `DemoLauncher`, `HelpButton`, `VehicleCatalogFlow` -- all legitimately car-specific entry points, and zero hits in any workspace or option component.
+
+**Pack identity preserved deliberately.** `prominentAttributeIds` is `.optional()` with no default because `canonicalize.ts` filters `undefined` before hashing, so a pack omitting it keeps its byte-identical `compiledHash` and every pinned case stays valid. `compiler.test.ts`'s inline-snapshot hash guard was checked before and after and still passes. Both shipped packs declare the field, so their own manifest snapshots were regenerated -- diff inspected first and confirmed purely additive.
+
+**One cross-lane inconsistency fixed at the source.** The sheet subagent flagged, but correctly refused to fix in a file it did not own, that identity attributes got an evidence-derived `signal` while being excluded from `summarizeOptionSignals`' counts -- so an under-evidenced identity field rendered a concern glyph the summary denied. `signal` gained an explicit `identity` value mapped to the `neutral` tone. `evidence-expectation.ts`'s own header records that flagging identity fields as risks already shipped once as a defect.
+
+**One React defect of my own, caught by the suite, not by review:** I placed the profile's `useMemo` after this component's `activeCaseId === null` early return, changing hook order between renders. React answered by rendering nothing at all -- every workspace test failed with an empty `<body><div /></body>`. Fixed by hoisting `activePack` and the memo above the return, with a comment recording why they must stay there.
+
+**Exactly one assertion had no home** and was reported rather than quietly dropped: a guard against a card showing a value confidently AND flagging it in prose below. That rendering no longer exists, so the contradiction is impossible by construction; it was replaced with an assertion that the prose is gone.
+
+**Verification.**
+- `pnpm verify`: **PASSED, all ten stages in one run.**
+- `pnpm --filter @sift/web test`: 1313/1313. `@sift/packs`: 175/175.
+- `pnpm exec playwright test`: **52/52** across four viewports (was 48; +4 for the new profile journey).
+- No visual baseline changed -- the named screenshots are taken in Best Match, which this work does not touch.
+
+**Leaks recorded, not fixed:** the headline stat is still hardcoded to the first `money` attribute (a pack without one gets no headline), and Board's four column names are English constants rather than pack-authored, though `WorkspaceViewState.board` exists for exactly that. Neither blocks a new pack.

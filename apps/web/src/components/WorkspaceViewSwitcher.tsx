@@ -57,6 +57,18 @@
  * All three views stay pure, caller-fed leaves; only this component ever
  * calls `useWidthMode`.
  *
+ * `criteria`/`onOpenProfile`: the two browse grids (`OptionListView`,
+ * `OptionBoardView`) were refocused onto a headline stat plus a couple of
+ * prominent facts, with the rest of an option's detail moved into a per-option
+ * profile. Both inputs of that change route through here for the same reason
+ * everything else does -- the views stay pure leaves. `criteria` is read only
+ * as a ranking signal for which attributes a card leads with (the heaviest
+ * `Criterion.appliesToAttribute` weight, when a pack declares no
+ * `presentation.prominentAttributeIds`); nothing downstream mutates a
+ * `Criterion` or appends a `CaseEvent`. `onOpenProfile` stays optional the
+ * whole way down so a caller with no profile surface wired renders no dead
+ * "View details" control.
+ *
  * `compareOptionIds`/`compareVisibleAttributeIds`/`comparePinnedAttributeIds`/
  * `caseExtensions` (Defect 1 & 2 seam fix): `OptionCompareView` already
  * genuinely implements `visibleOptionIds`/`visibleAttributeIds`/
@@ -98,6 +110,7 @@ import { WORKSPACE_VIEW_MODES, type WorkspaceViewMode } from '@sift/contracts';
 import type {
   AttributeDefinition,
   CaseExtension,
+  Criterion,
   EntityRecord,
   PresentationDefinition,
 } from '@sift/contracts';
@@ -116,8 +129,12 @@ export interface WorkspaceViewSwitcherProps {
   /** Confirmed case-level custom concerns (`CaseState.caseExtensions`) -- forwarded to `OptionCompareView` so a confirmed custom field renders as a real comparison row (Defect 2). See this file's header comment. */
   caseExtensions: CaseExtension[];
   presentation: PresentationDefinition | null;
+  /** The case's criteria (`CaseState.criteria`). Forwarded to the two browse grids, whose cards rank which attributes to lead with by the heaviest `Criterion.appliesToAttribute` weight when the pack declares no `presentation.prominentAttributeIds` (see `option-profile.ts`'s `pickCardAttributeIds`). This component neither reads nor mutates them itself -- it is still a router. */
+  criteria: Criterion[];
   selectedOptionId: string | null;
   onFocusOption: (optionId: string) => void;
+  /** Opens the full per-option profile for one option. Optional the whole way down: a caller with no profile surface wired yet gets cards with no dead "View details" control on them. */
+  onOpenProfile?: ((optionId: string) => void) | undefined;
 
   // Compare view configuration (Defect 1 seam fix) -- see this file's own
   // header comment for the `compare.optionIds` vs. top-level
@@ -166,8 +183,10 @@ export function WorkspaceViewSwitcher({
   attributeDefinitions,
   caseExtensions,
   presentation,
+  criteria,
   selectedOptionId,
   onFocusOption,
+  onOpenProfile,
   compareOptionIds,
   compareVisibleAttributeIds,
   comparePinnedAttributeIds,
@@ -238,9 +257,11 @@ export function WorkspaceViewSwitcher({
             options={options}
             attributeDefinitions={attributeDefinitions}
             presentation={presentation}
+            criteria={criteria}
             selectedOptionId={selectedOptionId}
             layout={widthMode}
             onFocusOption={onFocusOption}
+            onOpenProfile={onOpenProfile}
           />
         </TabsContent>
 
@@ -248,11 +269,14 @@ export function WorkspaceViewSwitcher({
           <OptionBoardView
             options={options}
             attributeDefinitions={attributeDefinitions}
+            presentation={presentation}
+            criteria={criteria}
             optionColumnIds={boardPlacement}
             selectedOptionId={selectedOptionId}
             layout={widthMode}
             onMoveOption={onMoveOption}
             onFocusOption={onFocusOption}
+            onOpenProfile={onOpenProfile}
           />
         </TabsContent>
       </Tabs>

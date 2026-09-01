@@ -1086,6 +1086,17 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
   presentation: {
     optionLabel: 'Response option',
     optionLabelPlural: 'Response options',
+    // A response option is chosen on what it costs, what it takes, whether
+    // it actually fixes the cause, and whether it carries emergency risk --
+    // not on the bill/anomaly/weather measurements below, which describe the
+    // SITUATION every option shares rather than distinguishing one option
+    // from another. Those stay in `attributeGroups` for the detail profile.
+    prominentAttributeIds: [
+      'energy.rough_cost',
+      'energy.rough_effort_level',
+      'energy.addresses_root_cause',
+      'energy.emergency_risk_present',
+    ],
     attributeGroups: [
       {
         id: 'bill',

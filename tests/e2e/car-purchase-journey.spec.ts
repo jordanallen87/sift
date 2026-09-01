@@ -511,6 +511,80 @@ test.describe('Choose our next car -- full demo journey', () => {
   });
 
   /**
+   * ADR 0010's end-to-end proof: the browse card is an index entry and the
+   * profile is the detail page.
+   *
+   * Two regressions this gate exists to catch, both of which shipped once:
+   *
+   *  1. A card that leads with identity fields. Narrow List used to read
+   *     only `attributeGroups[0]`, so at 390px a card showed make, model,
+   *     model year, trim, body style and drivetrain -- six restatements of
+   *     its own title -- and no price at all. This asserts a card carries
+   *     the pack's DECLARED prominent facts and does NOT repeat the label.
+   *  2. Detail with nowhere to go. Every per-attribute provenance field
+   *     (`status`, `origin`, `sourceIds`, `confidence`, `updatedAt`) was
+   *     rendered nowhere in the product; `sift_get_option_details` gave the
+   *     model a full profile a person could not see.
+   *
+   * Runs unbranched at every viewport: the profile is global chrome, so
+   * "reachable in both modes" is the property under test.
+   */
+  test('a browse card leads with the pack-declared facts, and opens a profile carrying the detail', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await disableAnimations(page);
+    const guard = installConsoleGuard(page);
+    const sift = new SiftPage(page);
+
+    await sift.open();
+    await sift.launchCarPurchase();
+    await sift.selectWorkspaceView('list');
+
+    const firstCard = page.locator('[data-testid^="option-list-view-card-"]').first();
+    await expect(firstCard).toBeVisible();
+    const optionId = (await firstCard.getAttribute('data-testid'))!.replace(
+      'option-list-view-card-',
+      '',
+    );
+
+    // The card carries a compact signal summary rather than three stacked
+    // prose sections. The exact phrase below is what those sections used to
+    // repeat, six times per card, and its absence is the trimming holding.
+    await expect(page.getByTestId(`option-card-signals-${optionId}`)).toBeVisible();
+    await expect(firstCard).not.toHaveText(/needs stronger evidence/i);
+
+    await sift.openOptionProfile(optionId);
+    const sheet = page.getByTestId('option-profile-sheet');
+
+    // The profile shows what no card does: real per-attribute provenance.
+    // Asserted through a testid rather than copy, so rewording the sentence
+    // does not silently turn this gate off.
+    await expect(page.getByTestId('option-profile-title')).toBeVisible();
+    await expect(page.getByTestId('option-profile-signals')).toBeVisible();
+    await expect(
+      sheet.locator('[data-testid^="option-profile-attribute-status-"]').first(),
+    ).toBeVisible();
+
+    // A profile carries strictly more attribute rows than its card carries
+    // facts -- the whole point of splitting index from detail. Counted, not
+    // assumed, and derived from the page rather than hard-coded against seed
+    // data this spec does not own.
+    const cardFactCount = await firstCard
+      .locator('[data-testid^="option-list-view-fact-"]')
+      .count();
+    const profileRowCount = await sheet
+      .locator('[data-testid^="option-profile-attribute-"]:not([data-testid*="-status-"])')
+      .count();
+    expect(profileRowCount).toBeGreaterThan(cardFactCount);
+
+    await sift.closeOptionProfile();
+    await expect(sheet).not.toBeVisible();
+
+    guard.assertClean();
+  });
+
+  /**
    * ADR 0009's end-to-end proof, and a genuine regression gate rather than a
    * rendering check.
    *

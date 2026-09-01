@@ -825,6 +825,12 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
     ],
     "optionLabel": "Saved car",
     "optionLabelPlural": "Saved cars",
+    "prominentAttributeIds": [
+      "car.advertised_price",
+      "car.out_the_door_price",
+      "car.mileage",
+      "car.crash_safety_rating",
+    ],
   },
   "schemaVersion": "1.0",
   "skills": [

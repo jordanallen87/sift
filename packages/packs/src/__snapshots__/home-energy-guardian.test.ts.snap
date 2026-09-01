@@ -847,6 +847,12 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
     ],
     "optionLabel": "Response option",
     "optionLabelPlural": "Response options",
+    "prominentAttributeIds": [
+      "energy.rough_cost",
+      "energy.rough_effort_level",
+      "energy.addresses_root_cause",
+      "energy.emergency_risk_present",
+    ],
   },
   "schemaVersion": "1.0",
   "skills": [

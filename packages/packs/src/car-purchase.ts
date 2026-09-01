@@ -908,6 +908,19 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
   presentation: {
     optionLabel: 'Saved car',
     optionLabelPlural: 'Saved cars',
+    // What a browse card leads with, in priority order. Deliberately NOT
+    // the `basics` group below: make/model/year/trim only restate the
+    // option's own title ("2022 Toyota RAV4 XLE Hybrid AWD"), so a card
+    // built from them says the same thing five times and never shows a
+    // price. These four are the numbers a person actually chooses between.
+    // The full, sectioned list still lives in `attributeGroups`, which the
+    // detail profile and the comparison table use.
+    prominentAttributeIds: [
+      'car.advertised_price',
+      'car.out_the_door_price',
+      'car.mileage',
+      'car.crash_safety_rating',
+    ],
     attributeGroups: [
       {
         id: 'basics',
