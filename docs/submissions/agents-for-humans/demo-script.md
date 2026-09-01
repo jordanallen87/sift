@@ -114,8 +114,22 @@ This calls `sift_update_criteria`. Point out: the Recommendation card's status f
 **Narration:**
 > "Watch this exactly — before Sift will even draft a proposal to inspect anything in this household, ConsequenceGuard stops it and requires confirmation. That's a real ConsequenceGuard `Confirm` intervention, not a courtesy dialog bolted on afterward."
 
-**Continue:** the run completes. Read the new, live Recommendation text:
+**Continue:** the run completes. Read the new, live Recommendation text — the model's:
 > "Recommend requesting an HVAC/thermostat inspection (request-hvac-inspection) to address the confirmed thermostat sensor-drift root cause… Under the reweighted conservation-focused criteria this scores highest (0.87) versus monitor-one-cycle (0.20)."
+
+**Then point at the Facts section immediately below it, which is Sift's, not the model's** (live-verified against the shipped scenario):
+> "Request an HVAC / thermostat inspection scores 87% against the criteria on this case, measured across 100% of the weight assigned to them."
+>
+> "Strongest on Long-term waste reduction: best of the options compared, where higher is better."
+
+**Narration — this is the beat that earns the distinguishing claim:**
+> "Two independent things just agreed. The Swarm's synthesis says the inspection scores 0.87 against 0.20. Sift's deterministic engine, which has never seen a prompt, computed 87% and 20% from the household's own weights. That is not the model grading its own homework — it is a measurement the model happened to describe correctly, and if it had described it incorrectly Sift would have said so on this card."
+
+**And read the limitation, which is the strongest single line in the demo:**
+> "Long-term waste reduction is what puts Request an HVAC / thermostat inspection ahead. Take it out of the weighting and Switch to a different rate plan comes first instead."
+
+**Narration:**
+> "Sift didn't write that sentence from a template. It removed that one criterion, re-ranked, watched the order actually flip, and only then said it. When no single factor flips the order, it says nothing at all — so when it does speak, it has earned it. And notice the confidence: this recommendation is fully measured and decisively ahead, and it still caps itself below certainty, because coverage only counts the criteria this household actually wrote down."
 
 **On-screen action — snapshot/reload proof:** reload the browser tab. Point out the case reloads to the identical state — same recommendation, same pending approval — proving this is durable server state, not client memory.
 
