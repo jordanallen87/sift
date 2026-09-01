@@ -702,6 +702,77 @@ describe('deriveOptionProfile', () => {
     ).toBeNull();
   });
 
+  /**
+   * `markdown` exists so a surface with room for a formatted body can render
+   * one WITHOUT changing what `display` means. Every assertion here checks
+   * both fields together, because the whole value of the second field is
+   * that the first one did not move: a cell, a chip, and a comparison table
+   * still get the same plain string they always got.
+   */
+  it("markdown carries the raw source only for a text value declaring format: 'markdown', and display is unchanged beside it", () => {
+    const definitions = [buildDefinition({ id: 'fit', valueType: 'text', comparison: 'none' })];
+    const body = 'The opening is **wider** than listed.\n\n- 44 in across';
+    const option = buildOption('opt-1', { fit: { type: 'text', value: body, format: 'markdown' } });
+    const caseState = buildCaseState({ entities: [option], attributeDefinitions: definitions });
+    const attribute = deriveOptionProfile(caseState, 'opt-1', null)?.groups[0]?.attributes[0];
+    expect(attribute?.markdown).toBe(body);
+    // Verbatim, syntax and all -- a card rendering `display` is unaffected.
+    expect(attribute?.display).toBe(body);
+  });
+
+  it('markdown is null for a text value with no format, which is the backward-compatibility guarantee the optional field exists to give', () => {
+    const definitions = [buildDefinition({ id: 'fit', valueType: 'text', comparison: 'none' })];
+    const body = 'The opening is **wider** than listed.';
+    const option = buildOption('opt-1', { fit: { type: 'text', value: body } });
+    const caseState = buildCaseState({ entities: [option], attributeDefinitions: definitions });
+    const attribute = deriveOptionProfile(caseState, 'opt-1', null)?.groups[0]?.attributes[0];
+    expect(attribute?.markdown).toBeNull();
+    expect(attribute?.display).toBe(body);
+  });
+
+  it('markdown is null for every non-text value type, however formatted it looks', () => {
+    const definitions = [
+      buildDefinition({ id: 'price', valueType: 'money' }),
+      buildDefinition({ id: 'note', valueType: 'string', comparison: 'none' }),
+    ];
+    const option = buildOption('opt-1', {
+      price: { type: 'money', amount: 25000, currency: 'USD' },
+      note: { type: 'string', value: '**not markdown**' },
+    });
+    const caseState = buildCaseState({ entities: [option], attributeDefinitions: definitions });
+    const attributes = deriveOptionProfile(caseState, 'opt-1', null)?.groups[0]?.attributes ?? [];
+    for (const attribute of attributes) expect(attribute.markdown).toBeNull();
+  });
+
+  it('markdown is null for a whitespace-only body, so a row falls back to display rather than losing the value', () => {
+    const definitions = [buildDefinition({ id: 'fit', valueType: 'text', comparison: 'none' })];
+    const option = buildOption('opt-1', {
+      fit: { type: 'text', value: '   \n  ', format: 'markdown' },
+    });
+    const caseState = buildCaseState({ entities: [option], attributeDefinitions: definitions });
+    const attribute = deriveOptionProfile(caseState, 'opt-1', null)?.groups[0]?.attributes[0];
+    // `MarkdownText` renders nothing for whitespace, so a row that trusted
+    // `markdown` here would show no value at all.
+    expect(attribute?.markdown).toBeNull();
+  });
+
+  it('markdown is null for an attribute with no usable value at all', () => {
+    const definitions = [buildDefinition({ id: 'fit', valueType: 'text', comparison: 'none' })];
+    const unknownRecord: AttributeRecord = {
+      definitionId: 'fit',
+      label: 'Fit',
+      origin: 'agent_proposed',
+      sourceIds: [],
+      status: 'unknown',
+      updatedAt: FIXED_TIMESTAMP,
+    };
+    const option = buildOptionWithRecords('opt-1', { fit: unknownRecord });
+    const caseState = buildCaseState({ entities: [option], attributeDefinitions: definitions });
+    const attribute = deriveOptionProfile(caseState, 'opt-1', null)?.groups[0]?.attributes[0];
+    expect(attribute?.markdown).toBeNull();
+    expect(attribute?.display).toBeNull();
+  });
+
   it("status is null when no record exists at all, and 'unknown' when a record exists with that status -- deliberately different results, since conflating them is the fabrication rule this module exists against", () => {
     const definitions = [
       buildDefinition({ id: 'price', valueType: 'money' }),

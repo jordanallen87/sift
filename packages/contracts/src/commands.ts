@@ -24,6 +24,7 @@ import {
   ATTRIBUTE_COMPARISONS,
   ATTRIBUTE_ORIGINS,
   ATTRIBUTE_STATUSES,
+  TEXT_VALUE_FORMATS,
   CASE_ATTRIBUTE_ORIGINS,
   CRITERION_DIRECTIONS,
   CRITERION_KINDS,
@@ -294,11 +295,25 @@ export const SiftSetViewToolInputSchema = SetViewInputSchema;
 // defaulting to `'user'` when absent (preserving pre-existing behavior for
 // every caller that predates this field): the ONE calling agent decides,
 // per call, whether the concern it is submitting is something the human
-// just said (`'user'`, auto-`confirmed`) or something the agent itself
-// inferred and wants reviewed (`'agent_proposed'`, lands `pending` --
-// `packages/core/src/extensions.ts`'s `createCaseAttributeDefinition`
-// already implements this confirmation-gate rule; only the wire input was
-// missing the signal to reach it).
+// just said (`'user'`) or something the agent itself inferred
+// (`'agent_proposed'`).
+//
+// UPDATED by ADR 0011: `origin` no longer decides the confirmation state on
+// its own. The PACK does, via `extensionPolicy.allowCaseAttributes` -- where
+// the pack pre-authorizes case attributes, an agent-originated definition
+// lands `confirmed` with its provenance intact; where it forbids them, the
+// command is rejected outright. `origin` remains fully load-bearing for
+// three other things: it is recorded on the definition so the UI can say
+// who added it, it governs whether `values` must accompany the definition
+// (see `DefineCaseAttributeInputSchema` below), and it still gates
+// `status: 'verified'` -- only `origin: 'user'` may ever claim that
+// (`packages/core/src/attributes.ts`'s `attributeStatusOriginError`).
+//
+// Rationale, from the project owner: the conversation is the primary
+// surface, so a per-item confirmation click is one a user living in chat
+// would simply never see -- leaving the workspace quietly diverging from
+// what was discussed. Pre-authorization moves that judgment to the pack
+// author, once, where it can be reasoned about.
 
 const CaseAttributeDraftSchema = z
   .object({
@@ -314,14 +329,105 @@ const CaseAttributeDraftSchema = z
   })
   .strict();
 
+/**
+ * One option's answer for the attribute being defined.
+ *
+ * Either a real `value` (with the provenance any attribute record carries),
+ * or `status: 'unknown'` with a `reason`. There is no third option, and
+ * that is the entire point: a caller must ACCOUNT for every option it can
+ * see, and neither leaving a column half-blank nor inventing a value to
+ * avoid a blank is expressible.
+ */
+export const CaseAttributeValueDraftSchema = z
+  .object({
+    optionId: idString(),
+    value: AttributeValueSchema.optional(),
+    status: z.enum(ATTRIBUTE_STATUSES),
+    confidence: z.number().min(0).max(1).optional(),
+    sourceIds: z.array(idString()).max(50).optional(),
+    /** Required for `status: 'unknown'` -- an unknown must say WHY it could not be established, never just render blank. */
+    reason: safeString(2000).optional(),
+  })
+  .strict()
+  .superRefine((draft, ctx) => {
+    if (draft.status === 'unknown') {
+      if (draft.value !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['value'],
+          message: 'value must be absent when status is "unknown"',
+        });
+      }
+      if (draft.reason === undefined || draft.reason.trim() === '') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['reason'],
+          message:
+            'an unknown value must state why it could not be established -- a blank cell with no reason is indistinguishable from an oversight',
+        });
+      }
+      return;
+    }
+    if (draft.value === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['value'],
+        message: `value is required when status is "${draft.status}"`,
+      });
+    }
+  });
+
+/**
+ * Defining a comparison column and filling it in are ONE operation.
+ *
+ * Before this, `sift_define_case_attribute` created the column and
+ * `sift_set_option_attribute` filled cells, with nothing tying them
+ * together -- so a model could add "Dog crate fit" to the comparison and
+ * simply never populate it, and nothing in the product would notice or
+ * report it. An empty column is worse than no column: it reads as a real
+ * dimension the comparison failed to resolve.
+ *
+ * `values` must account for EVERY option the attribute applies to
+ * (enforced in the command service, which is the only layer that can see
+ * the case's entities). Each entry is a real value or an explicit,
+ * reasoned unknown -- so "I could not establish this for the Outback"
+ * stays a first-class, visible answer, and is never quietly the same thing
+ * as "nobody asked."
+ */
 export const DefineCaseAttributeInputSchema = z
   .object({
     caseId: idString(),
     expectedSequence,
     origin: z.enum(CASE_ATTRIBUTE_ORIGINS).optional(),
     definition: CaseAttributeDraftSchema,
+    values: z.array(CaseAttributeValueDraftSchema).max(50).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, ctx) => {
+    // The requirement is asymmetric by ORIGIN, and deliberately so.
+    //
+    // A person adding "dog crate fit" is saying *this matters, go find
+    // out* -- the obligation system then drives the research. Demanding
+    // they fill a cell for every saved option before the field can exist
+    // would invert that: it turns asking a question into answering it, and
+    // the visible `CustomConcernForm` would become unusable.
+    //
+    // A model adding a column has, by construction, just finished looking.
+    // An empty column from the model is the defect this field exists to
+    // prevent -- it reads as a real dimension the comparison failed to
+    // resolve, when in fact nobody ever tried. So an agent-originated
+    // definition must account for every option it can see; the command
+    // service checks the COVERAGE (it is the only layer that can see the
+    // case's entities), while this checks that an answer was offered at all.
+    if (input.origin === 'agent_proposed' && (input.values ?? []).length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['values'],
+        message:
+          'an agent-defined case attribute must supply a value (or an explicit, reasoned unknown) for every option it applies to -- defining a comparison column without filling it in leaves a dimension that reads as unresolved rather than unasked',
+      });
+    }
+  });
 export type DefineCaseAttributeInput = z.infer<typeof DefineCaseAttributeInputSchema>;
 
 /** Identical shape to `DefineCaseAttributeInput`. */
@@ -431,6 +537,18 @@ const SubmittedSourceInputSchema = z
     publishedAt: z.iso.datetime().optional(),
     retrievedAt: z.iso.datetime(),
     excerpt: safeString(5000).optional(),
+    /** Free-form labels for the case's reference library -- see `SourceSchema.tags`. */
+    tags: z.array(safeString(60)).max(20).optional(),
+    /** The submitter's own summary of why this reference matters, distinct from `excerpt` (a quotation FROM the source). See `SourceSchema.summary`. */
+    summary: safeString(20_000).optional(),
+    summaryFormat: z.enum(TEXT_VALUE_FORMATS).optional(),
+    /**
+     * Empty is legitimate and is what makes a reference LIBRARY possible: a
+     * paper or article can be worth keeping against the case as a whole
+     * before anyone has drawn a specific claim from it. `obligationId`
+     * below is likewise optional. A source with neither is a reference; a
+     * source with both is evidence.
+     */
     claims: z.array(SourceClaimInputSchema).max(50),
   })
   .strict();

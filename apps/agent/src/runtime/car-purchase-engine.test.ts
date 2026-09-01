@@ -466,8 +466,18 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
     );
     if (extension === undefined) throw new Error('test setup: dog-crate extension was not created');
 
-    // Still round1: proposed but not yet confirmed by a human.
-    expect(determineCarPurchaseRound(snapshot)).toBe('round1');
+    // ADR 0011 old->new: this used to assert `'round1'` ("proposed but not
+    // yet confirmed by a human"). The car-purchase pack pre-authorizes
+    // case-defined attributes (`extensionPolicy.allowCaseAttributes`), so
+    // the model's dog-crate concern now lands CONFIRMED the moment it is
+    // defined, carrying its `origin`/`reason` -- it does not wait for a
+    // click the household, talking in the conversation rather than the pane,
+    // would never see. `determineCarPurchaseRound` reads real case state and
+    // therefore reports round2 immediately, which is the true answer: the
+    // concern is live. The human's Confirm below is now a re-affirmation
+    // (and Reject remains available as the undo), not the gate that makes
+    // the concern count.
+    expect(determineCarPurchaseRound(snapshot)).toBe('round2');
 
     const confirmResult = commandService.reviewCaseExtension('cmd-confirm', {
       caseId,

@@ -51,10 +51,37 @@ export const StringAttributeValueSchema = z
   })
   .strict();
 
+/**
+ * Long-form text, optionally written as Markdown.
+ *
+ * `format` exists because a model asked to explain a custom comparison
+ * field has genuinely structured things to say -- a short lead, a couple of
+ * measurements as a list, a caveat -- and a single unbroken paragraph
+ * throws that structure away. It is OPTIONAL and absent means plain text,
+ * so every value written before this field existed keeps its exact meaning
+ * and (via canonicalization dropping `undefined`) its exact hash.
+ *
+ * **Markdown, never HTML, and this is a security boundary rather than a
+ * style preference.** Every string in these contracts goes through
+ * `safeString`, which rejects `<tag`, `javascript:`, and `on*=` handlers.
+ * That check exists precisely because much of this content is written by a
+ * model and rendered in the user's browser. Markdown needs none of what it
+ * blocks -- `**bold**`, lists, and `[links](https://...)` all pass through
+ * unchanged -- so formatting is gained here without weakening the control.
+ * Accepting an HTML variant would mean removing it.
+ *
+ * The renderer carries the other half of that boundary: no raw HTML
+ * passthrough, and link schemes restricted to http/https (`safeString`
+ * already blocks `javascript:`, but not, say, a `data:text/html` URL).
+ */
+export const TEXT_VALUE_FORMATS = ['markdown'] as const;
+export type TextValueFormat = (typeof TEXT_VALUE_FORMATS)[number];
+
 export const TextAttributeValueSchema = z
   .object({
     type: z.literal('text'),
     value: safeString(20_000),
+    format: z.enum(TEXT_VALUE_FORMATS).optional(),
   })
   .strict();
 

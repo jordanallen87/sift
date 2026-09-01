@@ -10,6 +10,31 @@
  * Deliberately avoids locale-dependent formatting (`Number.
  * toLocaleString`, `Intl.*`) so output is identical across every test/CI
  * environment's locale -- plain, explicit string composition instead.
+ *
+ * ## This returns a `string`, and a `text` value's Markdown is somebody
+ * ## else's job
+ *
+ * `TextAttributeValueSchema` may now carry `format: 'markdown'`
+ * (`packages/contracts/src/attributes.ts`), and this function deliberately
+ * IGNORES it: a Markdown `text` value returns the same plain string here as
+ * a plain one, syntax characters and all.
+ *
+ * That is a contract, not an omission. Every caller of this function --
+ * `OptionCompareView`'s cells, `OptionListView`'s and `OptionBoardView`'s
+ * card lines, `QuickPickView`'s comparison rows, `decision-profile`'s
+ * criterion targets -- needs ONE line of text that fits in a cell or a chip.
+ * Returning JSX, or a formatted block, would break each of them, and every
+ * one of those surfaces is an index rather than a place to read a body.
+ *
+ * The rich rendering lives alongside it instead:
+ * `option-profile.ts` carries the raw Markdown as a separate
+ * `OptionProfileAttribute.markdown` field, and `OptionProfileSheet` -- the
+ * one surface with room for a formatted body -- renders it through
+ * `MarkdownText.tsx`. `display` stays populated in that case too, so a
+ * surface that knows nothing about Markdown still shows the right text.
+ *
+ * If you are tempted to make this return a `ReactNode`: don't. Add the rich
+ * path next to the plain one, the way the profile sheet does.
  */
 import type { AttributeValue } from '@sift/contracts';
 

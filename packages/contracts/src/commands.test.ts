@@ -499,12 +499,86 @@ describe('DefineCaseAttributeInputSchema', () => {
     expect(userResult.success).toBe(true);
     expect(userResult.success && userResult.data.origin).toBe('user');
 
+    // An agent-originated definition must now ARRIVE WITH ITS VALUES (ADR
+    // 0011): a model adding a comparison column has by construction just
+    // finished looking, so an empty column from it reads as a dimension the
+    // comparison failed to resolve rather than one nobody asked about. The
+    // user branch above is deliberately unchanged -- a person adding a
+    // concern is asking a question, not answering it.
     const agentResult = DefineCaseAttributeInputSchema.safeParse({
       ...base,
       origin: 'agent_proposed',
+      values: [{ optionId: 'car-1', value: { type: 'boolean', value: true }, status: 'asserted' }],
     });
     expect(agentResult.success).toBe(true);
     expect(agentResult.success && agentResult.data.origin).toBe('agent_proposed');
+  });
+
+  it('rejects an agent-defined attribute that supplies no values at all -- a column the model never filled in', () => {
+    const result = DefineCaseAttributeInputSchema.safeParse({
+      caseId: 'case-1',
+      expectedSequence: 4,
+      origin: 'agent_proposed',
+      definition: {
+        id: 'custom.dog_crate_fit',
+        label: 'Dog crate fit',
+        valueType: 'boolean',
+        appliesTo: ['car'],
+        evidenceExpectation: 'assertion',
+        comparison: 'constraint',
+        reason: 'Two dog crates must fit in the cargo area.',
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toContain('every option it applies to');
+  });
+
+  it('accepts an explicit unknown as an answer, but only with a stated reason', () => {
+    // The rule that keeps "required values" from becoming a fabrication
+    // incentive: a model that genuinely cannot establish a value says so,
+    // and says why. Silence and invention are both unavailable.
+    const base = {
+      caseId: 'case-1',
+      expectedSequence: 4,
+      origin: 'agent_proposed',
+      definition: {
+        id: 'custom.dog_crate_fit',
+        label: 'Dog crate fit',
+        valueType: 'boolean',
+        appliesTo: ['car'],
+        evidenceExpectation: 'assertion',
+        comparison: 'constraint',
+        reason: 'Two dog crates must fit in the cargo area.',
+      },
+    } as const;
+
+    const reasoned = DefineCaseAttributeInputSchema.safeParse({
+      ...base,
+      values: [
+        { optionId: 'car-1', status: 'unknown', reason: 'No cargo-width spec is published.' },
+      ],
+    });
+    expect(reasoned.success).toBe(true);
+
+    const unreasoned = DefineCaseAttributeInputSchema.safeParse({
+      ...base,
+      values: [{ optionId: 'car-1', status: 'unknown' }],
+    });
+    expect(unreasoned.success).toBe(false);
+
+    // And an unknown may not smuggle a value alongside it.
+    const contradictory = DefineCaseAttributeInputSchema.safeParse({
+      ...base,
+      values: [
+        {
+          optionId: 'car-1',
+          status: 'unknown',
+          reason: 'No spec published.',
+          value: { type: 'boolean', value: true },
+        },
+      ],
+    });
+    expect(contradictory.success).toBe(false);
   });
 
   it('rejects an origin outside the CaseAttributeOrigin union (e.g. "pack")', () => {

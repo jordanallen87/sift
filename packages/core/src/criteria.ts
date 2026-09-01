@@ -128,14 +128,41 @@ export function removeCriterion(
  * "delete" and "reweight" are named as restricted for protected criteria —
  * so renaming is allowed regardless of protected status.
  */
+export interface RenameCriterionOptions {
+  /**
+   * Pack-required criteria, which may not be RELABELLED any more than they
+   * may be removed or reweighted.
+   *
+   * This gate was missing while `remove` and `reweight` both had it, which
+   * made the protection largely cosmetic: a WebMCP caller could not delete
+   * or down-weight a pack's mandatory `price` criterion, but could rename
+   * its label to anything at all. Since a criterion is identified to the
+   * user ONLY by its label -- the id never reaches the consumer surface --
+   * a silent relabel is indistinguishable from a substitution. The pack
+   * still requires "price"; the person now reads something else entirely,
+   * still weighted and still protected.
+   *
+   * Same shape as `ReweightCriterionOptions` deliberately: the caller
+   * resolves the manifest permission and this function only enforces it.
+   */
+  readonly protectedCriterionIds: readonly string[];
+}
+
 export function renameCriterion(
   criteria: readonly Criterion[],
   criterionId: string,
   label: string,
+  options: RenameCriterionOptions = { protectedCriterionIds: [] },
 ): DomainResult<Criterion[]> {
   const existing = findCriterion(criteria, criterionId);
   if (existing === undefined) {
     return fail(`criterion id "${criterionId}" was not found on this case`);
+  }
+
+  if (options.protectedCriterionIds.includes(criterionId)) {
+    return fail(
+      `criterion "${criterionId}" is required by this case's Decision Pack and may not be renamed`,
+    );
   }
 
   const parsed = CriterionSchema.safeParse({ ...existing, label });

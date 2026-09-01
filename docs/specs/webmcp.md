@@ -198,7 +198,7 @@ Effect: durable case extension via `append()` when the pack permits it. It never
 
 ### `sift_submit_source` — WRITE
 
-Submits a structured source discovered by the user or ChatGPT for bounded Sift investigation. This lets ChatGPT contribute research while Sift retains provenance, challenge, and readiness control.
+Submits a structured source discovered by the user or ChatGPT, and files it in the case's reference library. This lets ChatGPT contribute research while Sift retains provenance, challenge, and readiness control. Claims may be empty and obligationId may be omitted: a source with neither is a reference kept because it is relevant to the case (a paper, an article, a blog post, a spec sheet), and that is a first-class thing to store, not a degraded submission — supply claims and an obligationId only when the source actually answers a specific open question. Use tags (free-form, your own labels) so the library can be organised and browsed, and summary for your OWN account of why this reference matters — never a quotation, which belongs in excerpt. Set summaryFormat to markdown when the summary uses markdown; raw HTML is rejected. Call sift_list_research first to see which tags this case already uses, so related material files together instead of under a near-duplicate label.
 
 Input:
 
@@ -206,6 +206,7 @@ Input:
 {
   caseId: string
   expectedSequence: number
+  obligationId?: string
   source: {
     url: string
     title: string
@@ -213,12 +214,19 @@ Input:
     publishedAt?: string
     retrievedAt: string
     excerpt?: string
+    tags?: string[]
+    summary?: string
+    summaryFormat?: 'markdown'
     claims: Array<{ statement: string; appliesToEntityIds: string[] }>
   }
 }
 ```
 
 Effect: persists an unverified submitted source and starts no implicit network request. `source-challenger` must validate relevance, recency, contradiction, and support before it may satisfy an obligation.
+
+`tags`/`summary`/`summaryFormat` are the reference-library fields (`SourceSchema`, `packages/contracts/src/case.ts`) and are persisted onto the `Source` record. `tags` are normalised conservatively before storage — trimmed, empties dropped, de-duplicated case-insensitively with the submitter's own casing preserved for display — and are never mapped onto a controlled vocabulary: a reference library exists to collect material nobody anticipated. `summary` is the submitter's own account of why the reference matters and is never conflated with `excerpt`, which is a quotation from the source. `summaryFormat` is stored only alongside a `summary`.
+
+**Reference versus evidence.** A `Source` no `Claim.sourceIds`/`EvidenceLink.sourceId` names is a *reference*; one they name is *evidence*. Both are real records and both appear in the reference library UI (`apps/web/src/components/ReferenceLibrary.tsx`); the distinction is displayed, never used to rank or hide either kind.
 
 ### `sift_set_evidence_disposition` — WRITE
 
@@ -276,7 +284,7 @@ Effect: read-only. Returns `NOT_FOUND` for an option id that does not exist on t
 
 ### `sift_list_research` — READ
 
-Returns every source submitted to this case (title, publisher, URL, origin, verification status) and every claim recorded against it — a fuller, dedicated view than the small research summary embedded in `sift_get_case_context`. Use this when the user asks what has been researched so far, or before deciding whether more research is needed. It never marks a source as trusted or changes any evidence disposition; source verification remains Sift's own to decide.
+Returns this case's whole reference library — every source submitted to it (title, publisher, URL, origin, verification status, its tags, and the submitter's own summary) and every claim recorded against it — a fuller, dedicated view than the small research summary embedded in `sift_get_case_context`. This is durable memory you wrote earlier and can read back: use it when the user asks what has been researched so far, before deciding whether more research is needed, before submitting a source you may already have filed, and to reuse the case's existing tags rather than inventing a near-duplicate label. It never marks a source as trusted or changes any evidence disposition; source verification remains Sift's own to decide.
 
 Input:
 
@@ -284,7 +292,7 @@ Input:
 { caseId: string }
 ```
 
-Effect: read-only. Bounded to 50 sources and 50 claims, most-recently-submitted first, with the true total reported alongside.
+Effect: read-only. Bounded to 50 sources and 50 claims, most-recently-submitted first, with the true total reported alongside. Each source carries its `tags` (omitted when it has none) and its `summary`, truncated to 500 characters the same way `Claim.statement` and `CaseNote.body` already are; `excerpt` remains excluded from every model-facing projection.
 
 **Naming note:** this is distinct from `CaseNote` (see `sift_list_notes`/`sift_add_note` below). "Research" here means the `Source`/`Claim`/`EvidenceLink` model (change-set §27), populated through `sift_submit_source` and the deterministic investigation engines. A `CaseNote` is a lighter-weight, non-evidentiary record — an observation, question, preference, or reminder — that never becomes a `Source`/`Claim` and never influences evidence validity or readiness; the two concepts are stored, projected, and read by entirely separate tools.
 

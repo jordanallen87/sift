@@ -1348,6 +1348,33 @@ describe('CommandService', () => {
       };
     }
 
+    /**
+     * `startDemo()` seeds zero entities (this suite wires no
+     * `demoSeedEntities`), so every test about `values` needs real options
+     * on the case first -- added through the real, unmodified `upsertOption`
+     * command, not by writing entities into the store behind its back.
+     */
+    function withOptions(
+      base: CaseState,
+      labels: readonly string[],
+    ): { snapshot: CaseState; optionIds: string[] } {
+      let current = base;
+      const optionIds: string[] = [];
+      labels.forEach((label, index) => {
+        const result = service.upsertOption(`cmd-option-${index}`, {
+          caseId: current.id,
+          expectedSequence: current.eventSequence,
+          option: { label, kind: 'car', attributes: [] },
+        });
+        requireOk(result);
+        current = requireSnapshot(result.value);
+        const added = current.entities.find((entity) => entity.label === label);
+        if (added === undefined) throw new Error(`test setup: option "${label}" was not added`);
+        optionIds.push(added.id);
+      });
+      return { snapshot: current, optionIds };
+    }
+
     it('creates a confirmed user-origin extension by default (success)', () => {
       const snapshot = startDemo();
       const result = service.defineCaseAttribute(
@@ -1361,7 +1388,7 @@ describe('CommandService', () => {
       expect(updated.caseExtensions[0]?.definition.origin).toBe('user');
     });
 
-    it('creates a pending agent-proposed extension when origin is passed explicitly as the method parameter (pre-existing call shape, e.g. car-purchase-scenario.ts)', () => {
+    it('creates a CONFIRMED agent-proposed extension when origin is passed explicitly as the method parameter and the pinned pack pre-authorized case attributes (ADR 0011; pre-existing call shape, e.g. car-purchase-scenario.ts)', () => {
       const snapshot = startDemo();
       const result = service.defineCaseAttribute(
         'cmd-2',
@@ -1370,40 +1397,358 @@ describe('CommandService', () => {
       );
       requireOk(result);
       const updated = requireSnapshot(result.value);
-      expect(updated.caseExtensions[0]?.definition.confirmation).toBe('pending');
+      expect(updated.caseExtensions[0]?.definition.confirmation).toBe('confirmed');
+      expect(updated.caseExtensions[0]?.definition.origin).toBe('agent_proposed');
     });
 
-    it('creates a pending agent-proposed extension when origin is passed on the wire input itself, with NO third method argument (the real gap this task closes: routes/commands.ts and the WebMCP tool only ever call defineCaseAttribute(commandId, input))', () => {
-      const snapshot = startDemo();
+    it('an agent-defined attribute the pack permits lands CONFIRMED, with its values, carrying the provenance the UI needs to show who added it and offer an undo (ADR 0011)', () => {
+      const { snapshot, optionIds } = withOptions(startDemo(), ['Honda CR-V', 'Toyota RAV4']);
       const result = service.defineCaseAttribute('cmd-2', {
         ...draftInput(snapshot.id, snapshot.eventSequence),
         origin: 'agent_proposed',
+        values: [
+          {
+            optionId: optionIds[0]!,
+            status: 'supported',
+            value: { type: 'text', value: 'Cloth seats, no strong cabin odour reported.' },
+            confidence: 0.6,
+          },
+          {
+            optionId: optionIds[1]!,
+            status: 'supported',
+            value: { type: 'text', value: 'Synthetic leather; owners report a persistent smell.' },
+          },
+        ],
       });
       requireOk(result);
       const updated = requireSnapshot(result.value);
-      expect(updated.caseExtensions[0]?.definition.confirmation).toBe('pending');
-      expect(updated.caseExtensions[0]?.definition.origin).toBe('agent_proposed');
 
-      // The pending extension can then be confirmed through the existing
-      // review path (already wired -- this proves the whole round trip,
-      // not just the origin field landing).
-      const confirmed = service.reviewCaseExtension('cmd-3', {
-        caseId: updated.id,
-        extensionId: updated.caseExtensions[0]!.id,
-        decision: 'confirm',
-        expectedSequence: updated.eventSequence,
-      });
-      requireOk(confirmed);
-      expect(requireSnapshot(confirmed.value).caseExtensions[0]?.definition.confirmation).toBe(
-        'confirmed',
+      const extension = updated.caseExtensions[0];
+      expect(extension?.definition.confirmation).toBe('confirmed');
+      expect(extension?.definition.origin).toBe('agent_proposed');
+      expect(extension?.definition.proposedBy).toBe('model');
+      expect(extension?.definition.reason).toBe(
+        'The household has a dog that reacts badly to certain interiors.',
       );
+
+      // The column is not empty: every option it applies to carries a real
+      // record for it, with the model's own origin.
+      for (const optionId of optionIds) {
+        const record = updated.entities.find((entity) => entity.id === optionId)?.attributes[
+          'custom.pet_sensory_fit'
+        ];
+        expect(record?.status).toBe('supported');
+        expect(record?.origin).toBe('agent_proposed');
+        expect(record?.value).toBeDefined();
+      }
+      expect(
+        updated.entities.find((entity) => entity.id === optionIds[0])?.attributes[
+          'custom.pet_sensory_fit'
+        ]?.confidence,
+      ).toBe(0.6);
     });
 
-    it('creates a pending agent-proposed extension when it can also be rejected through the existing review path', () => {
-      const snapshot = startDemo();
+    it('rejects an agent-defined attribute outright when the pinned pack forbids case attributes, naming the pack and the policy (ADR 0011: forbidden means rejected, never silently ignored or downgraded)', () => {
+      const closedRegistry = new PackRegistry();
+      closedRegistry.register(
+        compilePack(
+          syntheticCarPurchaseManifest({
+            extensionPolicy: {
+              allowCaseAttributes: false,
+              allowCaseCriteria: false,
+              allowCaseObligations: false,
+              userConcernTemplateId: 'car.user_concern',
+            },
+          }),
+          syntheticCatalog(),
+          fixedClock,
+        ),
+      );
+      const closedStore = new MemoryCaseStore();
+      const closedService = new CommandService({
+        caseStore: closedStore,
+        activityStore: new InMemoryActivityStore(),
+        registry: closedRegistry,
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const started = closedService.startDemo('cmd-closed-start', { demoId: 'car-purchase' });
+      requireOk(started);
+      const snapshot = requireSnapshot(started.value);
+
+      const result = closedService.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'agent_proposed',
+        values: [
+          {
+            optionId: 'any-option',
+            status: 'asserted' as const,
+            value: { type: 'text' as const, value: 'anything' },
+          },
+        ],
+      });
+      expect(result.status).toBe('policy');
+      if (result.status !== 'policy') throw new Error('expected a policy failure');
+      expect(result.message).toContain('car-purchase');
+      expect(result.message).toContain('allowCaseAttributes');
+
+      // Rejected outright: no extension, and no weaker write left behind.
+      const after = closedStore.load(snapshot.id);
+      expect(after?.caseExtensions).toHaveLength(0);
+      expect(after?.eventSequence).toBe(snapshot.eventSequence);
+    });
+
+    it('rejects an agent-defined attribute that leaves an applicable option unaccounted for, naming the options it omitted', () => {
+      const { snapshot, optionIds } = withOptions(startDemo(), ['Honda CR-V', 'Toyota RAV4']);
       const result = service.defineCaseAttribute('cmd-2', {
         ...draftInput(snapshot.id, snapshot.eventSequence),
         origin: 'agent_proposed',
+        values: [
+          {
+            optionId: optionIds[0]!,
+            status: 'asserted',
+            value: { type: 'text', value: 'Cloth seats.' },
+          },
+        ],
+      });
+      expect(result.status).toBe('validation');
+      if (result.status !== 'validation') throw new Error('expected a validation failure');
+      expect(result.issues.join(' ')).toContain('Toyota RAV4');
+      expect(result.issues.join(' ')).not.toContain('Honda CR-V');
+    });
+
+    it('rejects a values entry naming an option that does not exist on the case', () => {
+      const { snapshot, optionIds } = withOptions(startDemo(), ['Honda CR-V']);
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'agent_proposed',
+        values: [
+          {
+            optionId: optionIds[0]!,
+            status: 'asserted',
+            value: { type: 'text', value: 'Cloth seats.' },
+          },
+          {
+            optionId: 'option-that-was-never-added',
+            status: 'asserted',
+            value: { type: 'text', value: 'Invented.' },
+          },
+        ],
+      });
+      expect(result.status).toBe('validation');
+      if (result.status !== 'validation') throw new Error('expected a validation failure');
+      expect(result.issues.join(' ')).toContain('option-that-was-never-added');
+    });
+
+    it('rejects two values entries for the same option: one option can only hold one value for one attribute', () => {
+      const { snapshot, optionIds } = withOptions(startDemo(), ['Honda CR-V']);
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'agent_proposed',
+        values: [
+          {
+            optionId: optionIds[0]!,
+            status: 'asserted',
+            value: { type: 'text', value: 'Cloth seats.' },
+          },
+          {
+            optionId: optionIds[0]!,
+            status: 'asserted',
+            value: { type: 'text', value: 'Leather seats.' },
+          },
+        ],
+      });
+      expect(result.status).toBe('validation');
+      if (result.status !== 'validation') throw new Error('expected a validation failure');
+      expect(result.issues.join(' ')).toContain('more than one entry');
+    });
+
+    it('rejects a values entry for an option the attribute does not apply to (appliesTo lists entity KINDS)', () => {
+      const snapshot = startDemo();
+      const seeded = service.upsertOption('cmd-option-other-kind', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        option: { label: 'Corner shop', kind: 'dealer', attributes: [] },
+      });
+      requireOk(seeded);
+      const withDealer = requireSnapshot(seeded.value);
+
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(withDealer.id, withDealer.eventSequence),
+        origin: 'agent_proposed',
+        values: [
+          {
+            optionId: withDealer.entities[0]!.id,
+            status: 'asserted',
+            value: { type: 'text', value: 'Not a car.' },
+          },
+        ],
+      });
+      expect(result.status).toBe('validation');
+      if (result.status !== 'validation') throw new Error('expected a validation failure');
+      expect(result.issues.join(' ')).toContain('appliesTo');
+    });
+
+    it('never truncates a long unknown reason to make room for the label Sift adds: the note falls back to the reason verbatim', () => {
+      const { snapshot, optionIds } = withOptions(startDemo(), ['Honda CR-V']);
+      // 1995 chars: within `safeString(2000)` on its own, but past it once
+      // the 15-character attribute label and ": " are prefixed.
+      const longReason = `No source covers this. ${'x'.repeat(1972)}`;
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'agent_proposed',
+        values: [{ optionId: optionIds[0]!, status: 'unknown', reason: longReason }],
+      });
+      requireOk(result);
+      const note = (requireSnapshot(result.value).notes ?? [])[0];
+      expect(note?.body).toBe(longReason);
+    });
+
+    it('persists an explicit unknown as a real status: "unknown" record carrying its reason -- distinguishable in stored state from an attribute nobody ever asked about', () => {
+      const { snapshot, optionIds } = withOptions(startDemo(), ['Honda CR-V', 'Toyota RAV4']);
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'agent_proposed',
+        values: [
+          {
+            optionId: optionIds[0]!,
+            status: 'supported',
+            value: { type: 'text', value: 'Cloth seats, no reported odour.' },
+          },
+          {
+            optionId: optionIds[1]!,
+            status: 'unknown',
+            reason: 'No owner report or specification covers cabin materials for this trim.',
+          },
+        ],
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+
+      const unknownRecord = updated.entities.find((entity) => entity.id === optionIds[1])
+        ?.attributes['custom.pet_sensory_fit'];
+      // The record EXISTS and says "unknown" -- it is not absent.
+      expect(unknownRecord).toBeDefined();
+      expect(unknownRecord?.status).toBe('unknown');
+      expect(unknownRecord?.value).toBeUndefined();
+
+      // And "nobody asked" still looks different in stored state: an
+      // attribute the definition never covered has no record at all.
+      expect(
+        updated.entities.find((entity) => entity.id === optionIds[1])?.attributes[
+          'custom.never_asked'
+        ],
+      ).toBeUndefined();
+
+      // The reason is durable, option-linked, and attributed to the model.
+      const note = (updated.notes ?? []).find((entry) => entry.optionIds.includes(optionIds[1]!));
+      expect(note?.body).toContain(
+        'No owner report or specification covers cabin materials for this trim.',
+      );
+      expect(note?.origin).toBe('agent_proposed');
+      expect(note?.authoredBy).toBe('model');
+    });
+
+    it('applies the definition and every value in ONE transactional append: a rejected value leaves no partial state at all', () => {
+      const { snapshot, optionIds } = withOptions(startDemo(), ['Honda CR-V', 'Toyota RAV4']);
+      const before = caseStore.load(snapshot.id);
+
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'agent_proposed',
+        values: [
+          {
+            optionId: optionIds[0]!,
+            status: 'asserted',
+            value: { type: 'text', value: 'Cloth seats.' },
+          },
+          {
+            // A number value for a `text` attribute: rejected by the real
+            // `normalizeAttributeValue`, after the first entry above was
+            // already assembled.
+            optionId: optionIds[1]!,
+            status: 'asserted',
+            value: { type: 'number', value: 42 },
+          },
+        ],
+      });
+      expect(result.status).toBe('validation');
+
+      const after = caseStore.load(snapshot.id);
+      expect(after?.eventSequence).toBe(before?.eventSequence);
+      expect(after?.caseExtensions).toHaveLength(0);
+      expect(
+        after?.entities.find((entity) => entity.id === optionIds[0])?.attributes[
+          'custom.pet_sensory_fit'
+        ],
+      ).toBeUndefined();
+      expect(after?.notes ?? []).toHaveLength(0);
+    });
+
+    it('still refuses status "verified" from an agent origin -- pre-authorizing an EXTENSION never pre-authorizes a human attestation (attributeStatusOriginError, unchanged)', () => {
+      const { snapshot, optionIds } = withOptions(startDemo(), ['Honda CR-V']);
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'agent_proposed',
+        values: [
+          {
+            optionId: optionIds[0]!,
+            status: 'verified',
+            value: { type: 'text', value: 'I checked it myself.' },
+          },
+        ],
+      });
+      expect(result.status).toBe('validation');
+      if (result.status !== 'validation') throw new Error('expected a validation failure');
+      expect(result.issues.join(' ')).toContain('only origin "user"');
+
+      // ...and the same claim from a real human origin is accepted, so the
+      // rule above is about WHO is claiming, not about the status existing.
+      const asUser = service.defineCaseAttribute('cmd-3', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'user',
+        values: [
+          {
+            optionId: optionIds[0]!,
+            status: 'verified',
+            value: { type: 'text', value: 'I checked it myself.' },
+          },
+        ],
+      });
+      requireOk(asUser);
+      expect(
+        requireSnapshot(asUser.value).entities[0]?.attributes['custom.pet_sensory_fit']?.status,
+      ).toBe('verified');
+    });
+
+    it("a user-origin definition still needs no values at all: absent means exactly today's behavior (the visible CustomConcernForm path)", () => {
+      const { snapshot } = withOptions(startDemo(), ['Honda CR-V', 'Toyota RAV4']);
+      const result = service.defineCaseAttribute(
+        'cmd-2',
+        draftInput(snapshot.id, snapshot.eventSequence),
+      );
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.caseExtensions[0]?.definition.confirmation).toBe('confirmed');
+      expect(updated.eventSequence).toBe(snapshot.eventSequence + 1);
+      for (const entity of updated.entities) {
+        expect(entity.attributes['custom.pet_sensory_fit']).toBeUndefined();
+      }
+    });
+
+    it('an agent-defined extension can still be rejected afterwards -- the undo ADR 0011 promises', () => {
+      const { snapshot, optionIds } = withOptions(startDemo(), ['Honda CR-V']);
+      const result = service.defineCaseAttribute('cmd-2', {
+        ...draftInput(snapshot.id, snapshot.eventSequence),
+        origin: 'agent_proposed',
+        values: [
+          {
+            optionId: optionIds[0]!,
+            status: 'asserted',
+            value: { type: 'text', value: 'Cloth seats.' },
+          },
+        ],
       });
       requireOk(result);
       const updated = requireSnapshot(result.value);
@@ -1525,7 +1870,18 @@ describe('CommandService', () => {
   });
 
   describe('reviewCaseExtension', () => {
-    function withPendingExtension(): { snapshot: CaseState; extensionId: string } {
+    /**
+     * ADR 0011 old->new: this helper used to be `withPendingExtension`, and
+     * an `'agent_proposed'` definition genuinely landed `pending`. It cannot
+     * any more -- the synthetic pack pre-authorizes case attributes
+     * (`extensionPolicy.allowCaseAttributes: true`), so an agent-defined
+     * extension lands `confirmed`, and a pack that forbids them rejects the
+     * command outright rather than producing a pending one. `pending` is
+     * therefore no longer reachable through `CommandService`, which is
+     * exactly why `reviewCaseExtension` is now the human's authority in both
+     * directions rather than a one-way gate.
+     */
+    function withAgentDefinedExtension(): { snapshot: CaseState; extensionId: string } {
       const snapshot = startDemo();
       const result = service.defineCaseAttribute(
         'cmd-2',
@@ -1551,8 +1907,8 @@ describe('CommandService', () => {
       return { snapshot: updated, extensionId };
     }
 
-    it('confirms a pending extension (success)', () => {
-      const { snapshot, extensionId } = withPendingExtension();
+    it('confirming an agent-defined extension succeeds and leaves it confirmed (ADR 0011: a re-affirmation, since a pre-authorized extension already landed confirmed)', () => {
+      const { snapshot, extensionId } = withAgentDefinedExtension();
       const result = service.reviewCaseExtension('cmd-3', {
         caseId: snapshot.id,
         extensionId,
@@ -1585,7 +1941,7 @@ describe('CommandService', () => {
     });
 
     it('returns conflict for a stale expectedSequence', () => {
-      const { snapshot, extensionId } = withPendingExtension();
+      const { snapshot, extensionId } = withAgentDefinedExtension();
       const result = service.reviewCaseExtension('cmd-3', {
         caseId: snapshot.id,
         extensionId,
@@ -1596,7 +1952,7 @@ describe('CommandService', () => {
     });
 
     it('rejects reviewing an unknown extensionId (validation)', () => {
-      const { snapshot } = withPendingExtension();
+      const { snapshot } = withAgentDefinedExtension();
       const result = service.reviewCaseExtension('cmd-3', {
         caseId: snapshot.id,
         extensionId: 'does-not-exist',
@@ -1606,12 +1962,12 @@ describe('CommandService', () => {
       expect(result.status).toBe('validation');
     });
 
-    it('rejects reviewing an already-decided extension (validation, from the core domain function)', () => {
-      const { snapshot, extensionId } = withPendingExtension();
+    it('rejects reviewing an already-REJECTED extension (validation, from the core domain function): rejection is terminal, and nothing revives it', () => {
+      const { snapshot, extensionId } = withAgentDefinedExtension();
       const first = service.reviewCaseExtension('cmd-3', {
         caseId: snapshot.id,
         extensionId,
-        decision: 'confirm',
+        decision: 'reject',
         expectedSequence: snapshot.eventSequence,
       });
       requireOk(first);
@@ -1623,10 +1979,13 @@ describe('CommandService', () => {
         expectedSequence: updated.eventSequence,
       });
       expect(second.status).toBe('validation');
+      expect(caseStore.load(snapshot.id)?.caseExtensions[0]?.definition.confirmation).toBe(
+        'rejected',
+      );
     });
 
     it('is idempotent: retrying the same commandId returns the original result', () => {
-      const { snapshot, extensionId } = withPendingExtension();
+      const { snapshot, extensionId } = withAgentDefinedExtension();
       const input = {
         caseId: snapshot.id,
         extensionId,
@@ -1641,7 +2000,7 @@ describe('CommandService', () => {
     });
 
     it('rejects a pending extension and records a "Rejected" activity summary (every other test above only ever confirms)', () => {
-      const { snapshot, extensionId } = withPendingExtension();
+      const { snapshot, extensionId } = withAgentDefinedExtension();
       const result = service.reviewCaseExtension('cmd-3', {
         caseId: snapshot.id,
         extensionId,
@@ -1659,7 +2018,7 @@ describe('CommandService', () => {
     });
 
     it('returns a 409-shaped conflict when the underlying append() call itself detects the case has advanced', () => {
-      const { snapshot, extensionId } = withPendingExtension();
+      const { snapshot, extensionId } = withAgentDefinedExtension();
       const advanced = service.upsertOption('cmd-real', {
         caseId: snapshot.id,
         expectedSequence: snapshot.eventSequence,
@@ -1685,7 +2044,7 @@ describe('CommandService', () => {
     });
 
     it('invalidates a ready recommendation when confirming an extension an active criterion already depends on (item 4)', () => {
-      const { snapshot, extensionId } = withPendingExtension();
+      const { snapshot, extensionId } = withAgentDefinedExtension();
 
       const criteriaResult = service.updateCriteria('cmd-criteria', {
         caseId: snapshot.id,
@@ -1752,7 +2111,7 @@ describe('CommandService', () => {
     });
 
     it('does NOT invalidate a ready recommendation when confirming an extension no active criterion references (precision)', () => {
-      const { snapshot, extensionId } = withPendingExtension();
+      const { snapshot, extensionId } = withAgentDefinedExtension();
 
       const appended = caseStore.append(
         snapshot.id,
@@ -1796,8 +2155,8 @@ describe('CommandService', () => {
       expect(updated.recommendation?.status).toBe('ready');
     });
 
-    it('does NOT invalidate a ready recommendation when REJECTING a pending extension (item 4 scopes invalidation to confirm only)', () => {
-      const { snapshot, extensionId } = withPendingExtension();
+    it('DOES invalidate a ready recommendation when rejecting a CONFIRMED extension an active criterion depends on -- the ADR 0011 undo takes away a column the recommendation was computed from', () => {
+      const { snapshot, extensionId } = withAgentDefinedExtension();
 
       const criteriaResult = service.updateCriteria('cmd-criteria', {
         caseId: snapshot.id,
@@ -1858,7 +2217,56 @@ describe('CommandService', () => {
       });
       requireOk(result);
       const updated = requireSnapshot(result.value);
-      expect(updated.recommendation?.status).toBe('ready');
+      expect(updated.recommendation?.status).toBe('stale');
+      expect(
+        activityStore
+          .replayFrom(appended.snapshot.id, 0)
+          .some((event) => event.type === 'recommendation.invalidated'),
+      ).toBe(true);
+    });
+
+    it('does NOT invalidate a ready recommendation when rejecting an extension no active criterion references (precision, the reject side of the same rule)', () => {
+      const { snapshot, extensionId } = withAgentDefinedExtension();
+
+      const appended = caseStore.append(
+        snapshot.id,
+        [
+          {
+            eventId: 'ev-rec',
+            caseId: snapshot.id,
+            sequence: snapshot.eventSequence + 1,
+            timestamp: FIXED_NOW,
+            type: 'recommendation.ready',
+            payload: {
+              recommendation: {
+                id: 'rec-1',
+                status: 'ready',
+                favoredOptionId: null,
+                rationale: 'because',
+                facts: [],
+                hypotheses: [],
+                confidence: 0.5,
+                limitations: [],
+                sourceIds: [],
+                resolvedObligationIds: [],
+                acceptedUncertaintyObligationIds: [],
+                generatedAt: FIXED_NOW,
+              },
+            },
+          },
+        ],
+        snapshot.eventSequence,
+      );
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+
+      const result = service.reviewCaseExtension('cmd-reject', {
+        caseId: appended.snapshot.id,
+        extensionId,
+        decision: 'reject',
+        expectedSequence: appended.snapshot.eventSequence,
+      });
+      requireOk(result);
+      expect(requireSnapshot(result.value).recommendation?.status).toBe('ready');
     });
   });
 
@@ -2208,7 +2616,23 @@ describe('CommandService', () => {
       const result = service.updateCriteria('cmd-2', {
         caseId: snapshot.id,
         expectedSequence: snapshot.eventSequence + 1,
-        operations: [{ op: 'rename', criterionId: 'price', label: 'Price (renamed)' }],
+        // `rename` on 'price' was the vehicle here until ADR 0011 made
+        // protected criteria unrenameable as well as unremovable. This
+        // test is about invalidation/idempotency/conflict, not about
+        // rename, so it uses a legal mutation instead; the assertions
+        // below are unchanged.
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'custom.comfort',
+              label: 'Comfort',
+              kind: 'preference',
+              weight: 40,
+              direction: 'higher_better',
+            },
+          },
+        ],
       });
       expect(result.status).toBe('conflict');
     });
@@ -2250,7 +2674,23 @@ describe('CommandService', () => {
       const result = service.updateCriteria('cmd-3', {
         caseId: snapshot.id,
         expectedSequence: withRecommendation.eventSequence,
-        operations: [{ op: 'rename', criterionId: 'price', label: 'Price (renamed)' }],
+        // `rename` on 'price' was the vehicle here until ADR 0011 made
+        // protected criteria unrenameable as well as unremovable. This
+        // test is about invalidation/idempotency/conflict, not about
+        // rename, so it uses a legal mutation instead; the assertions
+        // below are unchanged.
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'custom.comfort',
+              label: 'Comfort',
+              kind: 'preference',
+              weight: 40,
+              direction: 'higher_better',
+            },
+          },
+        ],
       });
       requireOk(result);
       const updated = requireSnapshot(result.value);
@@ -2265,7 +2705,23 @@ describe('CommandService', () => {
       const input = {
         caseId: snapshot.id,
         expectedSequence: snapshot.eventSequence,
-        operations: [{ op: 'rename' as const, criterionId: 'price', label: 'Price (renamed)' }],
+        // `rename` on 'price' was the vehicle here until ADR 0011 made
+        // protected criteria unrenameable as well as unremovable. This
+        // test is about invalidation/idempotency/conflict, not about
+        // rename, so it uses a legal mutation instead; the assertions
+        // below are unchanged.
+        operations: [
+          {
+            op: 'add' as const,
+            criterion: {
+              id: 'custom.comfort',
+              label: 'Comfort',
+              kind: 'preference',
+              weight: 40,
+              direction: 'higher_better',
+            },
+          },
+        ],
       };
       const first = service.updateCriteria('cmd-2', input);
       requireOk(first);
@@ -2294,7 +2750,23 @@ describe('CommandService', () => {
       const result = staleReadService.updateCriteria('cmd-race', {
         caseId: snapshot.id,
         expectedSequence: snapshot.eventSequence,
-        operations: [{ op: 'rename', criterionId: 'price', label: 'Price (renamed again)' }],
+        // `rename` on 'price' was the vehicle here until ADR 0011 made
+        // protected criteria unrenameable as well as unremovable. This
+        // test is about invalidation/idempotency/conflict, not about
+        // rename, so it uses a legal mutation instead; the assertions
+        // below are unchanged.
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'custom.comfort',
+              label: 'Comfort',
+              kind: 'preference',
+              weight: 40,
+              direction: 'higher_better',
+            },
+          },
+        ],
       });
       expect(result.status).toBe('conflict');
     });
@@ -2538,6 +3010,134 @@ describe('CommandService', () => {
       expect(updated.sources).toHaveLength(1);
       expect(updated.claims).toHaveLength(0);
       expect(updated.eventSequence).toBe(snapshot.eventSequence);
+    });
+
+    // --- Reference-library fields: tags / summary / summaryFormat ---
+    //
+    // `SourceSchema` (packages/contracts/src/case.ts) carries `tags`,
+    // `summary`, and `summaryFormat` so the case's sources can be browsed and
+    // organised as a reference library. `submitSource` is the only writer of
+    // a `Source` record on this path, so these tests pin that it actually
+    // persists them (and how it normalises tags) rather than quietly
+    // accepting and discarding them.
+
+    it('persists tags, summary, and summaryFormat onto the Source record', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        source: {
+          url: 'https://example.com/paper',
+          title: 'Long-term reliability study',
+          retrievedAt: FIXED_NOW,
+          tags: ['Reliability', 'Research paper'],
+          summary: 'Ten-year failure rates, broken down by drivetrain.',
+          summaryFormat: 'markdown',
+          claims: [],
+        },
+      });
+      requireOk(result);
+      const stored = requireSnapshot(result.value).sources[0];
+      expect(stored?.tags).toEqual(['Reliability', 'Research paper']);
+      expect(stored?.summary).toBe('Ten-year failure rates, broken down by drivetrain.');
+      expect(stored?.summaryFormat).toBe('markdown');
+    });
+
+    it('accepts a source with no claims and no obligationId as a plain reference (no claim, no evidence link, no sequence advance)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        source: {
+          url: 'https://example.com/blog',
+          title: 'A blog post worth keeping',
+          retrievedAt: FIXED_NOW,
+          tags: ['Background'],
+          claims: [],
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.sources).toHaveLength(1);
+      expect(updated.sources[0]?.tags).toEqual(['Background']);
+      expect(updated.claims).toHaveLength(0);
+      expect(updated.evidenceLinks).toHaveLength(0);
+      expect(updated.eventSequence).toBe(snapshot.eventSequence);
+    });
+
+    it('normalises tags conservatively: trims, drops empties, de-duplicates case-insensitively, and keeps the submitter’s first casing', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        source: {
+          url: 'https://example.com/paper',
+          title: 'Study',
+          retrievedAt: FIXED_NOW,
+          tags: ['  Reliability  ', '', '   ', 'reliability', 'RELIABILITY', 'Safety'],
+          claims: [],
+        },
+      });
+      requireOk(result);
+      // First occurrence wins, with its own casing preserved for display --
+      // never lowercased destructively, and never turned into a controlled
+      // vocabulary.
+      expect(requireSnapshot(result.value).sources[0]?.tags).toEqual(['Reliability', 'Safety']);
+    });
+
+    it('omits `tags` entirely when every submitted tag normalises away (never stores an empty array)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        source: {
+          url: 'https://example.com/paper',
+          title: 'Study',
+          retrievedAt: FIXED_NOW,
+          tags: ['   ', ''],
+          claims: [],
+        },
+      });
+      requireOk(result);
+      expect(requireSnapshot(result.value).sources[0]?.tags).toBeUndefined();
+    });
+
+    it('omits `summaryFormat` when no `summary` accompanies it (a format for absent text describes nothing)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        source: {
+          url: 'https://example.com/paper',
+          title: 'Study',
+          retrievedAt: FIXED_NOW,
+          summaryFormat: 'markdown',
+          claims: [],
+        },
+      });
+      requireOk(result);
+      const stored = requireSnapshot(result.value).sources[0];
+      expect(stored?.summary).toBeUndefined();
+      expect(stored?.summaryFormat).toBeUndefined();
+    });
+
+    it('leaves tags, summary, and summaryFormat absent when the caller supplies none (never fabricates a tag)', () => {
+      const snapshot = startDemo();
+      const result = service.submitSource('cmd-2', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        source: {
+          url: 'https://example.com/paper',
+          title: 'Study',
+          retrievedAt: FIXED_NOW,
+          claims: [],
+        },
+      });
+      requireOk(result);
+      const stored = requireSnapshot(result.value).sources[0];
+      expect(stored?.tags).toBeUndefined();
+      expect(stored?.summary).toBeUndefined();
+      expect(stored?.summaryFormat).toBeUndefined();
     });
 
     it('is idempotent for the claim-linking path too: retrying the same commandId does not double-create claims or the source', () => {

@@ -187,6 +187,80 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     expect(JSON.stringify(response.body)).not.toContain('simulated store failure');
   });
 
+  it('round-trips a model-defined comparison column AND its values through real HTTP and real SQLite in one transaction, including an explicit reasoned unknown (ADR 0011)', async () => {
+    harness = createHttpTestHarness();
+    const { caseId, expectedSequence: afterDemo } = await startDemo();
+
+    const first = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/upsertOption`)
+      .set('Idempotency-Key', 'cmd-opt-1')
+      .send({
+        caseId,
+        expectedSequence: afterDemo,
+        option: { label: 'Honda CR-V', kind: 'car', attributes: [] },
+      });
+    const second = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/upsertOption`)
+      .set('Idempotency-Key', 'cmd-opt-2')
+      .send({
+        caseId,
+        expectedSequence: asJson<CommandReceipt>(first.body).acceptedSequence,
+        option: { label: 'Toyota RAV4', kind: 'car', attributes: [] },
+      });
+    const seeded = asJson<CommandReceipt>(second.body);
+    const optionIds = (seeded.snapshot?.entities ?? []).map((entity) => entity.id);
+    expect(optionIds).toHaveLength(2);
+
+    const defined = await request(harness.app)
+      .post(`/api/cases/${caseId}/commands/defineCaseAttribute`)
+      .set('Idempotency-Key', 'cmd-define-with-values')
+      .send({
+        caseId,
+        expectedSequence: seeded.acceptedSequence,
+        origin: 'agent_proposed',
+        definition: {
+          id: 'custom.dog_crate_fit',
+          label: 'Both dog crates fit',
+          valueType: 'boolean',
+          appliesTo: ['car'],
+          evidenceExpectation: 'verification',
+          comparison: 'target',
+          reason: 'The household travels with two crates.',
+        },
+        values: [
+          { optionId: optionIds[0], status: 'supported', value: { type: 'boolean', value: true } },
+          {
+            optionId: optionIds[1],
+            status: 'unknown',
+            reason: 'No published cargo dimensions cover this trim.',
+          },
+        ],
+      });
+    expect(defined.status, JSON.stringify(defined.body)).toBe(200);
+
+    // Read back from the migrated SQLite store, not from the response body.
+    const persisted = harness.caseStore.load(caseId);
+    expect(persisted?.caseExtensions[0]?.definition.confirmation).toBe('confirmed');
+    expect(persisted?.caseExtensions[0]?.definition.origin).toBe('agent_proposed');
+
+    const answered = persisted?.entities.find((entity) => entity.id === optionIds[0]);
+    expect(answered?.attributes['custom.dog_crate_fit']?.status).toBe('supported');
+    expect(answered?.attributes['custom.dog_crate_fit']?.value).toEqual({
+      type: 'boolean',
+      value: true,
+    });
+
+    // The explicit unknown survives as a real record, not as an absent one.
+    const unresolved = persisted?.entities.find((entity) => entity.id === optionIds[1]);
+    expect(unresolved?.attributes['custom.dog_crate_fit']?.status).toBe('unknown');
+    expect(unresolved?.attributes['custom.dog_crate_fit']?.value).toBeUndefined();
+    expect(
+      (persisted?.notes ?? []).some((note) =>
+        note.body.includes('No published cargo dimensions cover this trim.'),
+      ),
+    ).toBe(true);
+  });
+
   it('dispatches setView through real HTTP, persisting the view without advancing eventSequence (ADR 0005)', async () => {
     harness = createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
@@ -311,14 +385,20 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
 
     // The default command-service.ts `origin` is `'user'` (auto-confirmed)
     // for the plain HTTP command path, so this extension is already
-    // confirmed -- reviewCaseExtension correctly rejects re-reviewing it,
-    // still exercising the real dispatch branch and its validation path.
+    // confirmed. Per ADR 0011 that is an idempotent re-affirmation, not an
+    // error: `reviewCaseExtension` is the human's authority over an
+    // extension in both directions (re-confirm, or reject as the undo), and
+    // only an already-REJECTED extension is terminal. The real dispatch
+    // branch is exercised either way; the terminal-rejection validation path
+    // is covered in `command-service.test.ts`.
     const reviewed = await request(harness.app)
       .post(`/api/cases/${caseId}/commands/reviewCaseExtension`)
       .set('Idempotency-Key', 'cmd-review-ext')
       .send({ caseId, extensionId, decision: 'confirm', expectedSequence: afterDefine });
-    expect(reviewed.status).toBe(400);
-    expect(asJson<HttpErrorBody>(reviewed.body).error.code).toBe('VALIDATION');
+    expect(reviewed.status).toBe(200);
+    const reviewedReceipt = asJson<CommandReceipt>(reviewed.body);
+    expect(reviewedReceipt.snapshot?.caseExtensions[0]?.definition.confirmation).toBe('confirmed');
+    const afterReview = reviewedReceipt.acceptedSequence;
 
     // Seed an evidence link and a pending proposal directly via the store
     // (no command in this task's scope both creates AND exposes one over
@@ -332,7 +412,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
         {
           eventId: 'seed-evidence',
           caseId,
-          sequence: afterDefine + 1,
+          sequence: afterReview + 1,
           timestamp: '2026-08-27T00:00:00.000Z',
           type: 'evidence.accepted',
           payload: {
@@ -352,7 +432,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
         {
           eventId: 'seed-recommendation',
           caseId,
-          sequence: afterDefine + 2,
+          sequence: afterReview + 2,
           timestamp: '2026-08-27T00:00:00.000Z',
           type: 'recommendation.ready',
           payload: {
@@ -375,7 +455,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
         {
           eventId: 'seed-proposal',
           caseId,
-          sequence: afterDefine + 3,
+          sequence: afterReview + 3,
           timestamp: '2026-08-27T00:00:00.000Z',
           type: 'proposal.reviewed',
           payload: {
@@ -388,7 +468,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
           },
         },
       ],
-      afterDefine,
+      afterReview,
     );
     const seeded = harness.caseStore.load(caseId);
     const afterSeed = seeded?.eventSequence;

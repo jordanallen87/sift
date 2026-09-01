@@ -235,6 +235,7 @@ import { FilterBar } from '../components/FilterBar.js';
 import { FilterSheet } from '../components/FilterSheet.js';
 import { applyWorkspaceFilters } from '../components/workspace-filters.js';
 import { OptionProfileSheet } from '../components/OptionProfileSheet.js';
+import { ReferenceLibrarySheet } from '../components/ReferenceLibrary.js';
 import { deriveOptionProfile } from '../components/option-profile.js';
 import { useWidthMode } from '../hooks/use-width-mode.js';
 import { Button } from '@/components/ui/button';
@@ -442,6 +443,10 @@ export function App() {
   // snapshot, so a live run that adds evidence about this option updates the
   // sheet under the reader instead of freezing a copy taken when it opened.
   const [profileOptionId, setProfileOptionId] = useState<string | null>(null);
+  // The case's reference library -- every `Source` on the case, tagged and
+  // browsable. Global chrome like the other sheets: it is the model's
+  // durable memory made legible, and must be reachable in both layouts.
+  const [referenceLibraryOpen, setReferenceLibraryOpen] = useState(false);
   const [resetPending, setResetPending] = useState(false);
   const [runRequestPending, setRunRequestPending] = useState(false);
   const [runRequestError, setRunRequestError] = useState<string | null>(null);
@@ -1485,6 +1490,8 @@ export function App() {
           optionCount={optionsCount}
           onAddOption={() => setManageOptionsSheetOpen(true)}
           onReviewFindings={() => setFindingsSheetOpen(true)}
+          onOpenReferenceLibrary={() => setReferenceLibraryOpen(true)}
+          referenceCount={snapshot?.sources.length ?? 0}
           onOpenDeveloperView={handleOpenDeveloperView}
           onResetDemo={handleResetDemo}
           resetPending={resetPending}
@@ -1770,6 +1777,19 @@ export function App() {
         }}
         profile={openProfile}
         presentation={activePack?.presentation ?? null}
+      />
+
+      <ReferenceLibrarySheet
+        open={referenceLibraryOpen}
+        onOpenChange={setReferenceLibraryOpen}
+        sources={snapshot?.sources ?? []}
+        // `claims`/`evidenceLinks` are REQUIRED, not decorative: they are
+        // the only way to tell a REFERENCE (kept because it is relevant)
+        // from EVIDENCE (it answers a specific question). Passing them
+        // empty would label every evidence source a bare reference --
+        // a false claim about the case, not a cosmetic downgrade.
+        claims={snapshot?.claims ?? []}
+        evidenceLinks={snapshot?.evidenceLinks ?? []}
       />
 
       <FilterSheet

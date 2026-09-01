@@ -926,6 +926,173 @@ describe('OptionProfileSheet', () => {
     });
   });
 
+  /**
+   * The two halves of the optional `format` field, checked against each
+   * other. A value that declares `format: 'markdown'` gets a formatted body;
+   * an identical value that declares nothing gets the syntax shown verbatim.
+   * The second case is the backward-compatibility guarantee the field exists
+   * to give, and it is asserted here rather than assumed, because the whole
+   * argument for making the field optional was that every value written
+   * before it existed keeps its exact meaning.
+   */
+  describe('a text value that declares format: markdown', () => {
+    const MARKDOWN_BODY = [
+      'The rear opening is **wider than the listing suggests**.',
+      '',
+      '- Opening: 44 in',
+      '- Load floor: 30 in',
+      '',
+      'Measured against [the manufacturer sheet](https://example.com/sheet).',
+    ].join('\n');
+
+    /** One profile whose single `custom.*` row carries the given text value. */
+    function markdownProfile(value: { value: string; format?: 'markdown' }) {
+      const definition = buildDefinition({
+        id: 'custom.load_area',
+        label: 'Load area',
+        valueType: 'text',
+      });
+      return buildProfile(
+        {
+          attributeDefinitions: [definition],
+          entities: [
+            {
+              ...OPTION,
+              attributes: {
+                'custom.load_area': {
+                  definitionId: 'custom.load_area',
+                  label: 'Load area',
+                  value: { type: 'text', ...value },
+                  origin: 'agent_proposed',
+                  sourceIds: [],
+                  status: 'asserted',
+                  updatedAt: TIMESTAMP,
+                },
+              },
+            },
+          ],
+        },
+        null,
+      );
+    }
+
+    it('renders the structure the model actually wrote, rather than one unbroken paragraph', () => {
+      render(
+        <OptionProfileSheet
+          {...props({ profile: markdownProfile({ value: MARKDOWN_BODY, format: 'markdown' }) })}
+        />,
+      );
+      const row = screen.getByTestId('option-profile-attribute-custom.load_area');
+      expect(within(row).getByText('wider than the listing suggests').tagName).toBe('STRONG');
+      expect(within(row).getAllByRole('listitem')).toHaveLength(2);
+      const link = within(row).getByRole('link', { name: 'the manufacturer sheet' });
+      expect(link).toHaveAttribute('href', 'https://example.com/sheet');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      // The syntax itself is gone from the reading surface.
+      expect(row.textContent).not.toContain('**');
+    });
+
+    it('shows the same value as plain text, syntax visible and un-interpreted, when no format is declared', () => {
+      const { container } = render(
+        <OptionProfileSheet {...props({ profile: markdownProfile({ value: MARKDOWN_BODY }) })} />,
+      );
+      const row = screen.getByTestId('option-profile-attribute-custom.load_area');
+      expect(row.textContent).toContain('**wider than the listing suggests**');
+      expect(row.textContent).toContain('- Opening: 44 in');
+      expect(within(row).queryByRole('listitem')).not.toBeInTheDocument();
+      expect(within(row).queryByRole('link')).not.toBeInTheDocument();
+      expect(container.querySelector('strong')).toBeNull();
+    });
+
+    it('still refuses an unsafe link and raw HTML when the markdown reaches it through a real case', () => {
+      // The renderer's own suite proves this in isolation; this proves the
+      // wiring did not hand the string to something else on the way in.
+      const { container } = render(
+        <OptionProfileSheet
+          {...props({
+            profile: markdownProfile({
+              value: '[tap](javascript:alert) <script>alert(1)</script> ![p](https://e/x.png)',
+              format: 'markdown',
+            }),
+          })}
+        />,
+      );
+      const row = screen.getByTestId('option-profile-attribute-custom.load_area');
+      expect(within(row).queryByRole('link')).not.toBeInTheDocument();
+      expect(container.querySelector('script')).toBeNull();
+      expect(container.querySelector('img')).toBeNull();
+    });
+
+    it('has no axe violations with a formatted body on a row', async () => {
+      const { container } = render(
+        <OptionProfileSheet
+          {...props({
+            profile: markdownProfile({
+              value: `# Heading\n\n${MARKDOWN_BODY}`,
+              format: 'markdown',
+            }),
+          })}
+        />,
+      );
+      expect(await axe(container)).toHaveNoViolations();
+    });
+  });
+
+  /**
+   * `Source.summary` is the submitter's OWN account of why a reference
+   * matters, and is deliberately not `Source.excerpt` (a quotation FROM the
+   * source). It follows the same optional-format rule as a text attribute.
+   */
+  describe('a source summary', () => {
+    const SUMMARY = 'Why this matters: it **contradicts** the listing.';
+
+    function withSummary(overrides: Partial<Source>) {
+      return buildProfile({
+        sources: [{ ...SOURCE_WITH_PUBLISHER, ...overrides }, SOURCE_WITHOUT_PUBLISHER],
+      });
+    }
+
+    it('renders as markdown when the source declares summaryFormat: markdown', () => {
+      render(
+        <OptionProfileSheet
+          {...props({
+            profile: withSummary({ summary: SUMMARY, summaryFormat: 'markdown' }),
+          })}
+        />,
+      );
+      const summary = screen.getByTestId(
+        `option-profile-source-summary-${SOURCE_WITH_PUBLISHER.id}`,
+      );
+      expect(within(summary).getByText('contradicts').tagName).toBe('STRONG');
+      expect(summary.textContent).not.toContain('**');
+    });
+
+    it('renders verbatim, syntax and all, when no summaryFormat is declared', () => {
+      render(<OptionProfileSheet {...props({ profile: withSummary({ summary: SUMMARY }) })} />);
+      const summary = screen.getByTestId(
+        `option-profile-source-summary-${SOURCE_WITH_PUBLISHER.id}`,
+      );
+      expect(summary).toHaveTextContent('**contradicts**');
+      expect(within(summary).queryByText('contradicts')).not.toBeInTheDocument();
+    });
+
+    it('renders no summary element at all for a source that carries none', () => {
+      render(<OptionProfileSheet {...props()} />);
+      expect(screen.queryByTestId(/^option-profile-source-summary-/)).not.toBeInTheDocument();
+    });
+
+    it('never presents a summary as a quotation from the source', () => {
+      render(
+        <OptionProfileSheet
+          {...props({ profile: withSummary({ summary: SUMMARY, summaryFormat: 'markdown' }) })}
+        />,
+      );
+      const sources = screen.getByTestId('option-profile-sources');
+      expect(sources.querySelector('blockquote')).toBeNull();
+      expect(sources.querySelector('q')).toBeNull();
+    });
+  });
+
   describe('related findings', () => {
     it('renders each claim with its statement and stance', () => {
       render(<OptionProfileSheet {...props()} />);

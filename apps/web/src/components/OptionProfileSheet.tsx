@@ -124,6 +124,7 @@ import type {
   SourceVerification,
 } from '@sift/contracts';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
+import { MarkdownText } from './MarkdownText.js';
 import type {
   OptionProfile,
   OptionProfileAttribute,
@@ -637,6 +638,44 @@ function SourceLink({ source }: { source: Source }) {
 }
 
 /**
+ * The submitter's own words about why a reference matters.
+ *
+ * `Source.summary` is deliberately NOT `Source.excerpt`: an excerpt is a
+ * quotation FROM the source, a summary is the submitter's own account of why
+ * it belongs in this case. Conflating them would let a model's paraphrase be
+ * read as the source's own words, which is exactly the quiet misattribution
+ * the evidence model exists to prevent -- so this renders in the reader's
+ * ordinary prose voice, never as a quotation.
+ *
+ * Rendered as Markdown only when the source declares `summaryFormat:
+ * 'markdown'`. Without that field the string is plain text and any Markdown
+ * syntax in it is shown verbatim, which is the whole point of the format
+ * field being optional: a summary written before the field existed keeps its
+ * exact previous meaning on screen.
+ */
+function SourceSummary({ source }: { source: Source }) {
+  const summary = source.summary;
+  if (summary === undefined || summary.trim() === '') return null;
+  const testId = `option-profile-source-summary-${source.id}`;
+  return source.summaryFormat === 'markdown' ? (
+    <MarkdownText
+      headingLevel={4}
+      className="text-[length:var(--font-size-sm)]"
+      data-testid={testId}
+    >
+      {summary}
+    </MarkdownText>
+  ) : (
+    <p
+      data-testid={testId}
+      className="text-[length:var(--font-size-sm)] break-words text-[var(--color-ink)]"
+    >
+      {summary}
+    </p>
+  );
+}
+
+/**
  * One attribute row: label, value, and the provenance line that is this
  * sheet's reason for existing.
  *
@@ -751,12 +790,34 @@ function AttributeRow({
         ) : null}
       </dt>
       <dd className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-[var(--space-2)] gap-y-[var(--space-1)]">
-        <span
-          className="text-[length:var(--font-size-base)] leading-[var(--line-height-snug)] font-[var(--font-weight-medium)] break-words"
-          style={{ color: hasValue ? 'var(--color-ink)' : 'var(--color-ink-muted)' }}
-        >
-          {attribute.display ?? NO_VALUE_TEXT}
-        </span>
+        {/*
+          A `text` value that declares `format: 'markdown'` gets the formatted
+          body; everything else gets `formatAttributeValue`'s plain string,
+          exactly as before.
+
+          The split is deliberate and lives in two places on purpose.
+          `formatAttributeValue` returns a `string` because cells, chips, and
+          the comparison table need one line they can put in a table cell, and
+          this sheet is the only surface with the room for a lead, a list, and
+          a caveat. A browse card keeps the plain string even for a Markdown
+          value -- a card is an index entry, not a place for a formatted body.
+
+          `basis-full` because prose is a block: it takes the row's width
+          rather than sitting inline beside the status marker the way a short
+          value does.
+        */}
+        {attribute.markdown !== null ? (
+          <MarkdownText headingLevel={5} className="basis-full">
+            {attribute.markdown}
+          </MarkdownText>
+        ) : (
+          <span
+            className="text-[length:var(--font-size-base)] leading-[var(--line-height-snug)] font-[var(--font-weight-medium)] break-words"
+            style={{ color: hasValue ? 'var(--color-ink)' : 'var(--color-ink-muted)' }}
+          >
+            {attribute.display ?? NO_VALUE_TEXT}
+          </span>
+        )}
 
         {/*
           `basis-full` only when there is something under the marker to read.
@@ -1010,6 +1071,7 @@ export function OptionProfileSheet({
                         {VERIFICATION_LABEL[source.verification]}
                       </Chip>
                     </div>
+                    <SourceSummary source={source} />
                   </li>
                 ))}
               </ul>

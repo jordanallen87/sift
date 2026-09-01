@@ -90,4 +90,27 @@ describe('formatAttributeValue', () => {
   ])('formats %o as %s', (value, expected) => {
     expect(formatAttributeValue(value)).toBe(expected);
   });
+
+  /**
+   * The split this formatter is on one side of.
+   *
+   * A `text` value may declare `format: 'markdown'`, and this function must
+   * keep returning the plain source string for it. Everything that renders
+   * through here -- comparison cells, card lines, chips, criterion targets --
+   * needs ONE line that fits where it is put; the formatted body belongs to
+   * `MarkdownText`, reached via `OptionProfileAttribute.markdown` in the one
+   * surface that has room for it. If this ever starts interpreting the
+   * syntax, every browse card in the product silently changes shape.
+   */
+  it('returns a markdown text value as its plain source, syntax and all, exactly as it returns an unformatted one', () => {
+    const body = 'A **strong** lead.\n\n- one\n- two';
+    expect(formatAttributeValue({ type: 'text', value: body, format: 'markdown' })).toBe(body);
+    expect(formatAttributeValue({ type: 'text', value: body })).toBe(body);
+  });
+
+  it('returns a string, never a node, so a caller can put it straight into a cell', () => {
+    expect(typeof formatAttributeValue({ type: 'text', value: '**x**', format: 'markdown' })).toBe(
+      'string',
+    );
+  });
 });

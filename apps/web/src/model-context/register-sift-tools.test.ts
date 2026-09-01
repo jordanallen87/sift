@@ -829,6 +829,93 @@ describe('sift_get_case_context', () => {
   });
 });
 
+// --- The reference library across the WebMCP boundary ---
+//
+// Sift is where the model keeps durable context and memory, so the two
+// halves have to meet: what `sift_submit_source` writes must be what
+// `sift_list_research` can read back. These tests pin both directions at the
+// real tool boundary rather than only at the projection helper.
+
+describe('sift_submit_source and sift_list_research: the reference library round-trip', () => {
+  it('forwards tags, summary, and summaryFormat to commands.submitSource untouched', async () => {
+    const submitSource = vi.fn().mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1' }));
+    const { adapter } = await setUpWithActiveCase('case-1', { submitSource });
+
+    const input = {
+      caseId: 'case-1',
+      expectedSequence: 1,
+      source: {
+        url: 'https://example.com/paper',
+        title: 'Long-term reliability study',
+        retrievedAt: '2026-01-01T00:00:00.000Z',
+        tags: ['Reliability', 'Research paper'],
+        summary: 'Ten-year failure rates, **by drivetrain**.',
+        summaryFormat: 'markdown',
+        claims: [],
+      },
+    };
+    const result = await invokeTool(adapter, 'sift_submit_source', input);
+
+    expect(result.ok).toBe(true);
+    expect(submitSource).toHaveBeenCalledWith(input, expect.anything());
+  });
+
+  it('accepts a reference with no claims and no obligationId (a source kept because it is relevant is not a degraded submission)', async () => {
+    const submitSource = vi.fn().mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1' }));
+    const { adapter } = await setUpWithActiveCase('case-1', { submitSource });
+
+    const result = await invokeTool(adapter, 'sift_submit_source', {
+      caseId: 'case-1',
+      expectedSequence: 1,
+      source: {
+        url: 'https://example.com/blog',
+        title: 'A blog post worth keeping',
+        retrievedAt: '2026-01-01T00:00:00.000Z',
+        tags: ['Background'],
+        claims: [],
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(submitSource).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the stored tags and summary back out through sift_list_research', async () => {
+    const caseState = buildFixtureCaseState({
+      sources: [
+        {
+          id: 'src-1',
+          url: 'https://example.com/paper',
+          title: 'Long-term reliability study',
+          retrievedAt: '2026-01-01T00:00:00.000Z',
+          tags: ['Reliability', 'Research paper'],
+          summary: 'Ten-year failure rates, by drivetrain.',
+          summaryFormat: 'markdown',
+          origin: 'user_submitted',
+          verification: 'unverified',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    const adapter = new InMemoryModelContextAdapter();
+    const handle = await registerSiftTools({
+      adapter,
+      commands: createFakeSiftCommands(),
+      getActiveCase: () => caseState,
+      listPacks: () => [],
+    });
+    await handle.setActiveCase('case-1');
+
+    const result = await invokeTool<{
+      sources: { items: { id: string; tags?: string[]; summary?: string }[] };
+    }>(adapter, 'sift_list_research', { caseId: 'case-1' });
+
+    expect(result.ok).toBe(true);
+    expect(result.data?.sources.items[0]?.tags).toEqual(['Reliability', 'Research paper']);
+    expect(result.data?.sources.items[0]?.summary).toBe('Ten-year failure rates, by drivetrain.');
+  });
+});
+
 describe('sift_list_packs', () => {
   it('projects installed packs to description, version, hash, and activation signals', async () => {
     const pack = buildFixtureCompiledPack();
@@ -952,5 +1039,23 @@ describe('no tool can approve or reject a decision proposal', () => {
 
     expect(commands.reviewProposal).not.toHaveBeenCalled();
     expect(reviewProposal).not.toHaveBeenCalled();
+  });
+
+  it('the CATALOG itself still exposes no proposal-approval tool, after ADR 0011 let pre-authorized case extensions land confirmed', async () => {
+    // ADR 0011 widened what a PACK may pre-authorize: a model may now add a
+    // typed comparison column, and its values, to a case whose pack allows
+    // it, landing confirmed rather than pending. That is a decision about
+    // how far a case may be EXTENDED. It says nothing about who may DECIDE
+    // one, and this asserts that boundary is still intact structurally --
+    // not "reviewProposal happened not to be called", but "no tool that
+    // could approve a proposal is registered at all".
+    const { adapter } = await setUpWithActiveCase('case-1');
+    const toolNames = adapter.registeredToolNames;
+
+    expect(toolNames).not.toContain('sift_review_proposal');
+    expect(toolNames.some((name) => /approve|review_proposal|decide/i.test(name))).toBe(false);
+    // And the catalog is genuinely populated -- so the assertion above is
+    // about absence, not about an empty registry.
+    expect(toolNames).toContain('sift_define_case_attribute');
   });
 });

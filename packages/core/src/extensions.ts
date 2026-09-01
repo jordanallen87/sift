@@ -59,6 +59,32 @@ export interface CreateCaseAttributeDefinitionContext {
   /** Every attribute definition id already present on the case (pack-defined
    * and previously-defined `custom.*`), used for the duplicate-id check. */
   readonly existingAttributeIds: readonly string[];
+  /**
+   * ADR 0011: did the case's *pinned pack* pre-authorize this whole class of
+   * extension (`extensionPolicy.allowCaseAttributes`)?
+   *
+   * This is the pack author's standing decision, made at authoring time,
+   * that a model may add typed comparison data to a case of this kind. When
+   * it is `true`, an `'agent_proposed'` definition lands `confirmed` — it
+   * carries its `origin` and `reason` so the workspace can show exactly who
+   * added it and why, and a human can reject it afterwards
+   * (`reviewCaseExtension` below, which is the undo). When it is `false` or
+   * absent, the pre-ADR-0011 behavior is preserved byte-for-byte: an
+   * `'agent_proposed'` definition lands `pending` and cannot affect
+   * readiness until a human confirms it (`isConfirmedExtension`).
+   *
+   * Optional, defaulting to `undefined`/`false`, so every existing caller
+   * that does not know about pack policy keeps its exact current behavior.
+   * The caller that DOES know — `apps/agent`'s `CommandService`, the only
+   * layer that can resolve a case's pinned pack — passes the real flag.
+   *
+   * This is deliberately NOT a way to skip the decision gate: a pack can
+   * pre-authorize *extending* a case (adding a typed column and its values),
+   * never *deciding* it. `reviewProposal` stays absent from the WebMCP tool
+   * catalog and `attributeStatusOriginError` (`attributes.ts`) still refuses
+   * `status: 'verified'` from any origin but `'user'`.
+   */
+  readonly preauthorized?: boolean;
 }
 
 /**
@@ -75,6 +101,10 @@ export interface CreateCaseAttributeDefinitionContext {
  * pack-authoring.md "Case-specific questions to resolve"); `sensitive`
  * always defaults to `false` (the draft input carries no signal to infer
  * sensitivity from, per `DefineCaseAttributeInputSchema`).
+ *
+ * `confirmation` is `'confirmed'` for a `'user'`-origin definition, and for
+ * an `'agent_proposed'` one whose pack pre-authorized the extension class
+ * (`context.preauthorized`, ADR 0011); otherwise `'pending'`.
  */
 export function createCaseAttributeDefinition(
   draft: CaseAttributeDraft,
@@ -102,7 +132,10 @@ export function createCaseAttributeDefinition(
     sensitive: false,
     origin: context.origin,
     reason: draft.reason,
-    confirmation: context.origin === 'user' ? ('confirmed' as const) : ('pending' as const),
+    confirmation:
+      context.origin === 'user' || context.preauthorized === true
+        ? ('confirmed' as const)
+        : ('pending' as const),
     proposedBy: context.proposedBy,
     createdAt: clock.now(),
     ...(draft.unit !== undefined ? { unit: draft.unit } : {}),
@@ -198,12 +231,18 @@ export function defineCaseExtension(
 /**
  * Queryable confirmation gate for the readiness/obligations group:
  * `'user'`-origin extensions default to `confirmed` and are immediately
- * usable; `'agent_proposed'` extensions default to `pending` and — per
+ * usable; so do `'agent_proposed'` extensions whose pack pre-authorized the
+ * extension class (`CreateCaseAttributeDefinitionContext.preauthorized`,
+ * ADR 0011). Without that pre-authorization an `'agent_proposed'`
+ * extension defaults to `pending` and — per
  * architecture.md's "Case extensions may add typed data and questions but
  * cannot add executable capabilities, remove required obligations, or
  * weaken policies" and pack-authoring.md's "Agent-proposed definitions
  * require confirmation before becoming decision criteria" — must not be
- * allowed to affect readiness until a human confirms them. This predicate
+ * allowed to affect readiness until a human confirms them. ADR 0011 moves
+ * WHO gives that confirmation for a pre-authorized extension (the pack
+ * author, once, at authoring time) without changing what confirmation
+ * means; an unauthorized one still waits for a live human. This predicate
  * is the single place that rule is expressed so the readiness/obligations
  * layer never has to re-derive it.
  */
@@ -212,19 +251,49 @@ export function isConfirmedExtension(extension: CaseExtension): boolean {
 }
 
 /**
- * Confirms or rejects a pending case extension. Rejects the transition when
- * the extension is not currently `pending` (already decided, or a
- * `'user'`-origin extension that starts `confirmed` and was never awaiting
- * review) — review is only meaningful for a genuinely pending extension.
+ * The human's authority over a case extension, in both directions.
+ *
+ *  - A `pending` extension may be confirmed or rejected — the original
+ *    review gate, unchanged.
+ *  - A `confirmed` extension may be **rejected**: this is ADR 0011's undo.
+ *    Once a pack pre-authorizes model-defined attributes
+ *    (`extensionPolicy.allowCaseAttributes`), an agent-originated extension
+ *    lands `confirmed` rather than waiting for a click the user — living in
+ *    the conversation, not the pane — will never see. Removing the human's
+ *    ability to take it back afterwards would trade one silent outcome for a
+ *    worse one: a column the model added that nobody can remove. Confirming
+ *    an already-`confirmed` extension is an idempotent success (a genuine
+ *    re-affirmation, e.g. a human pressing Confirm on a concern the model
+ *    already recorded), returning it unchanged.
+ *  - A `rejected` extension is terminal. Nothing revives it — not a retry,
+ *    and not the model (`reviewCaseExtension` is not in the WebMCP tool
+ *    catalog at all; it is a human-only verb).
  */
 export function reviewCaseExtension(
   extension: CaseExtension,
   decision: CaseExtensionReviewDecision,
 ): DomainResult<CaseExtension> {
-  if (extension.definition.confirmation !== 'pending') {
+  if (extension.definition.confirmation === 'rejected') {
     return fail(
-      `case extension "${extension.id}" is not pending review (current confirmation: "${extension.definition.confirmation}")`,
+      `case extension "${extension.id}" was already rejected and cannot be reviewed again (current confirmation: "${extension.definition.confirmation}")`,
     );
+  }
+
+  if (extension.definition.confirmation === 'confirmed' && decision === 'confirm') {
+    // Idempotent re-affirmation: nothing to change, and nothing dishonest
+    // about saying so. Deliberately re-parsed below like every other branch
+    // rather than returned early, so a structurally invalid extension is
+    // caught here too.
+    const parsedUnchanged = CaseExtensionSchema.safeParse(extension);
+    if (!parsedUnchanged.success) {
+      return fail(
+        ...parsedUnchanged.error.issues.map(
+          (issue) =>
+            `${issue.path.length > 0 ? issue.path.join('.') : 'extension'}: ${issue.message}`,
+        ),
+      );
+    }
+    return ok(parsedUnchanged.data);
   }
 
   const updated: CaseExtension = {

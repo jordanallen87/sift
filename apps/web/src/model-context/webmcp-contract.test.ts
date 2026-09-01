@@ -133,7 +133,7 @@ const CATALOG: CatalogFixture[] = [
   {
     name: 'sift_submit_source',
     description:
-      'Submits a structured source discovered by the user or ChatGPT for bounded Sift investigation. This lets ChatGPT contribute research while Sift retains provenance, challenge, and readiness control.',
+      "Submits a structured source discovered by the user or ChatGPT, and files it in the case's reference library. This lets ChatGPT contribute research while Sift retains provenance, challenge, and readiness control. Claims may be empty and obligationId may be omitted: a source with neither is a reference kept because it is relevant to the case (a paper, an article, a blog post, a spec sheet), and that is a first-class thing to store, not a degraded submission -- supply claims and an obligationId only when the source actually answers a specific open question. Use tags (free-form, your own labels) so the library can be organised and browsed, and summary for your OWN account of why this reference matters -- never a quotation, which belongs in excerpt. Set summaryFormat to markdown when the summary uses markdown; raw HTML is rejected. Call sift_list_research first to see which tags this case already uses, so related material files together instead of under a near-duplicate label.",
     sourceSchema: SubmitSourceInputSchema,
   },
   {
@@ -163,7 +163,7 @@ const CATALOG: CatalogFixture[] = [
   {
     name: 'sift_list_research',
     description:
-      "Returns every source submitted to this case (title, publisher, URL, origin, verification status) and every claim recorded against it -- a fuller, dedicated view than the small research summary embedded in sift_get_case_context. Use this when the user asks what has been researched so far, or before deciding whether more research is needed. It never marks a source as trusted or changes any evidence disposition; source verification remains Sift's own to decide.",
+      "Returns this case's whole reference library -- every source submitted to it (title, publisher, URL, origin, verification status, its tags, and the submitter's own summary) and every claim recorded against it -- a fuller, dedicated view than the small research summary embedded in sift_get_case_context. This is durable memory you wrote earlier and can read back: use it when the user asks what has been researched so far, before deciding whether more research is needed, before submitting a source you may already have filed, and to reuse the case's existing tags rather than inventing a near-duplicate label. It never marks a source as trusted or changes any evidence disposition; source verification remains Sift's own to decide.",
     sourceSchema: ListResearchInputSchema,
   },
   {

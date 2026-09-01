@@ -116,6 +116,27 @@ function buildCaseExtensionSummary(extension: CaseExtension): CaseExtensionSumma
 // excerpt never reaches model context even if a future edit forgets to keep
 // a truncation bound in sync with the schema's 5000-character maximum.
 
+/**
+ * `tags` and `summary` are included where `excerpt` deliberately is not, and
+ * the difference is not arbitrary. `excerpt` is a quotation FROM the source,
+ * up to 5000 characters of someone else's prose that the model did not write
+ * and does not need repeated back to it. `tags` and `summary` are the
+ * SUBMITTER's own words -- the labels the reference was filed under and why
+ * it was kept -- which is precisely the durable memory a model writing
+ * through `sift_submit_source` needs to be able to read back before it
+ * researches the same ground twice or files a near-duplicate tag.
+ *
+ * `summary` is truncated the same way `buildClaimSummary` truncates
+ * `Claim.statement` and `buildNoteSummary` truncates `CaseNote.body`: its
+ * real schema bound is 20 000 characters, far too much to let one reference
+ * dominate a bounded projection. 500 matches `NOTE_BODY_MAX`, the closest
+ * existing analogue (both are free text written to be read back later), and
+ * keeps the worst case here in the same order as the claim list this
+ * projection already carries. `tags` needs no truncation -- `SourceSchema`
+ * already bounds it at 20 x 60 characters.
+ */
+const SOURCE_SUMMARY_MAX = 500;
+
 export interface SourceSummary {
   id: string;
   title: string;
@@ -125,6 +146,8 @@ export interface SourceSummary {
   verification: SourceVerification;
   retrievedAt: string;
   publishedAt?: string;
+  tags?: string[];
+  summary?: string;
 }
 
 export function buildSourceSummary(source: Source): SourceSummary {
@@ -137,6 +160,10 @@ export function buildSourceSummary(source: Source): SourceSummary {
     verification: source.verification,
     retrievedAt: source.retrievedAt,
     ...(source.publishedAt !== undefined ? { publishedAt: source.publishedAt } : {}),
+    ...(source.tags !== undefined && source.tags.length > 0 ? { tags: source.tags } : {}),
+    ...(source.summary !== undefined
+      ? { summary: truncate(source.summary, SOURCE_SUMMARY_MAX) }
+      : {}),
   };
 }
 

@@ -17,6 +17,7 @@ import {
   AttributeRecordSchema,
   CASE_ATTRIBUTE_ORIGINS,
   CriterionSchema,
+  TEXT_VALUE_FORMATS,
   type Criterion,
 } from './attributes.js';
 import { EVIDENCE_LEVELS, ObligationTemplateSchema } from './packs.js';
@@ -161,6 +162,30 @@ export const SourceSchema = z
     publishedAt: z.iso.datetime().optional(),
     retrievedAt: z.iso.datetime(),
     excerpt: safeString(5000).optional(),
+    /**
+     * Free-form labels for organising the case's reference library --
+     * "the way I'm thinking about this... research papers, blogs, and any
+     * other detail that might be relevant to the case", with tagging so the
+     * UI can group it.
+     *
+     * Deliberately free-form rather than a pack-declared enum: the whole
+     * point of a reference library is that it collects material nobody
+     * anticipated, which is the same reasoning that makes `custom.*`
+     * attributes free-form. Bounded (20 tags, 60 chars) because
+     * architecture.md requires model-supplied input to be size-bounded, and
+     * `safeString` because these are rendered directly.
+     */
+    tags: z.array(safeString(60)).max(20).optional(),
+    /**
+     * The submitter's OWN summary of why this reference matters to this
+     * case -- distinct from `excerpt`, which is a quotation FROM the source.
+     * Conflating the two would let a model's paraphrase be read as the
+     * source's own words, which is the kind of quiet misattribution the
+     * evidence model exists to prevent. Markdown for the same reason (and
+     * with the same safety boundary) as `TextAttributeValueSchema.format`.
+     */
+    summary: safeString(20_000).optional(),
+    summaryFormat: z.enum(TEXT_VALUE_FORMATS).optional(),
     origin: z.enum(SOURCE_ORIGINS),
     verification: z.enum(SOURCE_VERIFICATIONS),
     createdAt: z.iso.datetime(),

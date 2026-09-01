@@ -322,8 +322,15 @@ describe('applyCaseEvent: existing-case dispatch', () => {
     expect(confirmed.caseExtensions[0]?.definition.confirmation).toBe('confirmed');
   });
 
-  it('extension.confirmed throws when the extension is not pending review (already decided)', () => {
-    const extension = {
+  it('extension.confirmed throws when the extension was already REJECTED (terminal), and replays cleanly over an already-confirmed one', () => {
+    // ADR 0011 old->new: this used to assert that ANY already-decided
+    // extension threw, using a `confirmed` one. `confirmed` is no longer
+    // terminal -- a pre-authorized, model-defined extension lands confirmed,
+    // so a human may still re-affirm it (idempotent) or reject it (the
+    // undo), and this reducer must be able to fold both. Rejection IS still
+    // terminal, so the "already decided throws" assertion moves onto the
+    // state where it remains true, rather than being dropped.
+    const buildExtension = (confirmation: 'confirmed' | 'rejected') => ({
       id: 'ext1',
       caseId: 'case-1',
       definition: {
@@ -337,25 +344,54 @@ describe('applyCaseEvent: existing-case dispatch', () => {
         sensitive: false,
         origin: 'agent_proposed' as const,
         reason: 'Household requires cargo space.',
-        confirmation: 'confirmed' as const,
+        confirmation,
         proposedBy: 'household-fit-analyst',
         createdAt: '2026-08-27T00:00:00.000Z',
       },
       createdAt: '2026-08-27T00:00:00.000Z',
-    };
-    const withExtension = applyCaseEvent(
+    });
+
+    const withRejected = applyCaseEvent(
       freshCase(),
-      baseEvent('extension.defined', { sequence: 1, payload: { extension } }) as CaseEvent,
+      baseEvent('extension.defined', {
+        sequence: 1,
+        payload: { extension: buildExtension('rejected') },
+      }) as CaseEvent,
     );
     expect(() =>
       applyCaseEvent(
-        withExtension,
+        withRejected,
         baseEvent('extension.confirmed', {
           sequence: 2,
           payload: { extensionId: 'ext1', decision: 'confirm' },
         }) as CaseEvent,
       ),
     ).toThrow(ValidationFailedError);
+
+    const withConfirmed = applyCaseEvent(
+      freshCase(),
+      baseEvent('extension.defined', {
+        sequence: 1,
+        payload: { extension: buildExtension('confirmed') },
+      }) as CaseEvent,
+    );
+    const reaffirmed = applyCaseEvent(
+      withConfirmed,
+      baseEvent('extension.confirmed', {
+        sequence: 2,
+        payload: { extensionId: 'ext1', decision: 'confirm' },
+      }) as CaseEvent,
+    );
+    expect(reaffirmed.caseExtensions[0]?.definition.confirmation).toBe('confirmed');
+
+    const undone = applyCaseEvent(
+      withConfirmed,
+      baseEvent('extension.confirmed', {
+        sequence: 2,
+        payload: { extensionId: 'ext1', decision: 'reject' },
+      }) as CaseEvent,
+    );
+    expect(undone.caseExtensions[0]?.definition.confirmation).toBe('rejected');
   });
 
   it('extension.confirmed throws when the referenced extension does not exist', () => {

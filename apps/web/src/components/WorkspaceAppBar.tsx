@@ -170,7 +170,7 @@
  *    not a bug, so this fix is entirely a rendering-prominence change
  *    inside this file, not a prop or caller change.
  */
-import { PlusIcon, RotateCcwIcon, SearchCheckIcon, TerminalIcon } from 'lucide-react';
+import { LibraryIcon, PlusIcon, RotateCcwIcon, SearchCheckIcon, TerminalIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -184,6 +184,10 @@ export interface WorkspaceAppBarProps {
   connectionState: WorkspaceAppBarConnectionState;
   /** Real, current count -- always rendered as a badge, including `0` (de-emphasised, never hidden; see header comment). */
   findingsCount: number;
+  /** Opens the case's reference library. Optional: a caller that has not wired it renders no control rather than a dead one. */
+  onOpenReferenceLibrary?: (() => void) | undefined;
+  /** How many sources the case holds, shown so the control reports something real rather than an unexplained icon. */
+  referenceCount?: number | undefined;
   /** Real, current option count, rendered as the compact secondary status line beside the connection badge. */
   optionCount: number;
   onAddOption: () => void;
@@ -226,6 +230,8 @@ export function WorkspaceAppBar({
   title,
   connectionState,
   findingsCount,
+  onOpenReferenceLibrary,
+  referenceCount = 0,
   optionCount,
   onAddOption,
   onReviewFindings,
@@ -345,6 +351,34 @@ export function WorkspaceAppBar({
               {findingsCount}
             </Badge>
           </Button>
+
+          {/* The reference library: the case's collected research, and the
+              durable half of what the model remembers about this decision.
+              Sits beside Findings because they answer adjacent questions --
+              "what did Sift conclude" and "what did Sift read" -- and both
+              are global chrome, reachable identically in both layouts.
+              Absent, not disabled, when no caller wired it. */}
+          {onOpenReferenceLibrary !== undefined ? (
+            <Button
+              type="button"
+              data-testid="workspace-app-bar-references"
+              onClick={onOpenReferenceLibrary}
+              aria-label={`References, ${referenceCount}`}
+              variant="ghost"
+              size="sm"
+              className={`gap-[var(--space-1)] ${TOUCH_TARGET} ${isExpanded ? '' : 'px-[var(--space-2)]'}`}
+            >
+              <LibraryIcon aria-hidden="true" className="size-4" />
+              {isExpanded ? 'References' : null}
+              <Badge
+                data-testid="workspace-app-bar-references-count"
+                aria-hidden="true"
+                className="label-caps rounded-[var(--radius-pill)] px-[var(--space-1-5)] py-0"
+              >
+                {referenceCount}
+              </Badge>
+            </Button>
+          ) : null}
         </div>
 
         {/* `decorative` (Radix's default) keeps this out of the a11y tree --

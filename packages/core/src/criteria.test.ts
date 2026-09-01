@@ -381,3 +381,33 @@ describe('criterionNeedsEvidenceQuestion', () => {
     ).toBe(true);
   });
 });
+
+describe('renameCriterion protection (ADR 0011)', () => {
+  it('rejects renaming a pack-protected criterion -- the label is the only thing identifying it to a person', () => {
+    // The gap this closes: `remove` and `reweight` both refused a protected
+    // criterion while `rename` did not, which made the protection largely
+    // cosmetic. A caller could not delete or down-weight a pack's mandatory
+    // criterion, but could relabel it to anything -- and since the id never
+    // reaches the consumer surface, that reads as a substitution.
+    const result = renameCriterion([criterion({ id: 'price' })], 'price', 'Nice to have', {
+      protectedCriterionIds: ['price'],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.errors.join(' ')).toContain('may not be renamed');
+  });
+
+  it('allows renaming an unprotected criterion when other criteria are protected', () => {
+    const result = renameCriterion(
+      [criterion({ id: 'price' }), criterion({ id: 'custom.dog_crate_fit' })],
+      'custom.dog_crate_fit',
+      'Dog crate fit (both crates)',
+      { protectedCriterionIds: ['price'] },
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('defaults to no protection when the caller supplies no options, keeping every existing caller byte-identical', () => {
+    const result = renameCriterion([criterion({ id: 'price' })], 'price', 'Renamed');
+    expect(result.ok).toBe(true);
+  });
+});

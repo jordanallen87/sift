@@ -326,6 +326,42 @@ describe('buildResearchSummary', () => {
     expect(research.sources.items).toHaveLength(1);
     expect(research.claims.items).toHaveLength(1);
   });
+
+  // The reference library is where the model's own durable memory lives, so
+  // `sift_list_research` has to hand back the organising labels and the
+  // submitter's own summary -- otherwise the model can write a tagged
+  // reference and then never see that it did.
+  it('returns the tags and summary a source carries, so the model can read back what it already stored', () => {
+    const caseState = buildFixtureCaseState({
+      sources: [
+        buildSource({
+          id: 'src-1',
+          tags: ['Reliability', 'Research paper'],
+          summary: 'Ten-year failure rates by drivetrain.',
+          summaryFormat: 'markdown',
+        }),
+      ],
+    });
+    const [item] = buildResearchSummary(caseState).sources.items;
+    expect(item?.tags).toEqual(['Reliability', 'Research paper']);
+    expect(item?.summary).toBe('Ten-year failure rates by drivetrain.');
+  });
+
+  it('omits tags and summary entirely for a source that carries neither (never an empty array, never an empty string)', () => {
+    const caseState = buildFixtureCaseState({ sources: [buildSource({ id: 'src-1' })] });
+    const [item] = buildResearchSummary(caseState).sources.items;
+    expect(item).not.toHaveProperty('tags');
+    expect(item).not.toHaveProperty('summary');
+  });
+
+  it('truncates a long summary rather than carrying up to 20 000 characters into model context', () => {
+    const caseState = buildFixtureCaseState({
+      sources: [buildSource({ id: 'src-1', summary: 'x'.repeat(19_999) })],
+    });
+    const [item] = buildResearchSummary(caseState).sources.items;
+    expect(item?.summary?.length).toBeLessThanOrEqual(500);
+    expect(item?.summary?.endsWith('…')).toBe(true);
+  });
 });
 
 // --- sift_list_notes projection (change-set §28/§29): a note is a real,

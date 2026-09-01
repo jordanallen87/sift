@@ -103,9 +103,12 @@ import {
   UpdateCriteriaInputSchema,
   UpsertOptionInputSchema,
   type AttributeRecord,
+  type AttributeValue,
   type CaseEvent,
+  type CaseAttributeDefinition,
   type CaseAttributeOrigin,
   type CaseNote,
+  type DefineCaseAttributeInput,
   type CaseState,
   type Claim,
   type CommandOrigin,
@@ -128,6 +131,7 @@ import {
   deriveObligations,
   instantiateCase,
   isSiftDomainError,
+  normalizeAttributeValue,
   PolicyViolationError,
   removeCriterion,
   renameCriterion,
@@ -198,6 +202,48 @@ function resolveLatestPack(
       : latest;
   }, undefined);
 }
+
+/**
+ * Conservative normalisation for `Source.tags`, the free-form labels that
+ * organise a case's reference library (`SourceSchema.tags`,
+ * `packages/contracts/src/case.ts`).
+ *
+ * Deliberately does only what is unambiguously safe: trims surrounding
+ * whitespace, drops entries that are empty once trimmed, and removes
+ * case-insensitive duplicates -- keeping the FIRST occurrence with the
+ * submitter's own casing intact, so "EV" stays "EV" and is never flattened
+ * to "ev" for display.
+ *
+ * Deliberately does NOT do anything else. It does not lowercase the stored
+ * value, does not map synonyms, does not split on separators, and does not
+ * check the tag against any vocabulary: the whole reason a reference library
+ * has tags rather than a pack-declared enum is that it collects material
+ * nobody anticipated (the same reasoning `custom.*` attributes rest on).
+ * Rewriting a submitter's label into a canonical form would quietly claim
+ * they said something they did not.
+ */
+function normalizeSourceTags(tags: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const tag of tags) {
+    const trimmed = tag.trim();
+    if (trimmed === '') continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(trimmed);
+  }
+  return normalized;
+}
+
+/**
+ * One option's answer for the attribute being defined
+ * (`CaseAttributeValueDraftSchema`, `packages/contracts/src/commands.ts`).
+ * Derived from `DefineCaseAttributeInput` rather than imported directly:
+ * `@sift/contracts` exports the schema but no inferred type for it, and
+ * that package is not this lane's to edit.
+ */
+type CaseAttributeValueDraft = NonNullable<DefineCaseAttributeInput['values']>[number];
 
 export class CommandService {
   constructor(private readonly deps: CommandServiceDeps) {}
@@ -953,6 +999,39 @@ export class CommandService {
   }
 
   /**
+   * Defines a `custom.*` comparison column on a case, and -- as of ADR 0011
+   * -- fills it in, in one transactional write.
+   *
+   * Three rules, in order:
+   *
+   *  1. **The pack decides whether this may happen at all.** The pinned
+   *     pack's `extensionPolicy.allowCaseAttributes` is the author's
+   *     standing pre-authorization. `false` means the command is REJECTED
+   *     with a policy failure naming the pack and the flag -- never silently
+   *     ignored, and never quietly downgraded to some weaker write the
+   *     caller did not ask for and would not know happened.
+   *  2. **A permitted agent-defined extension lands `confirmed`**, carrying
+   *     its `origin` and `reason`. It does not sit `pending` waiting for a
+   *     click: the person whose concern this is is talking in the
+   *     conversation, not watching this pane, and a `pending` column is
+   *     invisible to the comparison until someone happens to look. The
+   *     safeguard is not a gate in front of the write, it is provenance plus
+   *     an undo behind it -- `reviewCaseExtension` (a human-only verb,
+   *     absent from the WebMCP catalog) can reject a confirmed extension at
+   *     any time.
+   *  3. **A model that defines a column must fill it in.** An
+   *     `'agent_proposed'` definition arriving over the wire must supply a
+   *     value, or an explicit reasoned unknown, for EVERY option it applies
+   *     to (`resolveCaseAttributeValueCoverage`). An empty column is worse
+   *     than no column: it reads as a real dimension the comparison failed
+   *     to resolve, when nobody ever tried.
+   *
+   * None of this touches the decision gate. Extending a case is not
+   * deciding it: `reviewProposal` stays absent from the WebMCP catalog, and
+   * `attributeStatusOriginError` still refuses `status: 'verified'` from any
+   * origin but `'user'` -- which is enforced here for free, because every
+   * value written below goes through the real `createAttributeRecord`.
+   *
    * `originParam` is the pre-existing call-site channel (still used by
    * `apps/agent/src/runtime/car-purchase-scenario.ts` and
    * `car-purchase-engine.test.ts`, both outside this task's scope): a
@@ -973,8 +1052,10 @@ export class CommandService {
    * `commandOrigin` (4th parameter) is an unrelated concept, added by I1 --
    * do not confuse it with `originParam`/`origin` above. `originParam`/
    * `origin` is a *domain* field (`CaseAttributeOrigin`: did a human or the
-   * model define this attribute? -- it changes whether the extension is
-   * auto-confirmed and gates a real branch in this method's own logic).
+   * model define this attribute? -- it sets the written records' own
+   * `AttributeRecord.origin`, decides whether a reasoned unknown's note is
+   * attributed to `'user'` or `'model'`, and gates real branches in this
+   * method's own logic).
    * `commandOrigin` is a *transport* marker (`CommandOrigin`: did this
    * command arrive over a WebMCP tool call? -- see `emitActivity`'s doc
    * comment) that only affects what gets recorded on the activity trail
@@ -1002,6 +1083,18 @@ export class CommandService {
     const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
     if (loaded.status !== 'ok') return loaded;
     const snapshot = loaded.value;
+
+    // Deliverable 1 (ADR 0011): the pinned pack's `extensionPolicy` is the
+    // dial the pack author set at authoring time. Resolved through
+    // `requirePinnedPack`, which fails CLOSED -- an unresolvable pinned pack
+    // is an invariant violation that throws, never a silent "assume
+    // permitted" (see that helper's own doc comment).
+    const pack = this.requirePinnedPack(snapshot, 'defineCaseAttribute');
+    if (!pack.extensionPolicy.allowCaseAttributes) {
+      return policyFailure(
+        `Pack "${pack.identity.id}@${pack.identity.version}" forbids case-defined attributes (extensionPolicy.allowCaseAttributes is false), so case attribute "${input.definition.id}" was not defined.`,
+      );
+    }
 
     const existingAttributeIds = [
       ...snapshot.attributeDefinitions.map((definition) => definition.id),
@@ -1036,41 +1129,337 @@ export class CommandService {
         origin,
         proposedBy: origin === 'user' ? 'user' : 'model',
         existingAttributeIds,
+        // Always `true` at this point (the gate above returned otherwise);
+        // passed as the real flag rather than a literal so the causal link
+        // -- the PACK pre-authorized this, nothing else -- stays visible.
+        preauthorized: pack.extensionPolicy.allowCaseAttributes,
       },
       { clock: this.deps.clock, idGenerator: this.deps.idGenerator },
     );
     if (!extensionResult.ok) {
       return validationFailure('Unable to define case attribute.', extensionResult.errors);
     }
+    const definition = extensionResult.value.definition;
+
+    // Deliverable 3: the column and its cells are ONE operation.
+    const valueDrafts = input.values ?? [];
+    const coverage = this.resolveCaseAttributeValueCoverage(
+      snapshot,
+      definition,
+      valueDrafts,
+      input.origin,
+    );
+    if (coverage.status !== 'ok') return coverage;
 
     const now = this.deps.clock.now();
-    const event: CaseEvent = {
-      eventId: this.deps.idGenerator.next('event'),
-      caseId: input.caseId,
-      sequence: snapshot.eventSequence + 1,
-      timestamp: now,
-      commandId,
-      type: 'extension.defined',
-      payload: { extension: extensionResult.value },
-    };
+    const written = this.buildCaseAttributeValueWrites(definition, coverage.value, origin, now);
+    if (written.status !== 'ok') return written;
+    const { entities: touchedEntities, notes: unknownNotes } = written.value;
 
-    const result = this.deps.caseStore.append(input.caseId, [event], input.expectedSequence, {
+    let nextSequence = snapshot.eventSequence + 1;
+    const events: CaseEvent[] = [
+      {
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: nextSequence,
+        timestamp: now,
+        commandId,
+        type: 'extension.defined',
+        payload: { extension: extensionResult.value },
+      },
+    ];
+    for (const entity of touchedEntities) {
+      nextSequence += 1;
+      events.push({
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: nextSequence,
+        timestamp: now,
+        commandId,
+        type: 'option.upserted',
+        payload: { entity },
+      });
+    }
+    for (const note of unknownNotes) {
+      nextSequence += 1;
+      events.push({
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: nextSequence,
+        timestamp: now,
+        commandId,
+        type: 'note.added',
+        payload: { note },
+      });
+    }
+
+    // Same "does a `ready` recommendation actually depend on this" rule
+    // `upsertOption`/`setOptionAttribute` use. Scoped to the case where
+    // values were actually written: defining an empty column changes no
+    // comparison data, so a definition with no `values` behaves exactly as
+    // it did before this task -- one `extension.defined` event, nothing else.
+    const invalidatesRecommendation =
+      touchedEntities.length > 0 &&
+      snapshot.recommendation !== null &&
+      snapshot.recommendation.status === 'ready' &&
+      this.criteriaDependOnAttributes(snapshot.criteria, new Set([definition.id]));
+    if (invalidatesRecommendation && snapshot.recommendation !== null) {
+      nextSequence += 1;
+      events.push({
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: nextSequence,
+        timestamp: now,
+        commandId,
+        type: 'recommendation.invalidated',
+        payload: {
+          recommendationId: snapshot.recommendation.id,
+          reason: 'A comparison attribute the recommendation depends on changed.',
+        },
+      });
+    }
+
+    // ONE append: the definition, every value, and every reasoned unknown
+    // land together or not at all, so a case can never hold a column that
+    // half exists.
+    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
       idempotency: { commandId, commandName: 'defineCaseAttribute' },
     });
     if (result.status === 'applied') {
+      const unknownCount = unknownNotes.length;
+      const summaryParts = [
+        origin === 'user'
+          ? `Defined case attribute "${input.definition.id}".`
+          : `Defined case attribute "${input.definition.id}" (added by the assistant).`,
+      ];
+      if (valueDrafts.length > 0) {
+        summaryParts.push(
+          `Recorded ${valueDrafts.length} value${valueDrafts.length === 1 ? '' : 's'}${
+            unknownCount > 0
+              ? `, ${unknownCount} of them an explicit unknown with a stated reason`
+              : ''
+          }.`,
+        );
+      }
       this.emitActivity(
         {
           timestamp: now,
           caseId: input.caseId,
           commandId,
-          type: origin === 'user' ? 'command.accepted' : 'intervention.confirmation_required',
-          phase: origin === 'user' ? 'completed' : 'waiting',
-          summary: `${origin === 'user' ? 'Defined' : 'Proposed'} case attribute "${input.definition.id}".`,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: summaryParts.join(' '),
         },
         commandOrigin,
       );
+      if (invalidatesRecommendation) {
+        this.emitActivity(
+          {
+            timestamp: now,
+            caseId: input.caseId,
+            commandId,
+            type: 'recommendation.invalidated',
+            phase: 'completed',
+            summary: 'Recommendation invalidated: a dependent option attribute changed.',
+          },
+          commandOrigin,
+        );
+      }
     }
     return this.toReceipt(commandId, result);
+  }
+
+  /**
+   * Deliverable 3's coverage/reference check, kept next to the two private
+   * helpers it shares a contract with rather than inline, so
+   * `defineCaseAttribute` above reads as the sequence of decisions it makes.
+   *
+   * Three rejections, all clean validation errors that name what was wrong:
+   *
+   *  1. a `values` entry naming an option that is not on the case;
+   *  2. a `values` entry naming an option the attribute does not apply to
+   *     (`definition.appliesTo` lists entity KINDS -- writing a "cargo
+   *     width" cell onto a row the column was never declared over produces
+   *     an attribute nothing renders and no criterion can read, which is the
+   *     same incoherence as a dangling id, one level down);
+   *  3. an `'agent_proposed'` definition that leaves an applicable option
+   *     unaccounted for. `CaseAttributeValueDraftSchema` already guarantees
+   *     each supplied entry is either a real value or a reasoned unknown;
+   *     only this layer can see the case's entities, so only this layer can
+   *     check that EVERY one of them got an answer.
+   *
+   * Keyed on `wireOrigin` (`input.origin`) rather than the effective origin,
+   * matching `DefineCaseAttributeInputSchema`'s own `superRefine` exactly:
+   * the schema demands a non-empty `values` for precisely the calls whose
+   * body declares `origin: 'agent_proposed'`, and this checks that those
+   * same values are complete. The in-process `originParam` channel (
+   * `car-purchase-scenario.ts`, `car-purchase-engine.ts` -- never reachable
+   * from HTTP or WebMCP, both of which call `defineCaseAttribute(commandId,
+   * input)` with no third argument) predates `values` entirely and keeps its
+   * existing "define the column, let the specialists fill it" behavior.
+   *
+   * On success it returns each draft already PAIRED with the real
+   * `EntityRecord` it names, so the write step below never has to re-look-up
+   * an id and never needs a defensive "what if it is missing" branch: by the
+   * time it runs, "this option exists and this attribute applies to it" is a
+   * fact carried in the type, not a re-check.
+   */
+  private resolveCaseAttributeValueCoverage(
+    snapshot: CaseState,
+    definition: CaseAttributeDefinition,
+    valueDrafts: readonly CaseAttributeValueDraft[],
+    wireOrigin: CaseAttributeOrigin | undefined,
+  ): ServiceResult<{ draft: CaseAttributeValueDraft; entity: EntityRecord }[]> {
+    const errors: string[] = [];
+    const named = new Set<string>();
+    const resolved: { draft: CaseAttributeValueDraft; entity: EntityRecord }[] = [];
+    for (const valueDraft of valueDrafts) {
+      if (named.has(valueDraft.optionId)) {
+        errors.push(
+          `values carries more than one entry for option "${valueDraft.optionId}"; one option can only have one value for one attribute`,
+        );
+        continue;
+      }
+      named.add(valueDraft.optionId);
+      const entity = snapshot.entities.find((candidate) => candidate.id === valueDraft.optionId);
+      if (entity === undefined) {
+        errors.push(
+          `values names option "${valueDraft.optionId}", which was not found on case "${snapshot.id}"`,
+        );
+        continue;
+      }
+      if (!definition.appliesTo.includes(entity.kind)) {
+        errors.push(
+          `values names option "${entity.label}" (${entity.id}), whose kind "${entity.kind}" is not one of this attribute's appliesTo kinds (${definition.appliesTo.join(', ')})`,
+        );
+        continue;
+      }
+      resolved.push({ draft: valueDraft, entity });
+    }
+    if (errors.length > 0) {
+      return validationFailure(`Invalid values for case attribute "${definition.id}".`, errors);
+    }
+
+    if (wireOrigin === 'agent_proposed') {
+      const uncovered = snapshot.entities.filter(
+        (entity) => definition.appliesTo.includes(entity.kind) && !named.has(entity.id),
+      );
+      if (uncovered.length > 0) {
+        return validationFailure(
+          `An agent-defined case attribute must account for every option it applies to; "${definition.id}" left ${uncovered.length} unaccounted for.`,
+          [
+            `no value and no explicit unknown was supplied for: ${uncovered
+              .map((entity) => `"${entity.label}" (${entity.id})`)
+              .join(', ')}`,
+          ],
+        );
+      }
+    }
+
+    return ok(resolved);
+  }
+
+  /**
+   * Turns each validated `CaseAttributeValueDraft` into the durable records
+   * the append will carry.
+   *
+   * Every value goes through the real `@sift/core` `normalizeAttributeValue`
+   * (which applies the definition's `allowedValues`/default `unit` and
+   * rejects a value whose variant does not match the declared `valueType`)
+   * and the real `createAttributeRecord` -- never a hand-assembled
+   * `AttributeRecord` -- so the existing status/origin invariants apply here
+   * completely unchanged. In particular `attributeStatusOriginError` still
+   * refuses `status: 'verified'` from any origin but `'user'`: a model that
+   * defines a column may fill it in, and may not promote its own inference
+   * to a human attestation.
+   *
+   * An `unknown` draft becomes a genuine `status: 'unknown'` `AttributeRecord`
+   * -- present in the entity's `attributes` map, not absent from it. That
+   * distinction is the whole point and is already rendered: `OptionProfileSheet`
+   * shows `status: null` ("nobody asked") and `status: 'unknown'` ("this case
+   * records that nobody knows") as two different things.
+   *
+   * The unknown's `reason` rides along as a real `CaseNote` (`note.added`,
+   * appended in the SAME transaction), because `AttributeRecordSchema`
+   * (`@sift/contracts`, `.strict()`, not editable from this lane) carries no
+   * per-record reason field. A note is the closest durable, first-class,
+   * option-linked home the current contracts offer, and it is the one the
+   * `addNote` command already writes for "a real observation that is
+   * deliberately not evidence". `kind: 'question'` -- an unresolved unknown
+   * with a stated reason is an open question about that option, not a
+   * finding.
+   */
+  private buildCaseAttributeValueWrites(
+    definition: CaseAttributeDefinition,
+    resolved: readonly { draft: CaseAttributeValueDraft; entity: EntityRecord }[],
+    origin: CaseAttributeOrigin,
+    now: string,
+  ): ServiceResult<{ entities: EntityRecord[]; notes: CaseNote[] }> {
+    const touched = new Map<string, EntityRecord>();
+    const notes: CaseNote[] = [];
+    const errors: string[] = [];
+
+    for (const { draft: valueDraft, entity } of resolved) {
+      let value: AttributeValue | undefined;
+      if (valueDraft.value !== undefined) {
+        const normalized = normalizeAttributeValue(definition, valueDraft.value);
+        if (!normalized.ok) {
+          errors.push(`option "${entity.label}" (${entity.id}): ${normalized.errors.join('; ')}`);
+          continue;
+        }
+        value = normalized.value;
+      }
+
+      const recordResult = createAttributeRecord(
+        {
+          definitionId: definition.id,
+          label: definition.label,
+          origin,
+          status: valueDraft.status,
+          ...(value !== undefined ? { value } : {}),
+          ...(valueDraft.confidence !== undefined ? { confidence: valueDraft.confidence } : {}),
+          ...(valueDraft.sourceIds !== undefined ? { sourceIds: valueDraft.sourceIds } : {}),
+        },
+        this.deps.clock,
+      );
+      if (!recordResult.ok) {
+        errors.push(`option "${entity.label}" (${entity.id}): ${recordResult.errors.join('; ')}`);
+        continue;
+      }
+
+      // No merge needed: `resolveCaseAttributeValueCoverage` already
+      // rejected a `values` array carrying two entries for the same option,
+      // so each entity is touched exactly once here.
+      touched.set(entity.id, {
+        ...entity,
+        attributes: { ...entity.attributes, [definition.id]: recordResult.value },
+        updatedAt: now,
+      });
+
+      if (valueDraft.status === 'unknown' && valueDraft.reason !== undefined) {
+        // Prefixed with the attribute's own label so the note says WHAT is
+        // unknown, since `CaseNoteSchema` has no attribute-id field. Falls
+        // back to the bare reason when the prefix would push the body past
+        // `safeString(2000)` -- truncating the author's own words to make
+        // room for a label Sift added would be the wrong trade.
+        const prefixed = `${definition.label}: ${valueDraft.reason}`;
+        notes.push({
+          id: this.deps.idGenerator.next('note'),
+          body: prefixed.length <= 2000 ? prefixed : valueDraft.reason,
+          kind: 'question',
+          origin,
+          authoredBy: origin === 'user' ? 'user' : 'model',
+          optionIds: [entity.id],
+          sourceIds: [],
+          createdAt: now,
+        });
+      }
+    }
+
+    if (errors.length > 0) {
+      return validationFailure(`Invalid values for case attribute "${definition.id}".`, errors);
+    }
+    return ok({ entities: [...touched.values()], notes });
   }
 
   reviewCaseExtension(
@@ -1119,17 +1508,31 @@ export class CommandService {
       },
     ];
 
-    // Item 4: only a *confirm* decision can newly make a custom attribute
-    // usable, so only `confirm` is checked for invalidation -- a `reject`
-    // permanently disqualifies the extension and cannot make any active
-    // criterion's dependency newly satisfiable or newly stale (the
-    // criterion, if one already references it, was already depending on a
-    // not-yet-usable value either way). Scoped to whether an *active*
-    // criterion's `appliesToAttribute` already names this extension's
-    // attribute id -- confirming an extension no criterion references yet
-    // cannot affect a current recommendation.
+    // Item 4, extended by ADR 0011. Two reviews can change what a
+    // recommendation was computed from, and both must invalidate it:
+    //
+    //  - `confirm` (the original rule, unchanged): a confirmed attribute is
+    //    usable, so a criterion depending on it now reads a value it could
+    //    not read before.
+    //  - `reject` of an already-`confirmed` extension (ADR 0011's undo, new
+    //    with this task): the column the recommendation WAS computed from
+    //    has just been taken away. Leaving the recommendation `ready` there
+    //    would display a conclusion drawn from a dimension the human just
+    //    removed.
+    //
+    // Rejecting a still-`pending` extension remains non-invalidating, for
+    // the original reason: it was never usable, so nothing a recommendation
+    // read has changed.
+    //
+    // Both are scoped, as before, to whether an *active* criterion's
+    // `appliesToAttribute` actually names this extension's attribute id --
+    // reviewing an extension no criterion references cannot affect a
+    // current recommendation either way.
+    const reviewChangesUsableAttributes =
+      input.decision === 'confirm' ||
+      (input.decision === 'reject' && extension.definition.confirmation === 'confirmed');
     const invalidatesRecommendation =
-      input.decision === 'confirm' &&
+      reviewChangesUsableAttributes &&
       snapshot.recommendation !== null &&
       snapshot.recommendation.status === 'ready' &&
       this.criteriaDependOnAttributes(snapshot.criteria, new Set([extension.definition.id]));
@@ -1253,18 +1656,33 @@ export class CommandService {
     if (loaded.status !== 'ok') return loaded;
     const snapshot = loaded.value;
 
-    const pack = this.deps.registry.get(snapshot.pack.id, snapshot.pack.version);
-    if (pack === undefined) {
-      throw new Error(
-        `CommandService.updateCriteria: pinned pack "${snapshot.pack.id}@${snapshot.pack.version}" is not present in the registry.`,
-      );
-    }
+    const pack = this.requirePinnedPack(snapshot, 'updateCriteria');
 
     let criteria: Criterion[] = [...snapshot.criteria];
     const addedCriterionIds: string[] = [];
     for (const operation of input.operations) {
       switch (operation.op) {
         case 'add': {
+          // Two distinct manifest dials, both real, both checked here
+          // because `add` is the only operation in this switch that EXTENDS
+          // the case past what the pack shipped. `reweight`/`rename`/
+          // `remove` act on a criterion that already exists, so
+          // `extensionPolicy` has nothing to say about them (their own guard
+          // is `criteria.protectedCriterionIds`, below).
+          //
+          //  - `extensionPolicy.allowCaseCriteria` (ADR 0011): may this pack's
+          //    cases grow criteria at all?
+          //  - `criteria.allowUserDefined`: may a criterion be authored
+          //    outside the pack's own `criteria.defaults`?
+          //
+          // Checked in that order -- the broader "can this case be extended"
+          // question first -- so a pack that forbids case criteria says so
+          // rather than reporting the narrower authorship rule.
+          if (!pack.extensionPolicy.allowCaseCriteria) {
+            return policyFailure(
+              `Pack "${pack.identity.id}@${pack.identity.version}" forbids case-defined criteria (extensionPolicy.allowCaseCriteria is false), so criterion "${operation.criterion.id}" was not added.`,
+            );
+          }
           if (!pack.criteria.allowUserDefined) {
             return policyFailure(
               `Pack "${pack.identity.id}" does not allow user-defined criteria.`,
@@ -1325,7 +1743,15 @@ export class CommandService {
           break;
         }
         case 'rename': {
-          const result = renameCriterion(criteria, operation.criterionId, operation.label);
+          // Protected criteria are protected against RELABELLING too, not
+          // only against removal and reweighting. A criterion reaches the
+          // consumer surface by its label alone -- its id never does -- so
+          // a silent rename of a pack-required criterion is
+          // indistinguishable from substituting a different one, while it
+          // stays weighted and stays protected.
+          const result = renameCriterion(criteria, operation.criterionId, operation.label, {
+            protectedCriterionIds: pack.criteria.protectedCriterionIds,
+          });
           if (!result.ok) return validationFailure('Unable to update criteria.', result.errors);
           criteria = result.value;
           break;
@@ -1363,32 +1789,45 @@ export class CommandService {
     // already enforces `allowCaseObligations: true` implies
     // `allowCaseCriteria: true`, so this gate is never reachable for a
     // pack that forbids case criteria at all.
-    if (pack.extensionPolicy.allowCaseObligations) {
-      for (const criterionId of addedCriterionIds) {
-        const criterion = criteria.find((entry) => entry.id === criterionId);
-        if (criterion === undefined) continue; // defensive; addCriterion always inserts what it accepted
-        const existingEvidence = this.existingEvidenceSignal(criterion, snapshot);
-        if (!criterionNeedsEvidenceQuestion(criterion, existingEvidence)) continue;
-        const template = this.synthesizeUserConcernObligationTemplate(criterion);
-        const derived = deriveObligations(
-          pack,
-          [{ template, criterionId: criterion.id }],
-          snapshot.obligations,
-          this.deps.clock,
-        );
-        const newObligation = derived.find((obligation) => obligation.id === template.id);
-        if (newObligation === undefined) continue; // defensive; deriveObligations always includes every supplied template
-        nextSequence += 1;
-        events.push({
-          eventId: this.deps.idGenerator.next('event'),
-          caseId: input.caseId,
-          sequence: nextSequence,
-          timestamp: now,
-          commandId,
-          type: 'obligation.updated',
-          payload: { obligation: newObligation },
-        });
+    //
+    // The gate itself predates ADR 0011 and is unchanged. What ADR 0011 adds
+    // is that skipping it can no longer be SILENT: `unobligedCriterionIds`
+    // records every added criterion that genuinely needed an evidence
+    // question and did not get one because this pack forbids case
+    // obligations, and the activity summary below says so. Rejecting the
+    // whole `add` would be wrong here -- the pack permitted the criterion
+    // (`allowCaseCriteria`) and forbade only the derived obligation -- so
+    // this is the same honest-degradation shape `submitSource` already uses
+    // when it cannot link a claim, not a silent drop.
+    const unobligedCriterionIds: string[] = [];
+    for (const criterionId of addedCriterionIds) {
+      const criterion = criteria.find((entry) => entry.id === criterionId);
+      if (criterion === undefined) continue; // defensive; addCriterion always inserts what it accepted
+      const existingEvidence = this.existingEvidenceSignal(criterion, snapshot);
+      if (!criterionNeedsEvidenceQuestion(criterion, existingEvidence)) continue;
+      if (!pack.extensionPolicy.allowCaseObligations) {
+        unobligedCriterionIds.push(criterion.id);
+        continue;
       }
+      const template = this.synthesizeUserConcernObligationTemplate(criterion);
+      const derived = deriveObligations(
+        pack,
+        [{ template, criterionId: criterion.id }],
+        snapshot.obligations,
+        this.deps.clock,
+      );
+      const newObligation = derived.find((obligation) => obligation.id === template.id);
+      if (newObligation === undefined) continue; // defensive; deriveObligations always includes every supplied template
+      nextSequence += 1;
+      events.push({
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: nextSequence,
+        timestamp: now,
+        commandId,
+        type: 'obligation.updated',
+        payload: { obligation: newObligation },
+      });
     }
 
     const invalidatesRecommendation =
@@ -1417,7 +1856,14 @@ export class CommandService {
           commandId,
           type: 'command.accepted',
           phase: 'completed',
-          summary: `Updated criteria (${input.operations.length} change${input.operations.length === 1 ? '' : 's'}).`,
+          summary: [
+            `Updated criteria (${input.operations.length} change${input.operations.length === 1 ? '' : 's'}).`,
+            ...(unobligedCriterionIds.length > 0
+              ? [
+                  `No evidence question was created for ${unobligedCriterionIds.join(', ')}: pack "${pack.identity.id}" forbids case obligations.`,
+                ]
+              : []),
+          ].join(' '),
         },
         commandOrigin,
       );
@@ -1510,6 +1956,11 @@ export class CommandService {
     }
 
     const now = this.deps.clock.now();
+    // Empty after normalisation means "this submission carried no usable
+    // tag", which is the same fact as "no tags were supplied" -- recorded by
+    // omitting the key rather than by storing `[]`, matching how every other
+    // optional field on this record is written.
+    const tags = normalizeSourceTags(input.source.tags ?? []);
     const source: Source = {
       id: this.deps.idGenerator.next('source'),
       url: input.source.url,
@@ -1518,6 +1969,20 @@ export class CommandService {
       ...(input.source.publishedAt !== undefined ? { publishedAt: input.source.publishedAt } : {}),
       retrievedAt: input.source.retrievedAt,
       ...(input.source.excerpt !== undefined ? { excerpt: input.source.excerpt } : {}),
+      ...(tags.length > 0 ? { tags } : {}),
+      // `summaryFormat` describes how `summary` should be rendered, so it is
+      // only carried when there is a summary for it to describe -- a stored
+      // `summaryFormat: 'markdown'` with no text would tell a renderer to
+      // parse nothing, and would read as a claim about content this source
+      // does not have.
+      ...(input.source.summary !== undefined
+        ? {
+            summary: input.source.summary,
+            ...(input.source.summaryFormat !== undefined
+              ? { summaryFormat: input.source.summaryFormat }
+              : {}),
+          }
+        : {}),
       origin: 'user_submitted',
       verification: 'unverified',
       createdAt: now,
@@ -1876,6 +2341,38 @@ export class CommandService {
       acceptedSequence: existing.acceptedSequence,
       snapshot,
     });
+  }
+
+  /**
+   * The case's PINNED pack (`CaseState.pack.id` + `.version`), which is the
+   * only pack whose `extensionPolicy`/`criteria` policy may govern a write
+   * to this case -- never `resolveLatestPack`'s newest installed version,
+   * which could silently widen or narrow what a case already in flight
+   * permits.
+   *
+   * Fails CLOSED, and loudly: a case whose pinned pack has vanished from the
+   * registry is a real invariant violation (production wiring should make it
+   * impossible), so this throws rather than returning a `ServiceFailure`.
+   * That is deliberate on two counts. It surfaces as a `500 INTERNAL`
+   * through `routes/commands.ts`'s error middleware, matching `@sift/core`'s
+   * own thrown-`SiftDomainError` convention for invariant violations (see
+   * `service-result.ts`'s header comment) -- and, critically, an
+   * unresolvable pack can never be read as "no policy found, therefore
+   * allowed". The alternative (treat a missing pack as permissive) would
+   * make the policy gate below vanish exactly when the system is least sure
+   * of itself.
+   *
+   * `methodName` keeps the pre-existing `updateCriteria` message text
+   * byte-identical now that `defineCaseAttribute` shares this code path.
+   */
+  private requirePinnedPack(snapshot: CaseState, methodName: string): CompiledDecisionPack {
+    const pack = this.deps.registry.get(snapshot.pack.id, snapshot.pack.version);
+    if (pack === undefined) {
+      throw new Error(
+        `CommandService.${methodName}: pinned pack "${snapshot.pack.id}@${snapshot.pack.version}" is not present in the registry.`,
+      );
+    }
+    return pack;
   }
 
   /**

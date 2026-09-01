@@ -206,6 +206,25 @@ export interface OptionProfileAttribute {
   label: string;
   /** The formatted value, or `null` when this option has no usable value for the attribute. */
   display: string | null;
+  /**
+   * The raw Markdown source when this attribute's value is a `text` value
+   * carrying `format: 'markdown'`, and `null` otherwise.
+   *
+   * Deliberately a SECOND field rather than a change to `display`.
+   * `formatAttributeValue` returns a plain `string` and is what cells, chips,
+   * comparison tables, and browse cards render; those surfaces want one
+   * unformatted line and would be broken by a block of prose, so `display`
+   * keeps its exact previous meaning everywhere. A surface that has room for
+   * a formatted body -- today, the option profile sheet's attribute rows --
+   * renders this through `MarkdownText` instead, and every other surface
+   * simply ignores it. `display` remains populated in both cases, so a
+   * caller that does not know about Markdown still shows the right text.
+   *
+   * Blank or whitespace-only Markdown is normalised to `null`, because
+   * `MarkdownText` renders nothing for it and a row would otherwise lose the
+   * value entirely rather than falling back to `display`.
+   */
+  markdown: string | null;
   /** `AttributeRecord.status`, or `null` when no record exists at all -- the two are different, and both are honest. */
   status: AttributeRecord['status'] | null;
   origin: AttributeRecord['origin'] | null;
@@ -279,6 +298,9 @@ function buildProfileAttribute(
   const record = option.attributes[definition.id];
   const hasValue =
     record !== undefined && record.status !== 'unknown' && record.value !== undefined;
+  const value = hasValue && record.value !== undefined ? record.value : null;
+  const markdown =
+    value !== null && value.type === 'text' && value.format === 'markdown' ? value.value : null;
 
   // Identity first, and unconditionally: it must win over every
   // evidence-derived bucket below, exactly as `summarizeOptionSignals`
@@ -296,7 +318,8 @@ function buildProfileAttribute(
   return {
     definitionId: definition.id,
     label: definition.label,
-    display: hasValue && record.value !== undefined ? formatAttributeValue(record.value) : null,
+    display: value !== null ? formatAttributeValue(value) : null,
+    markdown: markdown !== null && markdown.trim() !== '' ? markdown : null,
     status: record?.status ?? null,
     origin: record?.origin ?? null,
     confidence: record?.confidence ?? null,

@@ -11,7 +11,7 @@ import {
   type CaseAttributeDraft,
   type CreateCaseAttributeDefinitionContext,
 } from './extensions.js';
-import type { Clock, IdGenerator } from './attributes.js';
+import { attributeStatusOriginError, type Clock, type IdGenerator } from './attributes.js';
 
 const FIXED_NOW = '2026-08-27T12:00:00.000Z';
 
@@ -83,6 +83,42 @@ describe('createCaseAttributeDefinition', () => {
       expect(result.value.origin).toBe('agent_proposed');
       expect(result.value.proposedBy).toBe('agent-household-fit');
     }
+  });
+
+  it('creates a CONFIRMED definition for agent_proposed origin when the pack pre-authorized the extension class (ADR 0011)', () => {
+    const result = createCaseAttributeDefinition(
+      draft(),
+      context({
+        origin: 'agent_proposed',
+        proposedBy: 'agent-household-fit',
+        preauthorized: true,
+      }),
+      fixedClock(),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.confirmation).toBe('confirmed');
+      // Provenance survives the pre-authorization: the workspace can still
+      // say exactly who added this and why, which is what makes an undo
+      // meaningful rather than a mystery.
+      expect(result.value.origin).toBe('agent_proposed');
+      expect(result.value.proposedBy).toBe('agent-household-fit');
+      expect(result.value.reason).toBe('Two dog crates must fit in the trunk.');
+    }
+  });
+
+  it('pre-authorization does not let an agent-defined attribute claim more than it should: it is still origin agent_proposed, which attributeStatusOriginError refuses "verified" for', () => {
+    const result = createCaseAttributeDefinition(
+      draft(),
+      context({ origin: 'agent_proposed', preauthorized: true }),
+      fixedClock(),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(attributeStatusOriginError('verified', result.value.origin)).toMatch(
+      /only origin "user"/,
+    );
+    expect(attributeStatusOriginError('supported', result.value.origin)).toBeNull();
   });
 
   it('rejects an id that is not custom.-prefixed', () => {
@@ -288,11 +324,27 @@ describe('reviewCaseExtension', () => {
     }
   });
 
-  it('refuses to review an extension that is not pending', () => {
+  it('re-confirming an already-confirmed extension is an idempotent success (ADR 0011: a human pressing Confirm on a concern the model already recorded is a real re-affirmation, not an error)', () => {
     const alreadyConfirmed = reviewCaseExtension(validExtension('confirmed'), 'confirm');
-    expect(alreadyConfirmed.ok).toBe(false);
-    if (!alreadyConfirmed.ok) {
-      expect(alreadyConfirmed.errors[0]).toMatch(/not pending review/);
+    expect(alreadyConfirmed.ok).toBe(true);
+    if (alreadyConfirmed.ok) {
+      expect(alreadyConfirmed.value.definition.confirmation).toBe('confirmed');
+    }
+  });
+
+  it('rejecting an already-confirmed extension is the human undo (ADR 0011)', () => {
+    const undone = reviewCaseExtension(validExtension('confirmed'), 'reject');
+    expect(undone.ok).toBe(true);
+    if (undone.ok) {
+      expect(undone.value.definition.confirmation).toBe('rejected');
+    }
+  });
+
+  it('refuses to review an already-rejected extension, in either direction: rejection is terminal', () => {
+    const reconfirmRejected = reviewCaseExtension(validExtension('rejected'), 'confirm');
+    expect(reconfirmRejected.ok).toBe(false);
+    if (!reconfirmRejected.ok) {
+      expect(reconfirmRejected.errors[0]).toMatch(/already rejected/);
     }
 
     const alreadyRejected = reviewCaseExtension(validExtension('rejected'), 'reject');
