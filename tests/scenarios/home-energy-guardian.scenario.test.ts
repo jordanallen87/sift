@@ -12,7 +12,8 @@
  * "Scenario tests"), mirroring `car-purchase.scenario.test.ts` exactly.
  */
 import { describe, expect, it } from 'vitest';
-import { applyCaseEvent } from '../../packages/core/src/index.js';
+import { applyCaseEvent, deriveInsights, scoreCaseState } from '../../packages/core/src/index.js';
+import { deriveScoredRecommendationFields } from '../../apps/agent/src/runtime/recommendation-scoring.js';
 import {
   DemoScenarioSchema,
   type CaseEvent,
@@ -140,6 +141,55 @@ describe('Home Energy Guardian scenario: real causal trajectory', () => {
       recommendationReadyEvents[0]?.type === 'recommendation.ready' &&
         recommendationReadyEvents[0].payload.recommendation.favoredOptionId,
     ).toBe('monitor-one-cycle');
+
+    // --- The reweight genuinely decides the outcome, deterministically ---
+    //
+    // This scenario's central beat is reweighting `energy.conservation` to
+    // 80%. That reweight used to change nothing measurable: the criterion
+    // named no attribute, so 80% of the case's weight was unscorable and
+    // the board's coverage sat at 20%. The pack now points it at
+    // `energy.addresses_root_cause`, whose fixture values already encoded
+    // the whole story -- only the HVAC inspection addresses the root cause.
+    //
+    // Asserted here rather than in a unit test because the thing worth
+    // protecting is the CAUSAL CHAIN: a real Swarm run, a real reweight
+    // through the real command path, and a ranking that moves as a
+    // consequence. A pack edit that quietly unhooked the criterion again
+    // would leave every unit test passing.
+    const board = scoreCaseState(finalCaseState);
+    const leader = board.options[0];
+    expect(leader?.optionId).toBe('request-hvac-inspection');
+    expect(leader?.coverage).toBe(1);
+
+    const conservation = leader?.criteria.find(
+      (line) => line.criterionId === 'energy.conservation',
+    );
+    expect(conservation?.status).toBe('scored');
+    expect(conservation?.score).toBe(1);
+    // The reweight put 80% of the case's weight here; if this drops back to
+    // the seeded 50/50 split the beat has silently stopped happening.
+    expect(conservation?.weight).toBeCloseTo(0.8, 10);
+
+    // The deterministic leader and the Swarm's own favorite agree, so no
+    // divergence limitation is emitted and confidence is high -- but never
+    // certain, since coverage counts only the criteria this household
+    // actually wrote down.
+    const recomputed = deriveScoredRecommendationFields(
+      finalCaseState,
+      finalCaseState.recommendation?.favoredOptionId ?? null,
+    );
+    expect(recomputed.agreesWithScoreboard).toBe(true);
+    expect(finalCaseState.recommendation?.confidence).toBe(recomputed.confidence);
+    expect(finalCaseState.recommendation?.confidence).toBeGreaterThan(0.8);
+    expect(finalCaseState.recommendation?.confidence).toBeLessThan(1);
+    expect(finalCaseState.recommendation?.limitations.join(' ')).not.toContain(
+      'scoring your criteria puts',
+    );
+
+    // And the claim Sift makes about WHY it leads is an experiment, not a
+    // sentence: removing that criterion has to actually flip the top two.
+    const decisive = deriveInsights(board).find((insight) => insight.kind === 'decisive_criterion');
+    expect(decisive?.criterionIds).toEqual(['energy.conservation']);
 
     // --- "confirmation precedes proposal creation" (real causal order: the
     // round2 Swarm run -- which is the only place ConsequenceGuard's confirm
