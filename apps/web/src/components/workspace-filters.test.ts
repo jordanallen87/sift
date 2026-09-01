@@ -24,6 +24,7 @@ import type {
   WorkspaceFilter,
 } from '@sift/contracts';
 import {
+  applyAssistantNarrowing,
   applyWorkspaceFilters,
   buildFacetOptions,
   committedFilterValue,
@@ -893,5 +894,89 @@ describe('describeAppliedFilters', () => {
     ];
     const chips = describeAppliedFilters(filters, attributes);
     expect(chips.map((chip) => chip.fieldId)).toEqual(['awd', 'color', 'price', 'msrp']);
+  });
+});
+
+// ============================================================================
+
+/**
+ * The model's own narrowing, which is a genuinely different thing from a
+ * filter even though it lands in the same rendered list.
+ *
+ * A filter is a RULE the person set ("under $30k"); this is a LITERAL SET
+ * the assistant named ("these three"). They compose -- both must hold -- and
+ * the two reasons stay separately visible and separately removable in
+ * `FilterBar`, which is what keeps a narrowed list honest about who narrowed
+ * it and why.
+ */
+describe('applyAssistantNarrowing', () => {
+  it('returns every option as a NEW array when the assistant has narrowed nothing', () => {
+    const options = [buildOption('c1'), buildOption('c2')];
+    const result = applyAssistantNarrowing(options, undefined);
+    expect(result).toEqual(options);
+    expect(result).not.toBe(options);
+  });
+
+  it('keeps only the named options', () => {
+    const options = [buildOption('c1'), buildOption('c2'), buildOption('c3')];
+    expect(applyAssistantNarrowing(options, ['c1', 'c3']).map((o) => o.id)).toEqual(['c1', 'c3']);
+  });
+
+  it("preserves the case's own option order rather than the order the assistant listed ids in", () => {
+    // The list order is the person's own working arrangement -- the order
+    // they added options in. A model naming ids in a different order is
+    // expressing WHICH options to show, not asking for a re-sort, and
+    // silently resequencing the page underneath someone would be a change
+    // they never asked for.
+    const options = [buildOption('c1'), buildOption('c2'), buildOption('c3')];
+    expect(applyAssistantNarrowing(options, ['c3', 'c1']).map((o) => o.id)).toEqual(['c1', 'c3']);
+  });
+
+  it('ignores an id naming no saved option instead of failing', () => {
+    // A `visibleOptionIds` array persisted before an option was deleted
+    // still names it. That is ordinary staleness, not corruption.
+    const options = [buildOption('c1'), buildOption('c2')];
+    expect(applyAssistantNarrowing(options, ['c1', 'ghost']).map((o) => o.id)).toEqual(['c1']);
+  });
+
+  it('narrows to nothing when the assistant names an empty set, rather than quietly showing everything', () => {
+    // `[]` is a real, schema-valid value meaning "show none of them". Reading
+    // it as "no narrowing" would silently contradict what was persisted.
+    const options = [buildOption('c1'), buildOption('c2')];
+    expect(applyAssistantNarrowing(options, [])).toEqual([]);
+  });
+
+  it('never mutates the options it was handed', () => {
+    const options = [buildOption('c1'), buildOption('c2')];
+    const snapshot = structuredClone(options);
+    applyAssistantNarrowing(options, ['c2']);
+    expect(options).toEqual(snapshot);
+  });
+
+  it('composes with applyWorkspaceFilters -- both narrowings hold, in either order', () => {
+    const attributes: AttributeDefinition[] = [
+      buildAttribute({ id: 'price', label: 'Price', valueType: 'number' }),
+    ];
+    const options = [
+      buildOption('c1', { price: { type: 'number', value: 24500 } }),
+      buildOption('c2', { price: { type: 'number', value: 31995 } }),
+      buildOption('c3', { price: { type: 'number', value: 22995 } }),
+    ];
+    const filters: WorkspaceFilter[] = [
+      { fieldId: 'price', operator: 'less_than', value: '30000' },
+    ];
+
+    const narrowedThenFiltered = applyWorkspaceFilters(
+      applyAssistantNarrowing(options, ['c1', 'c2']),
+      filters,
+      attributes,
+    );
+    const filteredThenNarrowed = applyAssistantNarrowing(
+      applyWorkspaceFilters(options, filters, attributes),
+      ['c1', 'c2'],
+    );
+
+    expect(narrowedThenFiltered.map((o) => o.id)).toEqual(['c1']);
+    expect(filteredThenNarrowed.map((o) => o.id)).toEqual(['c1']);
   });
 });

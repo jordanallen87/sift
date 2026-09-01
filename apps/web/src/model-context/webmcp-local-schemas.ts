@@ -39,7 +39,11 @@
  * `commands.ts`'s own private `expectedSequence` helper.
  */
 import { z } from 'zod';
-import { WORKSPACE_VIEW_MODES, WorkspaceViewSortSchema } from '@sift/contracts';
+import {
+  WORKSPACE_VIEW_MODES,
+  WorkspaceFilterSchema,
+  WorkspaceViewSortSchema,
+} from '@sift/contracts';
 
 // Matches every `packages/contracts/src/*.ts` module's own private
 // `HTML_OR_EXECUTABLE_PATTERN`/`safeString` pair exactly (not exported, so
@@ -109,11 +113,27 @@ export type ListNotesInput = z.infer<typeof ListNotesInputSchema>;
 // `mode` is required, not optional: this tool's entire job is switching the
 // active view, so a call that changes nothing would be a no-op worth
 // rejecting rather than silently accepting. `focusedOptionId`/
-// `visibleOptionIds` mirror `WorkspaceViewStateSchema`'s own fields and
-// bounds exactly (`packages/contracts/src/case.ts`). `expectedSequence` is
-// required: this is a real durable write via `commands.setView` now (see
+// `visibleOptionIds`/`filters` mirror `WorkspaceViewStateSchema`'s own fields
+// and bounds exactly (`packages/contracts/src/case.ts`). `expectedSequence`
+// is required: this is a real durable write via `commands.setView` now (see
 // this module's header comment), so the same optimistic-concurrency field
 // every other mutating tool carries applies here too.
+//
+// `filters` is the one field here that reuses a contract schema outright
+// (`WorkspaceFilterSchema`) rather than restating a shape. That is
+// deliberate and load-bearing rather than merely tidy: a filter written by
+// this tool lands in the exact same durable `WorkspaceViewState.filters`
+// array the human FilterSheet writes, and is read back by the exact same
+// `applyWorkspaceFilters`. If this module re-declared the operator list or
+// the value guard, the model and the person could end up with two different
+// ideas of what a filter is -- the model would be able to persist a filter
+// the human UI cannot render or clear. Importing the one schema makes that
+// divergence impossible by construction.
+//
+// Until this field existed the model had no tool call at all behind the most
+// ordinary thing a person says in chat ("only show me the ones under $30k"),
+// even though the human-facing sheet beside it did. That was the broken half
+// of the two-way loop, not a missing nicety.
 
 export const SetViewInputSchema = z
   .object({
@@ -122,6 +142,7 @@ export const SetViewInputSchema = z
     mode: z.enum(WORKSPACE_VIEW_MODES),
     focusedOptionId: idString().optional(),
     visibleOptionIds: z.array(idString()).max(50).optional(),
+    filters: z.array(WorkspaceFilterSchema).max(50).optional(),
   })
   .strict();
 export type SetViewInput = z.infer<typeof SetViewInputSchema>;

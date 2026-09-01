@@ -233,7 +233,7 @@ import {
 import { WorkspaceSidebar } from '../components/WorkspaceSidebar.js';
 import { FilterBar } from '../components/FilterBar.js';
 import { FilterSheet } from '../components/FilterSheet.js';
-import { applyWorkspaceFilters } from '../components/workspace-filters.js';
+import { applyAssistantNarrowing, applyWorkspaceFilters } from '../components/workspace-filters.js';
 import { OptionProfileSheet } from '../components/OptionProfileSheet.js';
 import { ReferenceLibrarySheet } from '../components/ReferenceLibrary.js';
 import { deriveOptionProfile } from '../components/option-profile.js';
@@ -376,6 +376,32 @@ function mapAppBarConnectionState(
 ): WorkspaceAppBarConnectionState {
   if (state === 'live' || state === 'offline') return state;
   return 'reconnecting';
+}
+
+/**
+ * Applies the person's standing intent about the assistant's option
+ * narrowing to a `WorkspaceViewState` payload about to be written.
+ *
+ * Shared by BOTH view writers below (`drainViewWrites` and
+ * `drainFilterWrites`), which is the entire point: each rebuilds the full
+ * view by spreading the last-seen snapshot, so a `visibleOptionIds` the
+ * person has already dismissed would otherwise be re-persisted by whichever
+ * of them happens to write next. `intendedViewRef` exists precisely to stop
+ * one writer rolling the other back, and this keeps that guarantee true for
+ * the model-owned field too.
+ *
+ * The key is REMOVED rather than set to an empty array: `[]` is a real,
+ * schema-valid "show none of them" (see `applyAssistantNarrowing`), so
+ * writing it would replace one narrowing with a stricter one instead of
+ * lifting it.
+ */
+function applyIntendedNarrowing(
+  intent: { clearedAssistantNarrowing?: boolean },
+  view: WorkspaceViewState,
+): WorkspaceViewState {
+  if (intent.clearedAssistantNarrowing !== true) return view;
+  const { visibleOptionIds: _dismissed, ...withoutNarrowing } = view;
+  return withoutNarrowing;
 }
 
 export function App() {
@@ -745,7 +771,26 @@ export function App() {
   // Reading intent from here instead of from the snapshot makes each write
   // carry the newest value of BOTH fields, so neither writer can roll the
   // other back regardless of which response lands first.
-  const intendedViewRef = useRef<{ mode?: WorkspaceViewMode; filters?: WorkspaceFilter[] }>({});
+  //
+  // `clearedAssistantNarrowing` is the third member, and it joined for
+  // exactly the reason the second one did. `visibleOptionIds` is a durable
+  // field the MODEL writes; when the person dismisses it, both writers
+  // above still rebuild their payload by spreading `current.view`, which
+  // still carries it. Without the clear being shared intent, switching tabs
+  // a moment later would spread the dismissed narrowing straight back out
+  // of the snapshot and silently undo the person's dismissal -- the same
+  // "one writer rolls the other back" defect, one field over.
+  //
+  // A flag rather than a value because the human side of this field has
+  // exactly one move (remove it); setting it belongs to the model. It is
+  // cleared again the moment a genuinely new narrowing is persisted (see
+  // the reconciliation effect below), so it can never become a standing
+  // veto on the model ever narrowing again.
+  const intendedViewRef = useRef<{
+    mode?: WorkspaceViewMode;
+    filters?: WorkspaceFilter[];
+    clearedAssistantNarrowing?: boolean;
+  }>({});
 
   const drainViewWrites = useCallback(async () => {
     if (viewWriteInFlightRef.current) return;
@@ -762,11 +807,11 @@ export function App() {
         // `filters` comes from shared intent when the person has set any,
         // so this write cannot roll back an in-flight filter change.
         const intendedFilters = intendedViewRef.current.filters;
-        const view: WorkspaceViewState = {
+        const view = applyIntendedNarrowing(intendedViewRef.current, {
           ...(current.view ?? {}),
           ...(intendedFilters !== undefined ? { filters: intendedFilters } : {}),
           mode,
-        };
+        });
         try {
           await commands.setView({ caseId, expectedSequence: current.eventSequence, view });
         } catch {
@@ -865,11 +910,11 @@ export function App() {
         // side uses. Reading the snapshot ALONE here is what let a filter
         // press silently undo a just-made view change -- see
         // `intendedViewRef`'s comment for the repro.
-        const view: WorkspaceViewState = {
+        const view = applyIntendedNarrowing(intendedViewRef.current, {
           ...(current.view ?? {}),
           mode: intendedViewRef.current.mode ?? current.view?.mode ?? 'quick_pick',
           filters: nextFilters,
-        };
+        });
         try {
           await commands.setView({ caseId, expectedSequence: current.eventSequence, view });
         } catch {
@@ -905,6 +950,64 @@ export function App() {
     [drainFilterWrites],
   );
 
+  // The assistant's own narrowing (`WorkspaceViewState.visibleOptionIds`,
+  // written by `sift_set_view`) -- the second reader this file was missing,
+  // and the exact twin of the `compare.optionIds` seam §58 closed. The
+  // field was persisted by a real WebMCP call and implemented as a real
+  // narrowing prop by `OptionListView`/`OptionCompareView`, but nothing
+  // here read it, so "show her just those two" collected a success receipt
+  // while the page did not move.
+  //
+  // It is read-and-forward with ONE local move: dismissal. The person can
+  // say "no, show me everything again" without going back to chat, and
+  // because the field is durable that dismissal has to persist (see
+  // `handleClearAssistantNarrowing` below), not merely hide locally.
+  const persistedVisibleOptionIds = snapshot?.view?.visibleOptionIds;
+  const [assistantNarrowingDismissed, setAssistantNarrowingDismissed] = useState(false);
+
+  // Content-based key, for the identical reason `lastPersistedFiltersKey`
+  // above uses one: every poll rebuilds this array even when its contents
+  // are unchanged, so reference equality would read routine polling as a
+  // genuine change and undo the dismissal before its write round-trips.
+  //
+  // Reacting only to a REAL transition is what keeps the dismissal from
+  // becoming permanent: the moment the model narrows again -- a different
+  // set, after the person cleared the last one -- the key changes, both the
+  // local override and the shared write intent are released, and the new
+  // narrowing renders.
+  const persistedNarrowingKey = JSON.stringify(persistedVisibleOptionIds ?? null);
+  const lastPersistedNarrowingKey = useRef(persistedNarrowingKey);
+  useEffect(() => {
+    if (persistedNarrowingKey === lastPersistedNarrowingKey.current) return;
+    lastPersistedNarrowingKey.current = persistedNarrowingKey;
+    setAssistantNarrowingDismissed(false);
+    intendedViewRef.current.clearedAssistantNarrowing = false;
+  }, [persistedNarrowingKey]);
+
+  const assistantVisibleOptionIds = assistantNarrowingDismissed
+    ? undefined
+    : persistedVisibleOptionIds;
+
+  const handleClearAssistantNarrowing = useCallback(() => {
+    setAssistantNarrowingDismissed(true);
+    intendedViewRef.current.clearedAssistantNarrowing = true;
+    // Deliberately reusing the FILTER writer's queue rather than opening a
+    // third one. Both existing writers are single-flight queues over the
+    // same `WorkspaceViewState`, and this dismissal is a chip press in the
+    // same row as the filter chips -- so it takes the same path they do,
+    // carrying the filters unchanged while `applyIntendedNarrowing` strips
+    // the dismissed field. A third queue would add a third way for these
+    // writes to race each other, which is the one thing this area of the
+    // file has already paid for twice.
+    desiredFiltersRef.current = filters;
+    // Same reason `handleFiltersChange` restarts the queue: the set Quick
+    // Pick is walking just got longer, and a position past the old end
+    // would show the "you've reviewed everything" state over options the
+    // person has not seen.
+    setQuickPickPosition(0);
+    void drainFilterWrites();
+  }, [drainFilterWrites, filters]);
+
   // THE READER THAT MAKES EVERY FILTER CONTROL MEAN SOMETHING.
   //
   // Until this line existed, `WorkspaceFilter` was written by the filter
@@ -934,9 +1037,31 @@ export function App() {
     () => snapshot?.attributeDefinitions ?? [],
     [snapshot?.attributeDefinitions],
   );
+  // TWO independent narrowings, composed -- an option has to survive BOTH.
+  //
+  // The assistant's `visibleOptionIds` is a literal SET it named; the
+  // person's `filters` are a RULE they stated. Neither is a special case of
+  // the other, so neither may quietly win: composing them is what makes
+  // "only the AWD ones" still mean something after the model has already
+  // narrowed to three, and vice versa.
+  //
+  // Applied first, purely for readability of the count that follows -- the
+  // functions are pure and order-independent (proven in
+  // `workspace-filters.test.ts`). Both are presentation only: this can no
+  // more reach scoring, readiness, or the recommendation than a filter can,
+  // and for the same structural reason (see the note above about which
+  // surfaces deliberately do NOT read this).
+  //
+  // The result is honest ONLY because `FilterBar` states both reasons the
+  // list is short and offers a way out of each; a narrowing the person
+  // cannot see or undo would be worse than not implementing it at all.
+  const assistantNarrowedOptions = useMemo(
+    () => applyAssistantNarrowing(allOptions, assistantVisibleOptionIds),
+    [allOptions, assistantVisibleOptionIds],
+  );
   const visibleOptions = useMemo(
-    () => applyWorkspaceFilters(allOptions, filters, filterableDefinitions),
-    [allOptions, filters, filterableDefinitions],
+    () => applyWorkspaceFilters(assistantNarrowedOptions, filters, filterableDefinitions),
+    [assistantNarrowedOptions, filters, filterableDefinitions],
   );
 
   // Hoisted above this component's `activeCaseId === null` early return
@@ -1611,6 +1736,8 @@ export function App() {
               matchingCount={visibleOptions.length}
               totalCount={allOptions.length}
               presentation={activePack?.presentation ?? null}
+              assistantVisibleOptionIds={assistantVisibleOptionIds}
+              onClearAssistantNarrowing={handleClearAssistantNarrowing}
             />
 
             <WorkspaceViewSwitcher
@@ -1661,6 +1788,8 @@ export function App() {
             matchingCount={visibleOptions.length}
             totalCount={allOptions.length}
             presentation={activePack?.presentation ?? null}
+            assistantVisibleOptionIds={assistantVisibleOptionIds}
+            onClearAssistantNarrowing={handleClearAssistantNarrowing}
           />
 
           <WorkspaceViewSwitcher

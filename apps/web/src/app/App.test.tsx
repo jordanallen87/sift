@@ -2667,6 +2667,289 @@ describe('App', () => {
     });
   });
 
+  /**
+   * `WorkspaceViewState.visibleOptionIds` reaches the rendered page, and
+   * says out loud that it did.
+   *
+   * `sift_set_view` has always persisted this field, and `OptionListView`/
+   * `OptionCompareView` have always implemented it as a real narrowing prop
+   * -- but nothing in `App.tsx` read it, so the model could call "show her
+   * just those two", collect a success receipt, and the page would not move.
+   * The exact seam `compare.optionIds` had before §58 closed it, one field
+   * over.
+   *
+   * The harder half is the second requirement these tests carry: an
+   * invisible narrowing is worse than no narrowing. Three cards with no
+   * stated reason reads as "there are three cars." So every test below that
+   * proves the list got shorter also proves the row above it says who
+   * shortened it and offers a way out.
+   */
+  describe("the assistant's visibleOptionIds narrowing reaches the page, visibly (sift_set_view)", () => {
+    const AWD_DEFINITION = {
+      id: 'awd',
+      label: 'AWD',
+      valueType: 'boolean' as const,
+      required: false,
+      appliesTo: ['car'],
+      evidenceExpectation: 'assertion' as const,
+      comparison: 'none' as const,
+      sensitive: false,
+    };
+
+    function buildAwdCar(id: string, label: string, awd: boolean) {
+      return {
+        id,
+        kind: 'car',
+        label,
+        attributes: {
+          awd: {
+            definitionId: 'awd',
+            label: 'AWD',
+            value: { type: 'boolean' as const, value: awd },
+            origin: 'user' as const,
+            sourceIds: [],
+            status: 'asserted' as const,
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        },
+        createdAt: '2026-08-27T00:00:00.000Z',
+        updatedAt: '2026-08-27T00:00:00.000Z',
+      };
+    }
+
+    /** Three cars that genuinely disagree on AWD, so a real human filter is available to compose with. */
+    const THREE_CARS = [
+      buildAwdCar('candidate-rav4', 'Toyota RAV4', true),
+      buildAwdCar('candidate-crv', 'Honda CR-V', false),
+      buildAwdCar('candidate-forester', 'Subaru Forester', true),
+    ];
+
+    function buildNarrowedCase(view: Partial<NonNullable<CaseState['view']>>) {
+      return buildFixtureCaseState({
+        id: CASE_ID,
+        attributeDefinitions: [AWD_DEFINITION],
+        entities: THREE_CARS,
+        view: { mode: 'list', ...view },
+      });
+    }
+
+    it('renders only the options the assistant named', async () => {
+      renderLiveWorkspace(
+        buildNarrowedCase({ visibleOptionIds: ['candidate-forester', 'candidate-rav4'] }),
+      );
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('option-list-view-card-candidate-rav4')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('option-list-view-card-candidate-forester')).toBeInTheDocument();
+      expect(screen.queryByTestId('option-list-view-card-candidate-crv')).not.toBeInTheDocument();
+    });
+
+    it("keeps the case's own option order rather than resequencing to match the assistant's list", async () => {
+      renderLiveWorkspace(
+        buildNarrowedCase({ visibleOptionIds: ['candidate-forester', 'candidate-rav4'] }),
+      );
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('option-list-view-cards')).toBeInTheDocument();
+      });
+      // The order on screen is the person's own working arrangement. Naming
+      // ids in a different sequence says WHICH to show, not "re-sort my page."
+      const rendered = [...screen.getByTestId('option-list-view-cards').children].map((card) =>
+        card.getAttribute('data-testid'),
+      );
+      expect(rendered).toEqual([
+        'option-list-view-card-candidate-rav4',
+        'option-list-view-card-candidate-forester',
+      ]);
+    });
+
+    it('says plainly that the assistant narrowed the view, instead of just showing a shorter list', async () => {
+      renderLiveWorkspace(
+        buildNarrowedCase({ visibleOptionIds: ['candidate-rav4', 'candidate-forester'] }),
+      );
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-filter-assistant-chip')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('workspace-filter-assistant-chip')).toHaveTextContent(
+        'Assistant narrowed to 2',
+      );
+      // And the true total stays on screen, so nobody concludes the case
+      // only ever held two cars.
+      expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent('2 of 3');
+    });
+
+    it("composes with the human's own filters -- both narrowings hold at once", async () => {
+      renderLiveWorkspace(
+        buildNarrowedCase({
+          visibleOptionIds: ['candidate-rav4', 'candidate-crv'],
+          filters: [{ fieldId: 'awd', operator: 'equals', value: 'true' }],
+        }),
+      );
+      await startDemoAndWait();
+
+      // The CR-V is inside the assistant's set but fails the person's
+      // filter; the Forester passes the filter but is outside the set.
+      // Only the RAV4 satisfies both.
+      await waitFor(() => {
+        expect(screen.getByTestId('option-list-view-card-candidate-rav4')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('option-list-view-card-candidate-crv')).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('option-list-view-card-candidate-forester'),
+      ).not.toBeInTheDocument();
+      // Both reasons are on screen at once, each with its own way out.
+      expect(screen.getByTestId('workspace-filter-assistant-chip')).toBeInTheDocument();
+      expect(screen.getByTestId('workspace-filter-chip-awd')).toBeInTheDocument();
+    });
+
+    it('ignores an id naming no saved option rather than failing to render', async () => {
+      // A `visibleOptionIds` persisted before an option was deleted still
+      // names it. Ordinary staleness, not corruption.
+      renderLiveWorkspace(
+        buildNarrowedCase({ visibleOptionIds: ['candidate-rav4', 'candidate-deleted'] }),
+      );
+      await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('option-list-view-card-candidate-rav4')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('workspace-filter-assistant-chip')).toHaveTextContent(
+        'Assistant narrowed to 1',
+      );
+    });
+
+    it('clearing it brings the hidden options straight back', async () => {
+      renderLiveWorkspace(buildNarrowedCase({ visibleOptionIds: ['candidate-rav4'] }));
+      server.use(commandHandler('setView', buildFakeCommandReceipt({ caseId: CASE_ID })));
+      const user = await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-filter-assistant-chip')).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId('workspace-filter-assistant-chip-remove'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('option-list-view-card-candidate-crv')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('option-list-view-card-candidate-forester')).toBeInTheDocument();
+      expect(screen.queryByTestId('workspace-filter-assistant-chip')).not.toBeInTheDocument();
+    });
+
+    it('clearing it PERSISTS through the same setView path the filter chips use, not just locally', async () => {
+      // `visibleOptionIds` is a durable field on the snapshot. A ✕ that only
+      // hid it locally would put the narrowing back on the next reload, with
+      // the person having no idea why.
+      const setViewBodies: unknown[] = [];
+      renderLiveWorkspace(buildNarrowedCase({ visibleOptionIds: ['candidate-rav4'] }));
+      server.use(
+        commandHandler('setView', buildFakeCommandReceipt({ caseId: CASE_ID }), (body) => {
+          setViewBodies.push(body);
+        }),
+      );
+      const user = await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-filter-assistant-chip')).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId('workspace-filter-assistant-chip-remove'));
+
+      await waitFor(() => expect(setViewBodies.length).toBeGreaterThan(0));
+      const cleared = setViewBodies.at(-1) as { view: { mode: string } };
+      expect(cleared.view).not.toHaveProperty('visibleOptionIds');
+      // Presentation only, and still the person's own view: clearing the
+      // assistant's narrowing must not smuggle in a mode change or drop the
+      // filters alongside it.
+      expect(cleared.view.mode).toBe('list');
+    });
+
+    it('a later view-mode write cannot resurrect a narrowing the person just cleared', async () => {
+      // The two view writers are separate single-flight queues that both
+      // rebuild the full `WorkspaceViewState` from a snapshot which lags
+      // whatever the other has in flight -- exactly the race `intendedViewRef`
+      // exists for. Without the clear joining that shared intent, switching
+      // tabs a moment later would spread the stale `visibleOptionIds` back
+      // out of the snapshot and undo it.
+      const setViewBodies: unknown[] = [];
+      renderLiveWorkspace(buildNarrowedCase({ visibleOptionIds: ['candidate-rav4'] }));
+      server.use(
+        commandHandler('setView', buildFakeCommandReceipt({ caseId: CASE_ID }), (body) => {
+          setViewBodies.push(body);
+        }),
+      );
+      const user = await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-filter-assistant-chip')).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId('workspace-filter-assistant-chip-remove'));
+      await user.click(screen.getByTestId('workspace-view-tab-board'));
+
+      await waitFor(() => {
+        expect(
+          setViewBodies.some((body) => (body as { view: { mode: string } }).view.mode === 'board'),
+        ).toBe(true);
+      });
+      for (const body of setViewBodies) {
+        expect((body as { view: Record<string, unknown> }).view).not.toHaveProperty(
+          'visibleOptionIds',
+        );
+      }
+    });
+
+    it('a genuinely new narrowing from the assistant still lands after an earlier one was cleared', async () => {
+      // The cleared-intent flag must not become a permanent veto: the person
+      // clears "those three", then asks for a different three in chat.
+      const snapshot = buildNarrowedCase({ visibleOptionIds: ['candidate-rav4'] });
+      renderLiveWorkspace(snapshot);
+      server.use(commandHandler('setView', buildFakeCommandReceipt({ caseId: CASE_ID })));
+      const user = await startDemoAndWait();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-filter-assistant-chip')).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId('workspace-filter-assistant-chip-remove'));
+      await waitFor(() => {
+        expect(screen.queryByTestId('workspace-filter-assistant-chip')).not.toBeInTheDocument();
+      });
+
+      // A real `sift_set_view` landing while the page is open, delivered the
+      // way the live stream delivers every other durable change.
+      server.use(
+        pollHandler({
+          ...snapshot,
+          eventSequence: snapshot.eventSequence + 1,
+          view: { mode: 'list', visibleOptionIds: ['candidate-crv', 'candidate-forester'] },
+        }),
+      );
+      await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+      const source = FakeEventSource.instances.at(-1)!;
+      source.triggerOpen();
+      source.emit({
+        schemaVersion: '1.0',
+        eventId: 'evt-narrowing-1',
+        sequence: snapshot.eventSequence + 1,
+        timestamp: '2026-08-27T00:04:00.000Z',
+        caseId: CASE_ID,
+        commandId: 'cmd-set-view-narrow',
+        type: 'command.accepted',
+        phase: 'completed',
+        summary: 'Set workspace view to "list".',
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-filter-assistant-chip')).toHaveTextContent(
+          'Assistant narrowed to 2',
+        );
+      });
+      expect(screen.queryByTestId('option-list-view-card-candidate-rav4')).not.toBeInTheDocument();
+    });
+  });
+
   // ADR 0008 "Two Modes, One Product": `WorkspaceAppBar`/`WorkspaceAlertBanner`
   // replace `CaseHeader` and the former bottom-of-page "Manage options"/
   // "What Sift found" disclosures in BOTH layout modes; `WorkspaceSidebar`

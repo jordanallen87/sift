@@ -439,6 +439,161 @@ describe('sift_set_view (PRESENTATION)', () => {
     expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
     expect(setView).not.toHaveBeenCalled();
   });
+
+  /**
+   * The half of the two-way loop that was missing entirely.
+   *
+   * `WorkspaceViewState.filters` is a real, durable field: the human-facing
+   * `FilterSheet` writes it and `applyWorkspaceFilters` genuinely reads it,
+   * so a person can narrow the list to "under $30k" by hand. The model
+   * could not -- `SetViewInputSchema` accepted `mode`/`focusedOptionId`/
+   * `visibleOptionIds` and nothing else -- so the single most natural thing
+   * a person says in chat ("only show me the ones under $30k") had no tool
+   * call behind it at all. These tests pin the capability AND the shape it
+   * borrows: `WorkspaceFilterSchema` from `@sift/contracts`, never a
+   * re-declared local copy that could drift from what the store accepts.
+   */
+  describe('filters', () => {
+    const UNDER_30K = { fieldId: 'price', operator: 'less_than', value: '30000' } as const;
+
+    it('accepts filters and merges them onto the current view, leaving every other view field intact', async () => {
+      const caseState = buildFixtureCaseState({
+        eventSequence: 5,
+        view: { mode: 'list', focusedOptionId: 'opt-3' },
+      });
+      const receipt = buildFakeCommandReceipt({ caseId: 'case-1', acceptedSequence: 6 });
+      const setView = vi.fn().mockResolvedValue(receipt);
+      const { adapter, commands } = await setUpWithActiveCase('case-1', {
+        getActiveCase: () => caseState,
+        commandsOverrides: { setView },
+      });
+
+      const result = await invokeTool(adapter, 'sift_set_view', {
+        caseId: 'case-1',
+        expectedSequence: 5,
+        mode: 'list',
+        filters: [UNDER_30K],
+      });
+
+      expect(result.ok).toBe(true);
+      expect(commands.setView).toHaveBeenCalledWith(
+        {
+          caseId: 'case-1',
+          expectedSequence: 5,
+          view: { mode: 'list', focusedOptionId: 'opt-3', filters: [UNDER_30K] },
+        },
+        { origin: 'webmcp' },
+      );
+      // Still presentation and nothing else: a filter narrows what is
+      // VISIBLE, and must never reach `updateCriteria` -- "only show me the
+      // ones under $30k" is not "budget is now the only thing I care about."
+      expectOnlyCommandCalled(commands, 'setView');
+    });
+
+    it('replaces the whole filter array rather than appending to it, so "actually, just show me everything" is expressible', async () => {
+      const caseState = buildFixtureCaseState({
+        eventSequence: 2,
+        view: { mode: 'list', filters: [UNDER_30K] },
+      });
+      const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1' }));
+      const { adapter, commands } = await setUpWithActiveCase('case-1', {
+        getActiveCase: () => caseState,
+        commandsOverrides: { setView },
+      });
+
+      await invokeTool(adapter, 'sift_set_view', {
+        caseId: 'case-1',
+        expectedSequence: 2,
+        mode: 'list',
+        filters: [],
+      });
+
+      expect(commands.setView).toHaveBeenCalledWith(
+        { caseId: 'case-1', expectedSequence: 2, view: { mode: 'list', filters: [] } },
+        { origin: 'webmcp' },
+      );
+    });
+
+    it('says what it filtered by, not only which view it landed on', async () => {
+      const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1' }));
+      const { adapter } = await setUpWithActiveCase('case-1', {
+        getActiveCase: () => buildFixtureCaseState({ eventSequence: 1 }),
+        commandsOverrides: { setView },
+      });
+
+      const result = await invokeTool(adapter, 'sift_set_view', {
+        caseId: 'case-1',
+        expectedSequence: 1,
+        mode: 'list',
+        filters: [UNDER_30K, { fieldId: 'awd', operator: 'equals', value: 'true' }],
+      });
+
+      // A receipt that reported only `Workspace view set to "list".` would
+      // under-report what the call actually did, and the model would have
+      // no signal that its filter reached the page.
+      expect(result.message).toContain('2 filter');
+      expect(result.ok).toBe(true);
+    });
+
+    it('reports an unchanged filter set honestly when a call sets no filters at all', async () => {
+      const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt({ caseId: 'case-1' }));
+      const { adapter } = await setUpWithActiveCase('case-1', {
+        getActiveCase: () => buildFixtureCaseState({ eventSequence: 1 }),
+        commandsOverrides: { setView },
+      });
+
+      const result = await invokeTool(adapter, 'sift_set_view', {
+        caseId: 'case-1',
+        expectedSequence: 1,
+        mode: 'list',
+      });
+
+      expect(result.message).toBe('Workspace view set to "list".');
+    });
+
+    it('rejects an operator WorkspaceFilterSchema does not declare, without calling SiftCommands', async () => {
+      const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+      const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
+      const result = await invokeTool(adapter, 'sift_set_view', {
+        caseId: 'case-1',
+        expectedSequence: 1,
+        mode: 'list',
+        filters: [{ fieldId: 'price', operator: 'roughly_under', value: '30000' }],
+      });
+      expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+      expect(setView).not.toHaveBeenCalled();
+    });
+
+    it('rejects a filter value carrying markup, because it reuses the contract’s own guarded string', async () => {
+      const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+      const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
+      const result = await invokeTool(adapter, 'sift_set_view', {
+        caseId: 'case-1',
+        expectedSequence: 1,
+        mode: 'list',
+        filters: [{ fieldId: 'color', operator: 'equals', value: '<script>alert(1)</script>' }],
+      });
+      expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+      expect(setView).not.toHaveBeenCalled();
+    });
+
+    it('rejects more filters than WorkspaceViewState itself would hold', async () => {
+      const setView = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
+      const { adapter } = await setUpWithActiveCase('case-1', { commandsOverrides: { setView } });
+      const result = await invokeTool(adapter, 'sift_set_view', {
+        caseId: 'case-1',
+        expectedSequence: 1,
+        mode: 'list',
+        filters: Array.from({ length: 51 }, (_, index) => ({
+          fieldId: `field-${index}`,
+          operator: 'equals' as const,
+          value: 'x',
+        })),
+      });
+      expect(result.error).toEqual({ code: 'VALIDATION', retryable: false });
+      expect(setView).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('sift_configure_comparison (PRESENTATION)', () => {

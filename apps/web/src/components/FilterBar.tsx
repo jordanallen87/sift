@@ -16,6 +16,28 @@
  * Two earlier rounds of this UI were rejected by the project owner as
  * "crammed" and "nothing familiar." This row is the familiar part.
  *
+ * ## The assistant's narrowing gets a chip too, and for the same reason
+ *
+ * `sift_set_view` lets the model narrow the list to a literal set of options
+ * ("show her just those three"). That is a second, independent narrowing
+ * alongside the person's own filters, and it arrives from SOMEONE ELSE --
+ * which makes showing it here not a nicety but the thing that keeps the
+ * feature honest. A narrowing nobody can see is a lie: three cards with no
+ * explanation reads as "there are three cars," and a person who believes
+ * that is worse off than if the model could not narrow at all.
+ *
+ * So it gets the identical treatment a filter gets -- a chip stating what
+ * happened, a real ✕ that undoes it, and a result count that keeps naming
+ * the true total -- with two deliberate differences:
+ *
+ *  - it is drawn differently (a dashed, untinted chip with an assistant
+ *    glyph, not the solid tint a human-set filter uses), because provenance
+ *    is the entire point: this is not something you did;
+ *  - it does not count toward the `Filters` button badge, which is a promise
+ *    that opening the sheet shows you those controls. The assistant's
+ *    narrowing has no control in there, so counting it would send someone
+ *    hunting for something that is not present.
+ *
  * ## The dead-empty results defect this closes
  *
  * When filters exclude everything, an unexplained empty results area is
@@ -46,7 +68,7 @@
  * `WorkspaceFilter[]` and nothing else -- never a `CaseEvent`, never an
  * `eventSequence` advance, never a `Criterion` weight or target.
  */
-import { SlidersHorizontalIcon, XIcon } from 'lucide-react';
+import { SlidersHorizontalIcon, SparklesIcon, XIcon } from 'lucide-react';
 import type {
   AttributeDefinition,
   EntityRecord,
@@ -54,6 +76,7 @@ import type {
   WorkspaceFilter,
 } from '@sift/contracts';
 import {
+  applyAssistantNarrowing,
   describeAppliedFilters,
   isFilterableAttribute,
   upsertFilter,
@@ -78,6 +101,10 @@ export interface FilterBarProps {
   totalCount: number;
   /** The active pack's `PresentationDefinition`, or `null` before a pack is resolved. The same prop `WorkspaceViewSwitcher` already takes. */
   presentation: PresentationDefinition | null;
+  /** The exact `WorkspaceViewState.visibleOptionIds` slice -- the option set the assistant narrowed to through `sift_set_view`. `undefined` means it has narrowed nothing, which is the ordinary case. */
+  assistantVisibleOptionIds?: string[] | undefined;
+  /** Fires when the person dismisses the assistant's narrowing (its own ✕, or `Clear all`). Like `onFiltersChange`, this component only reports the intent -- persisting it stays with the orchestrator. */
+  onClearAssistantNarrowing?: (() => void) | undefined;
 }
 
 /**
@@ -124,6 +151,38 @@ function AppliedFilterChip({
   );
 }
 
+/**
+ * The assistant's narrowing, stated as someone else's doing.
+ *
+ * Drawn deliberately unlike `AppliedFilterChip` above -- dashed and untinted
+ * rather than solid-tinted, with an assistant glyph -- so a glance separates
+ * "I narrowed this" from "the assistant narrowed this." Same 44px target and
+ * same fully-named ✕ as its sibling, because the escape hatch matters more
+ * here, not less: this is the narrowing the person did not choose.
+ */
+function AssistantNarrowingChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span
+      data-testid="workspace-filter-assistant-chip"
+      className="inline-flex min-h-[var(--size-touch-target-min)] max-w-full shrink-0 items-center gap-[var(--space-1)] rounded-[var(--radius-pill)] border border-dashed border-[color:var(--color-border-strong)] bg-[color:var(--color-surface-sunken)] py-[var(--space-0-5)] pl-[var(--space-3)] text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+    >
+      <SparklesIcon aria-hidden="true" className="size-4 shrink-0" />
+      <span className="min-w-0 truncate" title={label}>
+        {label}
+      </span>
+      <button
+        type="button"
+        data-testid="workspace-filter-assistant-chip-remove"
+        aria-label={`Remove: ${label}`}
+        onClick={onRemove}
+        className="flex h-[var(--size-touch-target-min)] w-[var(--size-touch-target-min)] shrink-0 items-center justify-center rounded-[var(--radius-full)] transition-opacity duration-[var(--duration-fast)] hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+      >
+        <XIcon aria-hidden="true" className="size-4" />
+      </button>
+    </span>
+  );
+}
+
 export function FilterBar({
   attributeDefinitions,
   options,
@@ -133,13 +192,22 @@ export function FilterBar({
   matchingCount,
   totalCount,
   presentation,
+  assistantVisibleOptionIds,
+  onClearAssistantNarrowing,
 }: FilterBarProps) {
+  const assistantIsNarrowing = assistantVisibleOptionIds !== undefined;
   // No filterable attribute anywhere in the pack/case means there is no
   // filtering to explain, so this renders no chrome at all rather than an
   // inert button over an empty chip row. Keyed on the DECLARATION, not on
   // what the current options happen to contain, so the entry point does not
   // blink in and out as options are added.
-  if (!attributeDefinitions.some(isFilterableAttribute)) return null;
+  //
+  // The assistant's narrowing overrides that silence. A pack with nothing
+  // filterable can still have its list narrowed by `sift_set_view`, and
+  // returning `null` there would put the page right back in the state this
+  // component exists to prevent: a shortened list with no stated reason.
+  const hasFilterableAttribute = attributeDefinitions.some(isFilterableAttribute);
+  if (!hasFilterableAttribute && !assistantIsNarrowing) return null;
 
   // `describeAppliedFilters` is the single source of truth for "what is
   // applied", not `filters.length`: it already drops any filter naming an
@@ -157,11 +225,40 @@ export function FilterBar({
   // always "N of M", where M governs ("0 of 5 saved cars", "1 of 1 saved car").
   const noun = totalCount === 1 ? singularNoun : pluralNoun;
 
-  const resultText = !hasApplied
-    ? `${totalCount} ${noun}`
-    : matchingCount === 0
-      ? `No ${pluralNoun} match these filters.`
-      : `${matchingCount} of ${totalCount} ${noun}`;
+  // Resolved against the case's REAL saved options, never taken as the raw
+  // id array's length: a `visibleOptionIds` persisted before an option was
+  // deleted still names it, and "narrowed to 3" while two of those three no
+  // longer exist would be a fabricated number in the one row that exists to
+  // be honest about why the list is short. Same reader `App.tsx` narrows the
+  // rendered list with, so the chip's number cannot drift from the page.
+  const assistantVisibleCount = assistantIsNarrowing
+    ? applyAssistantNarrowing(options, assistantVisibleOptionIds).length
+    : 0;
+  const assistantNoun = assistantVisibleCount === 1 ? singularNoun : pluralNoun;
+  const assistantLabel = `Assistant narrowed to ${assistantVisibleCount} ${assistantNoun}`;
+
+  /**
+   * The zero-match sentence has to name EVERY active reason, not the first
+   * one. Two narrowings can be in force at once, and a person told only
+   * "no saved cars match these filters" while the assistant is also holding
+   * the list down to two options would clear every filter, see nothing
+   * change, and reasonably conclude the product is broken.
+   */
+  const zeroMatchText = !assistantIsNarrowing
+    ? `No ${pluralNoun} match these filters.`
+    : !hasApplied
+      ? // The assistant is the sole narrowing and nothing survived it, which
+        // means every option it named is gone -- so say that, rather than
+        // blaming filters the person has not set.
+        `The assistant narrowed this view to ${pluralNoun} that are no longer here.`
+      : `No ${pluralNoun} match these filters among the ${assistantVisibleCount} the assistant narrowed to.`;
+
+  const resultText =
+    !hasApplied && !assistantIsNarrowing
+      ? `${totalCount} ${noun}`
+      : matchingCount === 0
+        ? zeroMatchText
+        : `${matchingCount} of ${totalCount} ${noun}`;
 
   return (
     <div
@@ -171,28 +268,41 @@ export function FilterBar({
       role="group"
     >
       <div className="flex flex-wrap items-center gap-[var(--space-2)]">
-        <Button
-          type="button"
-          data-testid="workspace-filter-open"
-          variant="secondary"
-          onClick={onOpenFilters}
-          className="min-h-[var(--size-touch-target-min)] gap-[var(--space-2)] px-[var(--space-3)]"
-        >
-          <SlidersHorizontalIcon aria-hidden="true" />
-          <span>Filters</span>
-          {hasApplied ? (
-            <Badge
-              data-testid="workspace-filter-active-count"
-              className="shrink-0"
-              style={{
-                backgroundColor: 'var(--color-status-active-ink)',
-                color: 'var(--color-surface)',
-              }}
-            >
-              {chips.length}
-            </Badge>
-          ) : null}
-        </Button>
+        {/*
+         * Only when the sheet behind it has controls to show. This row can
+         * now render for the assistant's narrowing alone (see the early
+         * return above), and a `Filters` button opening an empty sheet is
+         * the dead control the rest of this component is built to avoid.
+         */}
+        {hasFilterableAttribute ? (
+          <Button
+            type="button"
+            data-testid="workspace-filter-open"
+            variant="secondary"
+            onClick={onOpenFilters}
+            className="min-h-[var(--size-touch-target-min)] gap-[var(--space-2)] px-[var(--space-3)]"
+          >
+            <SlidersHorizontalIcon aria-hidden="true" />
+            <span>Filters</span>
+            {hasApplied ? (
+              <Badge
+                data-testid="workspace-filter-active-count"
+                className="shrink-0"
+                style={{
+                  backgroundColor: 'var(--color-status-active-ink)',
+                  color: 'var(--color-surface)',
+                }}
+              >
+                {/*
+                 * `chips.length`, deliberately excluding the assistant's
+                 * narrowing: this badge is a promise about what opening the
+                 * sheet will show you, and the sheet has no control for it.
+                 */}
+                {chips.length}
+              </Badge>
+            ) : null}
+          </Button>
+        ) : null}
 
         {/*
          * A live, always-present count -- the sentence that tells a person
@@ -221,11 +331,23 @@ export function FilterBar({
        * As the last item of the wrapping chip row it is correct at every
        * width, needs no `ml-auto`, and can never strand itself.
        */}
-      {hasApplied ? (
+      {hasApplied || assistantIsNarrowing ? (
         <div
           data-testid="workspace-filter-chips"
           className="flex flex-wrap items-center gap-[var(--space-2)]"
         >
+          {/*
+           * The assistant's chip leads the row. It is the narrowing the
+           * person did not set, so it is the one they most need to find --
+           * and putting it after a run of their own filters is exactly where
+           * it would be skimmed past.
+           */}
+          {assistantIsNarrowing ? (
+            <AssistantNarrowingChip
+              label={assistantLabel}
+              onRemove={() => onClearAssistantNarrowing?.()}
+            />
+          ) : null}
           {chips.map((chip) => (
             <AppliedFilterChip
               key={chip.fieldId}
@@ -236,19 +358,31 @@ export function FilterBar({
               }}
             />
           ))}
-          <Button
-            type="button"
-            data-testid="workspace-filter-clear-all"
-            variant="ghost"
-            onClick={() => {
-              // The COMPLETE next array, and genuinely empty: this clears
-              // any stale filter too, even one with no chip of its own.
-              onFiltersChange([]);
-            }}
-            className="min-h-[var(--size-touch-target-min)] px-[var(--space-3)]"
-          >
-            Clear all
-          </Button>
+          {/*
+           * Only offered when the person has filters of their own to clear.
+           * With the assistant's chip standing alone, its own ✕ already says
+           * everything a second "Clear all" beside it would.
+           */}
+          {hasApplied ? (
+            <Button
+              type="button"
+              data-testid="workspace-filter-clear-all"
+              variant="ghost"
+              onClick={() => {
+                // The COMPLETE next array, and genuinely empty: this clears
+                // any stale filter too, even one with no chip of its own.
+                onFiltersChange([]);
+                // And the assistant's narrowing with it. "Clear all" sits at
+                // the end of the row that shows both chips, so clearing only
+                // one of them would leave a visibly shortened list under a
+                // control that just claimed to have cleared everything.
+                if (assistantIsNarrowing) onClearAssistantNarrowing?.();
+              }}
+              className="min-h-[var(--size-touch-target-min)] px-[var(--space-3)]"
+            >
+              Clear all
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>

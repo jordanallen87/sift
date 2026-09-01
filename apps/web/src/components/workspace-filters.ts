@@ -43,6 +43,16 @@
  * caller: a decision Sift already reached about an option must stay visible
  * even while a filter hides that option from the browsing list, or the
  * product would appear to silently retract its own answer.
+ *
+ * ## The second narrowing: `applyAssistantNarrowing`
+ *
+ * The model narrows the same list a different way, through
+ * `sift_set_view`'s `visibleOptionIds` -- a literal set of options rather
+ * than a rule. That reader lives here too (see its own comment for why),
+ * because the two narrowings are only ever meaningful together: both must
+ * hold for an option to render, and both stay separately visible and
+ * separately removable in `FilterBar` so a shortened list always says who
+ * shortened it.
  */
 import type {
   AttributeDefinition,
@@ -472,6 +482,53 @@ export function applyWorkspaceFilters(
       return attribute === undefined || optionMatchesFilter(option, filter, attribute);
     }),
   );
+}
+
+// --- The assistant's own narrowing --------------------------------------
+
+/**
+ * The second, independent narrowing of the same option list: the literal set
+ * of options the model named through `sift_set_view`'s `visibleOptionIds`
+ * ("show her just those three"), as opposed to a `WorkspaceFilter`, which is
+ * a RULE the person stated ("under $30k").
+ *
+ * It lives beside `applyWorkspaceFilters` rather than in its own module
+ * because the two are only ever used together and must compose the same way
+ * everywhere: both narrowings hold, so an option has to survive BOTH to be
+ * rendered. Splitting them across modules invites a caller to apply one and
+ * forget the other, which is precisely the class of bug this whole change
+ * exists to close (`visibleOptionIds` was persisted and read by nobody).
+ *
+ * Two behaviours are deliberate:
+ *
+ *  - **The case's own option order wins**, not the order the ids arrived in.
+ *    A model listing ids in a different sequence is saying WHICH options to
+ *    show, not asking for a re-sort; resequencing the page underneath
+ *    someone would be a change they never asked for. This is the one place
+ *    it diverges from `OptionCompareView`/`OptionListView`'s own
+ *    `narrowOptions`, which maps over the id array precisely because a
+ *    caller there is choosing column order.
+ *  - **An id naming no saved option is ignored**, not an error. A
+ *    `visibleOptionIds` array persisted before an option was deleted still
+ *    names it; that is ordinary staleness, the same reason
+ *    `applyWorkspaceFilters` ignores a stale `fieldId`.
+ *
+ * `undefined` means the assistant has narrowed nothing and every option
+ * survives. An empty array is NOT the same thing: it is a real, schema-valid
+ * "show none of them", and reading it as "no narrowing" would silently
+ * contradict what was actually persisted.
+ *
+ * Presentation only, exactly like everything else in this module: hiding an
+ * option cannot reach scoring, readiness, evidence validity, or the
+ * recommendation.
+ */
+export function applyAssistantNarrowing(
+  options: EntityRecord[],
+  visibleOptionIds: string[] | undefined,
+): EntityRecord[] {
+  if (visibleOptionIds === undefined) return [...options];
+  const visible = new Set(visibleOptionIds);
+  return options.filter((option) => visible.has(option.id));
 }
 
 // --- Describing what is applied (the chip row) --------------------------

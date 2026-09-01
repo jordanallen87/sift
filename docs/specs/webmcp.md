@@ -310,13 +310,24 @@ Effect: read-only. Returns an empty result, not an error, when the active pack h
 
 ### `sift_set_view` — PRESENTATION
 
-Changes which workspace view is shown — Quick Pick, List, Compare, or Board — and optionally which option is focused or which options are visible. Use this when the user asks to see the case a different way, such as "walk me through them instead" or "show me a list." This changes PRESENTATION ONLY: it can never add, remove, reweight, or relabel a criterion, and it can never invalidate the recommendation.
+Changes which workspace view is shown — Quick Pick, List, Compare, or Board — and optionally which option is focused, which options are visible, and which filters narrow the list. Use this when the user asks to see the case a different way, such as "walk me through them instead" or "show me a list," and when they ask to see only part of what is saved, such as "only show me the ones under $30k" or "just the AWD ones." This changes PRESENTATION ONLY: it can never add, remove, reweight, or relabel a criterion, and it can never invalidate the recommendation.
 
 Input:
 
 ```ts
-{ caseId: string; mode: 'quick_pick' | 'list' | 'compare' | 'board'; focusedOptionId?: string; visibleOptionIds?: string[] }
+{
+  caseId: string
+  expectedSequence: number
+  mode: 'quick_pick' | 'list' | 'compare' | 'board'
+  focusedOptionId?: string
+  visibleOptionIds?: string[]
+  filters?: { fieldId: string; operator: WorkspaceFilterOperator; value: string }[]
+}
 ```
+
+`filters` reuses `WorkspaceFilterSchema` from `@sift/contracts` outright rather than restating its shape, so a filter the model writes is byte-identical to one the human filter sheet writes and is read back by the same `applyWorkspaceFilters`. `value` is **always a string**, including for the four numeric comparisons (`'30000'`, never `30000`, `'$30,000'`, or `'30k'`); a boolean field takes `'true'`/`'false'`. Filters combine with AND, every call replaces the entire filter set (send `[]` to clear them), and an option with no recorded value for a filtered field is hidden rather than assumed to match — Sift cannot honestly claim an unknown price is under a threshold.
+
+**Both narrowings are rendered, and both are reversible from the page.** `visibleOptionIds` (the literal option set the model named) and `filters` (the rule the person stated) compose — an option must survive both — and `App.tsx` applies them together to every option-browsing view. Each is stated as its own removable chip in `FilterBar`, with the model's narrowing drawn distinctly from a human-set filter because provenance is the point; dismissing it writes through the same `setView` path the filter chips use, so the dismissal is durable rather than local. An invisible narrowing would be worse than none at all: a list silently cut from twelve options to three reads as "there are three options."
 
 **Effect, genuinely durable:** this tool merges its input onto the active case's own current `WorkspaceViewState` (read live via the same accessor `sift_get_case_context` uses, never a locally cached copy) and sends the resulting full `WorkspaceViewState` to the real `setView` command (`SetViewInputSchema`, `packages/contracts/src/commands.ts`; `CommandService.setView`, `apps/agent/src/services/command-service.ts`). That handler routes through `CaseStore.updateSelection()`, never `append()`, so the write is structurally incapable of advancing `eventSequence` or invalidating a recommendation — proven by a test that appends a `ready` recommendation, calls this tool, and asserts `criteria`/`recommendation` are byte-for-byte unchanged. Because the write is durable, it survives a reload and is visible to every viewer of the case, not only the browser session that made the call — this previously persisted only in browser-session memory; that gap is closed. A `sift_get_case_context` call after this tool reflects the change once the caller's own state cache picks up the durable write (the same correlation `sift_focus_option`/`sift_focus_evidence` already exhibit).
 

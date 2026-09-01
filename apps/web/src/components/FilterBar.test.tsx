@@ -380,6 +380,268 @@ describe('FilterBar', () => {
     });
   });
 
+  /**
+   * The assistant's own narrowing (`WorkspaceViewState.visibleOptionIds`,
+   * written by `sift_set_view`) shown as what it is: SOMEONE ELSE's reason
+   * the list is short.
+   *
+   * The rule these tests exist to enforce is that an invisible narrowing is
+   * a lie. If the model narrows twelve saved cars to three and the page
+   * simply shows three cards, the person reasonably concludes there are only
+   * three cars -- which is strictly worse than never implementing the
+   * feature. So it gets the same treatment a human filter gets: a chip that
+   * says plainly what happened, a real ✕ that undoes it, and a result count
+   * that keeps naming the true total.
+   */
+  describe("the assistant's narrowing", () => {
+    it('says in plain words that the assistant narrowed the view, and to how many', () => {
+      render(
+        <FilterBar
+          {...baseProps({
+            assistantVisibleOptionIds: ['car-1', 'car-2', 'car-3'],
+            matchingCount: 3,
+          })}
+        />,
+      );
+      const chip = screen.getByTestId('workspace-filter-assistant-chip');
+      // Plain English, and no jargon: the person has never heard of
+      // `visibleOptionIds` and should not have to.
+      expect(chip).toHaveTextContent('Assistant narrowed to 3 saved cars');
+      expect(chip).not.toHaveTextContent('visibleOptionIds');
+    });
+
+    it("uses the pack's own singular noun when the assistant narrowed to exactly one", () => {
+      render(
+        <FilterBar {...baseProps({ assistantVisibleOptionIds: ['car-1'], matchingCount: 1 })} />,
+      );
+      expect(screen.getByTestId('workspace-filter-assistant-chip')).toHaveTextContent(
+        'Assistant narrowed to 1 saved car',
+      );
+    });
+
+    it('counts only the options that actually exist, never the raw id list it was handed', () => {
+      // A `visibleOptionIds` array persisted before an option was deleted
+      // still names it. Claiming "narrowed to 3" while two of those three
+      // are gone would be a fabricated number in the one place this row
+      // exists to be honest about.
+      render(
+        <FilterBar
+          {...baseProps({
+            assistantVisibleOptionIds: ['car-1', 'ghost-a', 'ghost-b'],
+            matchingCount: 1,
+          })}
+        />,
+      );
+      expect(screen.getByTestId('workspace-filter-assistant-chip')).toHaveTextContent(
+        'Assistant narrowed to 1 saved car',
+      );
+    });
+
+    it('is visually distinguishable from a human-set filter chip -- whose narrowing this is, is the point', () => {
+      render(
+        <FilterBar
+          {...baseProps({
+            filters: [AWD_FILTER],
+            assistantVisibleOptionIds: ['car-1', 'car-3'],
+            matchingCount: 2,
+          })}
+        />,
+      );
+      const assistantChip = screen.getByTestId('workspace-filter-assistant-chip');
+      const humanChip = screen.getByTestId('workspace-filter-chip-awd');
+      expect(assistantChip.className).not.toEqual(humanChip.className);
+    });
+
+    it('has a ✕ whose accessible name says what it undoes', () => {
+      render(
+        <FilterBar {...baseProps({ assistantVisibleOptionIds: ['car-1'], matchingCount: 1 })} />,
+      );
+      expect(screen.getByTestId('workspace-filter-assistant-chip-remove')).toHaveAccessibleName(
+        'Remove: Assistant narrowed to 1 saved car',
+      );
+    });
+
+    it('clearing it asks the caller to undo it, and never touches the human filters', async () => {
+      const user = userEvent.setup();
+      const onFiltersChange = vi.fn();
+      const onClearAssistantNarrowing = vi.fn();
+      render(
+        <FilterBar
+          {...baseProps({
+            filters: [AWD_FILTER],
+            assistantVisibleOptionIds: ['car-1'],
+            matchingCount: 1,
+            onFiltersChange,
+            onClearAssistantNarrowing,
+          })}
+        />,
+      );
+
+      await user.click(screen.getByTestId('workspace-filter-assistant-chip-remove'));
+      expect(onClearAssistantNarrowing).toHaveBeenCalledTimes(1);
+      expect(onFiltersChange).not.toHaveBeenCalled();
+    });
+
+    it('is absent whenever the assistant has narrowed nothing', () => {
+      render(<FilterBar {...baseProps({ filters: [AWD_FILTER], matchingCount: 2 })} />);
+      expect(screen.queryByTestId('workspace-filter-assistant-chip')).not.toBeInTheDocument();
+    });
+
+    it('does not inflate the Filters button count, which stands for what the sheet can change', () => {
+      // The badge is a promise that opening the sheet shows you those
+      // controls. The assistant's narrowing has no control in there, so
+      // counting it would send the person looking for something that is not
+      // there.
+      render(
+        <FilterBar
+          {...baseProps({
+            filters: [AWD_FILTER],
+            assistantVisibleOptionIds: ['car-1'],
+            matchingCount: 1,
+          })}
+        />,
+      );
+      expect(screen.getByTestId('workspace-filter-active-count')).toHaveTextContent('1');
+    });
+
+    it('still renders the row when the assistant narrowed a case with nothing filterable', async () => {
+      // Without this the honesty guarantee would silently lapse for any pack
+      // declaring no filterable attribute: the bar returns null, and the
+      // narrowing becomes invisible again -- the exact defect being fixed.
+      const { container } = render(
+        <FilterBar
+          {...baseProps({
+            attributeDefinitions: [ATTRIBUTES[4]!],
+            assistantVisibleOptionIds: ['car-1'],
+            matchingCount: 1,
+          })}
+        />,
+      );
+      expect(screen.getByTestId('workspace-filter-assistant-chip')).toBeInTheDocument();
+      // ...but no dead `Filters` button over a sheet with no controls in it.
+      expect(screen.queryByTestId('workspace-filter-open')).not.toBeInTheDocument();
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('reads as "N of M" so the true total stays on screen while the assistant is narrowing', () => {
+      render(
+        <FilterBar
+          {...baseProps({ assistantVisibleOptionIds: ['car-1', 'car-2'], matchingCount: 2 })}
+        />,
+      );
+      expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent(
+        '2 of 4 saved cars',
+      );
+    });
+
+    it('Clear all undoes both narrowings, because it sits at the end of the row that shows both', async () => {
+      const user = userEvent.setup();
+      const onFiltersChange = vi.fn();
+      const onClearAssistantNarrowing = vi.fn();
+      render(
+        <FilterBar
+          {...baseProps({
+            filters: [AWD_FILTER],
+            assistantVisibleOptionIds: ['car-1'],
+            matchingCount: 1,
+            onFiltersChange,
+            onClearAssistantNarrowing,
+          })}
+        />,
+      );
+
+      await user.click(screen.getByTestId('workspace-filter-clear-all'));
+      expect(onFiltersChange).toHaveBeenCalledWith([]);
+      expect(onClearAssistantNarrowing).toHaveBeenCalledTimes(1);
+    });
+
+    it('gives its ✕ the same real 44px touch target every other control here has', () => {
+      render(
+        <FilterBar {...baseProps({ assistantVisibleOptionIds: ['car-1'], matchingCount: 1 })} />,
+      );
+      expect(screen.getByTestId('workspace-filter-assistant-chip')).toHaveClass(
+        'min-h-[var(--size-touch-target-min)]',
+      );
+      expect(screen.getByTestId('workspace-filter-assistant-chip-remove')).toHaveClass(
+        'h-[var(--size-touch-target-min)]',
+        'w-[var(--size-touch-target-min)]',
+      );
+    });
+
+    it('has no axe violations with both narrowings shown at once', async () => {
+      const { container } = render(
+        <FilterBar
+          {...baseProps({
+            filters: [AWD_FILTER, COLOR_FILTER],
+            assistantVisibleOptionIds: ['car-1'],
+            matchingCount: 1,
+          })}
+        />,
+      );
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    describe('when nothing survives both narrowings', () => {
+      it('names BOTH reasons, so the person is not left blaming their filters alone', () => {
+        render(
+          <FilterBar
+            {...baseProps({
+              filters: [{ fieldId: 'color', operator: 'equals', value: 'Purple' }],
+              assistantVisibleOptionIds: ['car-1', 'car-2'],
+              matchingCount: 0,
+            })}
+          />,
+        );
+        const text = screen.getByTestId('workspace-filter-result-count');
+        expect(text).toHaveTextContent('these filters');
+        expect(text).toHaveTextContent('the 2 the assistant narrowed to');
+      });
+
+      it('blames only the assistant when it narrowed to options that are no longer saved', () => {
+        render(
+          <FilterBar
+            {...baseProps({ assistantVisibleOptionIds: ['ghost-a'], matchingCount: 0 })}
+          />,
+        );
+        expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent(
+          'The assistant narrowed this view to saved cars that are no longer here.',
+        );
+      });
+
+      it('still blames only the filters when the assistant has narrowed nothing', () => {
+        render(
+          <FilterBar
+            {...baseProps({
+              filters: [{ fieldId: 'color', operator: 'equals', value: 'Purple' }],
+              matchingCount: 0,
+            })}
+          />,
+        );
+        expect(screen.getByTestId('workspace-filter-result-count')).toHaveTextContent(
+          'No saved cars match these filters.',
+        );
+      });
+
+      it('keeps both escape hatches reachable', async () => {
+        const user = userEvent.setup();
+        const onClearAssistantNarrowing = vi.fn();
+        render(
+          <FilterBar
+            {...baseProps({
+              filters: [{ fieldId: 'color', operator: 'equals', value: 'Purple' }],
+              assistantVisibleOptionIds: ['car-1'],
+              matchingCount: 0,
+              onClearAssistantNarrowing,
+            })}
+          />,
+        );
+        expect(screen.getByTestId('workspace-filter-chip-remove-color')).toBeInTheDocument();
+        await user.click(screen.getByTestId('workspace-filter-assistant-chip-remove'));
+        expect(onClearAssistantNarrowing).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
   describe('accessibility', () => {
     it('gives every control a real 44px touch target', () => {
       render(<FilterBar {...baseProps({ filters: [AWD_FILTER], matchingCount: 2 })} />);

@@ -736,7 +736,7 @@ function buildSetViewTool(
   return buildCaseScopedCommandTool<SetViewInput, CommandReceipt>({
     name: 'sift_set_view',
     description:
-      "Changes which workspace view is shown -- Quick Pick, List, Compare, or Board -- and optionally which option is focused or which options are visible. Use this when the user asks to see the case a different way, such as 'walk me through them instead' or 'show me a list.' This changes PRESENTATION ONLY: it can never add, remove, reweight, or relabel a criterion, and it can never invalidate the recommendation, because it never writes through the same path a decision change does.",
+      "Changes which workspace view is shown -- Quick Pick, List, Compare, or Board -- and optionally which option is focused, which options are visible, and which filters narrow the list. Use this when the user asks to see the case a different way, such as 'walk me through them instead' or 'show me a list,' and when they ask to see only part of what is saved, such as 'only show me the ones under $30k' or 'just the AWD ones.' Each filter is an object of fieldId, operator, and value: fieldId is an attribute id from sift_get_case_context; operator is one of equals, not_equals, contains, less_than, less_than_or_equal, greater_than, or greater_than_or_equal; and value is ALWAYS a string, including for the four numeric comparisons -- write a plain unformatted number as a string ('30000', never 30000 and never '$30,000' or '30k'), and a yes/no value as 'true' or 'false'. Filters combine with AND, and every call replaces the entire filter set, so send the complete list you want applied and send an empty array to clear them all. An option whose value for a filtered field was never established is hidden rather than assumed to match, because Sift cannot honestly claim an unknown price is under $30,000. All of this changes PRESENTATION ONLY: hiding an option never removes it from the case, never adds, removes, reweights, or relabels a criterion, and never invalidates the recommendation, because it never writes through the same path a decision change does -- use sift_update_criteria instead when the user wants a factor to start or stop mattering to the decision itself.",
     inputSchema: SetViewInputSchema,
     activeCaseId,
     call: (input, options) => {
@@ -746,6 +746,13 @@ function buildSetViewTool(
         ...(input.visibleOptionIds !== undefined
           ? { visibleOptionIds: input.visibleOptionIds }
           : {}),
+        // Merged exactly like `visibleOptionIds` immediately above -- absent
+        // means "leave whatever is applied alone", and a present array
+        // REPLACES the whole set rather than adding to it. That replacement
+        // semantic is what makes "actually, show me everything again"
+        // expressible as `filters: []`; an additive merge would leave the
+        // model with no way to undo its own narrowing.
+        ...(input.filters !== undefined ? { filters: input.filters } : {}),
       });
       const commandInput: SetViewCommandInput = {
         caseId: input.caseId,
@@ -754,7 +761,19 @@ function buildSetViewTool(
       };
       return commands.setView(commandInput, options);
     },
-    successMessage: (input) => `Workspace view set to "${input.mode}".`,
+    // Reports the filtering too, not just the mode. A receipt reading only
+    // `Workspace view set to "list".` after a call that also narrowed the
+    // list to two filters under-reports what the model just did to the
+    // shared page -- and the model's next turn is written from this
+    // sentence, so an incomplete receipt becomes an incomplete explanation
+    // to the person.
+    successMessage: (input) => {
+      const base = `Workspace view set to "${input.mode}"`;
+      if (input.filters === undefined) return `${base}.`;
+      if (input.filters.length === 0) return `${base}, with all filters cleared.`;
+      const count = input.filters.length;
+      return `${base}, with ${count} filter${count === 1 ? '' : 's'} applied.`;
+    },
     ui: (input) =>
       input.focusedOptionId !== undefined
         ? { changed: true, focusTarget: input.focusedOptionId }

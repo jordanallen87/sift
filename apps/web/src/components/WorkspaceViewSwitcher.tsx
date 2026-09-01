@@ -97,8 +97,14 @@
  * and-option-views.md, Consequences, third bullet) -- notably naming
  * `compare.optionIds`, not the top-level `visibleOptionIds`, for this
  * exact purpose. The top-level `visibleOptionIds` field (written by the
- * more generic `sift_set_view`) is left for a future non-Compare
- * consumer (e.g. List) to claim; this component does not read it.
+ * more generic `sift_set_view`) has since been claimed, and deliberately
+ * NOT here: `App.tsx` applies it upstream, composing it with the person's
+ * own `filters` before handing this component the already-narrowed
+ * `options` array. That placement is what makes it a genuinely
+ * cross-view narrowing (List, Board, and Quick Pick all honour it without
+ * each re-implementing it) and what lets `FilterBar` state both reasons the
+ * list is short in one place. This component still does not read the field,
+ * and stays the thin router it was.
  * `visibleAttributeIds`/`pinnedAttributeIds` are NOT namespaced under
  * `compare` in the schema (`WorkspaceViewStateSchema`,
  * `packages/contracts/src/case.ts`) -- ADR 0005 calls them "the outer
