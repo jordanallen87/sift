@@ -1337,3 +1337,41 @@ describe('the remaining insights', () => {
     expect(line.reason).toContain('1 of 2');
   });
 });
+
+describe('a criterion measured on something other than the options', () => {
+  it('reads as a category mismatch rather than as unresearched', () => {
+    // The energy pack's safety constraint measures
+    // `energy.emergency_risk_present`, declared on the BILLING CYCLE, while
+    // the options being ranked are response options. Reporting that as
+    // "nobody has established this yet" invites someone to go and establish
+    // it; nothing can.
+    const board = scoreCase({
+      options: [
+        option('a', { 'a.x': { type: 'number', value: 1 } }),
+        option('b', { 'a.x': { type: 'number', value: 9 } }),
+      ],
+      criteria: [
+        criterion('c.x', { appliesToAttribute: 'a.x' }),
+        criterion('c.elsewhere', { appliesToAttribute: 'a.bill' }),
+      ],
+      definitions: [definition('a.x'), definition('a.bill', { appliesTo: ['billing_cycle'] })],
+    });
+
+    const line = criterionScore(board, 'a', 'c.elsewhere');
+    expect(line.status).toBe('not_applicable');
+    expect(line.reason).toContain('other than the options being compared');
+  });
+
+  it('still scores a criterion whose attribute does apply to this kind', () => {
+    const board = scoreCase({
+      options: [
+        option('a', { 'a.x': { type: 'number', value: 1 } }),
+        option('b', { 'a.x': { type: 'number', value: 9 } }),
+      ],
+      criteria: [criterion('c.x', { appliesToAttribute: 'a.x' })],
+      definitions: [definition('a.x', { appliesTo: ['candidate', 'other'] })],
+    });
+
+    expect(criterionScore(board, 'b', 'c.x').status).toBe('scored');
+  });
+});

@@ -68,12 +68,18 @@ export interface ScoredRecommendationFields {
  * whole reason for preferring a stated formula over a model's self-assessed
  * confidence, which cannot be checked at all.
  */
+const CONFIDENCE_CEILING = 0.95;
+
 function deriveConfidence(favored: OptionScore, runnerUp: OptionScore | undefined): number {
   const total = favored.total;
   if (total === null) return 0;
   const margin = runnerUp?.total == null ? 1 : total - runnerUp.total;
   const marginFactor = 0.6 + 0.4 * Math.min(1, Math.max(0, margin) / 0.1);
-  return Math.min(1, Math.max(0, favored.coverage * marginFactor));
+  // Capped below certainty on purpose. `coverage` measures the share of the
+  // criteria the person WROTE DOWN, and there is always something they did
+  // not -- so a fully-measured, decisively-leading recommendation has earned
+  // a high number, never a claim that nothing could change it.
+  return Math.min(CONFIDENCE_CEILING, Math.max(0, favored.coverage * marginFactor));
 }
 
 function percent(value: number): string {

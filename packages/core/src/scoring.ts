@@ -599,14 +599,28 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
         weight,
       } as const;
 
-      if (attributeIds.length === 0) {
+      // A criterion whose attribute does not APPLY to this kind of option is
+      // a category mismatch, not a research gap. The energy pack's safety
+      // constraint measures `energy.emergency_risk_present`, declared on the
+      // billing cycle rather than on a response option, and reporting that as
+      // "nobody has established this yet" invites someone to go and
+      // establish it. Nothing can.
+      const inapplicable =
+        attributeIds.length > 0 &&
+        attributeIds.every((attributeId) => {
+          const definition = definitionsById.get(attributeId);
+          return definition !== undefined && !definition.appliesTo.includes(option.kind);
+        });
+
+      if (attributeIds.length === 0 || inapplicable) {
         lines.push({
           ...base,
           score: null,
           status: 'not_applicable',
-          reason:
-            criterion.question ??
-            'this is a judgment call with no recorded measurement behind it, so the scoreboard cannot speak to it',
+          reason: inapplicable
+            ? 'this is measured on something other than the options being compared, so it cannot separate them'
+            : (criterion.question ??
+              'this is a judgment call with no recorded measurement behind it, so the scoreboard cannot speak to it'),
           constraintViolated: false,
         });
         continue;

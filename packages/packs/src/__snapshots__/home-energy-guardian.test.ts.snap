@@ -453,7 +453,7 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
       "appliesTo": [
         "response_option",
       ],
-      "comparison": "target",
+      "comparison": "higher_better",
       "evidenceExpectation": "source",
       "id": "energy.addresses_root_cause",
       "label": "Addresses the root cause",
@@ -500,6 +500,7 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
         "weight": 50,
       },
       {
+        "appliesToAttribute": "energy.addresses_root_cause",
         "direction": "higher_better",
         "id": "energy.conservation",
         "kind": "preference",
@@ -511,7 +512,7 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
       },
       {
         "appliesToAttribute": "energy.emergency_risk_present",
-        "direction": "qualitative",
+        "direction": "lower_better",
         "id": "energy.no_emergency_risk",
         "kind": "hard_constraint",
         "label": "No electrical, gas, fire, or medical-equipment emergency risk",

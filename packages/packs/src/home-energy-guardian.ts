@@ -589,7 +589,12 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
       required: true,
       appliesTo: ['response_option'],
       evidenceExpectation: 'source',
-      comparison: 'target',
+      // Was `target`, which requires a target VALUE that no criterion here
+      // supplies -- so the attribute was permanently unscorable and the
+      // `energy.conservation` criterion pointed at it could never be
+      // measured. `higher_better` is what this boolean actually means:
+      // addressing the root cause is better than not.
+      comparison: 'higher_better',
       sensitive: false,
     },
     {
@@ -680,6 +685,12 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
         kind: 'preference',
         weight: 50,
         direction: 'higher_better',
+        // The attribute that answers this criterion's own `question`
+        // verbatim. Its absence made the pack's heaviest criterion after
+        // the demo's reweight -- 80% of the weight at that point --
+        // permanently unmeasurable, so the reweight that IS the energy
+        // hero beat changed nothing in the ranking.
+        appliesToAttribute: 'energy.addresses_root_cause',
         question:
           'Does this action address the root cause of the elevated usage rather than only monitor or defer it?',
         origin: 'pack',
@@ -690,7 +701,13 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
         label: 'No electrical, gas, fire, or medical-equipment emergency risk',
         kind: 'hard_constraint',
         weight: 0,
-        direction: 'qualitative',
+        // Was `qualitative`, which `scoreCase` treats as an explicit "this
+        // is a judgment call, do not score it" -- correctly, but it made
+        // this pack's ONE safety constraint inert. Emergency risk is a
+        // boolean: `true` means risk present, which is the disqualifying
+        // end, so `lower_better` is what lets the constraint actually be
+        // evaluated.
+        direction: 'lower_better',
         appliesToAttribute: 'energy.emergency_risk_present',
         question:
           'Is there any electrical danger, gas leak, fire, or medical equipment risk present?',
