@@ -96,14 +96,29 @@ but first select it — say:
 - **"Specialist started working" / "Specialist finished"** for `household-fit-analyst`, then `source-challenger` — say the name "source-challenger" out loud as it appears in the ledger's summary text ("Graph node \"source-challenger\" started").
 - **"Recommendation invalidated"** already fired in beat 3 — now watch **"Recommendation ready for review"** land with a new favorite.
 
-**Point out in the Recommendation card (this is the real, live-generated text — read it, don't paraphrase):**
+**Point out in the Recommendation card (all of this is the real, live-generated text — read it, don't paraphrase):**
+
+The rationale, which is the model's:
 > "Revise the shortlist to candidate-crv, with candidate-outback as a close alternative. candidate-rav4 is disqualified per source-dealer-offer-candidate-rav4 (true price over the household budget)…"
 
-and its limitations line:
-> "Whether both dog crates fit behind the second row remains unverified for every candidate. Driving comfort remains unverified for every candidate."
+The **Facts** section, which is Sift's — deterministic, and worth a beat of its own because this section renders for the first time in this build (`recommendation.facts` was empty in every prior version):
+> "2022 Honda CR-V EX-L AWD scores 59% against the criteria on this case, measured across 64% of the weight assigned to them."
+
+And the limitations, which are where this demo now earns its distinguishing claim:
+> "Whether both dog crates fit behind the second row remains unverified for every candidate."
+>
+> "This recommendation favors 2022 Honda CR-V EX-L AWD, but scoring your criteria puts 2022 Subaru Outback Premium AWD ahead (94% to 59%). The reasoning above may account for something the scoring does not — it is worth reading before deciding."
+>
+> "Driving comfort carries 20% of the weight on this case but is not part of the score: nobody has established this for this option yet, so it is left out of the score rather than counted against it."
 
 **Narration:**
-> "That's the honest unknown — Sift knows the CR-V's cargo dimensions, but it will not invent whether two dog crates actually fit. That's a test-drive question, not a fabricated score. And look — the stale teaser-price evidence is still right there in the ledger, marked stale, not deleted. Nothing gets erased when Sift changes its mind."
+> "Two things just happened. The honest unknown — Sift knows the CR-V's cargo dimensions, but it will not invent whether two dog crates actually fit. That's a test-drive question, not a fabricated score.
+>
+> And the part I'd point a judge at: Sift just disagreed with its own model, out loud. The recommendation favors the CR-V. Sift's deterministic scoring of *this household's* criteria puts the Outback ahead. It doesn't quietly override the model, and it doesn't quietly go along with it — it states the disagreement, names the number, and drops its own confidence to 0.4. The model is recommending on driving comfort and crate fit, and those are thirty-six percent of what this family said matters, and nobody has established either one. That's not a hedge. It's a measurement."
+
+**Note for the recording:** confidence, the score, the coverage figure, and the disagreement are all recomputed from the case on every render — there is no cached number and no model call behind any of them. If the household changes a weight mid-demo, every figure above moves in the same frame.
+
+**Optional, if the shot is running short:** don't cut the disagreement. Cut the stale-evidence aside instead — "the stale teaser-price evidence is still in the ledger, marked stale, not deleted" — which is a good point but a weaker one.
 
 **Optional, if time allows:** scroll the Readiness panel and point at the new obligation **"Two dog crates fit behind the second row"** now present (satisfied at the evidence level Sift was able to reach — not the same as "confirmed it fits").
 
