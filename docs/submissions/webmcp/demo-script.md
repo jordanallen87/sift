@@ -42,7 +42,7 @@ Target: **under 3 minutes**, public audio, published to YouTube. This script hit
 
 ---
 
-### Beat 2 — shared selection through `sift_get_case_context` (0:15–0:40, 25s)
+### Beat 2 — shared selection, and a ranking ChatGPT reads rather than invents (0:15–0:40, 25s)
 
 *(Required beat 2: "Demonstrate shared selected-option context through `sift_get_case_context`." Car-buying moment 1–3.)*
 
@@ -57,6 +57,14 @@ but first select it — say:
 **What happens (live):** ChatGPT calls `sift_focus_option` (`apps/web/src/model-context/register-sift-tools.ts` / `docs/specs/webmcp.md` `sift_focus_option`). Point at the comparison table: the RAV4 column header now shows a **"Selected"** badge, live, with no click on the page. Then ChatGPT calls `sift_get_case_context` (webmcp.md: "Returns the active case summary … selected option/evidence …") and answers using `selectedOptionId: "candidate-rav4"` — the exact candidate you just picked.
 
 **Point out on screen:** the already-visible degraded evidence item citing `source-dealer-offer-candidate-rav4` (live-verified text: *"Teaser-price conflict: advertised \$27,995.00 vs. true out-the-door \$33,291.30 (18.92% higher, \$5,296.30 over the advertised price) after a mandatory \$2,394.00 add-on. This exceeds the household budget."*) — narrate that Sift already caught this before you ever asked, and that ChatGPT is reading the *same* case state you're looking at, not a copy.
+
+**Then, still in Beat 2, ask the question that makes the point:**
+> "Why is that one ahead?"
+
+**What happens (live):** ChatGPT calls `sift_explain_ranking` (`docs/specs/webmcp.md`) and answers from Sift's own deterministic board — each option's rank, score, coverage, and the per-criterion breakdown with the plain-English reason Sift recorded for every line. Point at the workspace as it reads: the numbers it quotes are the numbers on the cards, because they came from the same computation.
+
+**Narration — the sentence to get right:**
+> "This is the part that isn't a chatbot reading a page. ChatGPT didn't work out that ranking — it asked Sift for it. Sift computed it from this household's own weights, deterministically, and handed back the reasoning line by line. If ChatGPT had done the arithmetic itself it would have got a plausible number that disagreed with the screen, and I'd have two rankings and no way to tell which one to trust."
 
 **Narration:**
 > "ChatGPT just called `sift_get_case_context` — it sees exactly the candidate I selected, and it can already see Sift flagged a teaser-price conflict on this deal."
