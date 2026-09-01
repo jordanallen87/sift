@@ -140,10 +140,7 @@ import {
   saveCaseSnapshot,
 } from './session-adapter.js';
 import { createSequenceCounter, type RuntimeEvent } from './event-normalizer.js';
-import {
-  deriveScoredRecommendationFields,
-  mergeLimitations,
-} from './recommendation-scoring.js';
+import { deriveScoredRecommendationFields, mergeLimitations } from './recommendation-scoring.js';
 
 export interface HomeEnergyGuardianScenarioDeps {
   readonly clock: Clock;

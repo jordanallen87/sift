@@ -126,7 +126,7 @@ export function deriveScoredRecommendationFields(
   // An unrankable board is not a failure to report — a case with no
   // measurable criteria is a real state, and saying so beats emitting an
   // empty `facts` list that reads as "nothing was found".
-  if (favored === undefined || favored.total === null) {
+  if (favored?.total == null) {
     if (leader !== undefined) {
       limitations.push(
         `The favored option could not be scored against this case's criteria, so this recommendation rests on the rationale alone rather than on the comparison.`,
@@ -161,9 +161,7 @@ export function deriveScoredRecommendationFields(
   // These are the sentences a person actually uses to sanity-check a
   // ranking: what carried it, and what it lost on.
   const measured = favored.criteria.filter((line) => line.score !== null);
-  const byContribution = [...measured].sort(
-    (a, b) => b.weight * (b.score as number) - a.weight * (a.score as number),
-  );
+  const byContribution = [...measured].sort((a, b) => b.weight * b.score! - a.weight * a.score!);
   const strongest = byContribution[0];
   const weakest = byContribution[byContribution.length - 1];
   if (strongest !== undefined) {
@@ -188,7 +186,11 @@ export function deriveScoredRecommendationFields(
 
   for (const line of favored.criteria) {
     if (line.weight < MATERIAL_WEIGHT) continue;
-    if (line.status === 'unknown' || line.status === 'not_applicable' || line.status === 'not_comparable') {
+    if (
+      line.status === 'unknown' ||
+      line.status === 'not_applicable' ||
+      line.status === 'not_comparable'
+    ) {
       limitations.push(
         `${line.criterionLabel} carries ${percent(line.weight)} of the weight on this case but is not part of the score: ${line.reason}`,
       );

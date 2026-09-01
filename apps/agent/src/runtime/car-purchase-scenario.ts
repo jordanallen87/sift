@@ -111,10 +111,7 @@ import {
   type CarPurchaseScriptedProviders,
 } from './scripted-beats/car-purchase.js';
 import type { RuntimeEvent } from './event-normalizer.js';
-import {
-  deriveScoredRecommendationFields,
-  mergeLimitations,
-} from './recommendation-scoring.js';
+import { deriveScoredRecommendationFields, mergeLimitations } from './recommendation-scoring.js';
 
 export interface CarPurchaseScenarioDeps {
   readonly clock: Clock;
@@ -744,7 +741,10 @@ export async function runCarPurchaseScenario(
   // The model proposed the favorite; the deterministic scoreboard supplies
   // the numbers attached to it. See recommendation-scoring.ts for why a
   // disagreement is stated rather than resolved in either direction.
-  const scoredRound1 = deriveScoredRecommendationFields(snapshot, round1Result.proposedRecommendation.candidateIds[0] ?? null);
+  const scoredRound1 = deriveScoredRecommendationFields(
+    snapshot,
+    round1Result.proposedRecommendation.candidateIds[0] ?? null,
+  );
   const recommendation1Event: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -1141,7 +1141,10 @@ export async function runCarPurchaseScenario(
   // The model proposed the favorite; the deterministic scoreboard supplies
   // the numbers attached to it. See recommendation-scoring.ts for why a
   // disagreement is stated rather than resolved in either direction.
-  const scoredRound2 = deriveScoredRecommendationFields(snapshot, round2Result.proposedRecommendation.candidateIds[0] ?? null);
+  const scoredRound2 = deriveScoredRecommendationFields(
+    snapshot,
+    round2Result.proposedRecommendation.candidateIds[0] ?? null,
+  );
   const recommendation2Event: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,

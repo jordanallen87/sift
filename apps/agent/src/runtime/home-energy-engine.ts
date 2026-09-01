@@ -139,10 +139,7 @@ import {
   type HomeEnergyScenarioBeat,
   type HomeEnergySwarmScriptedProviders,
 } from './scripted-beats/home-energy-guardian.js';
-import {
-  deriveScoredRecommendationFields,
-  mergeLimitations,
-} from './recommendation-scoring.js';
+import { deriveScoredRecommendationFields, mergeLimitations } from './recommendation-scoring.js';
 
 /**
  * Exported for the same reason `car-purchase-scenario.ts`'s

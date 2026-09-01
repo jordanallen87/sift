@@ -172,9 +172,24 @@ const DURATION_MINUTES: Record<string, number> = {
   year: 525_600,
 };
 
-type Magnitude = { readonly ok: true; readonly value: number } | { readonly ok: false; readonly reason: string };
+/**
+ * A scale for a human sentence. An EMPTY string is a real value here -- it
+ * is what `scaleOf` returns for a number carrying no unit -- so this is
+ * deliberately not a `??` fallback, which would print an empty pair of
+ * parentheses and leave the reader guessing.
+ */
+function describeScale(scale: string | null | undefined): string {
+  if (scale === null || scale === undefined || scale === '') return 'no unit';
+  return scale;
+}
 
-function magnitudeOf(value: AttributeValue, definition: AttributeDefinition | undefined): Magnitude {
+type Magnitude =
+  { readonly ok: true; readonly value: number } | { readonly ok: false; readonly reason: string };
+
+function magnitudeOf(
+  value: AttributeValue,
+  definition: AttributeDefinition | undefined,
+): Magnitude {
   switch (value.type) {
     case 'number':
       return { ok: true, value: value.value };
@@ -231,7 +246,10 @@ function magnitudeOf(value: AttributeValue, definition: AttributeDefinition | un
     case 'string':
     case 'text':
     case 'string_list':
-      return { ok: false, reason: 'this is written description, not a measurement that can be ranked' };
+      return {
+        ok: false,
+        reason: 'this is written description, not a measurement that can be ranked',
+      };
   }
 }
 
@@ -274,11 +292,15 @@ type ResolvedDirection =
  * and no amount of measurability in the underlying attribute converts a
  * judgment into a measurement.
  */
-function resolveDirection(criterion: Criterion, definition: AttributeDefinition | undefined): ResolvedDirection {
+function resolveDirection(
+  criterion: Criterion,
+  definition: AttributeDefinition | undefined,
+): ResolvedDirection {
   if (criterion.direction === 'qualitative') {
     return {
       ok: false,
-      reason: 'this is a judgment call rather than a measurement, so it is not scored automatically',
+      reason:
+        'this is a judgment call rather than a measurement, so it is not scored automatically',
     };
   }
 
@@ -338,7 +360,7 @@ function buildScale(
           magnitudes: new Map(),
           minimum: 0,
           maximum: 0,
-          blockedReason: `these values are recorded in different ${kind} (${scale || 'none'} and ${valueScale || 'none'}), so they cannot be ranked against each other`,
+          blockedReason: `these values are recorded in different ${kind} (${describeScale(scale)} and ${describeScale(valueScale)}), so they cannot be ranked against each other`,
         };
       }
     }
@@ -439,7 +461,10 @@ function evaluateConstraint(
   if (value.type === 'boolean') {
     const bad = direction === 'lower_better' ? true : false;
     return value.value === bad
-      ? { satisfied: false, reason: 'this option trips a condition the case treats as disqualifying' }
+      ? {
+          satisfied: false,
+          reason: 'this option trips a condition the case treats as disqualifying',
+        }
       : { satisfied: true, reason: 'clear of the condition the case treats as disqualifying' };
   }
 
@@ -467,7 +492,7 @@ function scorePart(
   const magnitude = scale.magnitudes.get(option.id);
   if (magnitude === undefined) {
     const record = option.attributes[attributeId];
-    if (record === undefined || record.value === undefined) {
+    if (record?.value === undefined) {
       return { score: null, tied: false, reason: null };
     }
     const failed = magnitudeOf(record.value, undefined);
@@ -505,7 +530,9 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
   const normalizedWeights = new Map(
     normalizeCriterionWeights(active).map((entry) => [entry.criterionId, entry.weight]),
   );
-  const definitionsById = new Map(input.definitions.map((definition) => [definition.id, definition]));
+  const definitionsById = new Map(
+    input.definitions.map((definition) => [definition.id, definition]),
+  );
   const warnings: string[] = [];
   const scaleCache = new Map<string, AttributeScale>();
 
@@ -520,12 +547,16 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
   // Warnings are collected once for the board, not once per option, so a
   // three-car case does not report the same authoring defect three times.
   for (const criterion of active) {
-    const attributeIds = criterion.composedOfAttributes ?? (criterion.appliesToAttribute !== undefined ? [criterion.appliesToAttribute] : []);
+    const attributeIds =
+      criterion.composedOfAttributes ??
+      (criterion.appliesToAttribute !== undefined ? [criterion.appliesToAttribute] : []);
     for (const attributeId of attributeIds) {
       const definition = definitionsById.get(attributeId);
       const scale = scaleFor(attributeId);
       if (scale.blockedReason !== null) {
-        warnings.push(`"${definition?.label ?? attributeId}" could not be ranked: ${scale.blockedReason}`);
+        warnings.push(
+          `"${definition?.label ?? attributeId}" could not be ranked: ${scale.blockedReason}`,
+        );
       }
     }
   }
@@ -538,7 +569,9 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
     for (const criterion of active) {
       const weight = normalizedWeights.get(criterion.id) ?? 0;
       const composite = criterion.composedOfAttributes;
-      const attributeIds = composite ?? (criterion.appliesToAttribute !== undefined ? [criterion.appliesToAttribute] : []);
+      const attributeIds =
+        composite ??
+        (criterion.appliesToAttribute !== undefined ? [criterion.appliesToAttribute] : []);
 
       const base = {
         criterionId: criterion.id,
@@ -562,16 +595,21 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
 
       // A composite is scored from its parts; a single-attribute criterion
       // is the degenerate one-part case, so both take the same path.
-      const primaryDefinition = definitionsById.get(attributeIds[0] as string);
-      const direction = resolveDirection(criterion, composite === undefined ? primaryDefinition : undefined);
+      const primaryDefinition = definitionsById.get(attributeIds[0]!);
+      const direction = resolveDirection(
+        criterion,
+        composite === undefined ? primaryDefinition : undefined,
+      );
       if (!direction.ok) {
-        const record = option.attributes[attributeIds[0] as string];
+        const record = option.attributes[attributeIds[0]!];
         lines.push({
           ...base,
           score: null,
           status: 'not_comparable',
           reason: direction.reason,
-          ...(record?.value !== undefined ? { value: record.value, valueStatus: record.status } : {}),
+          ...(record?.value !== undefined
+            ? { value: record.value, valueStatus: record.status }
+            : {}),
           constraintViolated: false,
         });
         continue;
@@ -585,7 +623,8 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
         const definition = definitionsById.get(attributeId);
         // Each part of a composite is normalized by its OWN comparison —
         // the parts of "household fit" need not all point the same way.
-        const partDirection = composite === undefined ? direction : resolveDirection(criterion, definition);
+        const partDirection =
+          composite === undefined ? direction : resolveDirection(criterion, definition);
         if (!partDirection.ok) {
           blockedReason ??= partDirection.reason;
           continue;
@@ -597,7 +636,7 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
           attributeId,
           scaleFor(attributeId),
           partDirection.direction,
-          targetMagnitude !== null && targetMagnitude.ok ? targetMagnitude.value : null,
+          targetMagnitude?.ok === true ? targetMagnitude.value : null,
         );
         if (part.score !== null) {
           parts.push(part.score);
@@ -607,7 +646,7 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
         }
       }
 
-      const record = option.attributes[attributeIds[0] as string];
+      const record = option.attributes[attributeIds[0]!];
       const valueFields =
         composite === undefined && record?.value !== undefined
           ? { value: record.value, valueStatus: record.status }
@@ -615,8 +654,17 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
 
       // Rule 4: constraints are absolute, evaluated before any relative
       // score is considered.
-      if (criterion.kind === 'hard_constraint' && composite === undefined && record?.value !== undefined) {
-        const verdict = evaluateConstraint(record.value, criterion, primaryDefinition, direction.direction);
+      if (
+        criterion.kind === 'hard_constraint' &&
+        composite === undefined &&
+        record?.value !== undefined
+      ) {
+        const verdict = evaluateConstraint(
+          record.value,
+          criterion,
+          primaryDefinition,
+          direction.direction,
+        );
         if (verdict !== null) {
           if (!verdict.satisfied) violated.push(criterion.id);
           lines.push({
@@ -686,7 +734,7 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
     const total =
       coverage === 0
         ? null
-        : scoredLines.reduce((sum, line) => sum + line.weight * (line.score as number), 0) / coverage;
+        : scoredLines.reduce((sum, line) => sum + line.weight * line.score!, 0) / coverage;
 
     return {
       optionId: option.id,
@@ -708,8 +756,11 @@ export function scoreCase(input: ScoreCaseInput): CaseScoreboard {
         .map((option) => option.criteria.find((line) => line.criterionId === criterion.id))
         .filter((line): line is CriterionScore => line !== undefined && line.score !== null);
       if (lines.length < 2) return false;
-      const first = lines[0]?.score as number;
-      return lines.every((line) => Math.abs((line.score as number) - first) < 1e-9);
+      // The filter above already narrowed every line to a non-null score,
+      // and `lines.length < 2` returned early, so `first` is present.
+      const first = lines[0] === undefined ? null : lines[0].score;
+      if (first === null) return false;
+      return lines.every((line) => line.score !== null && Math.abs(line.score - first) < 1e-9);
     })
     .map((criterion) => criterion.id);
 
@@ -767,7 +818,9 @@ function compareOptionScores(a: OptionScore, b: OptionScore): number {
  */
 export function scoreCaseState(caseState: {
   readonly attributeDefinitions: readonly AttributeDefinition[];
-  readonly caseExtensions: readonly { readonly definition: AttributeDefinition & { readonly confirmation?: string } }[];
+  readonly caseExtensions: readonly {
+    readonly definition: AttributeDefinition & { readonly confirmation?: string };
+  }[];
   readonly entities: readonly EntityRecord[];
   readonly criteria: readonly Criterion[];
 }): CaseScoreboard {
@@ -839,7 +892,7 @@ function totalWithout(option: OptionScore, criterionId: string): number | null {
   );
   const weight = remaining.reduce((sum, line) => sum + line.weight, 0);
   if (weight === 0) return null;
-  return remaining.reduce((sum, line) => sum + line.weight * (line.score as number), 0) / weight;
+  return remaining.reduce((sum, line) => sum + line.weight * line.score!, 0) / weight;
 }
 
 function percent(value: number): string {
@@ -861,7 +914,7 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
 
   // Leading a field of one says nothing at all, so it is not said.
   if (leader !== undefined && runnerUp !== undefined) {
-    const gap = (leader.total as number) - (runnerUp.total as number);
+    const gap = leader.total! - runnerUp.total!;
     insights.push({
       id: 'insight.leader',
       kind: 'leader',
@@ -951,7 +1004,9 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
 
   const violators = board.options.filter((option) => option.violatedConstraintIds.length > 0);
   if (violators.length > 0) {
-    const criterionIds = [...new Set(violators.flatMap((option) => option.violatedConstraintIds))].sort();
+    const criterionIds = [
+      ...new Set(violators.flatMap((option) => option.violatedConstraintIds)),
+    ].sort();
     insights.push({
       id: 'insight.constraint_violation',
       kind: 'constraint_violation',
@@ -979,15 +1034,17 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
   }
 
   if (board.nonDiscriminatingCriterionIds.length > 0) {
-    const labels = board.options[0]?.criteria
-      .filter((line) => board.nonDiscriminatingCriterionIds.includes(line.criterionId))
-      .map((line) => line.criterionLabel) ?? [];
+    const labels =
+      board.options[0]?.criteria
+        .filter((line) => board.nonDiscriminatingCriterionIds.includes(line.criterionId))
+        .map((line) => line.criterionLabel) ?? [];
     insights.push({
       id: 'insight.non_discriminating',
       kind: 'non_discriminating',
       severity: 'info',
       headline: `${labels.join(', ')} ${labels.length === 1 ? 'does' : 'do'} not separate these options.`,
-      detail: 'Every option scores the same here, so the weight assigned to it is not changing the order.',
+      detail:
+        'Every option scores the same here, so the weight assigned to it is not changing the order.',
       optionIds: [],
       criterionIds: [...board.nonDiscriminatingCriterionIds],
     });

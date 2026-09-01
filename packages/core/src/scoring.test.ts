@@ -18,10 +18,7 @@ import { deriveInsights, scoreCase, scoreCaseState, type CaseScoreboard } from '
 
 const AT = '2026-09-01T00:00:00.000Z';
 
-function definition(
-  id: string,
-  overrides: Partial<AttributeDefinition> = {},
-): AttributeDefinition {
+function definition(id: string, overrides: Partial<AttributeDefinition> = {}): AttributeDefinition {
   return {
     id,
     label: id,
@@ -79,7 +76,14 @@ function option(
             updatedAt: AT,
           };
   }
-  return { id, kind: 'candidate', label: id.toUpperCase(), attributes, createdAt: AT, updatedAt: AT };
+  return {
+    id,
+    kind: 'candidate',
+    label: id.toUpperCase(),
+    attributes,
+    createdAt: AT,
+    updatedAt: AT,
+  };
 }
 
 function money(amount: number, currency = 'USD') {
@@ -137,7 +141,7 @@ describe('an unknown is never a zero', () => {
     const worse = scoreOf(board, 'worse');
     expect(partial).not.toBeNull();
     expect(worse).not.toBeNull();
-    expect(partial as number).toBeGreaterThan(worse as number);
+    expect(partial!).toBeGreaterThan(worse!);
   });
 
   it('reports the gap as coverage instead, so the shortfall is visible rather than silent', () => {
@@ -330,9 +334,7 @@ describe('an enum is only ordinal when a pack says so', () => {
         option('unlisted', { 'a.rating': { type: 'enum', value: 'brand new grade' } }),
       ],
       criteria,
-      definitions: [
-        definition('a.rating', { valueType: 'enum', orderedValues: ['bad', 'good'] }),
-      ],
+      definitions: [definition('a.rating', { valueType: 'enum', orderedValues: ['bad', 'good'] })],
     });
 
     const line = criterionScore(board, 'unlisted', 'c.safety');
@@ -363,8 +365,14 @@ describe('a hard constraint flags, it never silently eliminates', () => {
   it('names the violated constraint on the option', () => {
     const board = scoreCase({
       options: [
-        option('safe', { 'a.emergency': { type: 'boolean', value: false }, 'a.price': money(30_000) }),
-        option('unsafe', { 'a.emergency': { type: 'boolean', value: true }, 'a.price': money(20_000) }),
+        option('safe', {
+          'a.emergency': { type: 'boolean', value: false },
+          'a.price': money(30_000),
+        }),
+        option('unsafe', {
+          'a.emergency': { type: 'boolean', value: true },
+          'a.price': money(20_000),
+        }),
       ],
       criteria,
       definitions,
@@ -379,8 +387,14 @@ describe('a hard constraint flags, it never silently eliminates', () => {
   it('leaves the violating option present and scored rather than dropping it', () => {
     const board = scoreCase({
       options: [
-        option('safe', { 'a.emergency': { type: 'boolean', value: false }, 'a.price': money(30_000) }),
-        option('unsafe', { 'a.emergency': { type: 'boolean', value: true }, 'a.price': money(20_000) }),
+        option('safe', {
+          'a.emergency': { type: 'boolean', value: false },
+          'a.price': money(30_000),
+        }),
+        option('unsafe', {
+          'a.emergency': { type: 'boolean', value: true },
+          'a.price': money(20_000),
+        }),
       ],
       criteria,
       definitions,
@@ -397,8 +411,14 @@ describe('a hard constraint flags, it never silently eliminates', () => {
     // visible and fully explained.
     const board = scoreCase({
       options: [
-        option('safe', { 'a.emergency': { type: 'boolean', value: false }, 'a.price': money(30_000) }),
-        option('unsafe', { 'a.emergency': { type: 'boolean', value: true }, 'a.price': money(20_000) }),
+        option('safe', {
+          'a.emergency': { type: 'boolean', value: false },
+          'a.price': money(30_000),
+        }),
+        option('unsafe', {
+          'a.emergency': { type: 'boolean', value: true },
+          'a.price': money(20_000),
+        }),
       ],
       criteria,
       definitions,
@@ -414,7 +434,10 @@ describe('scores are relative to the candidate set, and say so when they separat
 
   it('marks a criterion every option ties on as tied rather than pretending it discriminates', () => {
     const board = scoreCase({
-      options: [option('a', { 'a.price': money(30_000) }), option('b', { 'a.price': money(30_000) })],
+      options: [
+        option('a', { 'a.price': money(30_000) }),
+        option('b', { 'a.price': money(30_000) }),
+      ],
       criteria,
       definitions,
     });
@@ -425,7 +448,10 @@ describe('scores are relative to the candidate set, and say so when they separat
 
   it('still counts a tied criterion as covered, because the data is genuinely there', () => {
     const board = scoreCase({
-      options: [option('a', { 'a.price': money(30_000) }), option('b', { 'a.price': money(30_000) })],
+      options: [
+        option('a', { 'a.price': money(30_000) }),
+        option('b', { 'a.price': money(30_000) }),
+      ],
       criteria,
       definitions,
     });
@@ -510,9 +536,7 @@ describe('composite criteria', () => {
     definition('a.crash', { valueType: 'enum', orderedValues: ['bad', 'ok', 'great'] }),
     definition('a.assist', { valueType: 'enum', orderedValues: ['bad', 'ok', 'great'] }),
   ];
-  const criteria = [
-    criterion('c.safety', { composedOfAttributes: ['a.crash', 'a.assist'] }),
-  ];
+  const criteria = [criterion('c.safety', { composedOfAttributes: ['a.crash', 'a.assist'] })];
 
   it('averages its parts', () => {
     const board = scoreCase({
@@ -582,7 +606,10 @@ describe('ranking is total, deterministic, and stable', () => {
     const board = scoreCase({
       options: [
         option('thin', { 'a.n': { type: 'number', value: 9 }, 'a.m': null }),
-        option('thick', { 'a.n': { type: 'number', value: 9 }, 'a.m': { type: 'number', value: 9 } }),
+        option('thick', {
+          'a.n': { type: 'number', value: 9 },
+          'a.m': { type: 'number', value: 9 },
+        }),
       ],
       criteria: [
         criterion('c.n', { appliesToAttribute: 'a.n' }),
@@ -596,7 +623,10 @@ describe('ranking is total, deterministic, and stable', () => {
 
   it('sorts an entirely unscorable option last without crashing', () => {
     const board = scoreCase({
-      options: [option('none', { 'a.n': null }), option('some', { 'a.n': { type: 'number', value: 1 } })],
+      options: [
+        option('none', { 'a.n': null }),
+        option('some', { 'a.n': { type: 'number', value: 1 } }),
+      ],
       criteria,
       definitions,
     });
@@ -743,9 +773,7 @@ describe('insights are derived, never asserted', () => {
         option('risky', { 'a.risk': { type: 'boolean', value: true } }),
       ],
       definitions: [definition('a.risk', { valueType: 'boolean', comparison: 'lower_better' })],
-      criteria: [
-        criterion('c.risk', { kind: 'hard_constraint', appliesToAttribute: 'a.risk' }),
-      ],
+      criteria: [criterion('c.risk', { kind: 'hard_constraint', appliesToAttribute: 'a.risk' })],
     });
 
     const insight = deriveInsights(violating).find(
@@ -786,7 +814,9 @@ describe('insights are derived, never asserted', () => {
 
 describe('scoreCaseState (the form both the agent and the workspace call)', () => {
   const base = {
-    attributeDefinitions: [definition('a.price', { valueType: 'money', comparison: 'lower_better' })],
+    attributeDefinitions: [
+      definition('a.price', { valueType: 'money', comparison: 'lower_better' }),
+    ],
     criteria: [criterion('c.price', { appliesToAttribute: 'a.price' })],
   };
 
@@ -865,12 +895,15 @@ describe('a disputed fact is not a settled one', () => {
       ...built,
       attributes: {
         ...built.attributes,
-        'a.rating': { ...(built.attributes['a.rating'] as never), status: 'conflicted' },
+        'a.rating': { ...built.attributes['a.rating']!, status: 'conflicted' },
       },
     };
   }
 
-  const definitions = [definition('a.rating'), definition('a.price', { comparison: 'lower_better' })];
+  const definitions = [
+    definition('a.rating'),
+    definition('a.price', { comparison: 'lower_better' }),
+  ];
 
   it('still scores the value — refusing to use a value that exists is its own distortion', () => {
     const board = scoreCase({
@@ -908,14 +941,17 @@ describe('a disputed fact is not a settled one', () => {
       ...built,
       attributes: {
         ...built.attributes,
-        'a.rating': { ...(built.attributes['a.rating'] as never), status: 'conflicted' },
+        'a.rating': { ...built.attributes['a.rating']!, status: 'conflicted' },
       },
     };
 
     const board = scoreCase({
       options: [
         partiallyContested,
-        option('b', { 'a.rating': { type: 'number', value: 1 }, 'a.price': { type: 'number', value: 9 } }),
+        option('b', {
+          'a.rating': { type: 'number', value: 1 },
+          'a.price': { type: 'number', value: 9 },
+        }),
       ],
       criteria: [criterion('c.composite', { composedOfAttributes: ['a.rating', 'a.price'] })],
       definitions,
@@ -926,7 +962,10 @@ describe('a disputed fact is not a settled one', () => {
 
   it('raises an insight only when the disputed criterion is what carries the lead', () => {
     const board = scoreCase({
-      options: [conflicted('leader', 9), option('other', { 'a.rating': { type: 'number', value: 1 } })],
+      options: [
+        conflicted('leader', 9),
+        option('other', { 'a.rating': { type: 'number', value: 1 } }),
+      ],
       criteria: [criterion('c.rating', { appliesToAttribute: 'a.rating' })],
       definitions,
     });
@@ -948,14 +987,17 @@ describe('a disputed fact is not a settled one', () => {
       ...built,
       attributes: {
         ...built.attributes,
-        'a.rating': { ...(built.attributes['a.rating'] as never), status: 'conflicted' },
+        'a.rating': { ...built.attributes['a.rating']!, status: 'conflicted' },
       },
     };
 
     const board = scoreCase({
       options: [
         leaderWithDispute,
-        option('other', { 'a.rating': { type: 'number', value: 1 }, 'a.price': { type: 'number', value: 9 } }),
+        option('other', {
+          'a.rating': { type: 'number', value: 1 },
+          'a.price': { type: 'number', value: 9 },
+        }),
       ],
       criteria: [
         criterion('c.rating', { weight: 5, appliesToAttribute: 'a.rating' }),

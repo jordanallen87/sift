@@ -141,10 +141,7 @@ import {
   setScenarioBeat,
   type CarPurchaseScenarioBeat,
 } from './scripted-beats/car-purchase.js';
-import {
-  deriveScoredRecommendationFields,
-  mergeLimitations,
-} from './recommendation-scoring.js';
+import { deriveScoredRecommendationFields, mergeLimitations } from './recommendation-scoring.js';
 
 /** The typed `custom.*` case-attribute id the household's confirmed two-dog-crate concern is defined under (`command-service.ts` `defineCaseAttribute`). See this file's header comment. */
 export const DOG_CRATE_EXTENSION_ID = 'custom.dog_crate_fit';

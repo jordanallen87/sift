@@ -46,7 +46,14 @@ function option(id: string, values: Record<string, number | null>): EntityRecord
   for (const [definitionId, value] of Object.entries(values)) {
     attributes[definitionId] =
       value === null
-        ? { definitionId, label: definitionId, origin: 'pack', sourceIds: [], status: 'unknown', updatedAt: AT }
+        ? {
+            definitionId,
+            label: definitionId,
+            origin: 'pack',
+            sourceIds: [],
+            status: 'unknown',
+            updatedAt: AT,
+          }
         : {
             definitionId,
             label: definitionId,
@@ -57,7 +64,14 @@ function option(id: string, values: Record<string, number | null>): EntityRecord
             updatedAt: AT,
           };
   }
-  return { id, kind: 'candidate', label: id.toUpperCase(), attributes, createdAt: AT, updatedAt: AT };
+  return {
+    id,
+    kind: 'candidate',
+    label: id.toUpperCase(),
+    attributes,
+    createdAt: AT,
+    updatedAt: AT,
+  };
 }
 
 function scorableCase(overrides: Partial<ScorableCase> = {}): ScorableCase {
@@ -235,11 +249,15 @@ describe('facts and limitations come from the board', () => {
 
   it('never exceeds the recommendation schema’s bounds', () => {
     const many = Array.from({ length: 80 }, (_, index) =>
-      criterion(`c.${index}`, { weight: 1, label: `Criterion ${index}`, appliesToAttribute: `a.${index}` }),
+      criterion(`c.${index}`, {
+        weight: 1,
+        label: `Criterion ${index}`,
+        appliesToAttribute: `a.${index}`,
+      }),
     );
     const result = deriveScoredRecommendationFields(
       scorableCase({
-        attributeDefinitions: many.map((entry) => definition(entry.appliesToAttribute as string)),
+        attributeDefinitions: many.map((entry) => definition(entry.appliesToAttribute!)),
         criteria: many,
         entities: [option('winner', {}), option('runner-up', {})],
       }),
