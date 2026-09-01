@@ -52,7 +52,7 @@ the ranking the recommendation is validated against must be the same computation
 implementations that agree today are two implementations that can drift, and the failure mode is a
 UI showing one leader while the recommendation names another.
 
-### 2. Five honesty rules, each with a test named after the lie it prevents
+### 2. Six honesty rules, each with a test named after the lie it prevents
 
 Every one of these exists because the obvious implementation gets it wrong in a way nobody notices
 until it has already misled someone.
@@ -66,6 +66,12 @@ by coverage fails exactly the test written to catch it, and nothing else.
 **The attribute owns what "better" means.** A criterion's `direction` is a claim about the
 criterion; an attribute's `comparison` is a property of the measurement. Lower price is lower price
 regardless of what any criterion pointed at it believes.
+
+A related defect this rule's own tests exposed: `normalize` returned `null` for two completely
+different situations — "every option sits at the same point" and "this could not be normalized at
+all" — and the caller read both as a tie. A target-shaped criterion with no target declared
+therefore scored **every** option 1.0 and labelled it "every option is the same here": an invented
+measurement wearing the words of a real one. The two cases are now distinguishable in the type.
 
 **Enums are not ordinal until a pack says so.** See §3.
 
@@ -255,6 +261,14 @@ It is pinned as a scenario assertion rather than left as an accident of the fixt
 - The workspace does not yet **render** the scoreboard: option cards show pack-declared prominent
   attributes, not rank, score, or the per-criterion breakdown. The engine is wired into the
   recommendation but not into the option views.
-- No WebMCP read tool exposes the board, so the model cannot read Sift's analysis and must still
-  re-derive it from raw attributes — the exact duplication this ADR's thesis argues against.
+- ~~No WebMCP read tool exposes the board, so the model cannot read Sift's analysis and must still
+  re-derive it from raw attributes — the exact duplication this ADR's thesis argues against.~~
+  **Closed.** `sift_explain_ranking` (READ) returns the board with its reasoning attached — rank,
+  score, coverage, the per-criterion breakdown with each line's own plain-English `reason`, violated
+  constraints, and the derived insights (`docs/specs/webmcp.md`,
+  `apps/web/src/model-context/ranking-context.ts`). It calls the same `buildWorkspaceScoreboard`
+  adapter the workspace does, so there is no second ranking to disagree with the first; it carries no
+  `expectedSequence` and no `SiftCommands` dependency, so it is structurally incapable of writing;
+  and its bounds report what they dropped, including the *share of weight* each truncated breakdown
+  left out — a silently truncated analysis being a lying analysis.
 - Live what-if (reweight → watch the order move) is computable but has no control surface.
