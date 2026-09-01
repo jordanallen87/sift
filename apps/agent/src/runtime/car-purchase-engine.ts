@@ -141,6 +141,10 @@ import {
   setScenarioBeat,
   type CarPurchaseScenarioBeat,
 } from './scripted-beats/car-purchase.js';
+import {
+  deriveScoredRecommendationFields,
+  mergeLimitations,
+} from './recommendation-scoring.js';
 
 /** The typed `custom.*` case-attribute id the household's confirmed two-dog-crate concern is defined under (`command-service.ts` `defineCaseAttribute`). See this file's header comment. */
 export const DOG_CRATE_EXTENSION_ID = 'custom.dog_crate_fit';
@@ -569,6 +573,12 @@ export function foldRound1(
     graphResult.decisionSynthesizerText,
     entityLabelsById(snapshot.entities),
   );
+  // The model proposed `favoredOptionId`; the deterministic scoreboard
+  // supplies the numbers attached to it. When the two disagree, the
+  // proposal stands but `limitations` says so outright and confidence is
+  // capped -- see recommendation-scoring.ts for why neither silently
+  // overwriting nor silently accepting is acceptable here.
+  const scored = deriveScoredRecommendationFields(snapshot, favoredOptionId);
   const recommendationEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -581,10 +591,13 @@ export function foldRound1(
         status: 'ready',
         favoredOptionId,
         rationale,
-        facts: [],
+        facts: scored.facts,
         hypotheses: [],
-        confidence: 0.75,
-        limitations: ["The favored candidate's deal terms are still under review."],
+        confidence: scored.confidence,
+        limitations: mergeLimitations(
+          ["The favored candidate's deal terms are still under review."],
+          scored.limitations,
+        ),
         sourceIds,
         resolvedObligationIds: [],
         acceptedUncertaintyObligationIds: [],
@@ -814,6 +827,12 @@ export function foldRound2(
     graphResult.decisionSynthesizerText,
     entityLabelsById(snapshot.entities),
   );
+  // The model proposed `favoredOptionId`; the deterministic scoreboard
+  // supplies the numbers attached to it. When the two disagree, the
+  // proposal stands but `limitations` says so outright and confidence is
+  // capped -- see recommendation-scoring.ts for why neither silently
+  // overwriting nor silently accepting is acceptable here.
+  const scored = deriveScoredRecommendationFields(snapshot, favoredOptionId);
   const recommendationEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -826,13 +845,16 @@ export function foldRound2(
         status: 'ready',
         favoredOptionId,
         rationale,
-        facts: [],
+        facts: scored.facts,
         hypotheses: [],
-        confidence: 0.85,
-        limitations: [
-          'Whether both dog crates fit behind the second row remains unverified for every candidate.',
-          'Driving comfort remains unverified for every candidate.',
-        ],
+        confidence: scored.confidence,
+        limitations: mergeLimitations(
+          [
+            'Whether both dog crates fit behind the second row remains unverified for every candidate.',
+            'Driving comfort remains unverified for every candidate.',
+          ],
+          scored.limitations,
+        ),
         sourceIds: shortlistSourceIds,
         resolvedObligationIds: [
           'car.hard_constraints',

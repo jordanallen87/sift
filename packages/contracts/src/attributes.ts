@@ -253,6 +253,39 @@ export const AttributeDefinitionSchema = z
     appliesTo: z.array(safeString(200)).max(50),
     unit: safeString(60).optional(),
     allowedValues: z.array(safeString(200)).max(200).optional(),
+    /**
+     * An `enum` attribute's values in ASCENDING order along their natural
+     * scale — least first — declared explicitly by the pack author.
+     *
+     * This field supplies the SCALE only. `comparison` supplies the
+     * DIRECTION, exactly as it does for a number: `energy.rough_effort_level`
+     * is `['low', 'medium', 'high']` with `comparison: 'lower_better'`,
+     * while `car.crash_safety_rating` is `['Not Rated', ..., 'Top Safety
+     * Pick+']` with `higher_better`. Reading this field as "worst first"
+     * instead would double-invert against a `lower_better` comparison and
+     * score the most laborious option as the best one.
+     *
+     * Deliberately separate from `allowedValues`, which is a MEMBERSHIP set
+     * whose order carries no meaning. That distinction is load-bearing
+     * rather than pedantic: `car.crash_safety_rating` ships
+     * `allowedValues: ['Top Safety Pick+', 'Top Safety Pick', 'Recommended',
+     * 'Not Rated']` -- best first -- while `car.driving_comfort_rating`
+     * ships `['excellent', 'good', 'fair', 'poor']`, also best first, and
+     * nothing in this contract ever said which end was which. Any scorer
+     * that inferred rank from array index would have ranked an unrated car
+     * as the safest one on the lot, silently, inside a 30%-weight criterion.
+     *
+     * So `scoreCase` (`@sift/core`) refuses to treat an enum as ordinal
+     * unless this field is present, and reports the refusal rather than
+     * guessing. Optional, so every pack authored before it keeps both its
+     * meaning and its `compiledHash` (canonicalization drops `undefined`
+     * keys before hashing).
+     *
+     * Values not listed here are unscorable, NOT worst: a grade nobody
+     * anticipated is missing information, and treating it as the bottom of
+     * the scale would invent a fact about it.
+     */
+    orderedValues: z.array(safeString(200)).max(200).optional(),
     evidenceExpectation: z.enum(EVIDENCE_EXPECTATIONS),
     comparison: z.enum(ATTRIBUTE_COMPARISONS),
     sensitive: z.boolean(),
@@ -321,6 +354,29 @@ export const CriterionSchema = z
     direction: z.enum(CRITERION_DIRECTIONS),
     target: AttributeValueSchema.optional(),
     appliesToAttribute: safeString(200).optional(),
+    /**
+     * The attributes a COMPOSITE criterion is measured from, when no single
+     * attribute captures it.
+     *
+     * `pref.safety_reliability` ("composite of crash safety, driver
+     * assistance, and reliability ratings") and `pref.household_fit`
+     * ("composite of cargo dimensions, rear-seat specifications...") are
+     * exactly this shape, and together they are 45% of the car pack's
+     * weight. Without this field they can only ever be reported as
+     * unmeasured, which would put the pack's single heaviest criterion
+     * permanently outside the scoreboard.
+     *
+     * `scoreCase` averages the parts it can score and states the basis it
+     * used ("2 of 3 measures"), so a composite built from partial evidence
+     * is a weaker claim on its face rather than an equal one. Each part is
+     * normalized by its OWN `AttributeDefinition.comparison`, since the
+     * parts of a composite need not all point the same way.
+     *
+     * Optional and additive; a criterion may declare
+     * `appliesToAttribute`, this, or neither (a pure human-judgment
+     * concern, which stays honestly unscored).
+     */
+    composedOfAttributes: z.array(safeString(200)).max(50).optional(),
     question: safeString(2000).optional(),
     origin: z.enum(CRITERION_ORIGINS),
     status: z.enum(CRITERION_STATUSES),

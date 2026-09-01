@@ -170,3 +170,20 @@ export { evaluateReadiness } from './readiness.js';
 export { applyCaseEvent } from './reducer.js';
 export { instantiateCase } from './create-case.js';
 export type { PackSelection } from './create-case.js';
+
+// Deterministic scoring and derived insights (scoring.ts). This is the
+// module that moves ranking authority out of the model and into the core,
+// per CLAUDE.md's "the deterministic core, not an LLM, owns case state,
+// evidence validity, readiness, and human authority" — a ranking is a claim
+// about a case, and the model may narrate it but not author it. See that
+// file's header for the five honesty rules it is built around.
+export { scoreCase, scoreCaseState, deriveInsights, INSIGHT_KINDS } from './scoring.js';
+export type {
+  CaseScoreboard,
+  CriterionScore,
+  CriterionScoreStatus,
+  Insight,
+  InsightKind,
+  OptionScore,
+  ScoreCaseInput,
+} from './scoring.js';

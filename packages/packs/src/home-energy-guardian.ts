@@ -562,6 +562,12 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
       required: true,
       appliesTo: ['response_option'],
       allowedValues: ['low', 'medium', 'high'],
+      // Ascending along the natural scale (least effort first). Note that
+      // this is NOT "worst first": `comparison: 'lower_better'` below is
+      // what says less effort is preferable. Ordering these `high` -> `low`
+      // to mean "worst first" would double-invert with that comparison and
+      // score the most laborious option as the best one.
+      orderedValues: ['low', 'medium', 'high'],
       evidenceExpectation: 'source',
       comparison: 'lower_better',
       sensitive: false,

@@ -303,6 +303,12 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
       "evidenceExpectation": "corroborated",
       "id": "car.crash_safety_rating",
       "label": "Crash safety rating",
+      "orderedValues": [
+        "Not Rated",
+        "Recommended",
+        "Top Safety Pick",
+        "Top Safety Pick+",
+      ],
       "required": true,
       "sensitive": false,
       "valueType": "enum",
@@ -321,6 +327,12 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
       "evidenceExpectation": "corroborated",
       "id": "car.driver_assistance_rating",
       "label": "Driver assistance effectiveness rating",
+      "orderedValues": [
+        "Not Rated",
+        "Basic",
+        "Advanced",
+        "Superior",
+      ],
       "required": true,
       "sensitive": false,
       "valueType": "enum",
@@ -338,6 +350,11 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
       "evidenceExpectation": "corroborated",
       "id": "car.reliability_rating",
       "label": "Owner-reported / predicted reliability rating",
+      "orderedValues": [
+        "Below Average",
+        "Average",
+        "Above Average",
+      ],
       "required": true,
       "sensitive": false,
       "valueType": "enum",
@@ -446,6 +463,12 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
       "evidenceExpectation": "verification",
       "id": "car.driving_comfort_rating",
       "label": "Driving comfort",
+      "orderedValues": [
+        "poor",
+        "fair",
+        "good",
+        "excellent",
+      ],
       "required": false,
       "sensitive": false,
       "valueType": "enum",
@@ -455,6 +478,11 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
     "allowUserDefined": true,
     "defaults": [
       {
+        "composedOfAttributes": [
+          "car.crash_safety_rating",
+          "car.driver_assistance_rating",
+          "car.reliability_rating",
+        ],
         "direction": "higher_better",
         "id": "pref.safety_reliability",
         "kind": "preference",
@@ -485,6 +513,13 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
         "weight": 20,
       },
       {
+        "composedOfAttributes": [
+          "car.cargo_volume_cu_ft",
+          "car.cargo_width_in",
+          "car.cargo_length_in",
+          "car.rear_door_opening_width_in",
+          "car.second_row_legroom_in",
+        ],
         "direction": "higher_better",
         "id": "pref.household_fit",
         "kind": "preference",

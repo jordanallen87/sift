@@ -353,6 +353,13 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
       required: true,
       appliesTo: ['candidate'],
       allowedValues: ['Top Safety Pick+', 'Top Safety Pick', 'Recommended', 'Not Rated'],
+      // Worst-to-best, i.e. the REVERSE of `allowedValues` above. Declared
+      // explicitly because `allowedValues` is a membership set whose order
+      // means nothing, and a scorer that inferred rank from its index would
+      // rate an unrated car as the safest one on the lot -- inside a
+      // 30%-weight criterion, silently. See `AttributeDefinition
+      // .orderedValues`.
+      orderedValues: ['Not Rated', 'Recommended', 'Top Safety Pick', 'Top Safety Pick+'],
       evidenceExpectation: 'corroborated',
       comparison: 'higher_better',
       sensitive: false,
@@ -364,6 +371,7 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
       required: true,
       appliesTo: ['candidate'],
       allowedValues: ['Superior', 'Advanced', 'Basic', 'Not Rated'],
+      orderedValues: ['Not Rated', 'Basic', 'Advanced', 'Superior'],
       evidenceExpectation: 'corroborated',
       comparison: 'higher_better',
       sensitive: false,
@@ -375,6 +383,7 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
       required: true,
       appliesTo: ['candidate'],
       allowedValues: ['Above Average', 'Average', 'Below Average'],
+      orderedValues: ['Below Average', 'Average', 'Above Average'],
       evidenceExpectation: 'corroborated',
       comparison: 'higher_better',
       sensitive: false,
@@ -462,6 +471,7 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
       required: false,
       appliesTo: ['candidate'],
       allowedValues: ['excellent', 'good', 'fair', 'poor'],
+      orderedValues: ['poor', 'fair', 'good', 'excellent'],
       evidenceExpectation: 'verification',
       comparison: 'higher_better',
       sensitive: false,
@@ -494,6 +504,19 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
         kind: 'preference',
         weight: 30,
         direction: 'higher_better',
+        // The three ratings this criterion's own `question` already names.
+        // Without them the pack's SINGLE HEAVIEST criterion can only ever be
+        // reported as unmeasured, which both loses 30% of the scoreboard's
+        // coverage and leaves the most important thing on screen with no
+        // number beside it. Each part is normalized by its own attribute's
+        // `comparison`/`orderedValues` and the results are averaged; a car
+        // missing one of the three still scores from the other two, with the
+        // partial basis stated.
+        composedOfAttributes: [
+          'car.crash_safety_rating',
+          'car.driver_assistance_rating',
+          'car.reliability_rating',
+        ],
         question:
           'Composite of crash safety, driver assistance, and reliability ratings across independent sources.',
         origin: 'pack',
@@ -514,6 +537,16 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
         label: 'Deal value (normalized out-the-door price vs. market)',
         kind: 'preference',
         weight: 20,
+        // Faithful to household-profile.json, which seeds this as
+        // `higher_better` -- and correctly so AT THE CRITERION LEVEL: more
+        // deal value is better. The MEASUREMENT points the other way
+        // (`car.out_the_door_price` declares `comparison: 'lower_better'`,
+        // because a lower price is a better deal), and that asymmetry is
+        // exactly why `scoreCase` treats the attribute as authoritative on
+        // polarity: a criterion phrased as a benefit over a cost measure is
+        // an ordinary modelling pattern, not an authoring mistake. Read the
+        // criterion's `direction` literally instead and this 20%-weight
+        // criterion ranks the most expensive car as the best deal.
         direction: 'higher_better',
         appliesToAttribute: 'car.out_the_door_price',
         origin: 'pack',
@@ -525,6 +558,18 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
         kind: 'preference',
         weight: 15,
         direction: 'higher_better',
+        // The cargo and rear-seat measurements this criterion's `question`
+        // names. Deliberately the DIMENSIONAL ones only: `car
+        // .rear_cargo_crate_fit` is the case-specific fit question the
+        // dog-crate obligation investigates, and folding it in here would
+        // double-count the same concern once as evidence and once as score.
+        composedOfAttributes: [
+          'car.cargo_volume_cu_ft',
+          'car.cargo_width_in',
+          'car.cargo_length_in',
+          'car.rear_door_opening_width_in',
+          'car.second_row_legroom_in',
+        ],
         question:
           'Composite of cargo dimensions, rear-seat specifications, and known specification match against household needs.',
         origin: 'pack',

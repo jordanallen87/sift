@@ -428,6 +428,11 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
       "evidenceExpectation": "source",
       "id": "energy.rough_effort_level",
       "label": "Rough effort level",
+      "orderedValues": [
+        "low",
+        "medium",
+        "high",
+      ],
       "required": true,
       "sensitive": false,
       "valueType": "enum",

@@ -646,7 +646,18 @@ describe('foldHomeEnergyRound1 / foldHomeEnergyRound2 (direct unit tests via a h
       contexts: contextsWithGenuinelyAbsentEntry,
     });
     const snapshot = foldHomeEnergyRound1(deps, caseId, swarmResult);
-    expect(snapshot.recommendation?.limitations).toEqual([shared]);
+    // Retargeted, not weakened. `limitations` is no longer only what
+    // `collectLimitations` produced: the persisted array now merges those
+    // with the ones derived from the deterministic scoreboard. Since
+    // `mergeLimitations` keeps the context-collected entries first and
+    // ahead of the derived ones, the assertions below still prove exactly
+    // what this test was written for -- that two contexts reporting the
+    // same limitation yield ONE entry, and that the genuinely absent
+    // `decision-synthesizer` context contributes nothing rather than
+    // throwing or emitting an empty slot.
+    const limitations = snapshot.recommendation?.limitations ?? [];
+    expect(limitations[0]).toBe(shared);
+    expect(limitations.filter((entry) => entry === shared)).toHaveLength(1);
   });
 
   it('foldHomeEnergyRound2 throws when the reweighted text names no known response option and no inspection was proposed', () => {

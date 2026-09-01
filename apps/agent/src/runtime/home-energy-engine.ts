@@ -139,6 +139,10 @@ import {
   type HomeEnergyScenarioBeat,
   type HomeEnergySwarmScriptedProviders,
 } from './scripted-beats/home-energy-guardian.js';
+import {
+  deriveScoredRecommendationFields,
+  mergeLimitations,
+} from './recommendation-scoring.js';
 
 /**
  * Exported for the same reason `car-purchase-scenario.ts`'s
@@ -617,6 +621,12 @@ export function foldHomeEnergyRound1(
     );
   }
 
+  // The model proposed `favoredOptionId`; the deterministic scoreboard
+  // supplies the numbers attached to it. When the two disagree, the
+  // proposal stands but `limitations` says so outright and confidence is
+  // capped -- see recommendation-scoring.ts for why neither silently
+  // overwriting nor silently accepting is acceptable here.
+  const scored = deriveScoredRecommendationFields(snapshot, favoredOptionId);
   const recommendationEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -629,10 +639,10 @@ export function foldHomeEnergyRound1(
         status: 'ready',
         favoredOptionId,
         rationale: swarmResult.decisionSynthesizerText,
-        facts: [],
+        facts: scored.facts,
         hypotheses: [],
-        confidence: 0.75,
-        limitations: collectLimitations(swarmResult.contexts),
+        confidence: scored.confidence,
+        limitations: mergeLimitations(collectLimitations(swarmResult.contexts), scored.limitations),
         sourceIds,
         resolvedObligationIds: obligationIdsByStatus(snapshot, 'satisfied'),
         acceptedUncertaintyObligationIds: obligationIdsByStatus(snapshot, 'accepted_uncertainty'),
@@ -728,6 +738,12 @@ export function foldHomeEnergyRound2(
     );
   }
 
+  // The model proposed `favoredOptionId`; the deterministic scoreboard
+  // supplies the numbers attached to it. When the two disagree, the
+  // proposal stands but `limitations` says so outright and confidence is
+  // capped -- see recommendation-scoring.ts for why neither silently
+  // overwriting nor silently accepting is acceptable here.
+  const scored = deriveScoredRecommendationFields(snapshot, favoredOptionId);
   const recommendationEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
     caseId,
@@ -740,10 +756,10 @@ export function foldHomeEnergyRound2(
         status: 'ready',
         favoredOptionId,
         rationale: swarmResult.decisionSynthesizerText,
-        facts: [],
+        facts: scored.facts,
         hypotheses: [],
-        confidence: 0.85,
-        limitations: collectLimitations(swarmResult.contexts),
+        confidence: scored.confidence,
+        limitations: mergeLimitations(collectLimitations(swarmResult.contexts), scored.limitations),
         sourceIds,
         resolvedObligationIds: obligationIdsByStatus(snapshot, 'satisfied'),
         acceptedUncertaintyObligationIds: obligationIdsByStatus(snapshot, 'accepted_uncertainty'),
