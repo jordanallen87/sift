@@ -162,7 +162,6 @@ sift/
     core/        Pure case reducer, routing, obligations, evidence, readiness, scoring (no React/Express/Strands/model deps)
     packs/       Decision Pack compiler, registry, built-in manifests, authoring tools
     scenarios/   Fixture data, scripted tools, scenario runner, assertions
-    ui/          Reusable visual primitives and case components
   tests/         contract, integration, scenario, e2e (Playwright), and opt-in live suites
   scripts/       verification orchestration, the sift CLI, report generation
   docs/          specs, architecture diagram, build log, submission materials

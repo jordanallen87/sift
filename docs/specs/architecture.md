@@ -15,11 +15,10 @@ sift/
     agent/                  Express + Strands TypeScript service and static web host
   packages/
     contracts/              Zod schemas and shared API/event types
-    core/                   Pure case reducer, routing, obligations, evidence, readiness
+    core/                   Pure case reducer, routing, obligations, evidence, readiness, scoring
     packs/                  Compiler, registry, built-in manifests, authoring tools
     catalog/                Bundled vehicle catalog, bounded queries, pack-attribute mapping
     scenarios/              Fixture data, scripted tools, scenario runner, assertions
-    ui/                     Small reusable visual primitives and case components
   tests/
     contract/               WebMCP and HTTP contract suites
     integration/            Real package/service integration with fake model and tools
