@@ -86,6 +86,13 @@ export const JsonValueSchema: z.ZodType<JsonValue> = boundedJsonValueSchema(JSON
 
 export const PUBLIC_ACTIVITY_EVENT_TYPES = [
   'command.accepted',
+  // The continuous RunPlan (apps/agent/src/runtime/run-plan.ts). These are
+  // public, not developer-only, because the plan revision *is* the visible
+  // proof of the product's central claim: raising a new concern revises
+  // work already under way instead of restarting it. A person watching the
+  // pane should see that happen, and see what was kept.
+  'plan.created',
+  'plan.revised',
   'run.queued',
   'run.started',
   'run.completed',

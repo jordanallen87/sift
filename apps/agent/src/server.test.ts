@@ -45,7 +45,7 @@ describe('startServer', () => {
 
     started = await startServer({ port: 0, dataDir });
     expect(started.migration.applied).toEqual([]);
-    expect(started.migration.alreadyApplied).toEqual(['0001_initial.sql']);
+    expect(started.migration.alreadyApplied).toEqual(['0001_initial.sql', '0002_run_plans.sql']);
   });
 
   it('falls back to config.dataDir and to a PORT read from the environment when neither StartServerOptions field is given (every other test above always passes both explicitly)', async () => {

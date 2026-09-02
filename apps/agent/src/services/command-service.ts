@@ -154,6 +154,7 @@ import {
   planDiscoveryResponse,
 } from '@sift/core';
 import type { PackRegistry } from '@sift/packs';
+import type { RunPlanRevisionCause } from '../runtime/run-plan.js';
 import type { ActivityStore } from '../store/activity-store.js';
 import type { AppendResult, CaseStore } from '../store/case-store.js';
 import {
@@ -188,6 +189,45 @@ export interface CommandServiceDeps {
    * exactly what `startDemo` appends here.
    */
   readonly demoSeedEntities?: Readonly<Record<string, (clock: Clock) => readonly EntityRecord[]>>;
+  /**
+   * The continuous RunPlan's revision hook (`run-plan-service.ts`'s
+   * `RunPlanService.revisePlan`). Optional so every existing test and any
+   * deployment without a plan wired keeps working unchanged.
+   *
+   * Structurally typed rather than imported as `RunPlanService` for two
+   * reasons: it keeps `CommandService` free of a dependency on the runtime
+   * layer (the arrow only ever points the other way), and it makes the
+   * *contract* explicit — a revisor may be told what changed, and may not
+   * hand anything back that could influence the command's own outcome. A
+   * plan revision is a consequence of a command, never a participant in it.
+   */
+  readonly runPlanRevisor?: {
+    revisePlan(caseId: string, cause: RunPlanRevisionCause): unknown;
+  };
+}
+
+/**
+ * Tells the RunPlan what changed, if a plan revisor is wired.
+ *
+ * Called only on an `applied` result: a rejected or replayed command
+ * changed nothing about the case, so nothing about the plan can have
+ * changed either. Failures are swallowed deliberately — a plan is a
+ * derived, always-recomputable projection, and losing one revision must
+ * never turn an accepted, durably-appended command into an error the
+ * person sees.
+ */
+function notifyRunPlan(
+  deps: CommandServiceDeps,
+  caseId: string,
+  cause: RunPlanRevisionCause,
+): void {
+  const revisor = deps.runPlanRevisor;
+  if (revisor === undefined) return;
+  try {
+    revisor.revisePlan(caseId, cause);
+  } catch {
+    // Intentionally ignored; see this function's doc comment.
+  }
 }
 
 function compareSemver(a: string, b: string): number {
@@ -2746,6 +2786,17 @@ export class CommandService {
         },
         commandOrigin,
       );
+      // One revision per command, triggered by the first topic touched. A
+      // command carrying several operations is one human action, and
+      // reporting it as several separate causes would overstate what
+      // happened.
+      const firstTopicId = input.operations[0]?.topicId;
+      if (firstTopicId !== undefined) {
+        notifyRunPlan(this.deps, input.caseId, {
+          reason: 'discovery_changed',
+          trigger: firstTopicId,
+        });
+      }
     }
     return this.toReceipt(commandId, result);
   }
@@ -2978,6 +3029,12 @@ export class CommandService {
         },
         commandOrigin,
       );
+      // Triage is the authorization deep work depends on, so this is the
+      // command that most often changes what Sift should be doing next.
+      notifyRunPlan(this.deps, input.caseId, {
+        reason: 'triage_changed',
+        trigger: input.entityId,
+      });
     }
     return this.toReceipt(commandId, result);
   }

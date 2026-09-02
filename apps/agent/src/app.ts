@@ -90,6 +90,7 @@ import { createDebugRouter } from './routes/debug.js';
 import { createEventsRouter } from './routes/events.js';
 import { createPacksRouter } from './routes/packs.js';
 import { createRunsRouter } from './routes/runs.js';
+import type { RunPlanService } from './services/run-plan-service.js';
 import { sendError } from './routes/http-support.js';
 import type { CommandService } from './services/command-service.js';
 import type { RunService, RunStore } from './services/run-service.js';
@@ -104,6 +105,12 @@ export interface BuildAppDeps {
   registry: PackRegistry;
   commandService: CommandService;
   runService: RunService;
+  /**
+   * The continuous RunPlan (`services/run-plan-service.ts`), backing
+   * `GET /api/cases/:caseId/run-plan`. Optional so a build without plans
+   * wired serves every other route unchanged.
+   */
+  runPlanService?: RunPlanService;
   /** Backs `GET /api/debug/runs/:runId`'s run status/trace/session lookup. */
   runStore: RunStore;
   /** Backs `GET /api/debug/runs/:runId`'s Overview/Timeline event data. */
@@ -131,7 +138,12 @@ export function buildApp(deps: BuildAppDeps): Application {
   app.use(createCatalogRouter());
   app.use(createCasesRouter({ commandService: deps.commandService, caseStore: deps.caseStore }));
   app.use(createCommandsRouter({ commandService: deps.commandService }));
-  app.use(createRunsRouter({ runService: deps.runService }));
+  app.use(
+    createRunsRouter({
+      runService: deps.runService,
+      ...(deps.runPlanService !== undefined ? { runPlanService: deps.runPlanService } : {}),
+    }),
+  );
   app.use(
     createAgentCoreRouter({
       commandService: deps.commandService,

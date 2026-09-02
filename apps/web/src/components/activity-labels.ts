@@ -203,6 +203,12 @@ const ACTIVITY_LABELS = {
   // guiding rule); a `commandId` itself is "developer view only" (product.md
   // row 186) regardless.
   'command.accepted': { label: 'Update accepted', tone: 'neutral' },
+  // "Plan" is one of the few pieces of engine vocabulary that is already a
+  // person's word for the same thing, so it survives the terminology table
+  // unchanged. The tone is `active` rather than `neutral` because both
+  // events mean Sift is about to do something, not that it filed a note.
+  'plan.created': { label: 'Sift worked out what to look into', tone: 'active' },
+  'plan.revised': { label: 'Sift updated what it is looking into', tone: 'active' },
   'run.queued': { label: 'Investigation queued', tone: 'open' },
   'run.started': { label: 'Investigation started', tone: 'active' },
   'run.completed': { label: 'Investigation completed', tone: 'satisfied' },

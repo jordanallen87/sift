@@ -284,6 +284,16 @@ export interface RunServiceDeps {
    * exactly as before -- it simply has nothing to fire.
    */
   readonly engines?: Readonly<Record<string, InvestigationEngine>>;
+  /**
+   * The continuous RunPlan (`run-plan-service.ts`). Optional, exactly like
+   * `engines`: a deployment without a plan wired accepts and records runs
+   * unchanged.
+   *
+   * Called on the accepting branch only, never on an idempotent replay --
+   * `ensurePlan` is itself idempotent, but firing it on a replay would emit
+   * a second `plan.created` narration for one real event.
+   */
+  readonly runPlanService?: { ensurePlan(caseId: string): unknown };
 }
 
 const QUEUED_STATUS: RunStatus = RUN_STATUSES[0];
@@ -396,6 +406,16 @@ export class RunService {
       runId,
       obligationId,
     });
+
+    // A case gets its first plan the moment work is genuinely requested for
+    // it. Failures are swallowed for the same reason `notifyRunPlan` does in
+    // `command-service.ts`: the run is already durably accepted, and a
+    // derived projection must never retract that.
+    try {
+      this.deps.runPlanService?.ensurePlan(input.caseId);
+    } catch {
+      // Intentionally ignored; the plan is recomputable from case state.
+    }
 
     return ok({
       commandId,

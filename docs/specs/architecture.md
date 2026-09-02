@@ -390,6 +390,45 @@ short pane. Sticky keeps the element in flow, so content below is genuinely
 offset. Both carry safe-area padding.
 
 
+## The continuous RunPlan
+
+A `RunPlan` (`apps/agent/src/runtime/run-plan.ts`) is what Sift intends to do about a case right now, why, and what it deliberately is not doing. It is **derived, never authored**: `buildRunPlan` is a pure function of (case state, compiled pack, budgets), so the same case always produces the same plan and a plan can be recomputed from a reloaded snapshot rather than restored from an in-memory queue.
+
+### Item kinds and depth
+
+| Kind | Depth | Writes | Available |
+| --- | --- | --- | --- |
+| `enrich_candidate` | `shallow` | `enrichment` | As soon as candidates exist, before any triage |
+| `check_concern` | `deep` | `evidence` | Only for a candidate a person marked `keep` or `unsure` |
+
+Shallow work is a catalog read: it costs nothing a person would object to and writes nothing they own, so it runs while discovery is still settling. Deep work is aimed only at options a person has actually kept.
+
+### Rules the schema makes unrepresentable
+
+- A `deep` item must carry a `triageBasis`, and `TriageBasis.disposition` is `'keep' | 'unsure'`. `pass` and `unreviewed` are real dispositions and neither is an authorization, so there is no value expressing "deep work authorized by a candidate nobody reviewed."
+- `RunPlanItem.writes` is `'evidence' | 'enrichment' | 'none'`. Discovery answers, dispositions, the shortlist, and the decision are not members of the union, so runtime work cannot declare it will write them.
+- A concern with no matching capability in `pack.resolvedCapabilities.specialistIds` is recorded in `plan.unverifiable` with a reason. It never becomes an item.
+
+### Revision
+
+`reviseRunPlan(previous, ctx, cause)` re-derives and diffs. An item is **reused** when its signature and `inputsHash` are unchanged and it was accepted; **staled** (re-planned, its accepted result discarded) when the hash changed; **cancelled** when the current state no longer justifies it.
+
+`inputsHash` covers exactly the state a result depended on:
+
+- `enrich_candidate` — the candidate and the pinned pack.
+- `check_concern` — the concern, the candidate, and the confirmed answers to the pack topics whose `mapsToCriterionIds` include that concern.
+
+That asymmetry is the product's central claim in one line: adding a concern reuses every earlier result, while changing an answer re-runs only the checks that answer feeds.
+
+The cause is supplied by the command that changed the case (`setCandidateDisposition` → `triage_changed`, `updateDiscovery` → `discovery_changed`), never reconstructed by diffing. A revision that adds, stales, and cancels nothing mints no version at all.
+
+`RUN_PLAN_ITEM_STATUSES` has no `stale` member: staleness is a transition recorded in `revision.staledSignatures`, not a resting state, so `items` never holds two entries claiming the same work.
+
+### Surfaces
+
+- `GET /api/cases/:caseId/run-plan` → `{ plan, history }`. History is returned with the current plan because the two are only meaningful together.
+- `plan.created` and `plan.revised` are public activity events. The `plan.revised` summary names the trigger and what was reused; its `safeDetails` carry `reused`/`added`/`rerun`/`cancelled` counts so a consumer renders them without re-deriving.
+
 ## Persistence
 
 SQLite is the canonical local and Railway store. The implementation uses `better-sqlite3`, Drizzle migrations, foreign keys, WAL mode, and a bounded busy timeout. It runs as one writable Railway application replica for the hackathon.
@@ -403,8 +442,11 @@ activity_events     append-only sanitized public case stream with per-case seque
 runs                 execution status, focus, bounds, trace/session IDs
 idempotency_keys     command result deduplication
 runtime_events       sanitized hooks, spans, logs, diffs, and errors
+run_plans            one row per RunPlan version, keyed (plan_id, version)
 schema_migrations    applied migration ledger
 ```
+
+`run_plans` keeps every version rather than overwriting the current one: the plan's claim is historical ("a new concern revised work already under way, and here is what was reused"), and a table holding only the latest plan could state that but never show it. Re-saving an existing `(plan_id, version)` is rejected. The store's one mutation, `updateItemStatuses`, can reach nothing but an item's `status`/`updatedAt`, so what a version intended cannot be rewritten.
 
 Case-event append and snapshot replacement occur in one transaction. `(case_id, sequence)` and idempotency keys are unique. `activity_events` gives the normal UI one replayable public sequence across commands and runs; it is derived from committed domain or normalized runtime activity and cannot mutate the case. Detailed runtime telemetry is operational evidence and also cannot directly mutate canonical case state.
 

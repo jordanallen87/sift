@@ -20,7 +20,14 @@
  * needs the stable envelope shapes from `@sift/contracts` for documentation
  * comments; the columns themselves are plain SQLite types.
  */
-import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import {
+  sqliteTable,
+  text,
+  integer,
+  uniqueIndex,
+  index,
+  primaryKey,
+} from 'drizzle-orm/sqlite-core';
 
 // --- cases ---
 // "latest derived snapshot and pinned pack ID/version/hash"
@@ -226,6 +233,37 @@ export const runtimeEvents = sqliteTable(
     uniqueIndex('runtime_events_run_id_sequence_unique').on(t.runId, t.sequence),
     index('runtime_events_case_id_idx').on(t.caseId),
     index('runtime_events_run_id_idx').on(t.runId),
+  ],
+);
+
+// --- run_plans ---
+// The continuous RunPlan (`runtime/run-plan.ts`), one row per *version*.
+//
+// Versions are kept rather than overwritten because the plan's central
+// claim is historical: "a new concern revised work already under way, and
+// here is what was reused." A table that stored only the current plan could
+// state the conclusion but never show the change, and a demo beat that can
+// only be narrated is exactly the kind of claim this build refuses to make.
+//
+// `(plan_id, version)` is the primary key, so re-persisting a version is a
+// constraint violation rather than a silent overwrite of history. The plan
+// body itself stays one JSON blob in `data`: a plan is derived, always
+// re-derivable from case state, and never queried by its internal fields --
+// the columns promoted out of it are exactly the ones a lookup needs.
+export const runPlans = sqliteTable(
+  'run_plans',
+  {
+    planId: text('plan_id').notNull(),
+    version: integer('version').notNull(),
+    caseId: text('case_id')
+      .notNull()
+      .references(() => cases.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at').notNull(),
+    data: text('data').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.planId, t.version] }),
+    index('run_plans_case_id_idx').on(t.caseId),
   ],
 );
 

@@ -37,6 +37,11 @@ describe('activity-labels', () => {
     // Task A6: "command" is engine vocabulary; a `commandId` itself is
     // "developer view only" (product.md row 186) regardless.
     'command.accepted': { label: 'Update accepted', tone: 'neutral' },
+    // The continuous RunPlan. "Plan" survives the terminology table
+    // unchanged because it is already the person's word for the same thing;
+    // "run plan", "item", and "signature" are not, and none appear here.
+    'plan.created': { label: 'Sift worked out what to look into', tone: 'active' },
+    'plan.revised': { label: 'Sift updated what it is looking into', tone: 'active' },
     'run.queued': { label: 'Investigation queued', tone: 'open' },
     'run.started': { label: 'Investigation started', tone: 'active' },
     'run.completed': { label: 'Investigation completed', tone: 'satisfied' },

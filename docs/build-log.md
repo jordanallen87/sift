@@ -5709,3 +5709,43 @@ A fourth fix was attempted and reverted: one persistent listening server per har
 3792 unit tests passing (from 3515 at baseline, +277). Typecheck, lint, `check:source`, and format all clean. WebMCP catalog 23 → 26 tools, with exact descriptions and JSON schemas pinned by the contract test.
 
 `check-source.ts` gained one narrowing, not a weakening: a long PascalCase identifier is a declaration, not a secret. Pinned by four tests proving digit-bearing, all-uppercase, mixed-case, and repeated-character secret shapes all still trip the scanner.
+
+## 2026-09-02 — Task 6: the continuous RunPlan
+
+`apps/agent/src/runtime/run-plan.ts`, its store, its service, its route, and the two commands that revise it. The plan the demo needed but did not have: a first version that does safe work while a person is still deciding, and a revision that reuses what a new concern did not touch.
+
+### Three rules made structural rather than checked
+
+The module's value is what it refuses to represent.
+
+1. **A `deep` item must carry a `triageBasis`, and `TriageBasis.disposition` is `'keep' | 'unsure'`.** `pass` and `unreviewed` are real dispositions and neither is an authorization, so neither is a member of that union. "Deep work authorized by a candidate nobody reviewed" is not a thing this schema can express.
+2. **`RunPlanItem.writes` is `'evidence' | 'enrichment' | 'none'`.** Discovery answers, dispositions, the shortlist, and the decision are absent. Runtime work cannot declare it will write what a person owns, because there is no value for it — absence, not a guard that could be forgotten.
+3. **A concern with no matching pack capability goes to `plan.unverifiable` with a reason, never to `items`.** CLAUDE.md's rule for an unanticipated concern is that it "remains an explicit unknown when no capability can verify it"; a plausible-looking task that will quietly never produce anything is exactly the fabrication that rule exists to prevent.
+
+Both refusals were mutation-tested before being trusted: neutering the deep-work refinement and widening `TRIAGE_AUTHORIZATIONS` to include `pass`/`unreviewed` failed two tests each time, and the file was restored from a backup rather than edited back by hand.
+
+### Why staleness is a transition, not a status
+
+`RUN_PLAN_ITEM_STATUSES` has no `stale` member. When a revision finds an accepted item whose inputs changed, the item is re-planned in place and its signature is recorded in `revision.staledSignatures`. Keeping a superseded row beside its replacement would put two entries in `items` claiming the same work, and "what is Sift doing about X?" would have two answers.
+
+### Causality is passed in, not reconstructed
+
+`revisePlan` takes its trigger from the caller. `setCandidateDisposition` knows the candidate; `updateDiscovery` knows the topic. Diffing two plans to guess an attribution would produce a plausible cause that can be wrong, which this build treats as worse than saying nothing.
+
+Reuse itself is decided by `inputsHash` — a hash of exactly the state an item's result depended on. Enrichment depends on the candidate; a concern check depends on the concern plus the confirmed answers the pack maps to that criterion. That asymmetry is what makes the demo beat true rather than staged: adding a concern reuses every earlier result, while changing the budget answer re-runs only the checks budget feeds.
+
+### A revision that changes nothing mints no version
+
+`RunPlanService.revisePlan` returns `undefined` when the re-derivation added, staled, and cancelled nothing. Without that, every click would produce a plan version and the one revision carrying the product's argument would be lost in a list of identical entries.
+
+### Persistence
+
+`run_plans` (migration `0002_run_plans.sql`), one row per **version**, primary key `(plan_id, version)`. Re-saving a version throws rather than overwriting. The store's only mutation is `updateItemStatuses`, which can reach nothing but `status`/`updatedAt` — so "what Sift planned and why" is unfalsifiable by construction rather than by convention.
+
+`migrate.test.ts` had four assertions pinning `['0001_initial.sql']`. They were updated to a named `ALL_MIGRATIONS` list rather than derived from the directory: a test that reads the same source as the implementation would still pass if a migration were accidentally added, renamed, or dropped, which is the thing the list exists to catch.
+
+### Verification
+
+Proven end to end over real HTTP against a real migrated SQLite database (`routes/run-plan.test.ts`), using only endpoints the browser and ChatGPT use — no service reached into, no store written directly. Before triage every planned item is `shallow`; pressing Keep produces version 2 with `reason: 'triage_changed'`, the candidate as `trigger`, `enrich_candidate:<id>` in `reusedSignatures`, a `plan.revised` event whose summary names what it reused, and both versions readable from `run_plans`.
+
+`PUBLIC_ACTIVITY_EVENT_TYPES` gained `plan.created` and `plan.revised` (19 → 21), with labels in the person's vocabulary — "Sift worked out what to look into" / "Sift updated what it is looking into". Two exhaustiveness tests and one contracts pinning test were updated intentionally; the label table is `satisfies Record<PublicActivityEventType, …>`, so an omission would have been a compile error.

@@ -54,6 +54,11 @@ describe('PublicActivityEventSchema', () => {
     const options = shape.options as readonly string[];
     expect(options).toEqual([
       'command.accepted',
+      // Added with the continuous RunPlan: a plan revision is the visible
+      // proof that a new concern revises running work rather than
+      // restarting it, so it belongs in the public vocabulary.
+      'plan.created',
+      'plan.revised',
       'run.queued',
       'run.started',
       'run.completed',

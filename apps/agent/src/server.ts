@@ -38,6 +38,8 @@ import {
 } from './runtime/home-energy-engine.js';
 import { createSystemClock, createSystemIdGenerator } from './runtime-ports.js';
 import { CommandService } from './services/command-service.js';
+import { RunPlanService } from './services/run-plan-service.js';
+import { SqliteRunPlanStore } from './store/run-plan-store.js';
 import { RunService, SqliteRunStore, type InvestigationEngine } from './services/run-service.js';
 import { SqliteActivityStore } from './store/activity-store.js';
 import { SqliteCaseStore } from './store/sqlite-case-store.js';
@@ -121,12 +123,24 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     [homeEnergyGuardianPack.identity.id]: homeEnergyEngine,
   };
 
+  // The continuous RunPlan. Constructed before `commandService` because
+  // the command service is what tells it a person changed something.
+  const runPlanService = new RunPlanService({
+    caseStore,
+    planStore: new SqliteRunPlanStore(database),
+    activityStore,
+    registry,
+    clock,
+    idGenerator,
+  });
+
   const commandService = new CommandService({
     caseStore,
     activityStore,
     registry,
     clock,
     idGenerator,
+    runPlanRevisor: runPlanService,
     // Real gap closed alongside each pack's live run engine
     // (docs/build-log.md): instantiateCase always seeds entities: [], so
     // without this a freshly started demo case had no candidates/response
@@ -144,6 +158,7 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     clock,
     idGenerator,
     engines,
+    runPlanService,
   });
 
   const app = buildApp({
@@ -153,6 +168,7 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     registry,
     commandService,
     runService,
+    runPlanService,
     runStore,
     runtimeEventStore,
     clock,

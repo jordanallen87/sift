@@ -12,8 +12,21 @@ const REQUIRED_TABLES = [
   'runs',
   'idempotency_keys',
   'runtime_events',
+  // Added by `0002_run_plans.sql`: one row per RunPlan *version*, so the
+  // "what was reused when the concern changed" evidence outlives the
+  // process that produced it.
+  'run_plans',
   'schema_migrations',
 ];
+
+/**
+ * Every migration, in the exact order the runner must apply them. Written
+ * out by name rather than read from the directory: a test that derives its
+ * expectation from the same source as the implementation would still pass
+ * if a migration were accidentally added, renamed, or dropped, which is
+ * precisely what this list exists to catch.
+ */
+const ALL_MIGRATIONS = ['0001_initial.sql', '0002_run_plans.sql'];
 
 function tableNames(database: SiftDatabase): string[] {
   const rows = database.sqlite
@@ -39,7 +52,7 @@ describe('applyMigrations', () => {
 
     const result = applyMigrations(database.sqlite);
 
-    expect(result.applied).toEqual(['0001_initial.sql']);
+    expect(result.applied).toEqual(ALL_MIGRATIONS);
     expect(result.alreadyApplied).toEqual([]);
     for (const table of REQUIRED_TABLES) {
       expect(tableNames(database)).toContain(table);
@@ -53,12 +66,12 @@ describe('applyMigrations', () => {
     const first = applyMigrations(database.sqlite);
     const second = applyMigrations(database.sqlite);
 
-    expect(first.applied).toEqual(['0001_initial.sql']);
+    expect(first.applied).toEqual(ALL_MIGRATIONS);
     expect(second.applied).toEqual([]);
-    expect(second.alreadyApplied).toEqual(['0001_initial.sql']);
+    expect(second.alreadyApplied).toEqual(ALL_MIGRATIONS);
 
     const ledgerRows = database.sqlite.prepare('SELECT * FROM schema_migrations').all();
-    expect(ledgerRows).toHaveLength(1);
+    expect(ledgerRows).toHaveLength(ALL_MIGRATIONS.length);
   });
 
   it('throws MigrationIntegrityError when an already-applied migration file is edited afterward', () => {
@@ -121,7 +134,7 @@ describe('migrate', () => {
     database = outcome.database;
 
     expect(existsSync(nestedDataDir)).toBe(true);
-    expect(outcome.result.applied).toEqual(['0001_initial.sql']);
+    expect(outcome.result.applied).toEqual(ALL_MIGRATIONS);
     for (const table of REQUIRED_TABLES) {
       expect(tableNames(database)).toContain(table);
     }
@@ -135,8 +148,8 @@ describe('migrate', () => {
     const secondBoot = migrate(dir);
     database = secondBoot.database;
 
-    expect(firstBoot.result.applied).toEqual(['0001_initial.sql']);
+    expect(firstBoot.result.applied).toEqual(ALL_MIGRATIONS);
     expect(secondBoot.result.applied).toEqual([]);
-    expect(secondBoot.result.alreadyApplied).toEqual(['0001_initial.sql']);
+    expect(secondBoot.result.alreadyApplied).toEqual(ALL_MIGRATIONS);
   });
 });

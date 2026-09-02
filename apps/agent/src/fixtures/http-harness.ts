@@ -18,7 +18,9 @@ import {
   fixedClock,
 } from './synthetic-pack.js';
 import { CommandService } from '../services/command-service.js';
+import { RunPlanService } from '../services/run-plan-service.js';
 import { RunService, SqliteRunStore } from '../services/run-service.js';
+import { SqliteRunPlanStore } from '../store/run-plan-store.js';
 import { SqliteActivityStore } from '../store/activity-store.js';
 import { SqliteCaseStore } from '../store/sqlite-case-store.js';
 import { SqliteRuntimeEventStore } from '../store/runtime-event-store.js';
@@ -49,6 +51,7 @@ export interface HttpTestHarness {
   readonly activityStore: SqliteActivityStore;
   readonly runStore: SqliteRunStore;
   readonly runtimeEventStore: SqliteRuntimeEventStore;
+  readonly runPlanService: RunPlanService;
   cleanup(): void;
 }
 
@@ -70,12 +73,23 @@ export async function createHttpTestHarness(
   const runtimeEventStore = new SqliteRuntimeEventStore(database);
   const registry = createRegistryWithSyntheticPack();
   const idGenerator = createSequentialIdGenerator();
+  // Wired exactly as `server.ts` wires it, so an HTTP test exercises the
+  // real plan lifecycle rather than a test-only arrangement of it.
+  const runPlanService = new RunPlanService({
+    caseStore,
+    planStore: new SqliteRunPlanStore(database),
+    activityStore,
+    registry,
+    clock: fixedClock,
+    idGenerator,
+  });
   const commandService = new CommandService({
     caseStore,
     activityStore,
     registry,
     clock: fixedClock,
     idGenerator,
+    runPlanRevisor: runPlanService,
   });
   const runService = new RunService({
     caseStore,
@@ -83,6 +97,7 @@ export async function createHttpTestHarness(
     runStore,
     clock: fixedClock,
     idGenerator,
+    runPlanService,
   });
 
   const app = buildApp({
@@ -92,6 +107,7 @@ export async function createHttpTestHarness(
     registry,
     commandService,
     runService,
+    runPlanService,
     runStore,
     runtimeEventStore,
     clock: fixedClock,
@@ -114,6 +130,7 @@ export async function createHttpTestHarness(
     activityStore,
     runStore,
     runtimeEventStore,
+    runPlanService,
     cleanup: () => {
       // Drop live connections before closing. `close()` alone only stops the
       // server accepting new ones, and a socket that outlives its server is
