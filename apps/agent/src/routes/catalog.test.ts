@@ -145,7 +145,9 @@ describe('GET /api/catalog/*', () => {
   it('GET /api/catalog/vehicles?limit=1000 stays bounded to MAX_SEARCH_RESULTS', async () => {
     harness = await createHttpTestHarness();
 
-    const response = await request(harness.server).get('/api/catalog/vehicles').query({ limit: 1000 });
+    const response = await request(harness.server)
+      .get('/api/catalog/vehicles')
+      .query({ limit: 1000 });
 
     expect(response.status).toBe(200);
     const body = asJson<{ records: VehicleCatalogRecord[]; total: number }>(response.body);

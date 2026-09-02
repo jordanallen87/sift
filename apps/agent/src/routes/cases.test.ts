@@ -181,7 +181,9 @@ describe('POST /api/cases/demo, POST /api/cases, and GET /api/cases/:caseId', ()
   it('POST /api/cases rejects a missing Idempotency-Key header (validation)', async () => {
     harness = await createHttpTestHarness();
 
-    const response = await request(harness.server).post('/api/cases').send({ packId: 'car-purchase' });
+    const response = await request(harness.server)
+      .post('/api/cases')
+      .send({ packId: 'car-purchase' });
 
     expect(response.status).toBe(400);
     expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');

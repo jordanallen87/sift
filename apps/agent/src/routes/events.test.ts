@@ -116,7 +116,9 @@ describe('GET /api/cases/:caseId/events?mode=poll (polling fallback)', () => {
   it('returns not_found for an unknown case', async () => {
     harness = await createHttpTestHarness();
 
-    const response = await request(harness.server).get('/api/cases/does-not-exist/events?mode=poll');
+    const response = await request(harness.server).get(
+      '/api/cases/does-not-exist/events?mode=poll',
+    );
 
     expect(response.status).toBe(404);
   });
