@@ -83,6 +83,7 @@ import {
 } from './workspace-filters.js';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 export interface FilterBarProps {
   /** `CaseState.attributeDefinitions`. When none of them is filterable this component renders nothing at all. */
@@ -138,15 +139,27 @@ function AppliedFilterChip({
       <span className="min-w-0 truncate" title={label}>
         {label}
       </span>
-      <button
-        type="button"
-        data-testid={`workspace-filter-chip-remove-${fieldId}`}
-        aria-label={`Remove filter: ${label}`}
-        onClick={onRemove}
-        className="flex h-[var(--size-touch-target-min)] w-[var(--size-touch-target-min)] shrink-0 items-center justify-center rounded-[var(--radius-full)] transition-opacity duration-[var(--duration-fast)] hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-      >
-        <XIcon aria-hidden="true" className="size-4" />
-      </button>
+      {/*
+       * The tooltip text is this button's `aria-label` verbatim, chip label
+       * included: a row can hold several ✕ glyphs that differ only by which
+       * chip they sit inside, so a bare "Remove" would be the one string a
+       * pointer user cannot act on. It is still only a repeat of the name
+       * the button already carries.
+       */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            data-testid={`workspace-filter-chip-remove-${fieldId}`}
+            aria-label={`Remove filter: ${label}`}
+            onClick={onRemove}
+            className="flex h-[var(--size-touch-target-min)] w-[var(--size-touch-target-min)] shrink-0 items-center justify-center rounded-[var(--radius-full)] transition-opacity duration-[var(--duration-fast)] hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+          >
+            <XIcon aria-hidden="true" className="size-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{`Remove filter: ${label}`}</TooltipContent>
+      </Tooltip>
     </span>
   );
 }
@@ -170,15 +183,22 @@ function AssistantNarrowingChip({ label, onRemove }: { label: string; onRemove: 
       <span className="min-w-0 truncate" title={label}>
         {label}
       </span>
-      <button
-        type="button"
-        data-testid="workspace-filter-assistant-chip-remove"
-        aria-label={`Remove: ${label}`}
-        onClick={onRemove}
-        className="flex h-[var(--size-touch-target-min)] w-[var(--size-touch-target-min)] shrink-0 items-center justify-center rounded-[var(--radius-full)] transition-opacity duration-[var(--duration-fast)] hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-      >
-        <XIcon aria-hidden="true" className="size-4" />
-      </button>
+      {/* Same rule as `AppliedFilterChip` above: the tooltip is this
+          button's own accessible name, not a second, shorter one. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            data-testid="workspace-filter-assistant-chip-remove"
+            aria-label={`Remove: ${label}`}
+            onClick={onRemove}
+            className="flex h-[var(--size-touch-target-min)] w-[var(--size-touch-target-min)] shrink-0 items-center justify-center rounded-[var(--radius-full)] transition-opacity duration-[var(--duration-fast)] hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+          >
+            <XIcon aria-hidden="true" className="size-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{`Remove: ${label}`}</TooltipContent>
+      </Tooltip>
     </span>
   );
 }

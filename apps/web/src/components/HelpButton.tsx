@@ -27,6 +27,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 function HelpSection({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -40,18 +41,32 @@ function HelpSection({ label, children }: { label: string; children: ReactNode }
 export function HelpButton() {
   return (
     <Sheet>
-      <SheetTrigger asChild>
-        <Button
-          type="button"
-          data-testid="help-button"
-          aria-label="Help and instructions"
-          variant="ghost"
-          size="icon"
-          className="min-h-[var(--size-touch-target-min)] min-w-[var(--size-touch-target-min)] shrink-0 text-muted-foreground hover:text-foreground"
-        >
-          <CircleQuestionMarkIcon className="size-5" aria-hidden="true" />
-        </Button>
-      </SheetTrigger>
+      {/*
+       * The tooltip only repeats the `aria-label` that already names this
+       * button -- it is a pointer-only reminder of what a bare "?" glyph
+       * does, and this control is unchanged for the touch and screen-reader
+       * users who never see it (see `ui/tooltip.tsx`'s header comment).
+       * `side="bottom"`: every caller renders this in the top row of the
+       * pane, where a top-side tooltip would immediately be flipped by
+       * collision handling anyway.
+       */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <SheetTrigger asChild>
+            <Button
+              type="button"
+              data-testid="help-button"
+              aria-label="Help and instructions"
+              variant="ghost"
+              size="icon"
+              className="min-h-[var(--size-touch-target-min)] min-w-[var(--size-touch-target-min)] shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <CircleQuestionMarkIcon className="size-5" aria-hidden="true" />
+            </Button>
+          </SheetTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Help and instructions</TooltipContent>
+      </Tooltip>
       <SheetContent data-testid="help-sheet" side="bottom">
         <SheetHeader>
           <SheetTitle>How Sift works</SheetTitle>

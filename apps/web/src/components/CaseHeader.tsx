@@ -49,6 +49,7 @@ import type { CaseState } from '@sift/contracts';
 import { TerminalIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HelpButton } from './HelpButton.js';
 
 export type CaseHeaderConnectionState = 'live' | 'reconnecting' | 'polling' | 'offline';
@@ -127,17 +128,29 @@ export function CaseHeader({
         </h1>
         <div className="flex shrink-0 items-start gap-[var(--space-1)]">
           <HelpButton />
-          <Button
-            type="button"
-            data-testid="case-header-developer-view"
-            aria-label="Developer view"
-            onClick={onOpenDeveloperView}
-            variant="ghost"
-            size="icon"
-            className="min-h-[var(--size-touch-target-min)] min-w-[var(--size-touch-target-min)] shrink-0 text-[var(--color-ink-secondary)] hover:text-foreground"
-          >
-            <TerminalIcon className="size-5" aria-hidden="true" />
-          </Button>
+          {/*
+           * A terminal glyph is the least self-explanatory control in this
+           * header, so it is the one that most benefits from a pointer-only
+           * label -- which is all this is. The `aria-label` below still
+           * carries the name; deleting the tooltip changes nothing about
+           * how this button is announced or operated.
+           */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                data-testid="case-header-developer-view"
+                aria-label="Developer view"
+                onClick={onOpenDeveloperView}
+                variant="ghost"
+                size="icon"
+                className="min-h-[var(--size-touch-target-min)] min-w-[var(--size-touch-target-min)] shrink-0 text-[var(--color-ink-secondary)] hover:text-foreground"
+              >
+                <TerminalIcon className="size-5" aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Developer view</TooltipContent>
+          </Tooltip>
           <Button
             type="button"
             data-testid="case-header-reset-demo"

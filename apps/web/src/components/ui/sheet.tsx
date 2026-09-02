@@ -178,6 +178,18 @@ function SheetContent({
         ) : null}
         {children}
         {showCloseButton && (
+          /*
+           * Deliberately NOT tooltipped, unlike every other icon-only button
+           * in this app -- measured, not assumed. Radix Dialog autofocuses
+           * the first tabbable element in the panel, which for most sheets
+           * here is this ✕: a focus-opening tooltip therefore popped
+           * "Close" unbidden every single time a sheet opened, and worse,
+           * Radix Tooltip's own Escape handler consumed the FIRST Escape,
+           * so the documented "Escape closes the sheet" contract (asserted
+           * in `sheet.test.tsx`) silently needed two presses. A ✕ in an
+           * overlay's top-right corner is also the least ambiguous icon in
+           * the product, so there was nothing to buy with that cost.
+           */
           <SheetPrimitive.Close
             data-testid="sheet-close"
             className="absolute top-[var(--space-3)] right-[var(--space-3)] flex h-[var(--size-touch-target-min)] w-[var(--size-touch-target-min)] items-center justify-center rounded-[var(--radius-full)] bg-muted text-muted-foreground transition-opacity duration-[var(--duration-fast)] hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
