@@ -64,7 +64,14 @@ export function DecisionOrientationShell({
   const resolved = coverage.requiredResolved;
 
   return (
-    <header
+    // A labelled region, deliberately not a `<header>`. `WorkspaceAppBar`
+    // already owns the page's single banner landmark, and a second one is a
+    // real axe violation (landmark-no-duplicate-banner) as well as a worse
+    // experience: a screen-reader user looking for "the banner" should find
+    // one thing, not two. `role="region"` with a name is the correct landmark
+    // for a labelled section, and it is still directly navigable.
+    <section
+      aria-label="Decision status"
       data-testid="decision-orientation-shell"
       className={[
         'sticky top-0 z-20 flex flex-col gap-[var(--space-1)]',
@@ -99,31 +106,39 @@ export function DecisionOrientationShell({
         {orientation.phaseLabel}
       </p>
 
-      <div className="flex items-center gap-[var(--space-2)]">
-        <div
-          data-testid="orientation-progress"
-          role="progressbar"
-          aria-valuenow={resolved}
-          aria-valuemin={0}
-          aria-valuemax={total}
-          aria-label="Required topics covered"
-          className="h-[var(--space-1)] min-w-0 flex-1 overflow-hidden rounded-full bg-[color:var(--color-muted)]"
-        >
+      {/*
+        Hidden entirely when there is nothing to count. "0 of 0 covered" is
+        not a smaller truth than a real ratio, it is noise -- and a progress
+        bar that can never move invites a person to wonder what they did
+        wrong.
+      */}
+      {total > 0 && (
+        <div className="flex items-center gap-[var(--space-2)]">
           <div
-            className="h-full rounded-full bg-[color:var(--color-primary)]"
-            // Computed from the very counts printed beside it. `total === 0`
-            // is a real state (a pack with no declared topics), and dividing
-            // by it would render a NaN width.
-            style={{ width: total === 0 ? '0%' : `${String((resolved / total) * 100)}%` }}
-          />
+            data-testid="orientation-progress"
+            role="progressbar"
+            aria-valuenow={resolved}
+            aria-valuemin={0}
+            aria-valuemax={total}
+            aria-label="Required topics covered"
+            className="h-[var(--space-1)] min-w-0 flex-1 overflow-hidden rounded-full bg-[color:var(--color-muted)]"
+          >
+            <div
+              className="h-full rounded-full bg-[color:var(--color-primary)]"
+              // Computed from the very counts printed beside it. `total === 0`
+              // is a real state (a pack with no declared topics), and dividing
+              // by it would render a NaN width.
+              style={{ width: total === 0 ? '0%' : `${String((resolved / total) * 100)}%` }}
+            />
+          </div>
+          <span
+            data-testid="orientation-coverage"
+            className="shrink-0 text-[length:var(--text-xs)] tabular-nums text-[color:var(--color-muted-foreground)]"
+          >
+            {resolved} of {total} covered
+          </span>
         </div>
-        <span
-          data-testid="orientation-coverage"
-          className="shrink-0 text-[length:var(--text-xs)] tabular-nums text-[color:var(--color-muted-foreground)]"
-        >
-          {resolved} of {total} covered
-        </span>
-      </div>
+      )}
 
       {orientation.currentFocus !== null && (
         <p
@@ -167,6 +182,6 @@ export function DecisionOrientationShell({
           Provisional — something was deferred, so this is not the whole picture yet.
         </p>
       )}
-    </header>
+    </section>
   );
 }

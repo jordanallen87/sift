@@ -199,14 +199,14 @@ import {
   type WorkspaceViewMode,
   type WorkspaceViewState,
 } from '@sift/contracts';
-import { evaluateReadiness } from '@sift/core';
+import { deriveNextMoves, evaluateReadiness } from '@sift/core';
 import { SiftClientError } from '../api/sift-client.js';
 import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active-case-storage.js';
 import { DemoLauncher } from '../components/DemoLauncher.js';
 import { VehicleCatalogFlow } from '../components/VehicleCatalogFlow.js';
 import { DisclosureSection } from '../components/DisclosureSection.js';
 import { RecommendationHero } from '../components/RecommendationHero.js';
-import type { CandidateDisposition } from '@sift/contracts';
+import type { CandidateDisposition, NextMove } from '@sift/contracts';
 import type { ApprovalCardReview } from '../components/ApprovalCard.js';
 import { deriveWorkspaceStatus } from '../components/workspace-status.js';
 import { ReadinessPanel } from '../components/ReadinessPanel.js';
@@ -214,6 +214,9 @@ import { FindingsSheet } from '../components/FindingsSheet.js';
 import { OptionEditor } from '../components/OptionEditor.js';
 import { WorkspaceViewSwitcher } from '../components/WorkspaceViewSwitcher.js';
 import { DecisionProfileView } from '../components/DecisionProfileView.js';
+import { DecisionOrientationShell } from '../components/DecisionOrientationShell.js';
+import { ContextActionDock } from '../components/ContextActionDock.js';
+import { buildDecisionOrientation } from '../components/decision-orientation.js';
 import { deriveDecisionProfile } from '../components/decision-profile.js';
 import { CaseNotes } from '../components/CaseNotes.js';
 import { AddNoteForm } from '../components/AddNoteForm.js';
@@ -1124,6 +1127,23 @@ export function App() {
   // Both depend only on `installedPacks`/`snapshot`, declared far above.
   const activePack = installedPacks.find((pack) => pack.identity.id === snapshot?.pack.id) ?? null;
 
+  /**
+   * The persistent frame's two halves, both derived rather than tracked.
+   *
+   * `deriveNextMoves` is the single source of "what should I do next" -- the
+   * same list the WebMCP `sift_get_interaction_context` tool returns -- so
+   * the pane and the model cannot disagree about it. The dock renders at
+   * most the first two.
+   */
+  const decisionOrientation = useMemo(
+    () => (snapshot === null ? null : buildDecisionOrientation(snapshot, activePack)),
+    [snapshot, activePack],
+  );
+  const nextMoves = useMemo(
+    () => (snapshot === null || activePack === null ? [] : deriveNextMoves(snapshot, activePack)),
+    [snapshot, activePack],
+  );
+
   // The human counterpart to `sift_get_option_details`, the WebMCP tool that
   // has been handing ChatGPT a complete per-option profile this whole time
   // while no screen showed one. Re-derived from the live snapshot on every
@@ -1470,6 +1490,34 @@ export function App() {
     [commands, snapshot, activeCaseId, handleQuickPickAdvance],
   );
 
+  /**
+   * Taking a move from the action dock.
+   *
+   * The dock offers what `deriveNextMoves` says is valid, and each move
+   * names the view it needs. A human-only move -- confirming a shortlist,
+   * deciding -- carries no `toolName` by contract, and this handler does not
+   * perform it either: it brings the person to the view where the real,
+   * human-only control lives. Nothing here can approve anything.
+   */
+  const handleDockAction = useCallback(
+    (move: NextMove) => {
+      const viewForMove: Partial<Record<string, WorkspaceViewMode>> = {
+        quick_pick: 'quick_pick',
+        compare_retained: 'compare',
+        discover_candidates: 'list',
+      };
+      const mode = viewForMove[move.kind];
+      if (mode !== undefined) {
+        handleViewModeChange(mode);
+        return;
+      }
+      if (move.kind === 'discover_candidates' || move.kind === 'await_investigation') {
+        handleRequestInvestigation();
+      }
+    },
+    [handleViewModeChange, handleRequestInvestigation],
+  );
+
   const handleQuickPickKeep = useCallback(
     (optionId: string) => {
       handleQuickPickDisposition(optionId, 'keep');
@@ -1771,6 +1819,24 @@ export function App() {
         >
           Loading case…
         </div>
+      )}
+
+      {/*
+        Rendered only for a case that has genuinely begun adaptive discovery.
+
+        A seeded demo case arrives with candidates already present and no
+        discovery at all, and forcing this shell onto one produces
+        contradictions rather than orientation: it read "Narrowing down what
+        you found" above "0 of 0 covered" above "Next: What this vehicle is
+        for", which is three statements about three different journeys. The
+        app bar and the recommendation hero already orient a seeded case;
+        the shell has nothing true to add to one, so it says nothing.
+
+        Found by rendering it and looking, not by a unit test -- every
+        individual field was correct in isolation.
+      */}
+      {decisionOrientation !== null && snapshot?.discovery !== undefined && (
+        <DecisionOrientationShell orientation={decisionOrientation} layout={layout} />
       )}
 
       <WorkspaceAlertBanner items={alertItems} layout={layout} />
@@ -2176,6 +2242,17 @@ export function App() {
           onInspectEvent={handleInspectEvent}
         />
       ) : null}
+
+      {/*
+        Last in the flow, and sticky rather than fixed: Sift renders inside an
+        iframe in the companion case, where a `fixed` element positions
+        against the iframe viewport and ends up covering the last line of
+        content. Sticky keeps the dock in flow, so the content above it is
+        genuinely offset rather than merely appearing to be.
+      */}
+      {snapshot?.discovery !== undefined && (
+        <ContextActionDock moves={nextMoves} onAct={handleDockAction} layout={layout} />
+      )}
     </div>
   );
 }

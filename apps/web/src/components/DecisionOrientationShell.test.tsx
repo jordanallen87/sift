@@ -134,7 +134,10 @@ describe('DecisionOrientationShell', () => {
     expect(screen.queryByTestId('orientation-provisional')).toBeNull();
   });
 
-  it('handles a case with no coverage to report without dividing by zero', () => {
+  it('shows no coverage row at all when there is nothing to count', () => {
+    // "0 of 0 covered" is not a smaller truth than a real ratio, it is
+    // noise -- and a progress bar that can never move invites a person to
+    // wonder what they did wrong. Also removes any chance of a NaN width.
     const empty = orientation({
       coverage: {
         requiredTotal: 0,
@@ -146,9 +149,10 @@ describe('DecisionOrientationShell', () => {
     });
     render(<DecisionOrientationShell orientation={empty} layout="narrow" />);
 
-    const bar = screen.getByTestId('orientation-progress');
-    expect(bar).toHaveAttribute('aria-valuenow', '0');
-    expect(bar).toHaveAttribute('aria-valuemax', '0');
+    expect(screen.queryByTestId('orientation-progress')).toBeNull();
+    expect(screen.queryByTestId('orientation-coverage')).toBeNull();
+    // The answers that always exist still do.
+    expect(screen.getByTestId('orientation-next-step')).toBeInTheDocument();
   });
 
   it('omits a focus line rather than inventing one', () => {
@@ -176,9 +180,14 @@ describe('DecisionOrientationShell', () => {
     }
   });
 
-  it('is a banner landmark, so a screen reader can jump to it', () => {
+  it('is a named region a screen reader can jump to, and not a second banner', () => {
+    // `WorkspaceAppBar` already owns the page's single banner landmark.
+    // Adding another is both an axe violation and a worse experience: a
+    // screen-reader user looking for "the banner" should find one thing.
     render(<DecisionOrientationShell orientation={orientation()} layout="narrow" />);
-    expect(screen.getByRole('banner')).toBeInTheDocument();
+
+    expect(screen.getByRole('region', { name: /decision status/i })).toBeInTheDocument();
+    expect(screen.queryByRole('banner')).toBeNull();
   });
 
   it('has no accessibility violations at either layout', async () => {
