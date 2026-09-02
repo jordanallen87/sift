@@ -1,7 +1,7 @@
 # Pax — Completion Report
 
 **Date:** 2026-09-02
-**Final git SHA:** `6edf2d1a53f54ac731b3b462b888b5f8ed69cc99`
+**Final code commit:** `6edf2d1a53f54ac731b3b462b888b5f8ed69cc99` — every commit after it is documentation only, including the one carrying this report. A report cannot name its own commit; `pnpm test:submission`'s `release-verification-sha` check is the machine authority that the verification run and the working tree agree.
 **Repository:** https://github.com/jordanallen87/pax (currently private — see Known limitations)
 **Live deployment:** https://pax-hackathon-production.up.railway.app
 
@@ -136,4 +136,4 @@ The redesign above landed three commits before the last recorded `pnpm verify` p
 - `docs/build-log.md` and `docs/preimplementation-audit.md` record the phase-zero gate and task-by-task history, including Task 15's 2026-08-28 closeout entry.
 - MIT `LICENSE`, `.env.example`, `docs/architecture.mmd`/`docs/architecture.png`, `docs/reuse-attribution.md` (297 lines of real attribution), submission copy, and demo scripts all exist and are verified present by `pnpm test:submission`'s `required-files` check.
 - Every machine-verifiable item in the shared and competition-specific submission checklists is green; the human/legal attestations named above remain explicitly assigned to the submitter.
-- **Final git SHA:** `6edf2d1a53f54ac731b3b462b888b5f8ed69cc99`
+- **Final code commit:** `6edf2d1a53f54ac731b3b462b888b5f8ed69cc99`. `pnpm verify` passed all ten stages at the documentation commit that followed it.
