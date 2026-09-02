@@ -459,6 +459,70 @@ Truncation is visible three ways, not one: each bounded list carries its true `t
 
 **This is not a decision surface.** The board ranks and explains; it never approves. `reviewProposal` is as unreachable from here as from every other tool in this catalog, and the tool name is not approval-shaped.
 
+## Adaptive discovery tools
+
+Three tools, added for the adaptive vehicle journey
+([ADR 0009](../decisions/0009-adaptive-decision-experience.md)), and one
+absence that carries as much weight as any of them.
+
+### `sift_get_interaction_context` (global, read-only)
+
+Returns what Sift already knows and what it still needs: discovery coverage,
+the single highest-value question to ask next *with the exact interaction
+kinds and option seeds the pack allows for that topic*, any inference waiting
+on confirmation, the topics already answered, the derived next moves, the
+applicable blind-spot prompt ids, and `humanOnlyActions`.
+
+This is the progressive-disclosure boundary. Without it a model either guesses
+an interaction kind and gets rejected, or Sift dumps the whole pack into the
+conversation. This returns the grammar for the one question actually being
+asked.
+
+`humanOnlyActions` is returned explicitly rather than left to be inferred from
+the absence of a tool.
+
+### `sift_request_interaction` (case-scoped, write)
+
+The entire surface a model has for asking Sift to render something. The model
+chooses a `kind` from a closed vocabulary, supplies an option list narrowed
+from the pack's seeds, and sets the escape hatches. Sift renders it.
+
+There is no field for markup and no field for a preselected answer.
+`InteractionRequestSchema` additionally rejects an option whose `mapsTo`
+targets a topic the interaction did not declare — the route by which a
+bounded interaction would otherwise become an arbitrary state-mutation
+channel — and the server rejects a topic the pinned pack does not declare, or
+that does not apply to this case.
+
+### `sift_record_discovery` (case-scoped, write)
+
+How a model writes what it heard. Its input schema has **no `actor` field and
+no `op` field**: a model cannot ask to confirm a topic because there is
+nowhere in the request to put the request. Sift supplies `actor: 'agent'` and
+`op: 'propose'` on every call.
+
+One natural answer often resolves several topics, and the tool takes up to ten
+operations in one call so the model never re-asks about something it has
+already been told.
+
+### The tools that do not exist
+
+There is no tool for Quick Pick, none for the blind-spot review, and none for
+confirming a shortlist or approving a decision. Those are the person's
+judgments.
+
+`register-sift-tools-discovery.test.ts` walks the entire registered catalog
+and asserts nothing resembling them exists, because "we did not add one" is a
+promise that needs a test to stay true as the catalog grows.
+
+### Human-only moves carry no tool
+
+`NextMoveSchema` refuses a `toolName` on a `humanOnly` move, and forces
+`humanOnly` on the `confirm_shortlist` and `decide` kinds. Nothing that walks
+the move list looking for tools to register can find one for them — the
+capability is absent rather than guarded.
+
+
 ## Widened case context
 
 ADR 0006 decision 2 specifies that `sift_get_case_context`'s projection stops deliberately excluding `sources`, `claims`, `evidenceLinks`, and `caseExtensions`. **This widening is implemented** (`apps/web/src/model-context/case-context.ts`). `CaseContextSummary` adds five fields beyond the original projection:

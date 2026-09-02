@@ -194,6 +194,76 @@ packs/<pack-id>/
 
 Custom executable tool adapters live in the application tool registry, not inside an untrusted pack bundle.
 
+## Declaring a discovery process
+
+A pack may declare `discovery: { topics, blindSpots }`. It is optional: a pack
+that declares none still compiles, passes conformance, and produces the
+identical `compiledHash` it always had, because every stored case pins that
+hash.
+
+### Topic templates
+
+```ts
+{
+  id, label, question,
+  necessity: 'required' | 'soft',
+  priority: 0..100,              // higher is asked earlier
+  appliesWhen?: { topicId, equalsAnyOf },
+  allowedInteractions: InteractionKind[],
+  optionSeeds: OptionSeed[],
+  escapeHatches: { allowCustom, allowNone, allowUnsure, allowDefer },
+  mapsToAttributeIds, mapsToCriterionIds,
+  confirmationRequired: boolean,
+}
+```
+
+Four rules govern authoring:
+
+1. **A required topic may not offer `allowDefer`.** The schema refuses it.
+   "Skip for now" on a required conversational topic is the hole that lets
+   discovery be short-circuited into search.
+2. **Every required topic still needs a way out.** Offer `allowCustom` or
+   `allowUnsure`. "Not sure" is a real answer that creates an information
+   need; it is not a skip.
+3. **Ask functionally, not personally.** "Who travels in it regularly, and
+   what has to fit in with them?" gets the same answer as "do you have
+   kids?" while being none of the product's business.
+4. **`appliesWhen` is a single topic/value test, not an expression
+   language.** A condition is satisfied only by a *confirmed* value, so an
+   inference cannot pull a whole branch of questions into scope before
+   anyone agreed with it.
+
+### Conditional branches make one pack serve two domains
+
+Vehicle Selection asks `vehicle.use_case` first, at the highest priority, and
+hangs almost everything else off it. A family is never asked about payload,
+worksite access, equipment loading, or downtime risk; a landscaping business
+is never asked about car seats or the school run. Both are asked budget, usage
+pattern, environment, and priorities.
+
+That is a structural divergence rather than a copy change, and
+`car-purchase.test.ts` proves it by diffing the two branches' topic sets in
+both directions.
+
+### Blind-spot prompts
+
+```ts
+{ id, label, detail, appliesWhen? }
+```
+
+One required challenge pass before model discovery, offering plausible
+omissions rather than a second questionnaire. `appliesWhen` works exactly as
+it does for topics, so a family sees car-seat layout and a business sees load
+height.
+
+### Interaction grammar
+
+`allowedInteractions` names which of the nine bounded kinds may render for a
+topic. Sift renders every one of them; a pack (and a model) supplies content,
+never markup. There is no way to declare a preselected option, because
+`InteractionRequest` has no field for one.
+
+
 ## Pack creation paths
 
 ### No-code pack

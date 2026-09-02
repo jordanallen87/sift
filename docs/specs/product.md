@@ -8,6 +8,73 @@ The product should feel like a calm case board rather than a chatbot dashboard. 
 
 Sift does not compete with the base model on eloquence. It supplies the durable evidence, completion, adaptation, persistence, and authority layer that a one-shot answer lacks. The required product proof is defined in `value-proposition.md`.
 
+
+## Vehicle Selection: the adaptive journey
+
+This replaces the earlier fixed car flow (a launcher, a catalog, a shortlist).
+The approved experience is
+[docs/final-plan/final-approved-experience.md](../final-plan/final-approved-experience.md);
+the decisions behind it are
+[ADR 0009](../decisions/0009-adaptive-decision-experience.md).
+
+### The journey
+
+1. **Conversational activation.** A person says what they want in ChatGPT.
+   WebMCP tools describe Sift, list packs, and start or resume the case. The
+   pane immediately shows the decision, the pack, the phase, current
+   coverage, current focus, and the next action.
+2. **Adaptive discovery.** The pack declares required topics and a bounded
+   interaction grammar, not a fixed script. One natural answer may resolve
+   several topics at once, and an answered topic is never asked again.
+   Recognition beats recall: option-first where the pack supplies seeds, open
+   text for nuance.
+3. **Needs, importance, and blockers.** Inputs are classified **Must work**,
+   **Matters a lot**, **Nice to have**, or **Needs verification**. A model
+   may propose; only a person may confirm, and nothing becomes a blocker
+   without that confirmation. Missing compatibility data is *Needs
+   verification* — neither a pass nor a failure.
+4. **One blind-spot review.** Before model discovery, Sift raises plausible
+   omissions for this case — car-seat layout, garage clearance, charging
+   access, load height — with "None of these" and "Something else" as real
+   answers.
+5. **Model discovery.** The full 853-record bundled EPA catalog is the
+   discovery universe. A curated cohort of eight models adds the
+   decision-relevant fields EPA data does not carry, every one labelled
+   `curated_demo`. No live price, no local availability, no dealer terms.
+6. **Quick Pick.** Keep / Pass / Unsure, one card at a time, canonical and
+   undoable. Keep retains a candidate for a closer look and focuses deeper
+   work on it. **Keep is not shortlist confirmation**, and the card says so.
+7. **Living recommendations.** A continuously recomputed list, not a purchase
+   instruction. A leader appears only when deterministic evidence supports
+   one; otherwise a tie or group. Unknown never becomes zero; disputed never
+   becomes settled.
+8. **Human authority.** Confirming the test-drive shortlist and the final
+   choice are human-only moves with no tool attached to them at all.
+
+### Two modes, one engine
+
+| | Companion (ChatGPT pane) | Standalone |
+| --- | --- | --- |
+| Required topics | Must be confirmed or not-applicable before discovery | Same |
+| Soft topics | May not be deferred | May be deferred |
+| Deferred output | n/a | Labelled **provisional** |
+| Navigation | Conversation-led, one dominant artifact | Direct navigation, filters, search |
+
+### The data boundary
+
+The external world may be curated. The product may not be simulated.
+
+Real: tool registration and calls, canonical state changes, discovery
+coverage and readiness, bounded interaction validation and rendering, Quick
+Pick persistence and undo, deterministic ranking and invalidation, RunPlan
+events, evidence-to-recommendation cause and effect, human authority,
+persistence and resume.
+
+Curated and labelled: vehicle profiles and indicative price bands, external
+evidence responses, specialist tool results, deterministic provider responses,
+synthetic personas.
+
+
 ## Target users
 
 The hackathon audience is an individual dealing with an unfamiliar, evidence-heavy personal decision:

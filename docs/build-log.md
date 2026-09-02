@@ -5651,3 +5651,61 @@ No repository path was supplied for the user's separate discovery engine. Per th
 ### Gate
 
 **Passed.** Baseline, ownership, and overlaps are unambiguous; no existing failure is being carried into the new work.
+
+---
+
+## 2026-09-02 — Tasks 1–5 and 7: the adaptive decision experience
+
+Executed against `docs/final-plan/final-hackathon-execution-plan.md`. Every task started with a failing test whose failure was recorded before implementation.
+
+### What was actually missing
+
+The product had a decision engine and a WebMCP surface joined by a launcher and a fixed set of screens. The pack's questions existed only as prose inside `DecisionGuide` — a model could read them, but nothing in the system knew whether they had been answered. Four claims the product wanted to make were therefore unenforceable: that conversation drives the decision, that a model proposes and only a person decides, that a candidate is a model and never implicitly a listing, and that shortlist confirmation is out of a model's reach.
+
+### The load-bearing idea: make the rule unrepresentable, not documented
+
+Where a rule could be made structural, it was. A model-origin topic cannot be `confirmed` without `humanConfirmed`. Nothing reaches `must_work` — the tier that removes options from consideration — without a human behind it. A required topic template may not declare a defer escape hatch. `CandidateProvenance` refuses `level: 'listing'` without listing provenance *and* refuses listing provenance on a model-level candidate. And a `humanOnly` `NextMove` has nowhere to put a `toolName`, so nothing walking the move list looking for tools to register can find one for confirming a shortlist — **the capability is absent rather than guarded.**
+
+Three rules could not be structural because they depend on current state: a mapping onto a topic the pack does not declare, one that does not apply to this case, and one a person already confirmed. Those live in `planDiscoveryResponse`, which reports each rejection with a reason rather than silently dropping it.
+
+### Two ordering decisions found by tests, not by design
+
+**A pending inference outranks every new question.** Moving on while an unconfirmed reading sits on the case is how an inference hardens into a fact, and the person never gets the one moment where they would have said "that is not what I meant".
+
+**The blind-spot review outranks a remaining optional question.** Found by a failing test: an unanswered *colour preference* was being offered ahead of the review, which is the one thing actually standing between the person and discovery. Offering the optional question first tells someone the wrong thing about their next step.
+
+### Four pack/catalog truths
+
+`vehicle.use_case` is asked first and almost everything hangs off it. A family is never asked about payload, worksite access, equipment loading, or downtime risk; a landscaping business is never asked about car seats or the school run. Tested by diffing both branches' topic sets **in both directions** — a one-directional check would pass for a pack that merely hides questions.
+
+Every question is functional. "Who travels in it regularly, and what has to fit in with them?" gets the same answer as "do you have kids?" while being none of Sift's business; a test pins that no topic asks a personal question of that shape.
+
+The pack id stays `car-purchase` because every stored case pins it. Only user-facing language generalises: the name became "Vehicle Selection", and `pref.household_fit` kept its id while its label became "Practical fit".
+
+The bundled EPA catalog carries **no** cargo dimensions, child-seat layout, safety or reliability ratings, ownership cost, or price — on the very SUVs a family would shortlist, even `passengerVolumeCuFt` is null. Eight `curated_demo` profiles supply those. Three rules keep it honest: a profile attaches only to a record discovery could actually find, `enrichWithDemoProfile` never rewrites identity, and `provenanceByField` labels each field rather than returning one flattened object in which a curated cargo width looks measured. There is no field anywhere for a price, a dealer, or an availability.
+
+### The Quick Pick defect
+
+Pass and Maybe only moved a local counter; "Shortlist" merely focused the option. The person's judgment vanished on reload and ChatGPT could not read it back — the bidirectional claim was untrue at exactly the beat the demo rests on. Now canonical, undoable, and read from case state. The rename matters: "Shortlist" conflated keeping a candidate for a closer look with saying these are the ones you want to go and drive.
+
+### The intermittent agent failure, finally diagnosed
+
+Carried since the previous session as an unexplained flake. It was never a single test.
+
+| Configuration | Result |
+| --- | --- |
+| `apps/agent/src/routes`, parallel | ~1 failure in 3 runs |
+| Same, `--no-file-parallelism` | clean 5/5 |
+| Same, parallel, excluding `events.sse.test.ts` | clean 5/5 |
+
+`events.sse.test.ts` opened real SSE client sockets and never destroyed them. `Server.close()` stops a server *accepting* connections; it does not terminate open ones, so a client socket outlived its server and its ephemeral port could be recycled while still in use. Destroying them in `afterEach` cut the rate to about one in eight.
+
+The residual is environmental, and one failure proved it beyond argument: a test received a **401**, a status this application does not produce anywhere. Ephemeral ports are a per-machine resource and this machine has ~45 listening services. supertest starts a fresh server per request (~138 call sites here), so the agent project — the only one binding ports — now runs its files serially. Cost 6s → 26s on that project; every test still runs with every assertion intact.
+
+A fourth fix was attempted and reverted: one persistent listening server per harness. It cuts port churn ~90% but `server.listen()` is asynchronous, so `address()` can be null when supertest asks for it, and making the harness async would ripple through ten files. Recorded here rather than left half-done.
+
+### Verification
+
+3792 unit tests passing (from 3515 at baseline, +277). Typecheck, lint, `check:source`, and format all clean. WebMCP catalog 23 → 26 tools, with exact descriptions and JSON schemas pinned by the contract test.
+
+`check-source.ts` gained one narrowing, not a weakening: a long PascalCase identifier is a declaration, not a secret. Pinned by four tests proving digit-bearing, all-uppercase, mixed-case, and repeated-character secret shapes all still trip the scanner.

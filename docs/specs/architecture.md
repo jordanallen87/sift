@@ -299,6 +299,97 @@ Rules:
 - The Runtime Inspector opens its detailed SSE connection only while visible. The normal workspace always receives the smaller public activity stream.
 - Slow-consumer buffering is bounded. When replay is no longer available, the service emits a resync instruction and the client reloads the canonical snapshot.
 
+## Adaptive discovery
+
+Recorded in full as [ADR 0009](../decisions/0009-adaptive-decision-experience.md).
+
+### Discovery is canonical case state
+
+`CaseState.discovery` holds a `DiscoveryState`: the topics this case has
+covered, the blind-spot review, the Quick Pick dispositions, and any bounded
+interaction currently on screen. It changes only through `CaseEvent`s —
+`discovery.topic_updated`, `discovery.interaction_requested`,
+`discovery.interaction_answered`, `discovery.blind_spot_reviewed`, and
+`candidate.disposition_set` — so the pane's coverage indicator, ChatGPT's
+next-turn readback, and the persona harness's turn diff are three views of
+one record rather than three copies that can disagree.
+
+The field is optional, and a case carries no `discovery` key until something
+actually happens in discovery. An absent key reads as "this case has not
+started discovery", which is true.
+
+### Ownership
+
+| Actor | May write | May never write |
+| --- | --- | --- |
+| Person | Any topic status, any importance tier, any Quick Pick disposition, blind-spot completion, shortlist confirmation | — |
+| Model | `inferred_pending` topic values only, and bounded interaction requests | `confirmed`, `must_work`, any disposition, blind-spot completion, shortlist confirmation |
+| Core | Derived coverage, readiness, next moves, required view | Anything a person owns |
+| Pack | Topic templates, option seeds, interaction grammar, blind-spot prompts | Any case-specific value |
+
+The model's half of that table is enforced twice. Four rules are structural
+(see `packages/contracts/src/discovery.ts`) — an illegal state has no
+representation. Three more depend on current state and so live in
+`packages/core/src/discovery.ts`'s `planDiscoveryResponse`, which rejects a
+mapping onto a topic the pack does not declare, one that does not apply to
+this case, and one a person has already confirmed.
+
+### Derivation is pure
+
+```ts
+compileDiscoveryTopics(caseState, pack): DiscoveryTopicState[];
+deriveDiscoveryReadiness(caseState, pack): DiscoveryReadiness;
+deriveNextMoves(caseState, pack): NextMove[];
+planDiscoveryResponse(caseState, response, actor, pack, now): DiscoveryResponsePlan;
+```
+
+None of these read a clock, a random source, or a model. Identical state
+always produces identical readiness, allowed moves, and required pane view,
+which is what makes reload restore a person's exact place rather than an
+approximation of it.
+
+`deriveNextMoves` returns a strict cascade — confirm what is pending, finish
+required discovery, check blind spots, discover, triage, compare, decide —
+because each stage's output is the next stage's input. Two ordering rules are
+deliberate and load-bearing:
+
+- **A pending inference outranks every new question.** Moving on while an
+  unconfirmed reading sits on the case is how an inference hardens into a
+  fact, and the person never gets the moment where they would have said
+  "that is not what I meant".
+- **The blind-spot review outranks a remaining optional question**, because
+  it is the one thing still standing between the person and discovery.
+
+### Coverage
+
+`DiscoveryCoverage` carries counts only — no stored ratio. A percentage
+persisted beside its own numerator and denominator is a third fact that can
+disagree with the other two; the pane derives it.
+
+A required topic is *resolved* when it is `confirmed` or `not_applicable`.
+`deferred` is not an answer, and `inferred_pending` is never resolved
+whatever its confidence.
+
+## Companion frame
+
+The narrow pane's persistent frame is two components either side of one
+dominant artifact:
+
+- `DecisionOrientationShell` (top): decision, pack, phase in a person's
+  words, coverage counts with a bar computed from them, current focus,
+  latest change, next step, route to the outcome, and a provisional marker.
+- `ContextActionDock` (bottom): at most two actions, taken from
+  `deriveNextMoves`. A human-only move is visibly marked, because
+  `NextMove`'s structural guarantee that it carries no `toolName` is
+  invisible to the person using the product.
+
+Both use `position: sticky`, not `fixed`. Sift renders inside an iframe in
+the companion case, and a `fixed` element positions against the iframe
+viewport — which is how a dock ends up covering the last line of content on a
+short pane. Sticky keeps the element in flow, so content below is genuinely
+offset. Both carry safe-area padding.
+
+
 ## Persistence
 
 SQLite is the canonical local and Railway store. The implementation uses `better-sqlite3`, Drizzle migrations, foreign keys, WAL mode, and a bounded busy timeout. It runs as one writable Railway application replica for the hackathon.
