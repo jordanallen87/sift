@@ -37,6 +37,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState } from './ErrorState.js';
 import { HelpButton } from './HelpButton.js';
+import { VehicleSilhouette } from './VehicleSilhouette.js';
 
 export const MAX_SHORTLIST_SIZE = 5;
 export const MIN_SHORTLIST_SIZE = 2;
@@ -608,7 +609,17 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
                     className="list-item-enter flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-3)]"
                   >
                     <div className="flex items-center justify-between gap-[var(--space-2)]">
-                      <div className="flex flex-col gap-[var(--space-1)]">
+                      {/* The silhouette is the row's visual anchor: 853
+                          text rows are parsed, not scanned, and body style
+                          is the field a person browsing is usually sorting
+                          by. `shrink-0` because the label beside it wraps
+                          to three lines at 390px and a flex-basis-auto SVG
+                          would be squeezed to nothing. */}
+                      <VehicleSilhouette
+                        bodyStyle={vehicle.bodyStyle}
+                        className="w-[44px] shrink-0 text-[var(--color-ink)]"
+                      />
+                      <div className="flex min-w-0 flex-col gap-[var(--space-1)]">
                         <span className="text-[length:var(--font-size-sm)] font-[var(--font-weight-semibold)] text-[var(--color-ink)]">
                           {vehicleLabel(vehicle)}
                         </span>
