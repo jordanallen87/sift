@@ -14,7 +14,7 @@ Supersedes `completion-report-adaptive-experience.md`, which was written mid-ses
 
 | Command | Result |
 | --- | --- |
-| `pnpm verify` | **PASSED, all ten stages** (run `2026-09-02T14-08-29-736Z-e9330749`) |
+| `pnpm verify` | **PASSED, all ten stages** (final run `2026-09-02T14-42-40-728Z-fd358d72`, at the release commit) |
 | `pnpm test:persona` | **PASSED** — three personas, all hard gates |
 | `pnpm test:deployed` | **PASSED** — 11 passed, 1 skipped, 0 failed, against the live public URL |
 | `npx vitest run` | **3930 tests / 192 files** (session baseline: 3515 / 176) |
@@ -191,7 +191,22 @@ This is machine contention, not a product regression, and it is recorded rather 
 
 ## Release gate
 
-`pnpm verify:release` adds mutation testing, a production build check, a Docker build contract check, and `pnpm test:submission` on top of `pnpm verify`. `pnpm test:submission` will not report the video URL fields as complete, because they are genuinely empty — no demo has been recorded. That is a truthful red, not a failure to fix in code.
+`pnpm verify:release` (run `release-2026-09-02T14-25-32-799Z-32a52ca3`):
+
+| Stage | Result |
+| --- | --- |
+| `verify` | PASS |
+| `test:mutation` | PASS |
+| `release:build` | PASS |
+| `release:docker` | PASS |
+| `test:submission` | FAIL — 8 passed, 2 skipped, 2 failed |
+
+The two `test:submission` failures:
+
+- **`release-metadata-public-urls`** — `webmcpVideoUrl` and `agentsForHumansVideoUrl` are unset in `docs/submissions/release-metadata.json`. **This is a truthful red and must stay red**: no demo has been recorded, and filling those fields with anything would be a fabricated submission artifact. It clears when the human records and publishes the videos.
+- **`release-verification-sha`** — the `pnpm verify` report was generated one commit before HEAD, because the final documentation commit landed while the release gate was running. **Cleared**: `pnpm verify` was re-run (run `2026-09-02T14-42-40-728Z-fd358d72`, PASSED all ten stages) and `pnpm test:submission` now reports 9 passed, 2 skipped, 1 failed — the video URLs alone.
+
+The two skips are the same video files, and they activate once a recording is present.
 
 ---
 
