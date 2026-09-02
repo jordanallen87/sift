@@ -383,11 +383,32 @@ dominant artifact:
   `NextMove`'s structural guarantee that it carries no `toolName` is
   invisible to the person using the product.
 
-Both use `position: sticky`, not `fixed`. Sift renders inside an iframe in
-the companion case, and a `fixed` element positions against the iframe
-viewport — which is how a dock ends up covering the last line of content on a
-short pane. Sticky keeps the element in flow, so content below is genuinely
-offset. Both carry safe-area padding.
+Neither is `position: fixed`, and the dock is no longer `position: sticky`
+either. The case workspace is a fixed-height pane shell: the root is exactly
+`100dvh`, a flex column that does not itself scroll; `WorkspaceAppBar` and
+`ContextActionDock` are non-shrinking bands at the two edges; and one
+`overflow-y: auto` region between them is the only thing that scrolls.
+`DecisionOrientationShell` stays `sticky top-0` and now pins against that
+region. Both bands carry safe-area padding.
+
+This replaces an earlier rule — "both use `position: sticky`, not `fixed`,
+because Sift renders inside an iframe in the companion case and a `fixed`
+element positions against the iframe viewport" — whose premise was measured
+and found false. In the real ChatGPT pane Sift is a top-level document
+(`window.self === window.top`), and no ancestor of the dock sets
+`transform`/`filter`/`perspective`/`will-change`/`contain`/`backdrop-filter`,
+so nothing establishes a containing block that would trap a fixed child. The
+rule also did not do what it claimed: the dock was `sticky bottom-0` as the
+last child of the scrolling document, where a sticky box has nothing below it
+to be held against, so it never pinned — a person met it only at the very
+bottom of the scroll.
+
+The shell is the fix rather than a switch to `fixed`, and deliberately so: no
+bottom-padding arithmetic is needed to keep the dock off the last row of
+content, browser scroll anchoring keeps working inside the scrolling region,
+and the layout behaves identically if Sift ever genuinely is embedded in an
+iframe. The premise stops mattering instead of being replaced by a different
+one.
 
 
 ## The continuous RunPlan

@@ -608,6 +608,29 @@ body {
   overflow-x: hidden;
 }
 
+/*
+ * The mount point's height floor, and the one place the app agrees with the
+ * viewport about how tall "one screen" is.
+ *
+ * `100dvh`, not `100vh`. The case workspace is now a fixed-height pane
+ * shell (`App.tsx`: `h-[100dvh]`, app bar and dock as non-shrinking bands,
+ * a single scrolling middle), and the whole point of that shell is that the
+ * DOCUMENT does not scroll -- only the middle does. `100vh` on a mobile
+ * browser is the LARGE viewport (toolbars retracted), so a `100vh` floor
+ * here would be taller than the visible area while the toolbars are shown
+ * and the document would gain a scrollbar of exactly the toolbar's height,
+ * which is the small always-present page scroll this change exists to
+ * remove. `100dvh` tracks the viewport actually available, so the floor and
+ * the shell agree at every moment.
+ *
+ * `body { min-height: 100% }` in the reset above is inert on its own --
+ * `html` has no resolved height, so a percentage min-height has nothing to
+ * resolve against -- and is left as the harmless reset convention it is.
+ * This rule is what actually establishes the floor, and it is a floor
+ * rather than a fixed height so the launcher and the vehicle-catalog flow
+ * (deliberately still ordinary scrolling documents) can still grow past one
+ * screen.
+ */
 #root {
-  min-height: 100vh;
+  min-height: 100dvh;
 }

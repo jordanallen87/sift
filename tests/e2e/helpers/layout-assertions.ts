@@ -246,13 +246,46 @@ export async function assertRecommendationHeroAboveTheFold(page: Page): Promise<
   const viewport = page.viewportSize();
   if (!viewport || viewport.width > 480) return;
 
-  const box = await page.getByTestId('recommendation-hero').boundingBox();
-  expect(box, 'the recommendation hero must be present and rendered to measure it').not.toBeNull();
-  if (box === null) return;
+  const hero = page.getByTestId('recommendation-hero');
+  await expect(
+    hero,
+    'the recommendation hero must be present and rendered to measure it',
+  ).toBeVisible();
+
+  // Measured from the top of the pane, and measured WITHOUT moving anything.
+  //
+  // Both halves became load-bearing when the case workspace became a
+  // fixed-height pane shell (`apps/web/src/app/App.tsx`): the thing that
+  // scrolls is now an element, not the document. That breaks the previous
+  // implementation in a way that would have gone unnoticed, because it
+  // breaks in the direction of passing -- `locator.boundingBox()` scrolls
+  // its target into view before it measures, so it would have scrolled the
+  // pane down to the hero and then reported, truthfully but uselessly, that
+  // the hero was on screen. The assertion would have held for any layout at
+  // all, including the exact regression ADR 0004 added it to catch.
+  //
+  // `getBoundingClientRect()` inside `evaluate` reads the element where it
+  // currently sits and moves nothing, and the pane is put back to the top
+  // first, because "within the first viewport height" is a claim about what
+  // a person meets when they arrive in this state -- not about what is
+  // reachable once they have scrolled. This is strictly stronger than the
+  // document-scroll version it replaces: the hero must now fit in the pane
+  // that is actually visible, rather than merely in the first 844px of a
+  // 2358px document.
+  const top = await hero.evaluate((element) => {
+    for (let node = element.parentElement; node !== null; node = node.parentElement) {
+      const overflowY = getComputedStyle(node).overflowY;
+      if (overflowY === 'auto' || overflowY === 'scroll') {
+        node.scrollTop = 0;
+        break;
+      }
+    }
+    return element.getBoundingClientRect().top;
+  });
 
   expect(
-    box.y,
-    `recommendation-hero's top edge (${box.y}px) must fall within the first viewport height ` +
+    top,
+    `recommendation-hero's top edge (${top}px) must fall within the first viewport height ` +
       `(${viewport.height}px) at ${viewport.width}px -- ADR 0004's above-the-fold invariant`,
   ).toBeLessThan(viewport.height);
 }
@@ -318,6 +351,17 @@ function isIdentityCheckList(
  * layout regressions everywhere to paper over one timing artifact. Waiting
  * for the page to actually settle is the causal fix, and it strengthens
  * every named screenshot rather than weakening any of them.
+ *
+ * What is measured is the CONTENT extent, not the target's own box, and
+ * that distinction is now load-bearing. This originally read
+ * `boundingBox().height`, which worked while the case workspace grew with
+ * its content. Since `apps/web/src/app/App.tsx` became a fixed-height pane
+ * shell, `case-workspace` is exactly one viewport tall by construction, so
+ * that reading is a constant: it would have "settled" on its first three
+ * polls no matter how much content was still streaming in, silently
+ * deleting the wait this function exists to perform. Reading the target's
+ * own `scrollHeight` and that of every scrollable box inside it keeps the
+ * measurement pointed at the thing that actually still grows.
  */
 async function waitForStableHeight(target: Locator, name: string): Promise<void> {
   const STABLE_READINGS_REQUIRED = 3;
@@ -329,7 +373,16 @@ async function waitForStableHeight(target: Locator, name: string): Promise<void>
   let stableReadings = 0;
 
   while (Date.now() - start < TIMEOUT_MS) {
-    const height = (await target.boundingBox())?.height ?? -1;
+    const height = await target.evaluate((element) => {
+      let extent = element.scrollHeight;
+      for (const descendant of Array.from(element.querySelectorAll<HTMLElement>('*'))) {
+        const overflowY = getComputedStyle(descendant).overflowY;
+        if (overflowY === 'auto' || overflowY === 'scroll') {
+          extent = Math.max(extent, descendant.scrollHeight);
+        }
+      }
+      return extent;
+    });
     stableReadings = height === lastHeight && height > 0 ? stableReadings + 1 : 0;
     lastHeight = height;
     if (stableReadings >= STABLE_READINGS_REQUIRED) return;
@@ -337,10 +390,41 @@ async function waitForStableHeight(target: Locator, name: string): Promise<void>
   }
 
   throw new Error(
-    `screenshot "${name}": target height never settled within ${TIMEOUT_MS}ms ` +
+    `screenshot "${name}": target content height never settled within ${TIMEOUT_MS}ms ` +
       `(last reading ${lastHeight}px). The page is still mutating, so any baseline ` +
       `captured here would be non-deterministic.`,
   );
+}
+
+/**
+ * Returns the pane's scrolling region to the top before a capture.
+ *
+ * Also a consequence of the fixed-height pane shell. While the document was
+ * the scroll container, an element screenshot of `case-workspace` captured
+ * the whole element regardless of scroll position, so a baseline could not
+ * depend on where the page happened to be scrolled. Now the element is
+ * exactly one viewport tall and the capture shows whichever slice of the
+ * pane is currently scrolled into view — and several assertions on the way
+ * to a screenshot (anything reaching `locator.boundingBox()`, which scrolls
+ * its target into view) leave that scroll position somewhere the journey
+ * never explicitly chose. That is a real new source of flake, not a
+ * cosmetic one: two runs of the same test could legitimately capture two
+ * different slices.
+ *
+ * Resetting to the top makes the capture a deterministic statement — "the
+ * pane as a person meets it in this state" — without weakening anything the
+ * screenshot proves. It is also the slice that matters: every state this
+ * suite names its baselines after is identified by the app bar, the
+ * orientation shell and `RecommendationHero`, all of which live at the top
+ * of the pane.
+ */
+async function resetPaneScroll(target: Locator): Promise<void> {
+  await target.evaluate((element) => {
+    for (const descendant of Array.from(element.querySelectorAll<HTMLElement>('*'))) {
+      const overflowY = getComputedStyle(descendant).overflowY;
+      if (overflowY === 'auto' || overflowY === 'scroll') descendant.scrollTop = 0;
+    }
+  });
 }
 
 export async function expectNamedScreenshot(
@@ -363,6 +447,7 @@ export async function expectNamedScreenshot(
     ).toContainText(check.text);
   }
   await waitForStableHeight(target, name);
+  await resetPaneScroll(target);
   await expect(target).toHaveScreenshot(name, screenshotOptions);
 }
 

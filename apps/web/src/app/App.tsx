@@ -1938,35 +1938,122 @@ export function App() {
       // active case actually changes.
       key={activeCaseId}
       data-testid="case-workspace"
-      className="page-shell page-enter flex min-h-screen flex-col gap-[var(--space-4)] p-[var(--space-4)]"
+      /*
+       * A fixed-height pane shell: exactly one viewport tall, a flex
+       * column, and NOT itself scrollable. The app bar and the action dock
+       * are `shrink-0` bands at the two edges; `case-workspace-scroll`
+       * between them is the only thing that scrolls.
+       *
+       * This corrects a wrong assumption rather than preserving it. The
+       * dock and the orientation shell were both `position: sticky` on the
+       * stated grounds that "Sift renders inside an iframe in the companion
+       * case," where a `fixed` element would position against the iframe
+       * viewport and cover the last line of content. Measured in the real
+       * ChatGPT pane, that is not what happens: `window.self ===
+       * window.top` (a top-level document, not an iframe), and no ancestor
+       * of the dock sets `transform`/`filter`/`perspective`/`will-change`/
+       * `contain`/`backdrop-filter`, so nothing establishes a containing
+       * block that would trap a fixed child. The real defect was different
+       * and worse: the dock was `sticky bottom-0` as the LAST child of a
+       * ~2176px document, and a sticky element has nothing to be held
+       * against once it is the final box in its container -- so it never
+       * pinned at all. You only ever met it by scrolling to the very
+       * bottom. It has never worked.
+       *
+       * A `100dvh` flex column rather than `position: fixed` chrome,
+       * deliberately: there is no bottom-padding arithmetic keeping the
+       * dock off the last row, browser scroll anchoring keeps working
+       * inside the middle, and the shell behaves identically if Sift ever
+       * genuinely IS embedded in an iframe. The fragile assumption stops
+       * mattering instead of being replaced by a different one.
+       *
+       * `page-enter` stays: `fade-slide-in` animates `transform`, which
+       * would matter if this element had `position: fixed` descendants (it
+       * would become their containing block for the duration of the
+       * animation), but every overlay here -- both `Sheet`s and
+       * `RuntimeInspector` -- is portalled to `<body>` by Radix, and the
+       * only in-flow pinning left is `position: sticky` inside the
+       * scroller, which a transformed ancestor does not affect.
+       */
+      className="page-shell page-enter flex h-[100dvh] flex-col"
     >
-      {snapshot ? (
-        <WorkspaceAppBar
-          title={snapshot.title}
-          connectionState={mapAppBarConnectionState(connectionState)}
-          findingsCount={flaggedFindingsCount}
-          optionCount={optionsCount}
-          onAddOption={() => setManageOptionsSheetOpen(true)}
-          onReviewFindings={() => setFindingsSheetOpen(true)}
-          onOpenReferenceLibrary={() => setReferenceLibraryOpen(true)}
-          referenceCount={snapshot?.sources.length ?? 0}
-          onOpenDeveloperView={handleOpenDeveloperView}
-          onResetDemo={handleResetDemo}
-          resetPending={resetPending}
-          layout={layout}
-        />
-      ) : (
-        <div
-          data-testid="case-workspace-loading"
-          aria-busy="true"
-          aria-live="polite"
-          className="loading-pulse flex items-center justify-center rounded-[var(--radius-md)] bg-card p-[var(--space-4)] text-[var(--color-ink-secondary)]"
-        >
-          Loading case…
-        </div>
-      )}
+      {/*
+        The top band. Outside the scroller, so the app bar genuinely stays
+        put -- previously it was `sticky top-0` inside a document that
+        scrolled as a whole, which pins correctly but still let the case
+        title and every app-bar control scroll away the moment the pane's
+        own chrome was involved. The padding lives here rather than on the
+        shell root so the scroller below owns its own edges, and this band's
+        own `padding-bottom` -- not a `padding-top` on the scroller -- is
+        what separates the bar from the first row of content (see there for
+        why that distinction is load-bearing).
+      */}
+      <div className="shrink-0 p-[var(--space-4)]">
+        {snapshot ? (
+          <WorkspaceAppBar
+            title={snapshot.title}
+            connectionState={mapAppBarConnectionState(connectionState)}
+            findingsCount={flaggedFindingsCount}
+            optionCount={optionsCount}
+            onAddOption={() => setManageOptionsSheetOpen(true)}
+            onReviewFindings={() => setFindingsSheetOpen(true)}
+            onOpenReferenceLibrary={() => setReferenceLibraryOpen(true)}
+            referenceCount={snapshot?.sources.length ?? 0}
+            onOpenDeveloperView={handleOpenDeveloperView}
+            onResetDemo={handleResetDemo}
+            resetPending={resetPending}
+            layout={layout}
+          />
+        ) : (
+          <div
+            data-testid="case-workspace-loading"
+            aria-busy="true"
+            aria-live="polite"
+            className="loading-pulse flex items-center justify-center rounded-[var(--radius-md)] bg-card p-[var(--space-4)] text-[var(--color-ink-secondary)]"
+          >
+            Loading case…
+          </div>
+        )}
+      </div>
 
       {/*
+        The one scrolling region.
+
+        `min-h-0` is load-bearing next to `flex-1`: a flex item defaults to
+        `min-height: auto`, which refuses to shrink below its content, so
+        without it this box grows to its content height and pushes the dock
+        back off the bottom of the shell -- the same failure `SheetBody`
+        already documents.
+
+        The shell's padding moved here rather than staying on the root for
+        two reasons: on the root, the scrollbar would be inset inside the
+        padding, and the top/bottom padding would sit outside the scroll
+        and so never move with the content.
+
+        No `padding-top`, though, and that is deliberate rather than an
+        oversight: the band above supplies the 16px gap with its own
+        `padding-bottom` instead. Chrome parks a `position: sticky` child at
+        the scroll container's PADDING edge, not its border edge, so a
+        `pt-4` here left a 16px window between the app bar and
+        `DecisionOrientationShell` (which is `sticky top-0`) through which
+        scrolled-away content stayed visible as a torn sliver. Measured, not
+        guessed: with `padding-top: 16px` the shell parked at y=163 against
+        a scrollport starting at y=147. With the gap moved into the band the
+        shell parks flush at the scrollport top and nothing shows above it,
+        and the spacing at rest is unchanged.
+
+        `overflow-x-hidden` keeps `global.css`'s page-level overflow
+        backstop ("no region may introduce horizontal page scrolling at
+        390-480px") in force. That rule lives on `html, body`, which is no
+        longer the scroll container for this content; without repeating it
+        here, a too-wide child would grow a horizontal scrollbar inside the
+        pane instead of being clipped.
+      */}
+      <div
+        data-testid="case-workspace-scroll"
+        className="flex min-h-0 flex-1 flex-col gap-[var(--space-4)] overflow-y-auto overflow-x-hidden px-[var(--space-4)] pb-[var(--space-4)]"
+      >
+        {/*
         Rendered only for a case that has genuinely begun adaptive discovery.
 
         A seeded demo case arrives with candidates already present and no
@@ -1980,95 +2067,95 @@ export function App() {
         Found by rendering it and looking, not by a unit test -- every
         individual field was correct in isolation.
       */}
-      {/*
+        {/*
         The pending interaction, rendered wherever the case has one.
         `submitInteractionResponse` clears it, so this appears and
         disappears purely from case state -- no local "is a question open"
         flag that a reload could disagree with.
       */}
-      {snapshot?.discovery?.pendingInteraction != null && (
-        <DiscoveryInteraction
-          request={snapshot.discovery.pendingInteraction}
-          onRespond={handleInteractionResponse}
-          layout={layout}
+        {snapshot?.discovery?.pendingInteraction != null && (
+          <DiscoveryInteraction
+            request={snapshot.discovery.pendingInteraction}
+            onRespond={handleInteractionResponse}
+            layout={layout}
+          />
+        )}
+
+        {decisionOrientation !== null && snapshot?.discovery !== undefined && (
+          <DecisionOrientationShell
+            orientation={decisionOrientation}
+            layout={layout}
+            workInFlight={workInFlight}
+            // `WorkspaceAppBar` directly above already names the decision.
+            // Repeating it here stacked the same words twice, which no unit
+            // test could see because they render the shell on its own.
+            showDecisionTitle={false}
+          />
+        )}
+
+        <WorkspaceAlertBanner items={alertItems} layout={layout} />
+
+        <WebMcpStatus adapter={webMcpAdapter} />
+
+        {streamError ? <ErrorState message={streamError} /> : null}
+
+        <RecommendationHero
+          status={workspaceStatus}
+          recommendation={snapshot?.recommendation ?? null}
+          withheld={withheld}
+          sources={sources}
+          proposal={snapshot?.proposal ?? null}
+          onReview={handleReviewProposal}
+          reviewPending={proposalReviewPending}
+          reviewError={proposalReviewError}
+          onRequestInvestigation={() => handleRequestInvestigation()}
+          requestPending={runRequestPending}
+          requestDisabled={snapshot === null}
+          requestError={runRequestError}
+          onReviewFindingsClick={() => setFindingsSheetOpen(true)}
+          liveRunReceipt={liveRunStatusReceipt}
+          liveEvents={events}
+          onInspectRun={handleInspectRun}
         />
-      )}
 
-      {decisionOrientation !== null && snapshot?.discovery !== undefined && (
-        <DecisionOrientationShell
-          orientation={decisionOrientation}
-          layout={layout}
-          workInFlight={workInFlight}
-          // `WorkspaceAppBar` directly above already names the decision.
-          // Repeating it here stacked the same words twice, which no unit
-          // test could see because they render the shell on its own.
-          showDecisionTitle={false}
-        />
-      )}
-
-      <WorkspaceAlertBanner items={alertItems} layout={layout} />
-
-      <WebMcpStatus adapter={webMcpAdapter} />
-
-      {streamError ? <ErrorState message={streamError} /> : null}
-
-      <RecommendationHero
-        status={workspaceStatus}
-        recommendation={snapshot?.recommendation ?? null}
-        withheld={withheld}
-        sources={sources}
-        proposal={snapshot?.proposal ?? null}
-        onReview={handleReviewProposal}
-        reviewPending={proposalReviewPending}
-        reviewError={proposalReviewError}
-        onRequestInvestigation={() => handleRequestInvestigation()}
-        requestPending={runRequestPending}
-        requestDisabled={snapshot === null}
-        requestError={runRequestError}
-        onReviewFindingsClick={() => setFindingsSheetOpen(true)}
-        liveRunReceipt={liveRunStatusReceipt}
-        liveEvents={events}
-        onInspectRun={handleInspectRun}
-      />
-
-      {/* What the deterministic scoreboard found -- rendered once, outside
+        {/* What the deterministic scoreboard found -- rendered once, outside
           both layout branches, for the same reason the alert banner and the
           hero are: it is a summary of the whole case rather than a region
           either shell owns. `CaseInsightsPanel` returns `null` outright when
           the engine found nothing, so an uninteresting case grows no empty
           region (product.md's "Empty regions" rule). */}
-      <CaseInsightsPanel insights={scoreboard.insights} layout={layout} />
+        <CaseInsightsPanel insights={scoreboard.insights} layout={layout} />
 
-      {layout === 'expanded' ? (
-        // Web app mode (ADR 0008 decision 2): a persistent left sidebar
-        // (priorities/filters/still-checking) beside a main column holding
-        // a small utility toolbar for the regions with no sidebar slot,
-        // then the primary view switcher. See this file's own header
-        // comment for the full "where did region X go" mapping.
-        <div
-          data-testid="workspace-expanded-layout"
-          // 300px, not 240px: a live-browser check against the real
-          // `car-purchase` pack found `WorkspaceSidebar`'s priority rows
-          // (full pack-authored sentences like "Driver assistance
-          // effectiveness rating," not the ADR mock's single-word "Safety")
-          // truncating hard at 240px. `WorkspaceSidebar.tsx` itself is
-          // locked, so the fix lives here, at the column width this file
-          // owns.
-          className="grid grid-cols-[300px_minmax(0,1fr)] items-start gap-x-[var(--space-6)]"
-        >
-          <WorkspaceSidebar
-            layout={layout}
-            decisionProfile={decisionProfile}
-            openQuestionsCount={remainingObligationCount}
-            onOpenQuestions={() => setStillCheckingSheetOpen(true)}
-          />
-          <div className="flex min-w-0 flex-col gap-[var(--space-4)]">
-            <div
-              role="toolbar"
-              aria-label="More workspace regions"
-              className="flex flex-wrap items-center gap-[var(--space-2)]"
-            >
-              {/* The sidebar only renders `mustHave`/`important`/
+        {layout === 'expanded' ? (
+          // Web app mode (ADR 0008 decision 2): a persistent left sidebar
+          // (priorities/filters/still-checking) beside a main column holding
+          // a small utility toolbar for the regions with no sidebar slot,
+          // then the primary view switcher. See this file's own header
+          // comment for the full "where did region X go" mapping.
+          <div
+            data-testid="workspace-expanded-layout"
+            // 300px, not 240px: a live-browser check against the real
+            // `car-purchase` pack found `WorkspaceSidebar`'s priority rows
+            // (full pack-authored sentences like "Driver assistance
+            // effectiveness rating," not the ADR mock's single-word "Safety")
+            // truncating hard at 240px. `WorkspaceSidebar.tsx` itself is
+            // locked, so the fix lives here, at the column width this file
+            // owns.
+            className="grid grid-cols-[300px_minmax(0,1fr)] items-start gap-x-[var(--space-6)]"
+          >
+            <WorkspaceSidebar
+              layout={layout}
+              decisionProfile={decisionProfile}
+              openQuestionsCount={remainingObligationCount}
+              onOpenQuestions={() => setStillCheckingSheetOpen(true)}
+            />
+            <div className="flex min-w-0 flex-col gap-[var(--space-4)]">
+              <div
+                role="toolbar"
+                aria-label="More workspace regions"
+                className="flex flex-wrap items-center gap-[var(--space-2)]"
+              >
+                {/* The sidebar only renders `mustHave`/`important`/
                   `niceToHave` (its own header comment names the exclusion
                   explicitly); this reaches the FULL profile, including
                   `context`/`personalConcerns`/`missing`/`suggestedQuestions`,
@@ -2077,37 +2164,95 @@ export function App() {
                   the app bar's "Add option"/"Findings" controls satisfy for
                   their own regions. Gated like the narrow disclosure above
                   it (ADR 0004 item 2: absent, not merely empty). */}
-              {!decisionProfileIsEmpty && decisionProfile !== null ? (
+                {!decisionProfileIsEmpty && decisionProfile !== null ? (
+                  <Button
+                    type="button"
+                    data-testid="workspace-expanded-open-decision-profile"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setDecisionProfileSheetOpen(true)}
+                  >
+                    Your priorities
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
-                  data-testid="workspace-expanded-open-decision-profile"
+                  data-testid="workspace-expanded-open-notes"
                   variant="secondary"
                   size="sm"
-                  onClick={() => setDecisionProfileSheetOpen(true)}
+                  onClick={() => setNotesSheetOpen(true)}
                 >
-                  Your priorities
+                  Notes
                 </Button>
-              ) : null}
-              <Button
-                type="button"
-                data-testid="workspace-expanded-open-notes"
-                variant="secondary"
-                size="sm"
-                onClick={() => setNotesSheetOpen(true)}
-              >
-                Notes
-              </Button>
-              <Button
-                type="button"
-                data-testid="workspace-expanded-open-add-concern"
-                variant="secondary"
-                size="sm"
-                onClick={() => setAddConcernSheetOpen(true)}
-              >
-                Add a question
-              </Button>
-            </div>
+                <Button
+                  type="button"
+                  data-testid="workspace-expanded-open-add-concern"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setAddConcernSheetOpen(true)}
+                >
+                  Add a question
+                </Button>
+              </div>
 
+              <FilterBar
+                attributeDefinitions={filterableDefinitions}
+                options={allOptions}
+                filters={filters}
+                onFiltersChange={handleFiltersChange}
+                onOpenFilters={() => setFilterSheetOpen(true)}
+                matchingCount={visibleOptions.length}
+                totalCount={allOptions.length}
+                presentation={activePack?.presentation ?? null}
+                assistantVisibleOptionIds={assistantVisibleOptionIds}
+                onClearAssistantNarrowing={handleClearAssistantNarrowing}
+              />
+
+              <WorkspaceViewSwitcher
+                mode={viewMode}
+                onModeChange={handleViewModeChange}
+                // The FILTERED list -- see the `visibleOptions` comment above
+                // for why this one prop is narrowed and the hero/notes/editor
+                // deliberately are not.
+                options={visibleOptions}
+                attributeDefinitions={snapshot?.attributeDefinitions ?? []}
+                caseExtensions={snapshot?.caseExtensions ?? []}
+                presentation={activePack?.presentation ?? null}
+                selectedOptionId={snapshot?.selectedOptionId ?? null}
+                onFocusOption={handleFocusOption}
+                compareOptionIds={compareOptionIds}
+                compareVisibleAttributeIds={compareVisibleAttributeIds}
+                comparePinnedAttributeIds={comparePinnedAttributeIds}
+                quickPickPosition={quickPickPosition}
+                quickPickDispositions={quickPickDispositions}
+                onQuickPickKeep={handleQuickPickKeep}
+                onQuickPickPass={handleQuickPickPass}
+                onQuickPickUnsure={handleQuickPickUnsure}
+                onQuickPickUndo={handleQuickPickUndo}
+                onQuickPickFocusChange={() => undefined}
+                // Real `Criterion[]`, so a card can rank its few facts by what
+                // the person actually said matters whenever a pack declares no
+                // `prominentAttributeIds` of its own.
+                criteria={snapshot?.criteria ?? []}
+                // The FULL board, not one narrowed to `visibleOptions` -- see
+                // the `scoreboard` memo above for why a rank must not be
+                // recomputed over a filtered subset.
+                scoreboard={scoreboard}
+                onOpenProfile={setProfileOptionId}
+                boardPlacement={boardPlacement}
+                onMoveOption={handleMoveOption}
+              />
+            </div>
+          </div>
+        ) : (
+          // Pane mode: the existing single-column stack, minus the two
+          // regions promoted into the app bar above (options, findings) --
+          // see this file's own header comment for the full mapping.
+          <>
+            {/* Same filter entry point as web-app mode, and the reason the
+              filter surface moved out of the sidebar at all: this component
+              tree has no sidebar, so filters previously did not exist here
+              in any form (ADR 0009). */}
             <FilterBar
               attributeDefinitions={filterableDefinitions}
               options={allOptions}
@@ -2124,9 +2269,6 @@ export function App() {
             <WorkspaceViewSwitcher
               mode={viewMode}
               onModeChange={handleViewModeChange}
-              // The FILTERED list -- see the `visibleOptions` comment above
-              // for why this one prop is narrowed and the hero/notes/editor
-              // deliberately are not.
               options={visibleOptions}
               attributeDefinitions={snapshot?.attributeDefinitions ?? []}
               caseExtensions={snapshot?.caseExtensions ?? []}
@@ -2143,132 +2285,91 @@ export function App() {
               onQuickPickUnsure={handleQuickPickUnsure}
               onQuickPickUndo={handleQuickPickUndo}
               onQuickPickFocusChange={() => undefined}
-              // Real `Criterion[]`, so a card can rank its few facts by what
-              // the person actually said matters whenever a pack declares no
-              // `prominentAttributeIds` of its own.
               criteria={snapshot?.criteria ?? []}
-              // The FULL board, not one narrowed to `visibleOptions` -- see
-              // the `scoreboard` memo above for why a rank must not be
-              // recomputed over a filtered subset.
               scoreboard={scoreboard}
               onOpenProfile={setProfileOptionId}
               boardPlacement={boardPlacement}
               onMoveOption={handleMoveOption}
             />
-          </div>
-        </div>
-      ) : (
-        // Pane mode: the existing single-column stack, minus the two
-        // regions promoted into the app bar above (options, findings) --
-        // see this file's own header comment for the full mapping.
-        <>
-          {/* Same filter entry point as web-app mode, and the reason the
-              filter surface moved out of the sidebar at all: this component
-              tree has no sidebar, so filters previously did not exist here
-              in any form (ADR 0009). */}
-          <FilterBar
-            attributeDefinitions={filterableDefinitions}
-            options={allOptions}
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-            onOpenFilters={() => setFilterSheetOpen(true)}
-            matchingCount={visibleOptions.length}
-            totalCount={allOptions.length}
-            presentation={activePack?.presentation ?? null}
-            assistantVisibleOptionIds={assistantVisibleOptionIds}
-            onClearAssistantNarrowing={handleClearAssistantNarrowing}
-          />
 
-          <WorkspaceViewSwitcher
-            mode={viewMode}
-            onModeChange={handleViewModeChange}
-            options={visibleOptions}
-            attributeDefinitions={snapshot?.attributeDefinitions ?? []}
-            caseExtensions={snapshot?.caseExtensions ?? []}
-            presentation={activePack?.presentation ?? null}
-            selectedOptionId={snapshot?.selectedOptionId ?? null}
-            onFocusOption={handleFocusOption}
-            compareOptionIds={compareOptionIds}
-            compareVisibleAttributeIds={compareVisibleAttributeIds}
-            comparePinnedAttributeIds={comparePinnedAttributeIds}
-            quickPickPosition={quickPickPosition}
-            quickPickDispositions={quickPickDispositions}
-            onQuickPickKeep={handleQuickPickKeep}
-            onQuickPickPass={handleQuickPickPass}
-            onQuickPickUnsure={handleQuickPickUnsure}
-            onQuickPickUndo={handleQuickPickUndo}
-            onQuickPickFocusChange={() => undefined}
-            criteria={snapshot?.criteria ?? []}
-            scoreboard={scoreboard}
-            onOpenProfile={setProfileOptionId}
-            boardPlacement={boardPlacement}
-            onMoveOption={handleMoveOption}
-          />
+            {!decisionProfileIsEmpty && decisionProfile !== null ? (
+              <DisclosureSection
+                testId="decision-profile"
+                title="Your priorities"
+                meta={decisionProfileMeta}
+              >
+                <DecisionProfileView profile={decisionProfile} />
+              </DisclosureSection>
+            ) : null}
 
-          {!decisionProfileIsEmpty && decisionProfile !== null ? (
-            <DisclosureSection
-              testId="decision-profile"
-              title="Your priorities"
-              meta={decisionProfileMeta}
-            >
-              <DecisionProfileView profile={decisionProfile} />
-            </DisclosureSection>
-          ) : null}
-
-          {/* CaseNotes (§28/§63) renders `null` itself when there are no notes
+            {/* CaseNotes (§28/§63) renders `null` itself when there are no notes
               (global constraint 4) -- mounted unconditionally here rather than
               gated a second time at this call site, matching how this
               component is meant to be used. */}
-          <CaseNotes notes={snapshot?.notes ?? []} options={snapshot?.entities ?? []} />
+            <CaseNotes notes={snapshot?.notes ?? []} options={snapshot?.entities ?? []} />
 
-          {/* "Add a note" -- the human-facing add affordance for the write half
+            {/* "Add a note" -- the human-facing add affordance for the write half
               of §28/§63 (`AddNoteForm.tsx`'s own header comment has the full
               reasoning for why this is a sibling disclosure row rather than
               something mounted inside `CaseNotes` itself). A closed-by-default
               `DisclosureSection`, like every other investigative row, so it
               stays reachable even when `snapshot.notes` is empty without
               growing a permanent visible empty region. */}
-          <DisclosureSection testId="add-note" title="Add a note">
-            <AddNoteForm caseId={activeCaseId} expectedSequence={snapshot?.eventSequence ?? 0} />
-          </DisclosureSection>
+            <DisclosureSection testId="add-note" title="Add a note">
+              <AddNoteForm caseId={activeCaseId} expectedSequence={snapshot?.eventSequence ?? 0} />
+            </DisclosureSection>
 
-          <DisclosureSection testId="still-checking" title="Researching…" meta={stillCheckingMeta}>
-            <ReadinessPanel readiness={readiness} loading={snapshot === null} />
-          </DisclosureSection>
-
-          <div ref={addConcernSectionRef}>
             <DisclosureSection
-              testId="add-concern"
-              title="Add a question"
-              meta={addConcernMeta}
-              defaultOpen={pendingExtension !== null}
+              testId="still-checking"
+              title="Researching…"
+              meta={stillCheckingMeta}
             >
-              <CustomConcernForm
-                caseId={activeCaseId}
-                expectedSequence={snapshot?.eventSequence ?? 0}
-                applicableKinds={applicableKinds}
-              />
+              <ReadinessPanel readiness={readiness} loading={snapshot === null} />
+            </DisclosureSection>
 
-              {/* ADR 0004 item 2 / audit §2: an empty conceptual region must be
+            <div ref={addConcernSectionRef}>
+              <DisclosureSection
+                testId="add-concern"
+                title="Add a question"
+                meta={addConcernMeta}
+                defaultOpen={pendingExtension !== null}
+              >
+                <CustomConcernForm
+                  caseId={activeCaseId}
+                  expectedSequence={snapshot?.eventSequence ?? 0}
+                  applicableKinds={applicableKinds}
+                />
+
+                {/* ADR 0004 item 2 / audit §2: an empty conceptual region must be
                   absent, not a card announcing its own emptiness. Mounted only
                   once a real agent-proposed extension is actually pending review
                   -- fixed here, at the orchestration level, rather than editing
                   `CaseExtensionReviewCard`'s own internals. */}
-              {pendingExtension !== null ? (
-                <CaseExtensionReviewCard
-                  caseId={activeCaseId}
-                  expectedSequence={snapshot?.eventSequence ?? 0}
-                  extension={pendingExtension}
-                />
-              ) : null}
-            </DisclosureSection>
-          </div>
-        </>
-      )}
+                {pendingExtension !== null ? (
+                  <CaseExtensionReviewCard
+                    caseId={activeCaseId}
+                    expectedSequence={snapshot?.eventSequence ?? 0}
+                    extension={pendingExtension}
+                  />
+                ) : null}
+              </DisclosureSection>
+            </div>
+          </>
+        )}
 
-      {dispositionError ? <ErrorState message={dispositionError} /> : null}
-      {interactionError ? <ErrorState message={interactionError} /> : null}
+        {dispositionError ? <ErrorState message={dispositionError} /> : null}
+        {interactionError ? <ErrorState message={interactionError} /> : null}
+      </div>
 
+      {/*
+        Overlays, and then the dock. Every `Sheet` below (including
+        `RuntimeInspector`, which is one) renders through a Radix portal
+        into `<body>`, so none of them is a flex child of this shell in
+        practice -- a closed sheet contributes no DOM here at all, and an
+        open one is a `position: fixed` overlay outside this subtree. They
+        stay declared here, outside the scroller, because that is where
+        their state belongs, not because their position depends on it.
+      */}
       <FindingsSheet
         open={findingsSheetOpen}
         onOpenChange={setFindingsSheetOpen}
@@ -2412,11 +2513,21 @@ export function App() {
       ) : null}
 
       {/*
-        Last in the flow, and sticky rather than fixed: Sift renders inside an
-        iframe in the companion case, where a `fixed` element positions
-        against the iframe viewport and ends up covering the last line of
-        content. Sticky keeps the dock in flow, so the content above it is
-        genuinely offset rather than merely appearing to be.
+        The bottom band: an ordinary `shrink-0` flex child of the shell, no
+        longer `position: sticky`. It is last in the flow and it is pinned,
+        because the shell is exactly one viewport tall and the scroller
+        above it has already taken all the remaining space -- so the dock
+        cannot be pushed off the bottom, and it cannot cover the last row of
+        content either, since that content scrolls inside a box that ends
+        where the dock begins.
+
+        The old comment here claimed sticky was chosen because "Sift renders
+        inside an iframe" where `fixed` would position against the iframe
+        viewport. That was factually wrong -- the pane is a top-level
+        document -- and, worse, the sticky it justified never pinned
+        anything, because a sticky element that is the last child of the
+        scrolling container has nothing left to be held against. See this
+        component's own header comment and the shell root above.
       */}
       {snapshot?.discovery !== undefined && (
         <ContextActionDock moves={nextMoves} onAct={handleDockAction} layout={layout} />

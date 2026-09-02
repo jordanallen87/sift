@@ -22,12 +22,24 @@
  * product's central claim would be missing from the exact screen where it
  * matters most.
  *
- * ## Sticky, not fixed
+ * ## In flow, and neither sticky nor fixed
  *
- * Same reasoning as the orientation shell: `fixed` inside an iframe
+ * This used to be `sticky bottom-0`, justified by "`fixed` inside an iframe
  * positions against the iframe viewport and covers the last line of content
- * on a short pane. Sticky keeps the dock in flow, and the safe-area padding
- * keeps it clear of a home indicator.
+ * on a short pane." Both halves were wrong. Measured in the real ChatGPT
+ * pane, Sift is a top-level document (`window.self === window.top`) with no
+ * ancestor establishing a containing block, so `fixed` would have worked;
+ * and the sticky it was replaced with did not, because the dock rendered as
+ * the LAST child of the scrolling document, where a sticky box has nothing
+ * below it to be held against. The dock never pinned — you only met it at
+ * the very bottom of a ~2176px scroll.
+ *
+ * `App.tsx` now makes the case workspace a `100dvh` flex column whose
+ * middle is the only scrolling region, so this is an ordinary `shrink-0`
+ * flex child sitting at the bottom edge of the shell. It is genuinely
+ * always visible, and it cannot cover the last line of content, because
+ * that content scrolls inside a box that ends where this one starts. The
+ * safe-area padding still keeps it clear of a home indicator.
  */
 import type { NextMove } from '@sift/contracts';
 import { Button } from '@/components/ui/button';
@@ -92,7 +104,7 @@ export function ContextActionDock({
       aria-label="What to do next"
       data-testid="context-action-dock"
       className={[
-        'sticky bottom-0 z-20 flex flex-col gap-[var(--space-2)]',
+        'shrink-0 flex flex-col gap-[var(--space-2)]',
         'border-t border-[color:var(--color-border)] bg-[color:var(--color-background)]',
         layout === 'expanded'
           ? 'px-[var(--space-6)] py-[var(--space-3)]'
