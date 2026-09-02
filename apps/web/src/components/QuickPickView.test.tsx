@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
@@ -1111,5 +1111,102 @@ describe('QuickPickView: durable Keep / Pass / Unsure triage', () => {
   it('never tells the person which one to keep', () => {
     const { result } = renderView();
     expect(result.container.textContent).not.toMatch(/we recommend|you should (keep|buy|choose)/i);
+  });
+});
+
+describe('QuickPickView: reactive segmented Pass/Unsure/Keep control', () => {
+  it('reflects an already-recorded disposition as the matching segment selected, and never disagrees with the current-disposition caption', () => {
+    renderQuickPick({ position: 1, dispositions: { 'candidate-crv': 'keep' } });
+
+    expect(screen.getByTestId('quick-pick-keep')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('quick-pick-pass')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('quick-pick-unsure')).toHaveAttribute('aria-pressed', 'false');
+    // The caption below reads from the exact same displayed value as the
+    // buttons -- it cannot say something the segmented control disagrees
+    // with.
+    expect(screen.getByTestId('quick-pick-current-disposition')).toHaveTextContent(/kept/i);
+  });
+
+  it('marks every segment aria-pressed="false" before anything has been decided for the option on screen', () => {
+    renderQuickPick({ position: 1 });
+
+    expect(screen.getByTestId('quick-pick-pass')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('quick-pick-unsure')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('quick-pick-keep')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('quick-pick-current-disposition')).not.toBeInTheDocument();
+  });
+
+  it('shows a press as selected the instant it happens, without waiting for the command to resolve', async () => {
+    const user = userEvent.setup();
+    let resolveKeep: () => void = () => undefined;
+    const onKeep = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveKeep = resolve;
+        }),
+    );
+    renderQuickPick({ position: 1, onKeep });
+
+    await user.click(screen.getByTestId('quick-pick-keep'));
+
+    // The command's promise has not resolved yet -- `resolveKeep` has not
+    // been called -- but the button already shows selected, and the
+    // caption already agrees.
+    expect(onKeep).toHaveBeenCalledWith('candidate-crv');
+    expect(screen.getByTestId('quick-pick-keep')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('quick-pick-current-disposition')).toHaveTextContent(/kept/i);
+
+    resolveKeep();
+  });
+
+  it('reverts the selected segment when the command fails, rather than leaving a choice the case does not hold', async () => {
+    const user = userEvent.setup();
+    const onKeep = vi.fn(() => Promise.reject(new Error('network error')));
+    renderQuickPick({ position: 1, onKeep });
+
+    // The rejection can already have settled by the time `user.click`
+    // itself resolves (it flushes pending microtasks internally) -- the
+    // separate "shows a press as selected the instant it happens" test
+    // above pins the immediate-acknowledgement behavior with a promise that
+    // deliberately never resolves. This test only needs to pin the eventual
+    // outcome: a rejected command must never leave a false selection.
+    await user.click(screen.getByTestId('quick-pick-keep'));
+    expect(onKeep).toHaveBeenCalledWith('candidate-crv');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('quick-pick-keep')).toHaveAttribute('aria-pressed', 'false');
+    });
+    expect(screen.getByTestId('quick-pick-pass')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('quick-pick-unsure')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('quick-pick-current-disposition')).not.toBeInTheDocument();
+  });
+
+  it('does not revert a later choice when an earlier, now-superseded press finally rejects', async () => {
+    // A stale rejection (Pass, abandoned in favor of Keep before it settled)
+    // must not stomp the choice made after it.
+    const user = userEvent.setup();
+    let rejectPass: (error: Error) => void = () => undefined;
+    const onPass = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectPass = reject;
+        }),
+    );
+    const onKeep = vi.fn();
+    renderQuickPick({ position: 1, onPass, onKeep });
+
+    await user.click(screen.getByTestId('quick-pick-pass'));
+    expect(screen.getByTestId('quick-pick-pass')).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByTestId('quick-pick-keep'));
+    expect(screen.getByTestId('quick-pick-keep')).toHaveAttribute('aria-pressed', 'true');
+
+    rejectPass(new Error('too late'));
+    // Give the now-stale rejection a turn to (not) do anything.
+    await waitFor(() => {
+      expect(onPass).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByTestId('quick-pick-keep')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('quick-pick-current-disposition')).toHaveTextContent(/kept/i);
   });
 });

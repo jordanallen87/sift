@@ -164,11 +164,69 @@
  *      crowding -- the same "narrow keeps the original cap, expanded raises
  *      it" shape `OptionListView.tsx`'s
  *      `MAX_PROMINENT_ATTRIBUTES_NARROW`/`_EXPANDED` already establishes.
+ *
+ * REACTIVE TRIAGE CONTROL (this task, product-owner review: "The Pass,
+ * Unsure, and Keep buttons should be reactive"): three flat, unrelated
+ * `<button>`s gave no feedback about which disposition an option already
+ * carried and no acknowledgement at the moment of a press. Fixed three ways:
+ *
+ *   1. **One control, not three buttons.** `ui/toggle-group.tsx`'s
+ *      `ToggleGroup`/`ToggleGroupItem` (already used this way by
+ *      `EvidenceCard.tsx`'s own disposition control) render the
+ *      segmented-look row. `type="multiple"` rather than the seemingly
+ *      obvious `"single"` is deliberate: Radix's `"single"` mode renders
+ *      `role="radio"`/`aria-checked` and explicitly zeroes `aria-pressed`
+ *      on every item (`@radix-ui/react-toggle-group`'s
+ *      `ToggleGroupItemImpl`) -- exactly the attribute this task requires.
+ *      `"multiple"` leaves `aria-pressed` wired straight through to the
+ *      base `Toggle` primitive from the Root's own controlled `value`
+ *      array; exclusivity is still guaranteed because `selectedValues`
+ *      below is built to hold at most one entry, and each item dispatches
+ *      its own command directly (never through the Root's
+ *      `onValueChange`) rather than trusting Radix's default
+ *      "activating adds to the array" multi-select merge. `rovingFocus={false}`
+ *      keeps the three buttons individually Tab-reachable in document
+ *      order -- Radix's default roving-tabindex behavior (one shared tab
+ *      stop, arrow keys between items) would have silently broken the
+ *      existing "reach and activate all three by keyboard alone" contract.
+ *      `role="group"` overrides the Root's own hardcoded `role="toolbar"`
+ *      (a real mismatch once roving focus, the convention toolbar implies,
+ *      is turned off).
+ *   2. **Same-frame acknowledgement.** `optimistic` local state is set the
+ *      instant a button is pressed, before `onKeep`/`onPass`/`onUnsure` is
+ *      even called -- `displayedDisposition` below reads it first and falls
+ *      back to the real `dispositions` prop, so the pressed button shows
+ *      selected in the same render, not after a round trip. It clears
+ *      itself once the real prop confirms the same value (an effect
+ *      below), immediately if the caller's dispatch rejects
+ *      (`pressDisposition`), or the moment the card moves to a different
+ *      option (a second effect) -- an echo must never outlive the option it
+ *      was about. The three dispatch props may now return
+ *      `void | Promise<unknown>` (widened, not narrowed -- every existing
+ *      `() => void` caller, including today's fire-and-forget `App.tsx`
+ *      wiring, stays assignable) purely so a caller that wants a failed
+ *      command to revert the button can report one; a caller that doesn't
+ *      is unaffected.
+ *   3. **Selected state reuses this card's own tone vocabulary**, not a new
+ *      color: Keep reuses `satisfied` (a decision the pane can stand
+ *      behind), Unsure reuses `accepted-uncertainty` (this app's existing
+ *      tone for a genuinely open question -- an unusually literal fit),
+ *      Pass reuses `neutral` (no case-domain judgment implied by setting an
+ *      option aside). Keep's UNSELECTED resting state stays the
+ *      brand-filled treatment it always had (`bg-primary`) regardless of
+ *      selection, so it keeps reading as the visually primary choice even
+ *      before anything is decided; Pass/Unsure's unselected resting state
+ *      is the plain flat `bg-secondary` segment treatment.
+ *      `transition-colors duration-[var(--duration-fast)]` is the only new
+ *      transition -- global.css's blanket
+ *      `@media (prefers-reduced-motion: reduce)` rule already forces every
+ *      element's `transition-duration` to near-zero, so this needs no
+ *      separate reduced-motion branch of its own.
  */
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AttributeDefinition, CandidateDisposition, EntityRecord } from '@sift/contracts';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { formatAttributeValue } from './attribute-value-format.js';
 import { isIdentityAttribute, meetsEvidenceExpectation } from '../lib/evidence-expectation.js';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
@@ -180,6 +238,30 @@ const DISPOSITION_PAST_TENSE: Record<CandidateDisposition, string> = {
   pass: 'passed on',
   unsure: 'were unsure about',
 };
+
+/** Every `CandidateDisposition` the segmented control can itself select -- `unreviewed` is expressed as "nothing selected" (an empty `selectedValues` array below), not a fourth button; Undo is the explicit affordance back to it. */
+type QuickPickDisposition = Exclude<CandidateDisposition, 'unreviewed'>;
+
+/** Selected-segment tone, reusing this card's one status-tone vocabulary (`STATUS_TONE_META`, imported above) instead of inventing new colors -- see this file's header comment, "REACTIVE TRIAGE CONTROL" section 3, for why each mapping was chosen. */
+const QUICK_PICK_TONE: Record<QuickPickDisposition, StatusTone> = {
+  keep: 'satisfied',
+  unsure: 'accepted-uncertainty',
+  pass: 'neutral',
+};
+
+/**
+ * Loosely detects a thenable rather than importing a helper for it. The
+ * round trip is optional -- a caller may still return plain `void` (e.g.
+ * today's fire-and-forget `App.tsx` wiring), so this has to tolerate any
+ * return shape, not assume a real `Promise`.
+ */
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
+}
 
 export interface QuickPickViewProps {
   /** The full triage queue, in the caller's order. Only `options[position]` is rendered -- one option dominates the pane (change set §9). */
@@ -194,12 +276,20 @@ export interface QuickPickViewProps {
    * person actually did.
    */
   dispositions: Record<string, CandidateDisposition>;
-  /** Fired with the current option's id when the person keeps it for a closer look. */
-  onKeep: (optionId: string) => void;
-  /** Fired with the current option's id when the person passes on it. Does not advance the queue itself -- the caller decides what happens next. */
-  onPass: (optionId: string) => void;
-  /** Fired with the current option's id when the person is undecided. Creates an information need rather than a verdict. */
-  onUnsure: (optionId: string) => void;
+  /**
+   * Fired with the current option's id when the person keeps it for a
+   * closer look. May return a promise: the segmented control shows the
+   * choice the instant it is pressed regardless, but if the returned
+   * promise rejects it reverts rather than keep showing a choice the case
+   * does not actually hold. Returning nothing (today's `App.tsx` wiring) is
+   * equally valid -- the optimistic echo simply clears once `dispositions`
+   * itself confirms the change instead.
+   */
+  onKeep: (optionId: string) => void | Promise<unknown>;
+  /** Fired with the current option's id when the person passes on it. Does not advance the queue itself -- the caller decides what happens next. Same optional-promise-for-revert contract as `onKeep`. */
+  onPass: (optionId: string) => void | Promise<unknown>;
+  /** Fired with the current option's id when the person is undecided. Creates an information need rather than a verdict. Same optional-promise-for-revert contract as `onKeep`. */
+  onUnsure: (optionId: string) => void | Promise<unknown>;
   /** Fired with the current option's id to put it back to unreviewed. */
   onUndo: (optionId: string) => void;
   /** Caller-decided information architecture (ADR 0005 Decision 4) -- this component never calls `matchMedia` itself. `WorkspaceViewSwitcher` resolves the real viewport via `useWidthMode` and passes it down, exactly like `OptionListView`/`OptionCompareView`/`OptionBoardView` already receive it. See this file's header comment "EXPANDED LAYOUT" section for exactly what changes at each value. */
@@ -452,6 +542,76 @@ export function QuickPickView({
   const currentOption = options[position] ?? null;
   const currentOptionId = currentOption?.id ?? null;
   const currentDisposition = currentOptionId === null ? undefined : dispositions[currentOptionId];
+
+  // The optimistic echo of a just-pressed triage choice -- see this file's
+  // header comment, "REACTIVE TRIAGE CONTROL" section 2, for the full
+  // reasoning. `null` means "nothing pending, trust `currentDisposition`."
+  const [optimistic, setOptimistic] = useState<{
+    optionId: string;
+    disposition: QuickPickDisposition;
+  } | null>(null);
+
+  // A fresh card means a fresh choice -- an optimistic value left over from
+  // the option that was on screen a moment ago must never bleed onto the
+  // next one.
+  useEffect(() => {
+    setOptimistic(null);
+  }, [currentOptionId]);
+
+  // Once the real, core-owned disposition catches up to what this component
+  // already showed optimistically, drop the local echo. Holding a confirmed
+  // choice in local state forever would let a later external change (e.g.
+  // Undo from a different surface, or a different device in the same case)
+  // go unnoticed.
+  useEffect(() => {
+    setOptimistic((current) => {
+      if (current?.optionId !== currentOptionId) return current;
+      return current.disposition === (currentDisposition ?? 'unreviewed') ? null : current;
+    });
+  }, [currentDisposition, currentOptionId]);
+
+  // The single source of truth the buttons, the segmented control's
+  // `aria-pressed` states, and the "You kept/passed/were unsure about this
+  // one" caption below all read from -- so none of them can ever disagree
+  // with each other (requirement 1).
+  const displayedDisposition: CandidateDisposition =
+    optimistic !== null && optimistic.optionId === currentOptionId
+      ? optimistic.disposition
+      : (currentDisposition ?? 'unreviewed');
+  const selectedValues = displayedDisposition === 'unreviewed' ? [] : [displayedDisposition];
+
+  /**
+   * Presses one of the three segments. Sets the optimistic echo before
+   * calling the caller's handler -- same-frame acknowledgement (requirement
+   * 2) does not wait to find out whether the caller's dispatch is
+   * synchronous. Re-pressing the already-selected segment is a no-op
+   * (matches `EvidenceCard.tsx`'s identical guard for its own segmented
+   * disposition control) -- Undo, not a second press of the same button, is
+   * this product's affordance back to "nothing decided."
+   */
+  function pressDisposition(
+    disposition: QuickPickDisposition,
+    dispatch: (optionId: string) => void | Promise<unknown>,
+  ) {
+    if (currentOption === null || disposition === displayedDisposition) return;
+    const optionId = currentOption.id;
+    setOptimistic({ optionId, disposition });
+    const result = dispatch(optionId);
+    if (isThenable(result)) {
+      result.then(undefined, () => {
+        // The case never actually recorded this choice -- never leave a
+        // button showing a choice it does not hold (requirement 2). Only
+        // clear if nothing newer already took its place (another press, or
+        // the card having moved on) -- a stale rejection must not stomp a
+        // choice made after it.
+        setOptimistic((current) =>
+          current !== null && current.optionId === optionId && current.disposition === disposition
+            ? null
+            : current,
+        );
+      });
+    }
+  }
 
   const applicableDefinitions = useMemo(() => {
     if (currentOption === null) return [];
@@ -817,12 +977,12 @@ export function QuickPickView({
             </>
           )}
 
-          {currentDisposition !== undefined && currentDisposition !== 'unreviewed' && (
+          {displayedDisposition !== 'unreviewed' && (
             <p
               data-testid="quick-pick-current-disposition"
               className="text-[length:var(--text-sm)] text-[color:var(--color-muted-foreground)]"
             >
-              You {DISPOSITION_PAST_TENSE[currentDisposition]} this one.{' '}
+              You {DISPOSITION_PAST_TENSE[displayedDisposition]} this one.{' '}
               <button
                 type="button"
                 data-testid="quick-pick-undo"
@@ -840,60 +1000,87 @@ export function QuickPickView({
             data-testid="quick-pick-actions"
             className={
               layout === 'expanded'
-                ? // Expanded: the three buttons cluster together at the
-                  // trailing edge of the now much wider card rather than
-                  // spreading `justify-between` across its full width --
-                  // spreading them would isolate Pass ~1100px away from
-                  // the others on a wide viewport, reading as three
-                  // unrelated controls instead of one action cluster.
+                ? // Expanded: the control clusters at the trailing edge of
+                  // the now much wider card rather than spreading across its
+                  // full width -- spreading it would isolate Pass ~1100px
+                  // away from the others on a wide viewport, reading as
+                  // three unrelated controls instead of one action cluster.
                   'flex flex-col items-end gap-[var(--space-2)]'
                 : 'flex flex-col gap-[var(--space-2)]'
             }
           >
-            <div
-              className={
-                layout === 'expanded'
-                  ? 'flex items-center justify-end gap-[var(--space-3)]'
-                  : 'flex w-full items-center justify-between gap-[var(--space-2)]'
-              }
+            {/* One segmented control, not three unrelated buttons
+                (requirement 3) -- see this file's header comment, "REACTIVE
+                TRIAGE CONTROL" section 1, for why `type="multiple"` (not the
+                seemingly obvious `"single"`) is what gets a real
+                `aria-pressed` onto each segment, and why `rovingFocus` is
+                turned off. */}
+            <ToggleGroup
+              type="multiple"
+              role="group"
+              rovingFocus={false}
+              value={selectedValues}
+              aria-label={`Set a disposition for ${currentOption.label}`}
+              className={layout === 'expanded' ? 'w-fit' : 'w-full'}
             >
-              <Button
-                type="button"
-                variant="secondary"
-                data-testid="quick-pick-pass"
-                aria-label={`Pass on ${currentOption.label}`}
-                className="min-h-[var(--size-touch-target-min)]"
-                onClick={() => {
-                  onPass(currentOption.id);
-                }}
-              >
-                Pass
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                data-testid="quick-pick-unsure"
-                aria-label={`Unsure about ${currentOption.label}`}
-                className="min-h-[var(--size-touch-target-min)]"
-                onClick={() => {
-                  onUnsure(currentOption.id);
-                }}
-              >
-                Unsure
-              </Button>
-              <Button
-                type="button"
-                variant="default"
-                data-testid="quick-pick-keep"
-                aria-label={`Keep ${currentOption.label} for a closer look`}
-                className="min-h-[var(--size-touch-target-min)]"
-                onClick={() => {
-                  onKeep(currentOption.id);
-                }}
-              >
-                Keep
-              </Button>
-            </div>
+              {(
+                [
+                  {
+                    disposition: 'pass',
+                    label: 'Pass',
+                    ariaLabel: `Pass on ${currentOption.label}`,
+                    dispatch: onPass,
+                    primary: false,
+                  },
+                  {
+                    disposition: 'unsure',
+                    label: 'Unsure',
+                    ariaLabel: `Unsure about ${currentOption.label}`,
+                    dispatch: onUnsure,
+                    primary: false,
+                  },
+                  {
+                    disposition: 'keep',
+                    label: 'Keep',
+                    // Keep stays the visually primary option (requirement
+                    // 3) even before anything is decided -- its `primary`
+                    // flag below keeps the brand fill it always had as its
+                    // UNSELECTED resting state, distinct from Pass/Unsure's
+                    // plain segment treatment.
+                    ariaLabel: `Keep ${currentOption.label} for a closer look`,
+                    dispatch: onKeep,
+                    primary: true,
+                  },
+                ] as const
+              ).map((action) => {
+                const isSelected = displayedDisposition === action.disposition;
+                const tone = STATUS_TONE_META[QUICK_PICK_TONE[action.disposition]];
+                return (
+                  <ToggleGroupItem
+                    key={action.disposition}
+                    value={action.disposition}
+                    data-testid={`quick-pick-${action.disposition}`}
+                    aria-label={action.ariaLabel}
+                    className={
+                      isSelected
+                        ? 'grow min-h-[var(--size-touch-target-min)] transition-colors duration-[var(--duration-fast)]'
+                        : `grow min-h-[var(--size-touch-target-min)] transition-colors duration-[var(--duration-fast)] ${
+                            action.primary
+                              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                          }`
+                    }
+                    style={isSelected ? { backgroundColor: tone.bg, color: tone.ink } : undefined}
+                    onClick={() => {
+                      pressDisposition(action.disposition, action.dispatch);
+                    }}
+                  >
+                    {isSelected ? <span aria-hidden="true">{tone.icon}</span> : null}
+                    {action.label}
+                  </ToggleGroupItem>
+                );
+              })}
+            </ToggleGroup>
             {/*
               What Keep means, said where the person forms their idea of it.
               Keep retains a candidate for comparison and points deeper work

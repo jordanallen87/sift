@@ -5947,3 +5947,140 @@ The first multi-journey run printed **"31/31 checks passed"** for a run in which
 A stdio MCP server mapping `tools/list` to the page's live WebMCP registrations and `tools/call` to `WebMCP.invokeTool`. Point Codex or Claude Code at it and a real model drives the real page with the real tool descriptions. `test:journey` proves the tools are callable; only this can show whether a model *finds* them. Development tool, not shipped.
 
 `docs/ux-review-2026-09-02.md` records the five observations left for a human decision, and what holds up well.
+
+## 2026-09-02 — the orientation shell became one row
+
+Four stacked lines plus a full-width progress bar sat at the top of a 390–640px pane before a single option was visible. `DecisionOrientationShell` now renders one row — phase · coverage · next step — with the progress bar moved onto the shell's own bottom edge (absolutely positioned, so it costs no line) and everything else behind a closed-by-default disclosure.
+
+Measured in a real browser against the running product (`demo-launcher-car-purchase`, collapsed shell `boundingBox().height`):
+
+| width | before | after |
+| --- | --- | --- |
+| 390px | 138.2px | 72px (wraps to two lines) |
+| 640px | 119.0px | 49px (genuinely one line) |
+
+**What may not be collapsed.** `orientation-provisional` and `orientation-unverifiable` stay visible in the collapsed state. Both are the product stating a limit — the answer rests on an incomplete picture, or a concern the person raised has nothing Sift can check — and a warning that only appears once someone opens a disclosure is a warning the product has decided not to give. Keeping them out is also what makes the collapsed row safe: nothing behind the expander can turn out to qualify what the row claims. `orientation-focus`, `orientation-latest-change`, `orientation-work-in-flight` and `orientation-route` are elaboration and move behind it. Nothing is truncated: a whole line moves rather than an ellipsis eating the end of a sentence, which is the version a person cannot tell they are missing.
+
+**Hidden, not unmounted.** The collapsed region uses the `hidden` attribute and keeps every `data-testid` in the DOM, because `tests/e2e` and `scripts/journey` read those testids through `textContent`, which works on a hidden node and not on one that no longer exists. Verified against the live page: `expect(route).not.toBeEmpty()` and `toHaveText(...)` both still pass while `isVisible()` is `false`. One consequence to note rather than hide: `family-novice`'s `check.ui('the pane says what just changed')` reads `orientation-latest-change`, which is now behind the expander — the check still passes, but it no longer describes what is on screen without opening it.
+
+The disclosure state is deliberately not persisted: a remembered disclosure means two people looking at the same case see two different panes.
+
+Commands: `pnpm vitest run apps/web` (73 files, 1680 tests), `pnpm exec eslint`, `pnpm exec tsc --noEmit -p apps/web/tsconfig.json`, plus a browser pass at 390/430/480/640/1440 asserting no document or shell horizontal overflow and no page errors. Playwright baselines were not updated here; the release gate is run separately.
+
+## 2026-09-02 — a Tooltip primitive, and tooltips on the icon-only buttons
+
+`apps/web/src/components/ui/tooltip.tsx`, on the already-installed `radix-ui` (v1.6.7 unified package, `Tooltip` export → `@radix-ui/react-tooltip` 1.2.16). No new dependency.
+
+**A tooltip is not an accessible name, and that is the whole design.** Radix wires the content through `aria-describedby`, never `aria-labelledby`, and it opens only on pointer hover or keyboard focus. The canonical surface is a 390–480px pane that is frequently *touched*, where hover does not exist — so an icon-only button whose only label is its tooltip is unlabelled for every touch, screen-reader and voice-control user. Every trigger wrapped here already carried a real `aria-label` and still works with the tooltip deleted; no accessible name had to be added, because none was missing. The tooltip string is the control's accessible name verbatim so the two cannot drift (WCAG 2.5.3 "Label in Name").
+
+Applied to: `HelpButton` ("Help and instructions"), `CaseHeader`'s developer-view terminal glyph ("Developer view"), and both of `FilterBar`'s chip ✕ buttons ("Remove filter: …" / "Remove: …", each its own `aria-label` verbatim, because a row of identical ✕ glyphs differ only by which chip they sit in).
+
+**One icon-only button deliberately left without one**, found by measurement, not assumption: `ui/sheet.tsx`'s close ✕. Radix Dialog autofocuses the first tabbable element in the panel — usually that ✕ — so a focus-opening tooltip popped "Close" unbidden every time a sheet opened, and Radix Tooltip's own Escape handler consumed the *first* Escape, so `sheet.test.tsx`'s "closes on Escape" needed two presses. The reason is recorded at the call site so it is not "fixed" later.
+
+**Overflow at 390px.** Two independent guards: Radix collision handling with a real 8px (`--space-2`) `collisionPadding`, and a `max-w-[min(260px,calc(100vw-var(--space-4)))]` ceiling that holds even with collision avoidance off. Measured live at 390×844 against the Help button at the pane's right edge (x 330–374): the tooltip shifted to x 241 with a right edge of 381.8px, and `document.documentElement.scrollWidth` stayed 390 against `window.innerWidth` 390 both before and after hover. Computed `max-width` resolved to 260px, `animation-name` to `pop-in`, `animation-duration` to 0.14s.
+
+Motion reuses `global.css`'s existing shared `pop-in` keyframe on `--duration-fast`/`--ease-enter` rather than inventing a curve or adding a plugin; reduced motion is respected three ways over (`tokens.css` zeroes the duration, `global.css` forces `animation-duration: 0.01ms !important`, and the content carries an explicit `motion-reduce:animate-none`). Open delay is 400ms — an intent filter, not motion — so cursor transit across a crowded narrow row does not flicker.
+
+`Tooltip` is self-providing (it renders its own `TooltipProvider`), so any component test can render a tooltipped control in isolation exactly as it renders every other primitive here; `AppProviders.tsx` needed no change.
+
+`tooltip.test.tsx` (13 tests) asserts the button keeps its accessible name with the tooltip closed *and* with the tooltip deleted, that an open tooltip describes rather than labels, hover/focus opening, Escape dismissal with focus retained, the width ceiling, the reduced-motion opt-out, and axe. The open-state axe scan disables one rule, `region`, with the reason recorded inline: axe-core exempts portaled transient layers by hard-coded selector (`dialog, [role=dialog], [role=alertdialog], svg`) and `[role=tooltip]` is simply not on that list; it is a `best-practice`/`moderate` rule that `tests/e2e/helpers/axe.ts` does not run at all. Every other rule stays on, and the closed-state scan is unrestricted.
+
+Commands: `pnpm exec vitest run apps/web` (74 files, 1703 tests), `pnpm exec eslint` on the six changed files, `pnpm exec tsc --noEmit -p apps/web/tsconfig.json`, plus a Playwright pass at 390×844 against the running build for the overflow numbers above and for tooltip↔sheet interaction (click dismisses the tooltip and opens the sheet; one Escape closes the sheet; focus reopens the tooltip; Escape dismisses it and focus stays on the trigger; no page errors). No Playwright baseline was updated.
+
+`WorkspaceAppBar.tsx` was excluded from this pass (it is being rebuilt into a single row with overflow menus); its icon-only buttons and their intended tooltip text are listed in that task's handoff.
+
+## 2026-09-02 — the case workspace became a fixed-height pane shell
+
+The case workspace root (`case-workspace`) is now `100dvh`, a flex column
+that does not itself scroll. `WorkspaceAppBar` sits in a non-shrinking band
+at the top, `ContextActionDock` in a non-shrinking band at the bottom, and
+one `overflow-y: auto` region (`case-workspace-scroll`) between them is the
+only thing that scrolls. `#root` moved from `min-height: 100vh` to `100dvh`
+so the floor and the shell agree about how tall one screen is.
+
+**What was actually wrong.** The dock's own comment justified `position:
+sticky` with "Sift renders inside an iframe in the companion case," where a
+`fixed` element would position against the iframe viewport and cover the
+last line of content. Measured in the real ChatGPT pane, that premise is
+false: `window.self === window.top` (a top-level document), and no ancestor
+of the dock sets `transform`/`filter`/`perspective`/`will-change`/`contain`/
+`backdrop-filter`, so nothing establishes a containing block that would trap
+a fixed child; a live `position: fixed; bottom: 0` test pinned correctly and
+held across an 800px scroll. Worse, the sticky it justified never pinned
+anything: the dock was `sticky bottom-0` as the last child of a ~2176px
+scrolling document, and a sticky box that is the final element in its
+container has nothing below it to be held against. A person met the dock
+only at the very bottom of the scroll. It had never worked.
+
+A flex shell rather than `position: fixed` chrome, deliberately: no
+bottom-padding arithmetic keeps the dock off the last row, browser scroll
+anchoring keeps working inside the middle, and the layout behaves
+identically if Sift ever genuinely is embedded in an iframe — the fragile
+premise stops mattering instead of being replaced by a different one.
+
+**The scroller carries no `padding-top`, and that is load-bearing.** Chrome
+parks a `position: sticky` child at the scroll container's *padding* edge,
+not its border edge. With `p-4` on the scroller, `DecisionOrientationShell`
+(`sticky top-0`) parked at y=163 against a scrollport starting at y=147,
+leaving a 16px window through which scrolled-away content stayed visible as
+a torn sliver. Measured, then fixed by moving that 16px into the app-bar
+band's `padding-bottom`; spacing at rest is unchanged and the shell now
+parks flush.
+
+Measured against the running production build (`pnpm --filter @sift/web
+build` + the real Express server, `demo-launcher-car-purchase`):
+
+| viewport | doc scrollHeight / innerHeight | app bar top, before → after a scroll | dock bottom, before → after | doc scrollWidth / clientWidth |
+| --- | --- | --- | --- | --- |
+| 390×844 | 844 / 844 | y=16 → y=16 (scrolled 1413px) | 844 → 844 | 390 / 390 |
+| 430×900 | 900 / 900 | y=16 → y=16 (scrolled 1332px) | 900 → 900 | 430 / 430 |
+| 640×900 | 900 / 900 | y=16 → y=16 (scrolled 1464px) | 900 → 900 | 640 / 640 |
+| 1440×1000 | 1000 / 1000 | y=16 → y=16 (scrolled 815px) | 1000 → 1000 | 1440 / 1440 |
+
+The document no longer scrolls at any width, the two bands are fixed, and
+`context-action-dock` is visible without scrolling for the first time.
+`RuntimeInspector` and every workspace sheet are Radix portals into
+`<body>`, so none of them is a flex child of the shell; all were re-verified
+open, scrolling internally, and closing. `DemoLauncher` and
+`VehicleCatalogFlow` were deliberately left as ordinary scrolling documents:
+neither has pinned chrome, so the shell would buy them nothing and would
+change their baselines for no reason.
+
+**One pre-existing defect this measurement surfaced but did not cause.** At
+640px the expanded layout overflows its own column by 84px
+(`scrollWidth` 724 against a 640px scroller) — `QuickPickView`'s card is
+~360px wide inside a 284px main column. Reproduced identically on a clean
+`HEAD` build, so it predates this change; `html, body { overflow-x: hidden }`
+was hiding it and `assertNoHorizontalOverflow` (which reads
+`documentElement`) cannot see it. 640px is not in the Playwright viewport
+matrix. Left for the pending 480px-breakpoint decision.
+
+**Two test helpers were repaired, not weakened.**
+`assertRecommendationHeroAboveTheFold` read `locator.boundingBox()`, which
+scrolls its target into view before measuring — against an element scroller
+that made the assertion vacuous (it would have scrolled the hero into view
+and then reported that the hero was in view, passing for any layout at all,
+including the regression ADR 0004 added it to catch). It now reads
+`getBoundingClientRect()` inside `evaluate`, moving nothing, from the top of
+the pane — strictly stronger than the version it replaces, since the hero
+must fit the pane a person actually sees rather than the first 844px of a
+2358px document. `waitForStableHeight` polled the target's box height, which
+is now constant by construction, so it "settled" on its first three polls
+regardless of what was still streaming in; it now polls the content extent
+(`scrollHeight` of the target and of every scrollable box inside it).
+`expectNamedScreenshot` additionally resets the pane's scroll to the top
+before capturing, because an element screenshot of a viewport-height element
+now depends on scroll position and several assertions en route leave it
+somewhere the journey never chose.
+
+**Baselines.** All 40 `case-workspace` element baselines (5 named states ×
+4 viewports × 2 hero journeys) were re-captured. The element used to be as
+tall as its content, so the baselines were tall full-page images with the
+dock at the very bottom; it is now exactly one viewport tall with internal
+scrolling, so a one-screen image is the only thing that element can produce.
+Actual/expected/diff were inspected for the 390 and 1440 cases before any
+update, and the final set was reviewed as a set at 390/430/480/1440 across
+both journeys. The launcher and vehicle-catalog baselines are untouched.
+
+Commands: `pnpm --filter @sift/web build`; `pnpm exec playwright test`
+(96 passed, `--workers=2`); `pnpm exec vitest run --project web`.
