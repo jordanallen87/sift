@@ -41,7 +41,7 @@ Against `https://pax-hackathon-production.up.railway.app`:
 
 health · static assets · SPA-no-catchall · fixture case (4 seeded candidates) · investigation run · Runtime Inspector (245 events, correlated trace) · CORS · AgentCore `/ping` · AgentCore `/invocations` for both hero packs · **redeploy persistence** (a case and its 245 runtime events survived a real Railway redeploy).
 
-One skip: `webmcp-client-registration`, which needs a real WebMCP-enabled browser. That is the same gap `docs/submissions/webmcp/host-acceptance.md` records, and it is not counted as a pass anywhere.
+One skip: `webmcp-client-registration`, which needs a real WebMCP-enabled browser and is not counted as a pass anywhere. **That gap is now closed by a separate gate**, `pnpm test:host` (ADR 0013): Chrome 152 ships WebMCP natively and exposes a `WebMCP` CDP domain, so the host session is automated — 14/14 against this same deployment. See `docs/submissions/webmcp/host-acceptance.md` for what it proves and the two things it does not.
 
 ### Live verification of the RunPlan beat
 
@@ -104,7 +104,7 @@ It **failed** the family persona on the first pass — `conversation_canvas_cohe
 ### Task 10 — submission evidence
 
 - `docs/submissions/webmcp/claim-evidence-matrix.md` — every claim mapped to implementation, automated proof, visible proof, provenance, and limitation, plus an explicit **"claims we deliberately do not make"** section and a table of human-only attestations.
-- `docs/submissions/webmcp/host-acceptance.md` — states plainly that no real-host session has been run, records what was verified without one, and scripts the session with its failure modes named in advance.
+- `docs/submissions/webmcp/host-acceptance.md` — the real-host session, now automated as `pnpm test:host` and passing 14/14 against the live deployment (ADR 0013). Records what it proves, the two things it does not (it is Chrome and not ChatGPT; no model chose anything), and the narrowed manual session that remains.
 - `README.md` — `pnpm test:persona` documented, including what it refuses to claim.
 - `docs/submissions/shared-release-checklist.md` — wired to both new documents.
 - Deployed to Railway and verified live.
@@ -183,7 +183,7 @@ The persona harness's first run failed all three personas. One failure was defec
 
 | Item | Why it is not done |
 | --- | --- |
-| Real-host acceptance session | Needs a person with a WebMCP-capable host signed into their own account. Scripted in `host-acceptance.md`. |
+| ~~Real-host acceptance session~~ — **done, automated** | `pnpm test:host` drives Chrome 152's native WebMCP over CDP; 14/14 against the live deployment (ADR 0013). What remains needs a person only for the two things a browser cannot stand in for: a session in a **named product**, and a **model** using the catalog unaided. |
 | Demo video: record, edit, upload, re-check | Explicitly reserved from this session. |
 | Devpost submission | Explicitly reserved. |
 | Repository visibility and license-at-top verification | Explicitly reserved. |
