@@ -153,15 +153,23 @@ describe('RunPlanService.revisePlan', () => {
       ...state,
       obligations: [...state.obligations, concernObligation('dog_crate', { id: 'ob-dog' })],
     });
-    service.revisePlan('case-plan', { reason: 'new_concern', trigger: 'dog_crate' });
+    service.revisePlan('case-plan', {
+      reason: 'new_concern',
+      trigger: 'dog_crate',
+      triggerLabel: 'Dog crate fit',
+    });
 
     const revisedEvent = activityStore
       .replayFrom('case-plan', 0)
       .find((event) => event.type === 'plan.revised');
 
     expect(revisedEvent).toBeDefined();
-    expect(revisedEvent?.summary).toMatch(/reused/i);
-    expect(revisedEvent?.summary).toContain('dog_crate');
+    expect(revisedEvent?.summary).toMatch(/kept/i);
+    // The person-facing name, and never the id behind it: this summary is
+    // consumer-visible copy held to the same terminology rules as every
+    // activity label.
+    expect(revisedEvent?.summary).toContain('Dog crate fit');
+    expect(revisedEvent?.summary).not.toContain('dog_crate');
     // Not just narrated: the counts are on the event, so a consumer can
     // render them without re-deriving anything.
     // Three results carried over (both enrichments and the reliability

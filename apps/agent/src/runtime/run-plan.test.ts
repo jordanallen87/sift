@@ -403,6 +403,63 @@ describe('reviseRunPlan: a new concern revises work rather than restarting it', 
     expect(revised.items.some((item) => item.signature === 'enrich_candidate:crv')).toBe(true);
   });
 
+  it('never puts a raw internal id in the sentence a person reads', () => {
+    // Found on the live deployment: the activity stream read "your triage
+    // of candidate-rav4". An entity id is developer vocabulary, and this
+    // summary is consumer-visible copy.
+    const { pack, plan } = acceptedPlan();
+    const withLabel = reviseRunPlan(plan, ctx(keptCase(), pack, LATER), {
+      reason: 'triage_changed',
+      trigger: 'candidate-rav4',
+      triggerLabel: '2022 Toyota RAV4 XLE Hybrid AWD',
+    });
+    const sentence = describeRunPlanRevision(withLabel);
+
+    expect(sentence).toContain('2022 Toyota RAV4 XLE Hybrid AWD');
+    expect(sentence).not.toContain('candidate-rav4');
+    // The id is still on the record, for correlation.
+    expect(withLabel.revision?.trigger).toBe('candidate-rav4');
+  });
+
+  it('omits the trigger from the sentence rather than falling back to the id', () => {
+    const { pack, plan } = acceptedPlan();
+    const noLabel = reviseRunPlan(plan, ctx(keptCase(), pack, LATER), {
+      reason: 'triage_changed',
+      trigger: 'candidate-rav4',
+    });
+
+    expect(describeRunPlanRevision(noLabel)).not.toContain('candidate-rav4');
+    expect(describeRunPlanRevision(noLabel)).toContain('your triage');
+  });
+
+  it('does not describe carried-over work as finished', () => {
+    // The first live revision said "reused 4 finished results" when none of
+    // the four had run. A plan may carry over work that is still planned;
+    // saying it finished is a claim about work that has not happened.
+    const pack = packWithCapabilities();
+    const first = buildRunPlan('plan-1', ctx(keptCase(), pack));
+    expect(first.items.every((item) => item.status === 'planned')).toBe(true);
+
+    const state = keptCase();
+    const revised = reviseRunPlan(
+      first,
+      ctx(
+        {
+          ...state,
+          obligations: [...state.obligations, concernObligation('dog_crate', { id: 'ob-dog' })],
+        },
+        pack,
+        LATER,
+      ),
+      { reason: 'new_concern', trigger: 'dog_crate' },
+    );
+
+    const sentence = describeRunPlanRevision(revised);
+    expect(revised.revision?.reusedSignatures.length).toBeGreaterThan(0);
+    expect(sentence).not.toMatch(/finished/i);
+    expect(sentence).toMatch(/kept \d+ unchanged/);
+  });
+
   it('explains what changed, what was reused, and why, in one legible sentence', () => {
     const { pack, plan } = acceptedPlan();
     const state = keptCase();
@@ -416,13 +473,15 @@ describe('reviseRunPlan: a new concern revises work rather than restarting it', 
         pack,
         LATER,
       ),
-      { reason: 'new_concern', trigger: 'dog_crate' },
+      { reason: 'new_concern', trigger: 'dog_crate', triggerLabel: 'Dog crate fit' },
     );
 
     const explanation = describeRunPlanRevision(revised);
 
-    expect(explanation).toContain('dog_crate');
-    expect(explanation).toMatch(/reus/i);
+    // The person-facing name, never the id it correlates to.
+    expect(explanation).toContain('Dog crate fit');
+    expect(explanation).not.toContain('dog_crate');
+    expect(explanation).toMatch(/kept/i);
     expect(explanation).toMatch(/2 new/i);
     // Never a bare "the plan changed": the reason has to be in the sentence.
     expect(explanation.length).toBeGreaterThan(30);

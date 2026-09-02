@@ -171,7 +171,7 @@ describe('GET /api/cases/:caseId/run-plan', () => {
     expect(types).toContain('plan.created');
     expect(types).toContain('plan.revised');
     const revised = events.find((event) => event.type === 'plan.revised');
-    expect(revised?.summary).toMatch(/reused/i);
+    expect(revised?.summary).toMatch(/kept/i);
   });
 
   it('survives a restart: the plan and its history are read from SQLite, not memory', async () => {

@@ -121,8 +121,13 @@ describe('CommandService notifies the RunPlan about plan-affecting changes', () 
     });
 
     expect(result.status).toBe('ok');
+    // The label travels alongside the id, so the person-facing summary can
+    // name the candidate without leaking its id.
     expect(context.revisions).toEqual([
-      { caseId: CASE_ID, cause: { reason: 'triage_changed', trigger: 'rav4' } },
+      {
+        caseId: CASE_ID,
+        cause: { reason: 'triage_changed', trigger: 'rav4', triggerLabel: 'RAV4' },
+      },
     ]);
   });
 
@@ -137,7 +142,14 @@ describe('CommandService notifies the RunPlan about plan-affecting changes', () 
 
     expect(result.status).toBe('ok');
     expect(context.revisions).toEqual([
-      { caseId: CASE_ID, cause: { reason: 'discovery_changed', trigger: 'car.use_case' } },
+      {
+        caseId: CASE_ID,
+        cause: {
+          reason: 'discovery_changed',
+          trigger: 'car.use_case',
+          triggerLabel: 'What it is for',
+        },
+      },
     ]);
   });
 

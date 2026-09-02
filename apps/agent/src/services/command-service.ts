@@ -2809,9 +2809,13 @@ export class CommandService {
       // happened.
       const firstTopicId = input.operations[0]?.topicId;
       if (firstTopicId !== undefined) {
+        const topicLabel = (pack.discovery?.topics ?? []).find(
+          (template) => template.id === firstTopicId,
+        )?.label;
         notifyRunPlan(this.deps, input.caseId, {
           reason: 'discovery_changed',
           trigger: firstTopicId,
+          ...(topicLabel !== undefined ? { triggerLabel: topicLabel } : {}),
         });
       }
     }
@@ -3048,9 +3052,17 @@ export class CommandService {
       );
       // Triage is the authorization deep work depends on, so this is the
       // command that most often changes what Sift should be doing next.
+      //
+      // The label comes from the entity, not the id: the resulting
+      // `plan.revised` summary is consumer-visible copy, and a raw entity
+      // id there would break the same rule every activity label follows.
+      const candidateLabel = snapshot.entities.find(
+        (entity) => entity.id === input.entityId,
+      )?.label;
       notifyRunPlan(this.deps, input.caseId, {
         reason: 'triage_changed',
         trigger: input.entityId,
+        ...(candidateLabel !== undefined ? { triggerLabel: candidateLabel } : {}),
       });
     }
     return this.toReceipt(commandId, result);

@@ -206,6 +206,8 @@ const RunPlanRevisionSummarySchema = z
     reason: z.enum(RUN_PLAN_REVISION_REASONS),
     /** The causal id: the concern, topic, or candidate whose change forced this revision. */
     trigger: idString(),
+    /** What to call that trigger in person-facing copy. Absent means the sentence omits it. */
+    triggerLabel: z.string().min(1).max(300).optional(),
     reusedSignatures: z.array(z.string().max(400)).max(500),
     staledSignatures: z.array(z.string().max(400)).max(500),
     cancelledSignatures: z.array(z.string().max(400)).max(500),
@@ -266,7 +268,20 @@ export interface RunPlanContext {
 
 export interface RunPlanRevisionCause {
   readonly reason: RunPlanRevisionReason;
+  /** The machine id that caused this revision. Used for correlation, never rendered. */
   readonly trigger: string;
+  /**
+   * What to call the trigger in a sentence a person reads.
+   *
+   * Separate from `trigger` because they are different things: a plan
+   * revision needs a stable id to correlate against, and a person needs a
+   * name. Rendering the id put "your triage of candidate-rav4" in the
+   * activity stream on the live deployment -- a raw internal id in
+   * consumer-visible copy, which the terminology rules forbid everywhere
+   * else. Optional so a caller with no better name simply gets a sentence
+   * that omits it rather than one that leaks an id.
+   */
+  readonly triggerLabel?: string;
 }
 
 export function runPlanItemSignature(kind: RunPlanItemKind, targets: readonly string[]): string {
@@ -624,6 +639,7 @@ export function reviseRunPlan(
       previousVersion: previous.version,
       reason: cause.reason,
       trigger: cause.trigger,
+      ...(cause.triggerLabel !== undefined ? { triggerLabel: cause.triggerLabel } : {}),
       reusedSignatures: sorted(reused),
       staledSignatures: sorted(staled),
       cancelledSignatures: sorted(cancelled.map((item) => item.signature)),
@@ -632,11 +648,13 @@ export function reviseRunPlan(
   };
 }
 
-const REASON_PHRASES: Record<RunPlanRevisionReason, (trigger: string) => string> = {
-  new_concern: (trigger) => `a new concern (${trigger})`,
-  discovery_changed: (trigger) => `a changed answer (${trigger})`,
-  triage_changed: (trigger) => `your triage of ${trigger}`,
-  candidates_changed: (trigger) => `a change to the options (${trigger})`,
+const REASON_PHRASES: Record<RunPlanRevisionReason, (name: string | undefined) => string> = {
+  new_concern: (name) => (name === undefined ? 'a new concern' : `a new concern (${name})`),
+  discovery_changed: (name) =>
+    name === undefined ? 'a changed answer' : `a changed answer (${name})`,
+  triage_changed: (name) => (name === undefined ? 'your triage' : `your triage of ${name}`),
+  candidates_changed: (name) =>
+    name === undefined ? 'a change to the options' : `a change to the options (${name})`,
 };
 
 /**
@@ -649,10 +667,14 @@ export function describeRunPlanRevision(plan: RunPlan): string {
   if (revision === undefined) {
     return `Plan v${String(plan.version)}: first plan, with ${String(plan.items.length)} items and nothing to reuse.`;
   }
-  const because = REASON_PHRASES[revision.reason](revision.trigger);
+  const because = REASON_PHRASES[revision.reason](revision.triggerLabel);
+  // "kept ... unchanged", not "reused ... finished results". A carried-over
+  // item may still be planned or running; on the live deployment the first
+  // revision reported "reused 4 finished results" when nothing had
+  // finished, which is a claim about work that had not happened.
   return (
     `Plan v${String(plan.version)}: ${because} added ${String(revision.addedSignatures.length)} new items, ` +
-    `reused ${String(revision.reusedSignatures.length)} finished results, ` +
+    `kept ${String(revision.reusedSignatures.length)} unchanged, ` +
     `re-ran ${String(revision.staledSignatures.length)} whose inputs changed, ` +
     `and cancelled ${String(revision.cancelledSignatures.length)}.`
   );
