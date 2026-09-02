@@ -535,3 +535,135 @@ describe('CaseStateSchema', () => {
     expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
   });
 });
+
+describe('EntityRecordSchema: candidate provenance', () => {
+  function candidate(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'candidate-rav4',
+      kind: 'candidate',
+      label: '2022 Toyota RAV4 XLE Hybrid AWD',
+      attributes: {},
+      createdAt: '2026-09-02T00:00:00.000Z',
+      updatedAt: '2026-09-02T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  it('still parses an entity that carries no provenance, so stored cases keep loading', () => {
+    expect(EntityRecordSchema.safeParse(candidate()).success).toBe(true);
+  });
+
+  it('carries model-level catalog provenance', () => {
+    const result = EntityRecordSchema.safeParse(
+      candidate({
+        provenance: {
+          level: 'model',
+          source: 'catalog',
+          catalogRecordId: 'epa-2022-toyota-rav4-hybrid-awd',
+        },
+      }),
+    );
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('refuses to call an entity a listing without listing provenance', () => {
+    expect(
+      EntityRecordSchema.safeParse(
+        candidate({ provenance: { level: 'listing', source: 'catalog' } }),
+      ).success,
+    ).toBe(false);
+  });
+});
+
+describe('CaseStateSchema: discovery', () => {
+  function validCaseState() {
+    return {
+      schemaVersion: '1.0' as const,
+      id: 'case-1',
+      title: 'Choose our next family car',
+      status: 'draft' as const,
+      pack: {
+        id: 'car-purchase',
+        version: '1.0.0',
+        compiledHash: 'a'.repeat(64),
+        selectedBy: 'user' as const,
+        reasons: ['User selected this Decision Pack'],
+      },
+      attributeDefinitions: [],
+      entities: [],
+      criteria: [],
+      obligations: [],
+      caseExtensions: [],
+      claims: [],
+      sources: [],
+      evidenceLinks: [],
+      recommendation: null,
+      proposal: null,
+      activeFocus: null,
+      selectedOptionId: null,
+      selectedEvidenceId: null,
+      eventSequence: 0,
+      createdAt: '2026-08-27T00:00:00.000Z',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    };
+  }
+
+  it('parses a snapshot written before discovery existed', () => {
+    // Same backward-compatibility contract `view` and `notes` already carry:
+    // the key may be entirely absent.
+    expect(CaseStateSchema.safeParse(validCaseState()).success).toBe(true);
+  });
+
+  it('carries a companion-mode discovery state', () => {
+    const result = CaseStateSchema.safeParse({
+      ...validCaseState(),
+      discovery: {
+        mode: 'companion',
+        topics: [
+          {
+            topicId: 'vehicle.occupants',
+            label: 'Who and what has to fit',
+            status: 'confirmed',
+            necessity: 'required',
+            valueSummary: 'Two adults, two children in car seats',
+            origin: 'user',
+            humanConfirmed: true,
+            updatedAt: '2026-09-02T00:00:00.000Z',
+          },
+        ],
+        blindSpotReview: { status: 'pending', offeredPromptIds: [], selectedPromptIds: [] },
+        dispositions: [],
+        pendingInteraction: null,
+        updatedAt: '2026-09-02T00:00:00.000Z',
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('rejects a discovery state whose topic claims a model confirmed it', () => {
+    expect(
+      CaseStateSchema.safeParse({
+        ...validCaseState(),
+        discovery: {
+          mode: 'companion',
+          topics: [
+            {
+              topicId: 'vehicle.occupants',
+              label: 'Who and what has to fit',
+              status: 'confirmed',
+              necessity: 'required',
+              valueSummary: 'Two adults',
+              origin: 'model',
+              humanConfirmed: false,
+              updatedAt: '2026-09-02T00:00:00.000Z',
+            },
+          ],
+          blindSpotReview: { status: 'pending', offeredPromptIds: [], selectedPromptIds: [] },
+          dispositions: [],
+          pendingInteraction: null,
+          updatedAt: '2026-09-02T00:00:00.000Z',
+        },
+      }).success,
+    ).toBe(false);
+  });
+});

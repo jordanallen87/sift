@@ -104,6 +104,63 @@ describe('checkSource', () => {
     expect(result.findings.some((finding) => finding.rule === 'possible-secret')).toBe(true);
   });
 
+  it('does not flag a long PascalCase TypeScript identifier', () => {
+    // `DiscoveryInteractionRequestedEventSchema` is 40 characters of
+    // concatenated English words, which lands just over the bare-token
+    // length floor with an entropy of 4.09. It is a declaration, not a
+    // secret, and the codebase will keep producing names this long.
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
+    writeFileSync(
+      join(dir, 'events.ts'),
+      'export const DiscoveryInteractionRequestedEventSchema = base.extend({});\n',
+    );
+
+    const result = checkSource({ rootDir: dir });
+
+    expect(result.ok, JSON.stringify(result.findings)).toBe(true);
+  });
+
+  it('does not flag a PascalCase identifier quoted as a test description', () => {
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
+    writeFileSync(
+      join(dir, 'schema.test.ts'),
+      "describe('CompleteBlindSpotReviewInputSchema', () => {});\n",
+    );
+
+    const result = checkSource({ rootDir: dir });
+
+    expect(result.ok, JSON.stringify(result.findings)).toBe(true);
+  });
+
+  it('still flags a mixed-case token containing digits, which no identifier exception covers', () => {
+    // The identifier exception must not become a hole for real secrets. A
+    // token with digits scattered through it is not a word sequence, so it
+    // falls through to the entropy check exactly as before.
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
+    writeFileSync(
+      join(dir, 'config.ts'),
+      "export const value = 'Xk9RmQ2pLdR4tYuIoPzWvNqBhGfTsEcAwZ1';\n",
+    );
+
+    const result = checkSource({ rootDir: dir });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings.some((finding) => finding.rule === 'possible-secret')).toBe(true);
+  });
+
+  it('still flags an all-uppercase high-entropy run, which has no word boundaries', () => {
+    dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
+    writeFileSync(
+      join(dir, 'config.ts'),
+      "export const value = 'QWKRMZPLDVTYUIOPXSBHGFTNECAWJRUDKQLM';\n",
+    );
+
+    const result = checkSource({ rootDir: dir });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings.some((finding) => finding.rule === 'possible-secret')).toBe(true);
+  });
+
   it('still flags a high-entropy token that happens to contain repeated characters', () => {
     dir = mkdtempSync(join(tmpdir(), 'sift-check-source-'));
     writeFileSync(

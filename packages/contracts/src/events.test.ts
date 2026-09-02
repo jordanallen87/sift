@@ -237,3 +237,110 @@ describe('CaseEventSchema', () => {
     );
   });
 });
+
+describe('CaseEventSchema: adaptive discovery events', () => {
+  const base = {
+    eventId: 'evt-9',
+    caseId: 'case-1',
+    sequence: 9,
+    timestamp: '2026-09-02T00:00:00.000Z',
+    commandId: 'cmd-9',
+  };
+
+  it('carries a confirmed topic and what caused it', () => {
+    const result = CaseEventSchema.safeParse({
+      ...base,
+      type: 'discovery.topic_updated',
+      payload: {
+        cause: 'response',
+        topic: {
+          topicId: 'vehicle.occupants',
+          label: 'Who and what has to fit',
+          status: 'confirmed',
+          necessity: 'required',
+          valueSummary: 'Two adults and two children in car seats',
+          origin: 'user',
+          humanConfirmed: true,
+          updatedAt: '2026-09-02T00:00:00.000Z',
+        },
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('refuses to record a model-confirmed topic even as an event', () => {
+    // The authority rule holds at every layer. An event log that can express
+    // an illegal state is an event log that can replay into one.
+    expect(
+      CaseEventSchema.safeParse({
+        ...base,
+        type: 'discovery.topic_updated',
+        payload: {
+          cause: 'proposal',
+          topic: {
+            topicId: 'vehicle.towing',
+            label: 'Towing',
+            status: 'confirmed',
+            necessity: 'soft',
+            valueSummary: 'Must tow 3,500 lb',
+            origin: 'model',
+            humanConfirmed: false,
+            updatedAt: '2026-09-02T00:00:00.000Z',
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('carries a Quick Pick disposition with the value it replaced', () => {
+    const result = CaseEventSchema.safeParse({
+      ...base,
+      type: 'candidate.disposition_set',
+      payload: {
+        disposition: {
+          entityId: 'candidate-rav4',
+          disposition: 'keep',
+          previousDisposition: 'unreviewed',
+          decidedAt: '2026-09-02T00:00:00.000Z',
+        },
+      },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('carries an interaction request and its answer as separate events', () => {
+    const interaction = {
+      id: 'interaction-1',
+      topicIds: ['vehicle.usage'],
+      kind: 'free_text',
+      prompt: 'Anything else this vehicle has to do?',
+      options: [],
+      escapeHatches: { allowCustom: true, allowNone: true, allowUnsure: true, allowDefer: false },
+      requestedBy: 'model',
+      createdAt: '2026-09-02T00:00:00.000Z',
+    };
+    expect(
+      CaseEventSchema.safeParse({
+        ...base,
+        type: 'discovery.interaction_requested',
+        payload: { interaction },
+      }).success,
+    ).toBe(true);
+    expect(
+      CaseEventSchema.safeParse({
+        ...base,
+        type: 'discovery.interaction_answered',
+        payload: {
+          response: {
+            interactionId: 'interaction-1',
+            respondedBy: 'human',
+            selectedOptionIds: [],
+            customText: 'It has to tow a small utility trailer',
+            mappings: [],
+            respondedAt: '2026-09-02T00:00:00.000Z',
+          },
+        },
+      }).success,
+    ).toBe(true);
+  });
+});

@@ -354,3 +354,40 @@ describe('CriterionSchema', () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe('AttributeRecordSchema: value provenance', () => {
+  const record = {
+    definitionId: 'car.cargo_width_in',
+    label: 'Cargo width',
+    value: { type: 'number' as const, value: 43.2, unit: 'in' },
+    origin: 'pack' as const,
+    sourceIds: [],
+    status: 'asserted' as const,
+    updatedAt: '2026-09-02T00:00:00.000Z',
+  };
+
+  it('still parses a record that states no provenance', () => {
+    expect(AttributeRecordSchema.safeParse(record).success).toBe(true);
+  });
+
+  it('labels a curated demo value as curated', () => {
+    // The hero cohort enriches EPA records with decision-relevant fields the
+    // EPA source does not carry. The pane has to be able to say which is
+    // which, so the distinction lives on the record rather than in a
+    // convention about which ids happen to be curated.
+    const result = AttributeRecordSchema.safeParse({ ...record, provenance: 'curated_demo' });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('labels a value measured in the bundled catalog as catalog-derived', () => {
+    expect(AttributeRecordSchema.safeParse({ ...record, provenance: 'catalog' }).success).toBe(
+      true,
+    );
+  });
+
+  it('rejects a provenance outside the vocabulary', () => {
+    expect(AttributeRecordSchema.safeParse({ ...record, provenance: 'live_dealer' }).success).toBe(
+      false,
+    );
+  });
+});

@@ -22,6 +22,7 @@ import {
 } from './attributes.js';
 import { EVIDENCE_LEVELS, ObligationTemplateSchema } from './packs.js';
 import { CaseExtensionSchema, type CaseExtension } from './extensions.js';
+import { CandidateProvenanceSchema, DiscoveryStateSchema } from './discovery.js';
 
 // Re-exported so consumers of case.ts (which owns `CaseState.caseExtensions`)
 // do not also need to import from extensions.ts directly.
@@ -67,6 +68,17 @@ export const EntityRecordSchema = z
       .refine((attributes) => Object.keys(attributes).length <= 500, {
         message: 'an entity may not carry more than 500 attributes',
       }),
+    /**
+     * Where this entity came from, and — critically — whether it is a *model*
+     * or a specific *listing*. Optional so that every entity persisted or
+     * constructed before this field existed still parses and still
+     * typechecks (the same reasoning `CaseState.notes` documents at length);
+     * an entity with no provenance makes no provenance claim at all, which
+     * is the honest default. `CandidateProvenanceSchema` refuses
+     * `level: 'listing'` without a listing block, so "this exact car, at
+     * this dealer, at this price" cannot be asserted by accident.
+     */
+    provenance: CandidateProvenanceSchema.optional(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -557,6 +569,24 @@ export const CaseStateSchema = z
     // explicitly cleared once set. See the WorkspaceViewState module
     // comment above and ADR 0005 "Consequences".
     view: WorkspaceViewStateSchema.nullable().optional(),
+    /**
+     * Adaptive discovery: the topics this case has covered, the blind-spot
+     * review, the Quick Pick dispositions, and any interaction currently on
+     * screen. See discovery.ts for the four rules it makes unrepresentable.
+     *
+     * `.optional()` for exactly the reasons `notes` documents above: a
+     * snapshot persisted before this field existed must still parse, and
+     * the many `CaseState` object literals across `packages/scenarios`,
+     * `apps/web` fixtures, and `apps/agent` must keep typechecking without
+     * being rewritten. A case with no `discovery` is a case that has not
+     * started discovery — which is the truthful reading of an absent key,
+     * not a placeholder for one.
+     *
+     * Deliberately NOT nullable: unlike `view`, nothing ever clears
+     * discovery back to "explicitly nothing". Topics move between statuses;
+     * they do not get erased.
+     */
+    discovery: DiscoveryStateSchema.optional(),
     eventSequence: z.number().int().min(0),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),

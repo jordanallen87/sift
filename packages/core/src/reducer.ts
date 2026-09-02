@@ -44,7 +44,7 @@
  * `instantiateCase` produces directly, not to rely on this minimal skeleton
  * alone as if it were a complete snapshot.
  */
-import type { CaseState, CaseEvent } from '@sift/contracts';
+import type { CaseState, CaseEvent, DiscoveryState } from '@sift/contracts';
 import { reviewCaseExtension } from './extensions.js';
 import { ValidationFailedError } from './errors.js';
 
@@ -52,6 +52,39 @@ function upsertById<T extends { id: string }>(items: readonly T[], next: T): T[]
   const index = items.findIndex((item) => item.id === next.id);
   if (index === -1) return [...items, next];
   return items.map((item, i) => (i === index ? next : item));
+}
+
+/** `upsertById` for records keyed by something other than `id` (a topic id, a candidate id). */
+function upsertBy<T>(items: readonly T[], next: T, keyOf: (item: T) => string): T[] {
+  const key = keyOf(next);
+  const index = items.findIndex((item) => keyOf(item) === key);
+  if (index === -1) return [...items, next];
+  return items.map((item, i) => (i === index ? next : item));
+}
+
+/**
+ * The case's discovery state, created on first use.
+ *
+ * A case carries no `discovery` key until something actually happens in
+ * discovery -- an absent key reads as "this case has not started discovery",
+ * which is true, rather than as an empty placeholder. That also means no
+ * existing snapshot, fixture, or test grows a field it never had.
+ *
+ * `mode` defaults to `companion` because that is the canonical primary
+ * experience; a case created through a standalone entry point declares its
+ * mode on `case.created` and is seeded there instead.
+ */
+function discoveryOf(caseState: CaseState, timestamp: string): DiscoveryState {
+  return (
+    caseState.discovery ?? {
+      mode: 'companion',
+      topics: [],
+      blindSpotReview: { status: 'pending', offeredPromptIds: [], selectedPromptIds: [] },
+      dispositions: [],
+      pendingInteraction: null,
+      updatedAt: timestamp,
+    }
+  );
 }
 
 function instantiateFromCaseCreated(
@@ -76,6 +109,26 @@ function instantiateFromCaseCreated(
     activeFocus: null,
     selectedOptionId: null,
     selectedEvidenceId: null,
+    // Seeded only when the creating entry point declared a mode. An absent
+    // `discovery` says "this case has not started discovery", which is
+    // true of a case that was just created; `discoveryOf` brings it into
+    // being on the first real discovery event.
+    ...(event.payload.mode === undefined
+      ? {}
+      : {
+          discovery: {
+            mode: event.payload.mode,
+            topics: [],
+            blindSpotReview: {
+              status: 'pending' as const,
+              offeredPromptIds: [],
+              selectedPromptIds: [],
+            },
+            dispositions: [],
+            pendingInteraction: null,
+            updatedAt: event.timestamp,
+          },
+        }),
     eventSequence: event.sequence,
     createdAt: event.timestamp,
     updatedAt: event.timestamp,
@@ -216,5 +269,74 @@ export function applyCaseEvent(caseState: CaseState | null, event: CaseEvent): C
         proposal: event.payload.proposal,
         status: event.payload.proposal.status === 'approved' ? 'decided' : caseState.status,
       };
+
+    case 'discovery.topic_updated': {
+      const discovery = discoveryOf(caseState, event.timestamp);
+      return {
+        ...caseState,
+        ...base,
+        discovery: {
+          ...discovery,
+          topics: upsertBy(discovery.topics, event.payload.topic, (topic) => topic.topicId),
+          updatedAt: event.timestamp,
+        },
+      };
+    }
+
+    case 'discovery.interaction_requested': {
+      const discovery = discoveryOf(caseState, event.timestamp);
+      return {
+        ...caseState,
+        ...base,
+        discovery: {
+          ...discovery,
+          pendingInteraction: event.payload.interaction,
+          updatedAt: event.timestamp,
+        },
+      };
+    }
+
+    case 'discovery.interaction_answered': {
+      // The response's own topic mappings do not fold here. Each accepted
+      // mapping arrives as its own `discovery.topic_updated`, so a mapping a
+      // person rejected never silently lands in state just because it was
+      // part of a response that contained others.
+      const discovery = discoveryOf(caseState, event.timestamp);
+      return {
+        ...caseState,
+        ...base,
+        discovery: { ...discovery, pendingInteraction: null, updatedAt: event.timestamp },
+      };
+    }
+
+    case 'discovery.blind_spot_reviewed': {
+      const discovery = discoveryOf(caseState, event.timestamp);
+      return {
+        ...caseState,
+        ...base,
+        discovery: {
+          ...discovery,
+          blindSpotReview: event.payload.review,
+          updatedAt: event.timestamp,
+        },
+      };
+    }
+
+    case 'candidate.disposition_set': {
+      const discovery = discoveryOf(caseState, event.timestamp);
+      return {
+        ...caseState,
+        ...base,
+        discovery: {
+          ...discovery,
+          dispositions: upsertBy(
+            discovery.dispositions,
+            event.payload.disposition,
+            (record) => record.entityId,
+          ),
+          updatedAt: event.timestamp,
+        },
+      };
+    }
   }
 }

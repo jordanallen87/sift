@@ -596,3 +596,176 @@ describe('applyCaseEvent: existing-case dispatch', () => {
     expect(rejected.status).toBe('draft');
   });
 });
+
+describe('applyCaseEvent: adaptive discovery folds', () => {
+  const AT = '2026-09-02T00:00:00.000Z';
+
+  function topicEvent(overrides: Record<string, unknown> = {}): CaseEvent {
+    return baseEvent('discovery.topic_updated', {
+      sequence: 1,
+      payload: {
+        cause: 'response',
+        topic: {
+          topicId: 'vehicle.occupants',
+          label: 'Who and what has to fit',
+          status: 'confirmed',
+          necessity: 'required',
+          valueSummary: 'Two adults and two children in car seats',
+          origin: 'user',
+          humanConfirmed: true,
+          updatedAt: AT,
+        },
+        ...overrides,
+      },
+    }) as CaseEvent;
+  }
+
+  it('creates discovery state on the first discovery event of a case that had none', () => {
+    // A case with no `discovery` key is a case that has not started
+    // discovery, so the first topic answered is what brings it into being.
+    const next = applyCaseEvent(freshCase(), topicEvent());
+    expect(next.discovery?.mode).toBe('companion');
+    expect(next.discovery?.topics).toHaveLength(1);
+    expect(next.discovery?.topics[0]?.topicId).toBe('vehicle.occupants');
+  });
+
+  it('replaces a topic rather than appending a second state for it', () => {
+    const once = applyCaseEvent(freshCase(), topicEvent());
+    const corrected = applyCaseEvent(
+      once,
+      baseEvent('discovery.topic_updated', {
+        sequence: 2,
+        payload: {
+          cause: 'correction',
+          topic: {
+            topicId: 'vehicle.occupants',
+            label: 'Who and what has to fit',
+            status: 'confirmed',
+            necessity: 'required',
+            valueSummary: 'Two adults, two children in car seats, and a large dog',
+            origin: 'user',
+            humanConfirmed: true,
+            updatedAt: AT,
+          },
+        },
+      }) as CaseEvent,
+    );
+
+    expect(corrected.discovery?.topics).toHaveLength(1);
+    expect(corrected.discovery?.topics[0]?.valueSummary).toMatch(/large dog/);
+  });
+
+  it('holds the interaction currently on screen and clears it when answered', () => {
+    const interaction = {
+      id: 'interaction-1',
+      topicIds: ['vehicle.usage'],
+      kind: 'free_text' as const,
+      prompt: 'Anything else it has to do?',
+      options: [],
+      escapeHatches: {
+        allowCustom: true,
+        allowNone: true,
+        allowUnsure: true,
+        allowDefer: false,
+      },
+      requestedBy: 'model' as const,
+      createdAt: AT,
+    };
+
+    const requested = applyCaseEvent(
+      freshCase(),
+      baseEvent('discovery.interaction_requested', {
+        sequence: 1,
+        payload: { interaction },
+      }) as CaseEvent,
+    );
+    expect(requested.discovery?.pendingInteraction?.id).toBe('interaction-1');
+
+    const answered = applyCaseEvent(
+      requested,
+      baseEvent('discovery.interaction_answered', {
+        sequence: 2,
+        payload: {
+          response: {
+            interactionId: 'interaction-1',
+            respondedBy: 'human',
+            selectedOptionIds: [],
+            customText: 'It has to tow a small utility trailer',
+            mappings: [],
+            respondedAt: AT,
+          },
+        },
+      }) as CaseEvent,
+    );
+    expect(answered.discovery?.pendingInteraction).toBeNull();
+  });
+
+  it('records the blind-spot review', () => {
+    const next = applyCaseEvent(
+      freshCase(),
+      baseEvent('discovery.blind_spot_reviewed', {
+        sequence: 1,
+        payload: {
+          review: {
+            status: 'complete',
+            offeredPromptIds: ['blindspot.child_seats', 'blindspot.garage_clearance'],
+            selectedPromptIds: ['blindspot.child_seats'],
+            acknowledgedAt: AT,
+          },
+        },
+      }) as CaseEvent,
+    );
+    expect(next.discovery?.blindSpotReview.status).toBe('complete');
+  });
+
+  it('keeps only the latest disposition per candidate, so undo moves forward', () => {
+    const kept = applyCaseEvent(
+      freshCase(),
+      baseEvent('candidate.disposition_set', {
+        sequence: 1,
+        payload: {
+          disposition: {
+            entityId: 'candidate-rav4',
+            disposition: 'keep',
+            previousDisposition: 'unreviewed',
+            decidedAt: AT,
+          },
+        },
+      }) as CaseEvent,
+    );
+    const undone = applyCaseEvent(
+      kept,
+      baseEvent('candidate.disposition_set', {
+        sequence: 2,
+        payload: {
+          disposition: {
+            entityId: 'candidate-rav4',
+            disposition: 'unreviewed',
+            previousDisposition: 'keep',
+            decidedAt: AT,
+          },
+        },
+      }) as CaseEvent,
+    );
+
+    expect(undone.discovery?.dispositions).toHaveLength(1);
+    expect(undone.discovery?.dispositions[0]?.disposition).toBe('unreviewed');
+    // The history is not erased -- the record still says what it replaced.
+    expect(undone.discovery?.dispositions[0]?.previousDisposition).toBe('keep');
+  });
+
+  it('seeds standalone mode when the case was created in it', () => {
+    const standaloneCase = applyCaseEvent(
+      null,
+      baseEvent('case.created', {
+        sequence: 0,
+        payload: { title: 'Compare two listings', pack: PIN, mode: 'standalone' },
+      }) as CaseEvent,
+    );
+    expect(standaloneCase.discovery?.mode).toBe('standalone');
+  });
+
+  it('leaves a case with no discovery activity carrying no discovery key at all', () => {
+    expect(freshCase().discovery).toBeUndefined();
+  });
+});

@@ -11,6 +11,7 @@
 // re-export.
 export * from './attributes.js';
 export * from './case.js';
+export * from './discovery.js';
 export * from './extensions.js';
 export * from './commands.js';
 export * from './events.js';

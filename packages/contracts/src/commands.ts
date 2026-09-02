@@ -33,6 +33,12 @@ import { CaseAttributeIdSchema } from './attributes.js';
 import { CASE_NOTE_KINDS, CaseStateSchema, WorkspaceViewStateSchema } from './case.js';
 import { EVIDENCE_DISPOSITIONS } from './case.js';
 import { CaseExtensionReviewDecisionSchema } from './extensions.js';
+import {
+  CANDIDATE_DISPOSITIONS,
+  IMPORTANCE_TIERS,
+  InteractionRequestSchema,
+  InteractionResponseSchema,
+} from './discovery.js';
 
 const HTML_OR_EXECUTABLE_PATTERN = /<\/?[a-zA-Z!]|javascript:|on[a-zA-Z]+\s*=\s*["']/;
 
@@ -763,3 +769,212 @@ export function SiftToolResultSchema<DataSchema extends z.ZodTypeAny>(dataSchema
     })
     .strict();
 }
+
+// --- Adaptive discovery commands ---
+//
+// Every command below carries an explicit `actor`, and every authority rule
+// the canonical experience states is enforced *here*, at the command
+// boundary, rather than left to whichever caller happens to construct the
+// input. The reasoning matches `ReviewProposalInputSchema` directly above:
+// the actor is a claim made by the caller, so the schema is where the claim
+// meets the rule. Where a rule can be made structural it is (see
+// discovery.ts); where it depends on who is asking, it lives here.
+
+const discoveryActor = ActorSchema;
+
+const ConfirmTopicOperationSchema = z
+  .object({
+    op: z.literal('confirm'),
+    topicId: idString(),
+    valueSummary: safeString(1000),
+    importance: z.enum(IMPORTANCE_TIERS).optional(),
+  })
+  .strict();
+
+/** A correction replaces a value a person previously gave. Same shape as confirm; different intent, and a different event. */
+const CorrectTopicOperationSchema = z
+  .object({
+    op: z.literal('correct'),
+    topicId: idString(),
+    valueSummary: safeString(1000),
+    importance: z.enum(IMPORTANCE_TIERS).optional(),
+  })
+  .strict();
+
+/** What a model may do: offer a reading of what was said, for a person to accept or reject. */
+const ProposeTopicOperationSchema = z
+  .object({
+    op: z.literal('propose'),
+    topicId: idString(),
+    valueSummary: safeString(1000),
+    importance: z.enum(IMPORTANCE_TIERS).optional(),
+    confidence: z.number().min(0).max(1),
+  })
+  .strict();
+
+const DeferTopicOperationSchema = z
+  .object({ op: z.literal('defer'), topicId: idString() })
+  .strict();
+
+const NotApplicableTopicOperationSchema = z
+  .object({
+    op: z.literal('not_applicable'),
+    topicId: idString(),
+    /** Required: "this does not apply to me" is a claim, and the pane shows why. */
+    reason: safeString(500),
+  })
+  .strict();
+
+const RejectInferenceOperationSchema = z
+  .object({ op: z.literal('reject_inference'), topicId: idString() })
+  .strict();
+
+export const DiscoveryOperationSchema = z.discriminatedUnion('op', [
+  ConfirmTopicOperationSchema,
+  CorrectTopicOperationSchema,
+  ProposeTopicOperationSchema,
+  DeferTopicOperationSchema,
+  NotApplicableTopicOperationSchema,
+  RejectInferenceOperationSchema,
+]);
+export type DiscoveryOperation = z.infer<typeof DiscoveryOperationSchema>;
+
+/** The operations only a person may perform. An agent proposes; a person decides. */
+const HUMAN_ONLY_DISCOVERY_OPS = new Set([
+  'confirm',
+  'correct',
+  'defer',
+  'not_applicable',
+  'reject_inference',
+]);
+
+const UpdateDiscoveryInputShape = z
+  .object({
+    caseId: idString(),
+    expectedSequence,
+    actor: discoveryActor,
+    operations: z.array(DiscoveryOperationSchema).min(1).max(20),
+  })
+  .strict();
+
+export const UpdateDiscoveryInputSchema = UpdateDiscoveryInputShape.superRefine((input, ctx) => {
+  if (input.actor === 'agent') {
+    for (const operation of input.operations) {
+      if (HUMAN_ONLY_DISCOVERY_OPS.has(operation.op)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['operations'],
+          message: `an agent may only "propose"; "${operation.op}" is the person's decision`,
+        });
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  for (const operation of input.operations) {
+    if (seen.has(operation.topicId)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['operations'],
+        message: `two operations act on "${operation.topicId}" in one command`,
+      });
+    }
+    seen.add(operation.topicId);
+  }
+});
+export type UpdateDiscoveryInput = z.infer<typeof UpdateDiscoveryInputSchema>;
+
+/** Identical shape to `UpdateDiscoveryInput`. */
+export const SiftUpdateDiscoveryToolInputSchema = UpdateDiscoveryInputSchema;
+
+export const RequestInteractionInputSchema = z
+  .object({
+    caseId: idString(),
+    expectedSequence,
+    interaction: InteractionRequestSchema,
+  })
+  .strict();
+export type RequestInteractionInput = z.infer<typeof RequestInteractionInputSchema>;
+
+/** Identical shape to `RequestInteractionInput`. */
+export const SiftRequestInteractionToolInputSchema = RequestInteractionInputSchema;
+
+export const SubmitInteractionResponseInputSchema = z
+  .object({
+    caseId: idString(),
+    expectedSequence,
+    response: InteractionResponseSchema,
+  })
+  .strict();
+export type SubmitInteractionResponseInput = z.infer<typeof SubmitInteractionResponseInputSchema>;
+
+const SetCandidateDispositionInputShape = z
+  .object({
+    caseId: idString(),
+    expectedSequence,
+    actor: discoveryActor,
+    entityId: idString(),
+    /** `unreviewed` is how undo is expressed: it puts the candidate back in the queue. */
+    disposition: z.enum(CANDIDATE_DISPOSITIONS),
+    reason: safeString(500).optional(),
+  })
+  .strict();
+
+/**
+ * Quick Pick triage. There is no agent version of this command: Keep, Pass,
+ * and Unsure are human judgments about whether a candidate is worth more of
+ * the person's attention, and an agent that could set one could quietly
+ * remove an option a person wanted.
+ *
+ * A disposition is deliberately NOT shortlist approval. Keep retains a
+ * candidate and focuses deeper investigation on it; confirming the shortlist
+ * is a separate, human-only `NextMove` with no tool attached to it at all.
+ */
+export const SetCandidateDispositionInputSchema = SetCandidateDispositionInputShape.superRefine(
+  (input, ctx) => {
+    if (input.actor !== 'human') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['actor'],
+        message: 'only a person may set a Quick Pick disposition',
+      });
+    }
+  },
+);
+export type SetCandidateDispositionInput = z.infer<typeof SetCandidateDispositionInputSchema>;
+
+const CompleteBlindSpotReviewInputShape = z
+  .object({
+    caseId: idString(),
+    expectedSequence,
+    actor: discoveryActor,
+    offeredPromptIds: z.array(idString()).min(1).max(30),
+    /** May be empty: "None of these" is a real answer, and the review is complete either way. */
+    selectedPromptIds: z.array(idString()).max(30),
+    customConcern: safeString(500).optional(),
+  })
+  .strict();
+
+export const CompleteBlindSpotReviewInputSchema = CompleteBlindSpotReviewInputShape.superRefine(
+  (input, ctx) => {
+    if (input.actor !== 'human') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['actor'],
+        message: 'only a person may complete the blind-spot review',
+      });
+    }
+
+    const offered = new Set(input.offeredPromptIds);
+    for (const selected of input.selectedPromptIds) {
+      if (!offered.has(selected)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['selectedPromptIds'],
+          message: `"${selected}" was selected but never offered`,
+        });
+      }
+    }
+  },
+);
+export type CompleteBlindSpotReviewInput = z.infer<typeof CompleteBlindSpotReviewInputSchema>;

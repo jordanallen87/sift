@@ -197,6 +197,22 @@ function scanPossibleSecret(line: string): Pick<SourceFinding, 'message' | 'exce
     // hyphen in an otherwise-random token still falls through to the
     // entropy check below.
     if (/^[a-z0-9]+(?:-[a-z0-9]+){2,}$/.test(token)) continue;
+    // A camelCase/PascalCase run of three or more whole English-shaped words
+    // is a source identifier, not a secret -- the same argument the
+    // kebab-case exception above makes, for the same class of thing. A
+    // declaration like `DiscoveryInteractionRequestedEventSchema` is 40
+    // characters with an entropy of 4.09, so it lands just past both floors
+    // while being about as far from a credential as a token can get.
+    //
+    // Kept deliberately narrow so it cannot become a hole. Every segment
+    // must be a capital followed by a run of lowercase letters, and the
+    // token may contain NO digits at all -- which is what separates a word
+    // sequence from a credential. Every real secret format this scanner
+    // exists to catch (AWS key IDs, base64 blobs, JWTs, hex digests, API
+    // keys) either carries digits, has no case structure to split on, or
+    // both; the four "still flags" cases in check-source.test.ts pin exactly
+    // that, including an all-uppercase run and a mixed-case run with digits.
+    if (/^[A-Za-z][a-z]+(?:[A-Z][a-z]+){2,}$/.test(token)) continue;
     if (shannonEntropy(token) > HIGH_ENTROPY_THRESHOLD) {
       return { message: 'High-entropy token resembling a secret', excerpt: redactExcerpt(line) };
     }

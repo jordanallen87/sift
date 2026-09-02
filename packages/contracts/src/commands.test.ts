@@ -22,6 +22,10 @@ import {
   SubmitSourceInputSchema,
   UpdateCriteriaInputSchema,
   UpsertOptionInputSchema,
+  UpdateDiscoveryInputSchema,
+  RequestInteractionInputSchema,
+  SetCandidateDispositionInputSchema,
+  CompleteBlindSpotReviewInputSchema,
 } from './commands.js';
 import { z } from 'zod';
 
@@ -932,5 +936,251 @@ describe('SiftToolResultSchema', () => {
         error: { code: 'TEAPOT', retryable: false },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('discovery commands', () => {
+  const base = { caseId: 'case-1', expectedSequence: 4 };
+
+  describe('UpdateDiscoveryInputSchema', () => {
+    it('confirms a topic the person stated', () => {
+      const result = UpdateDiscoveryInputSchema.safeParse({
+        ...base,
+        actor: 'human',
+        operations: [
+          {
+            op: 'confirm',
+            topicId: 'vehicle.occupants',
+            valueSummary: 'Two adults and two children in car seats',
+            importance: 'must_work',
+          },
+        ],
+      });
+      expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+    });
+
+    it('rejects an agent trying to confirm a must_work blocker', () => {
+      // The single most important authority rule in the product, enforced at
+      // the command boundary rather than trusted to the caller.
+      expect(
+        UpdateDiscoveryInputSchema.safeParse({
+          ...base,
+          actor: 'agent',
+          operations: [
+            {
+              op: 'confirm',
+              topicId: 'vehicle.towing',
+              valueSummary: 'Must tow 3,500 lb',
+              importance: 'must_work',
+            },
+          ],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('lets an agent propose an inference for later confirmation', () => {
+      expect(
+        UpdateDiscoveryInputSchema.safeParse({
+          ...base,
+          actor: 'agent',
+          operations: [
+            {
+              op: 'propose',
+              topicId: 'vehicle.towing',
+              valueSummary: 'Sounds like a trailer needs towing',
+              confidence: 0.6,
+            },
+          ],
+        }).success,
+      ).toBe(true);
+    });
+
+    it('rejects an agent deferring a topic, which is a person`s call', () => {
+      expect(
+        UpdateDiscoveryInputSchema.safeParse({
+          ...base,
+          actor: 'agent',
+          operations: [{ op: 'defer', topicId: 'vehicle.colour' }],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('requires a reason to mark a topic not applicable', () => {
+      expect(
+        UpdateDiscoveryInputSchema.safeParse({
+          ...base,
+          actor: 'human',
+          operations: [{ op: 'not_applicable', topicId: 'vehicle.payload' }],
+        }).success,
+      ).toBe(false);
+      expect(
+        UpdateDiscoveryInputSchema.safeParse({
+          ...base,
+          actor: 'human',
+          operations: [
+            { op: 'not_applicable', topicId: 'vehicle.payload', reason: 'Personal use only' },
+          ],
+        }).success,
+      ).toBe(true);
+    });
+
+    it('rejects an empty operation list', () => {
+      expect(
+        UpdateDiscoveryInputSchema.safeParse({ ...base, actor: 'human', operations: [] }).success,
+      ).toBe(false);
+    });
+
+    it('rejects two operations fighting over one topic', () => {
+      expect(
+        UpdateDiscoveryInputSchema.safeParse({
+          ...base,
+          actor: 'human',
+          operations: [
+            { op: 'confirm', topicId: 'vehicle.budget', valueSummary: 'Under 40k' },
+            { op: 'defer', topicId: 'vehicle.budget' },
+          ],
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe('RequestInteractionInputSchema', () => {
+    it('accepts a bounded interaction request', () => {
+      const result = RequestInteractionInputSchema.safeParse({
+        ...base,
+        interaction: {
+          id: 'interaction-1',
+          topicIds: ['vehicle.usage'],
+          kind: 'multi_select',
+          prompt: 'Which of these will it need to handle regularly?',
+          options: [
+            {
+              id: 'a',
+              label: 'School runs',
+              mapsTo: [{ topicId: 'vehicle.usage', valueSummary: 'School runs' }],
+            },
+            {
+              id: 'b',
+              label: 'Highway trips',
+              mapsTo: [{ topicId: 'vehicle.usage', valueSummary: 'Highway trips' }],
+            },
+          ],
+          escapeHatches: {
+            allowCustom: true,
+            allowNone: true,
+            allowUnsure: true,
+            allowDefer: false,
+          },
+          requestedBy: 'model',
+          createdAt: '2026-09-02T00:00:00.000Z',
+        },
+      });
+      expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+    });
+
+    it('rejects a request carrying markup instead of a prompt', () => {
+      expect(
+        RequestInteractionInputSchema.safeParse({
+          ...base,
+          interaction: {
+            id: 'interaction-1',
+            topicIds: ['vehicle.usage'],
+            kind: 'free_text',
+            prompt: '<script>alert(1)</script>',
+            options: [],
+            escapeHatches: {
+              allowCustom: true,
+              allowNone: false,
+              allowUnsure: false,
+              allowDefer: false,
+            },
+            requestedBy: 'model',
+            createdAt: '2026-09-02T00:00:00.000Z',
+          },
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe('SetCandidateDispositionInputSchema', () => {
+    it('accepts a human Keep', () => {
+      expect(
+        SetCandidateDispositionInputSchema.safeParse({
+          ...base,
+          actor: 'human',
+          entityId: 'candidate-rav4',
+          disposition: 'keep',
+        }).success,
+      ).toBe(true);
+    });
+
+    it('refuses an agent disposition outright', () => {
+      // Quick Pick is human judgment. An agent has no version of this.
+      expect(
+        SetCandidateDispositionInputSchema.safeParse({
+          ...base,
+          actor: 'agent',
+          entityId: 'candidate-rav4',
+          disposition: 'pass',
+        }).success,
+      ).toBe(false);
+    });
+
+    it('accepts an undo back to unreviewed', () => {
+      expect(
+        SetCandidateDispositionInputSchema.safeParse({
+          ...base,
+          actor: 'human',
+          entityId: 'candidate-rav4',
+          disposition: 'unreviewed',
+        }).success,
+      ).toBe(true);
+    });
+  });
+
+  describe('CompleteBlindSpotReviewInputSchema', () => {
+    it('accepts a review a person answered', () => {
+      expect(
+        CompleteBlindSpotReviewInputSchema.safeParse({
+          ...base,
+          actor: 'human',
+          offeredPromptIds: ['blindspot.child_seats', 'blindspot.garage_clearance'],
+          selectedPromptIds: ['blindspot.child_seats'],
+        }).success,
+      ).toBe(true);
+    });
+
+    it('accepts "none of these", which is a real answer', () => {
+      expect(
+        CompleteBlindSpotReviewInputSchema.safeParse({
+          ...base,
+          actor: 'human',
+          offeredPromptIds: ['blindspot.child_seats'],
+          selectedPromptIds: [],
+        }).success,
+      ).toBe(true);
+    });
+
+    it('refuses an agent completing the review on the person`s behalf', () => {
+      expect(
+        CompleteBlindSpotReviewInputSchema.safeParse({
+          ...base,
+          actor: 'agent',
+          offeredPromptIds: ['blindspot.child_seats'],
+          selectedPromptIds: [],
+        }).success,
+      ).toBe(false);
+    });
+
+    it('refuses a review that offered nothing', () => {
+      expect(
+        CompleteBlindSpotReviewInputSchema.safeParse({
+          ...base,
+          actor: 'human',
+          offeredPromptIds: [],
+          selectedPromptIds: [],
+        }).success,
+      ).toBe(false);
+    });
   });
 });

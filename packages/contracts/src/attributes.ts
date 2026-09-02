@@ -4,6 +4,7 @@
  * "Typed core with extensible domain data".
  */
 import { z } from 'zod';
+import { DATA_PROVENANCE } from './discovery.js';
 
 /**
  * pack-authoring.md requires that "arbitrary functions, class instances,
@@ -197,6 +198,17 @@ const AttributeRecordShape = z
     sourceIds: z.array(safeString(200)).max(50),
     confidence: z.number().min(0).max(1).optional(),
     status: z.enum(ATTRIBUTE_STATUSES),
+    /**
+     * Where this value came from, as distinct from `origin` (who asserted
+     * it) and `status` (how well established it is). A curated demo value
+     * and a catalog-measured value can both be `origin: 'pack'` and
+     * `status: 'asserted'`; only this field separates them, and the pane is
+     * required to label the difference.
+     *
+     * Optional so every attribute record written before this field existed
+     * still parses. An absent provenance makes no provenance claim.
+     */
+    provenance: z.enum(DATA_PROVENANCE).optional(),
     updatedAt: z.iso.datetime(),
   })
   .strict();

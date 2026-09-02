@@ -444,3 +444,53 @@ describe('CompiledDecisionPackSchema', () => {
     expect(CompiledDecisionPackSchema.safeParse(compiled).success).toBe(false);
   });
 });
+
+describe('DecisionPackManifestSchema: discovery declaration', () => {
+  const topic = {
+    id: 'vehicle.occupants',
+    label: 'Who and what has to fit',
+    question: 'Who travels in this vehicle regularly, and what has to fit with them?',
+    necessity: 'required' as const,
+    priority: 90,
+    allowedInteractions: ['multi_select' as const],
+    optionSeeds: [],
+    escapeHatches: { allowCustom: true, allowNone: false, allowUnsure: true, allowDefer: false },
+    mapsToAttributeIds: [],
+    mapsToCriterionIds: [],
+    confirmationRequired: true,
+  };
+
+  it('accepts a manifest that declares a discovery process', () => {
+    const result = DecisionPackManifestSchema.safeParse({
+      ...validManifest(),
+      discovery: { topics: [topic], blindSpots: [] },
+    });
+    expect(result.success, JSON.stringify('error' in result ? result.error : null)).toBe(true);
+  });
+
+  it('still accepts a manifest that declares none, so an existing pack keeps its compiled hash', () => {
+    expect(DecisionPackManifestSchema.safeParse(validManifest()).success).toBe(true);
+  });
+
+  it('rejects a discovery declaration whose required topic offers a skip', () => {
+    expect(
+      DecisionPackManifestSchema.safeParse({
+        ...validManifest(),
+        discovery: {
+          topics: [
+            {
+              ...topic,
+              escapeHatches: {
+                allowCustom: true,
+                allowNone: false,
+                allowUnsure: true,
+                allowDefer: true,
+              },
+            },
+          ],
+          blindSpots: [],
+        },
+      }).success,
+    ).toBe(false);
+  });
+});

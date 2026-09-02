@@ -14,6 +14,7 @@
  */
 import { z } from 'zod';
 import { AttributeDefinitionSchema, CriterionSchema } from './attributes.js';
+import { PackDiscoveryDefinitionSchema } from './discovery.js';
 
 const HTML_OR_EXECUTABLE_PATTERN = /<\/?[a-zA-Z!]|javascript:|on[a-zA-Z]+\s*=\s*["']/;
 
@@ -382,6 +383,20 @@ export const DecisionPackManifestSchema = z
     // values before hashing, so an omitted `decisionGuide` and an absent one
     // serialize identically; proven directly in compiler.test.ts.
     decisionGuide: DecisionGuideSchema.optional(),
+    /**
+     * The pack's declared discovery process: which topics must be understood
+     * before model discovery, which are conditional on the case, what
+     * bounded interactions may ask about them, and which blind spots are
+     * worth raising.
+     *
+     * Optional for the identical reason `decisionGuide` above is: a pack
+     * that declares no discovery process must still compile, pass
+     * conformance, and produce the *same* `compiledHash` it always has,
+     * because `CasePackPin` pins that hash on every stored case.
+     * `canonicalizeManifest` drops `undefined` values before hashing, so an
+     * omitted `discovery` and an absent one serialize identically.
+     */
+    discovery: PackDiscoveryDefinitionSchema.optional(),
   })
   .strict();
 export type DecisionPackManifest = z.infer<typeof DecisionPackManifestSchema>;

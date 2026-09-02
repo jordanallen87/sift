@@ -29,6 +29,14 @@ import {
   CriterionSchema,
 } from './case.js';
 import { CaseExtensionReviewDecisionSchema, CaseExtensionSchema } from './extensions.js';
+import {
+  BlindSpotReviewStateSchema,
+  DECISION_MODES,
+  CandidateDispositionRecordSchema,
+  DiscoveryTopicStateSchema,
+  InteractionRequestSchema,
+  InteractionResponseSchema,
+} from './discovery.js';
 
 const HTML_OR_EXECUTABLE_PATTERN = /<\/?[a-zA-Z!]|javascript:|on[a-zA-Z]+\s*=\s*["']/;
 
@@ -174,6 +182,15 @@ export const CaseCreatedEventSchema = CaseEventBaseSchema.extend({
     .object({
       title: safeString(300),
       pack: CasePackPinSchema,
+      /**
+       * Which presentation this case was created through. Optional: a case
+       * created before this field existed replays unchanged, and the
+       * reducer treats an absent mode as `companion` -- the canonical
+       * primary experience, and the only one that existed when those cases
+       * were written. Present when a standalone entry point created the
+       * case, because only `standalone` may defer a soft topic.
+       */
+      mode: z.enum(DECISION_MODES).optional(),
     })
     .strict(),
 }).strict();
@@ -327,6 +344,75 @@ export const ProposalProposedEventSchema = CaseEventBaseSchema.extend({
     .strict(),
 }).strict();
 
+// --- Adaptive discovery events ---
+//
+// Discovery is event-sourced like every other canonical case record, which
+// is what makes the pane's coverage indicator, ChatGPT's next-turn readback,
+// and the persona harness's turn diff three views of one truth rather than
+// three independently maintained copies of it.
+
+export const DiscoveryTopicUpdatedEventSchema = CaseEventBaseSchema.extend({
+  type: z.literal('discovery.topic_updated'),
+  payload: z
+    .object({
+      topic: DiscoveryTopicStateSchema,
+      /** What produced this change, so the Runtime Inspector can correlate a tool call to a state diff. */
+      cause: z.enum(['response', 'confirmation', 'correction', 'proposal', 'blind_spot'] as const),
+    })
+    .strict(),
+}).strict();
+
+export const DiscoveryInteractionRequestedEventSchema = CaseEventBaseSchema.extend({
+  type: z.literal('discovery.interaction_requested'),
+  payload: z
+    .object({
+      interaction: InteractionRequestSchema,
+    })
+    .strict(),
+}).strict();
+
+export const DiscoveryInteractionAnsweredEventSchema = CaseEventBaseSchema.extend({
+  type: z.literal('discovery.interaction_answered'),
+  payload: z
+    .object({
+      response: InteractionResponseSchema,
+    })
+    .strict(),
+}).strict();
+
+export const DiscoveryBlindSpotReviewedEventSchema = CaseEventBaseSchema.extend({
+  type: z.literal('discovery.blind_spot_reviewed'),
+  payload: z
+    .object({
+      review: BlindSpotReviewStateSchema,
+    })
+    .strict(),
+}).strict();
+
+/**
+ * A Quick Pick judgment. Carries the record including what it replaced, so
+ * an undo is a normal forward event rather than a deletion -- the history of
+ * what a person considered and rejected stays intact, which is what "Pass
+ * preserves history and may be undone" requires.
+ */
+export const CandidateDispositionSetEventSchema = CaseEventBaseSchema.extend({
+  type: z.literal('candidate.disposition_set'),
+  payload: z
+    .object({
+      disposition: CandidateDispositionRecordSchema,
+    })
+    .strict(),
+}).strict();
+
+export const DiscoveryCaseEventSchema = z.discriminatedUnion('type', [
+  DiscoveryTopicUpdatedEventSchema,
+  DiscoveryInteractionRequestedEventSchema,
+  DiscoveryInteractionAnsweredEventSchema,
+  DiscoveryBlindSpotReviewedEventSchema,
+  CandidateDispositionSetEventSchema,
+]);
+export type DiscoveryCaseEvent = z.infer<typeof DiscoveryCaseEventSchema>;
+
 export const CaseEventSchema = z.discriminatedUnion('type', [
   CaseCreatedEventSchema,
   CasePackSelectedEventSchema,
@@ -342,5 +428,10 @@ export const CaseEventSchema = z.discriminatedUnion('type', [
   RecommendationReadyEventSchema,
   ProposalProposedEventSchema,
   ProposalReviewedEventSchema,
+  DiscoveryTopicUpdatedEventSchema,
+  DiscoveryInteractionRequestedEventSchema,
+  DiscoveryInteractionAnsweredEventSchema,
+  DiscoveryBlindSpotReviewedEventSchema,
+  CandidateDispositionSetEventSchema,
 ]);
 export type CaseEvent = z.infer<typeof CaseEventSchema>;
