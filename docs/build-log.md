@@ -5880,3 +5880,27 @@ The new plan fetch made the browser log a failed resource on nearly every case l
 ### Verification
 
 `pnpm test:persona`: three personas, all hard gates, all diagnostics, contrast check green. 3947 unit tests. 92 Playwright tests. 16 screenshot baselines updated for the two intentional shell additions, inspected at 390px before acceptance — that inspection is what found the contradiction above.
+
+## 2026-09-02 — adaptive discovery had no input path in the running product
+
+`DiscoveryInteraction` was built and unit-tested. `requestInteraction` and `submitInteractionResponse` were implemented, routed, and covered. The dock rendered the next question as a button. Clicking it switched views.
+
+**A person could not answer a question in the pane.** The whole adaptive discovery experience — fourteen topics, conditional branches, bounded interaction grammar — had no way in. The persona harness never caught it because it calls commands directly; every unit test passed because each piece worked alone.
+
+### What was added
+
+`apps/web/src/app/build-interaction.ts` turns a pack's declared topic into the interaction a person answers. Everything comes from the compiled pack: the prompt is the topic's own question, the options its declared seeds, the escapes the ones it allows. There is nowhere for a model to inject a prompt, an option, or an escape a topic did not declare — which is what makes the bounded grammar bounded rather than documented. `requestedBy: 'core'`, because the deterministic core assembled it whoever asked.
+
+`handleDockAction` now answers an `answer_topic` or `confirm_inference` move in place instead of navigating. `DiscoveryInteraction` renders whenever `discovery.pendingInteraction` is non-null — appearing and disappearing purely from case state, with no local flag a reload could disagree with.
+
+### A bare `.catch` hid the bug for an entire debugging session
+
+The first wiring emitted `helpText` on each option; `InteractionOptionSchema` uses `detail` and is `.strict()`, so it rejected the request. The client threw before any HTTP call and `.catch(() => undefined)` swallowed it.
+
+The symptom was a button that did nothing, with no console error, no failed request, and no page exception — the hardest possible shape to diagnose. Finding it took instrumenting the handler twice and printing the Zod tree.
+
+Both halves are fixed: the field name, and the swallow. A failed interaction now surfaces through `ErrorState` like every other command failure.
+
+### Proof
+
+`tests/e2e/adaptive-vehicle-journey.spec.ts` now clicks the dock's primary action, asserts the `requestInteraction` POST is made and succeeds, asserts the pack's own question renders, answers it, and polls the API until the case has genuinely gained a topic — then asserts the question just answered is no longer the next one. 96 Playwright tests, 3950 unit tests.

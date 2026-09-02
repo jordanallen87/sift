@@ -206,7 +206,7 @@ import { DemoLauncher } from '../components/DemoLauncher.js';
 import { VehicleCatalogFlow } from '../components/VehicleCatalogFlow.js';
 import { DisclosureSection } from '../components/DisclosureSection.js';
 import { RecommendationHero } from '../components/RecommendationHero.js';
-import type { CandidateDisposition, NextMove } from '@sift/contracts';
+import type { CandidateDisposition, InteractionResponse, NextMove } from '@sift/contracts';
 import type { ApprovalCardReview } from '../components/ApprovalCard.js';
 import { deriveWorkspaceStatus } from '../components/workspace-status.js';
 import { ReadinessPanel } from '../components/ReadinessPanel.js';
@@ -219,6 +219,8 @@ import {
   type WorkInFlight,
 } from '../components/DecisionOrientationShell.js';
 import { summarizeRunPlanResponse } from './run-plan-summary.js';
+import { buildInteractionForTopic } from './build-interaction.js';
+import { DiscoveryInteraction } from '../components/DiscoveryInteraction.js';
 import { ContextActionDock } from '../components/ContextActionDock.js';
 import { buildDecisionOrientation } from '../components/decision-orientation.js';
 import { deriveDecisionProfile } from '../components/decision-profile.js';
@@ -499,6 +501,14 @@ export function App() {
   const [proposalReviewError, setProposalReviewError] = useState<string | null>(null);
   const [dispositionPendingId, setDispositionPendingId] = useState<string | null>(null);
   const [dispositionError, setDispositionError] = useState<string | null>(null);
+  /**
+   * A failed discovery interaction, surfaced rather than swallowed.
+   *
+   * The bare `.catch(() => undefined)` this replaces hid a schema rejection
+   * for an entire debugging session: the button did nothing, the console
+   * said nothing, and the only symptom was a question that never appeared.
+   */
+  const [interactionError, setInteractionError] = useState<string | null>(null);
   const {
     snapshot,
     events,
@@ -1541,8 +1551,87 @@ export function App() {
    * perform it either: it brings the person to the view where the real,
    * human-only control lives. Nothing here can approve anything.
    */
+  /**
+   * Puts the next question on screen.
+   *
+   * Everything in the request is read from the compiled pack -- the prompt
+   * is the topic's own question, the options its declared seeds, the
+   * escapes the ones it allows. Nothing is generated here.
+   *
+   * This closed the gap that made adaptive discovery unanswerable in the
+   * running product: the dock rendered the next question as a button that
+   * only switched views, so a person could not answer anything in the pane.
+   */
+  const handleAskTopic = useCallback(
+    (topicId: string) => {
+      const current = snapshotRef.current;
+      if (current === null || activePack === null) return;
+      const request = buildInteractionForTopic({
+        pack: activePack,
+        topicId,
+        id: `interaction-${topicId}-${String(current.eventSequence)}`,
+        now: new Date().toISOString(),
+      });
+      if (request === null) return;
+      setInteractionError(null);
+      commands
+        .requestInteraction({
+          caseId: current.id,
+          expectedSequence: Math.max(current.eventSequence, lastAcceptedSequenceRef.current),
+          interaction: request,
+        })
+        .then((receipt) => {
+          lastAcceptedSequenceRef.current = Math.max(
+            lastAcceptedSequenceRef.current,
+            receipt.acceptedSequence,
+          );
+        })
+        .catch((error: unknown) => {
+          // Surfaced, not swallowed. A bare `.catch(() => undefined)` here
+          // hid a schema rejection for an entire debugging session: the
+          // button did nothing and the console said nothing.
+          setInteractionError(
+            error instanceof Error
+              ? `Sift could not open that question: ${error.message}`
+              : 'Sift could not open that question.',
+          );
+        });
+    },
+    [activePack, commands],
+  );
+
+  const handleInteractionResponse = useCallback(
+    (response: InteractionResponse) => {
+      const current = snapshotRef.current;
+      if (current === null) return;
+      commands
+        .submitInteractionResponse({
+          caseId: current.id,
+          expectedSequence: Math.max(current.eventSequence, lastAcceptedSequenceRef.current),
+          response,
+        })
+        .then((receipt) => {
+          lastAcceptedSequenceRef.current = Math.max(
+            lastAcceptedSequenceRef.current,
+            receipt.acceptedSequence,
+          );
+        })
+        .catch(() => undefined);
+    },
+    [commands],
+  );
+
   const handleDockAction = useCallback(
     (move: NextMove) => {
+      // A question is answered in place, not by navigating somewhere.
+      if (
+        (move.kind === 'answer_topic' || move.kind === 'confirm_inference') &&
+        move.topicId !== undefined
+      ) {
+        handleAskTopic(move.topicId);
+        return;
+      }
+
       const viewForMove: Partial<Record<string, WorkspaceViewMode>> = {
         quick_pick: 'quick_pick',
         compare_retained: 'compare',
@@ -1557,7 +1646,7 @@ export function App() {
         handleRequestInvestigation();
       }
     },
-    [handleViewModeChange, handleRequestInvestigation],
+    [handleViewModeChange, handleRequestInvestigation, handleAskTopic],
   );
 
   const handleQuickPickKeep = useCallback(
@@ -1877,6 +1966,20 @@ export function App() {
         Found by rendering it and looking, not by a unit test -- every
         individual field was correct in isolation.
       */}
+      {/*
+        The pending interaction, rendered wherever the case has one.
+        `submitInteractionResponse` clears it, so this appears and
+        disappears purely from case state -- no local "is a question open"
+        flag that a reload could disagree with.
+      */}
+      {snapshot?.discovery?.pendingInteraction != null && (
+        <DiscoveryInteraction
+          request={snapshot.discovery.pendingInteraction}
+          onRespond={handleInteractionResponse}
+          layout={layout}
+        />
+      )}
+
       {decisionOrientation !== null && snapshot?.discovery !== undefined && (
         <DecisionOrientationShell
           orientation={decisionOrientation}
@@ -2150,6 +2253,7 @@ export function App() {
       )}
 
       {dispositionError ? <ErrorState message={dispositionError} /> : null}
+      {interactionError ? <ErrorState message={interactionError} /> : null}
 
       <FindingsSheet
         open={findingsSheetOpen}

@@ -94,6 +94,68 @@ test.describe('the adaptive vehicle journey', () => {
     }
   });
 
+  test('a person can answer a discovery question in the pane', async ({ page }) => {
+    // The gap this closes: adaptive discovery had no input path at all in
+    // the running product. `DiscoveryInteraction` was built and tested,
+    // both commands were implemented, and the dock rendered the next
+    // question as a button that only switched views. The persona harness
+    // never caught it, because it calls commands directly.
+    const guard = installConsoleGuard(page);
+    const sift = new SiftPage(page);
+    await sift.open();
+    const launched = await sift.launchCarPurchase();
+
+    const dock = page.getByTestId('context-action-dock');
+    await expect(dock).toBeVisible();
+    const askButton = page.getByTestId('dock-action-primary');
+    await expect(askButton).toBeVisible();
+    const questionLabel = await askButton.textContent();
+    const interactionPost = page.waitForResponse(
+      (response) =>
+        response.url().includes('/commands/requestInteraction') &&
+        response.request().method() === 'POST',
+      { timeout: 15_000 },
+    );
+    await askButton.click();
+    const posted = await interactionPost;
+    expect(posted.ok(), await posted.text()).toBe(true);
+
+    // The question appears, and it is the pack's own question rather than
+    // anything generated.
+    const interaction = page.getByTestId('discovery-interaction');
+    await expect(interaction).toBeVisible();
+    await expect(page.getByTestId('interaction-prompt')).not.toBeEmpty();
+
+    // Answering it moves the case, not just the screen.
+    const before = await page.request.get(`/api/cases/${launched.caseId}`);
+    const beforeBody = (await before.json()) as { discovery?: { topics?: unknown[] } };
+    const beforeCount = beforeBody.discovery?.topics?.length ?? 0;
+
+    const firstOption = interaction.locator('[data-testid^="interaction-option-"]').first();
+    if (await firstOption.isVisible()) {
+      await firstOption.click();
+      await page.getByTestId('interaction-submit').click();
+    } else {
+      await page.getByTestId('interaction-custom').fill('Personal or family use');
+      await page.getByTestId('interaction-submit').click();
+    }
+
+    await expect
+      .poll(async () => {
+        const after = await page.request.get(`/api/cases/${launched.caseId}`);
+        const body = (await after.json()) as { discovery?: { topics?: unknown[] } };
+        return body.discovery?.topics?.length ?? 0;
+      })
+      .toBeGreaterThan(beforeCount);
+
+    // And the question the person just answered is no longer the next one.
+    await expect(page.getByTestId('orientation-next-step')).not.toHaveText(
+      String(questionLabel ?? ''),
+    );
+
+    guard.assertClean();
+  });
+
   test('Quick Pick judgments survive a reload and are readable back', async ({ page }) => {
     // The claim the whole bidirectional story rests on. Before Quick Pick
     // was made canonical, Pass and Maybe moved a local counter: the
