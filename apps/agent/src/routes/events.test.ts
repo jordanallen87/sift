@@ -57,6 +57,15 @@ describe('GET /api/cases/:caseId/events?mode=poll (polling fallback)', () => {
       .send({ caseId, packId: 'car-purchase', expectedSequence });
 
     const all = await request(harness.app).get(`/api/cases/${caseId}/events?mode=poll`);
+    // Assert the response actually succeeded before indexing into its body.
+    // This test has flaked twice under `pnpm verify`'s parallel workers, and
+    // both times the only evidence was `TypeError: Cannot read properties of
+    // undefined (reading 'length')` -- which says nothing about WHY the poll
+    // came back without an `events` array. Checking the status first turns
+    // the next occurrence into a legible failure (a status and an error
+    // body) instead of a dead end. Strengthens the test; changes nothing
+    // about what it proves on the passing path.
+    expect(all.status, JSON.stringify(all.body)).toBe(200);
     expect(asJson<PollResponse>(all.body).events.length).toBe(2);
 
     const afterFirst = await request(harness.app).get(

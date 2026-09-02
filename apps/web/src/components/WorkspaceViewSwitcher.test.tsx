@@ -464,3 +464,56 @@ describe('WorkspaceViewSwitcher scoreboard routing', () => {
     expect(screen.queryByTestId('option-rank-candidate-crv')).toBeNull();
   });
 });
+
+describe('"Best Match" shows the best match', () => {
+  // The tab is labelled "Best Match" and the card is headed "Best Match".
+  // Until the deterministic scoreboard existed, the queue walked the case's
+  // insertion order, so that label described nothing. It became an active
+  // contradiction the moment `CaseInsightsPanel` began stating which option
+  // scores highest directly above a card showing a different one.
+  const scoreboard = buildWorkspaceScoreboard(buildCarCaseState());
+
+  function quickPickProps(options: EntityRecord[]) {
+    return buildProps({
+      mode: 'quick_pick',
+      options,
+      attributeDefinitions: CAR_DEFINITIONS,
+      criteria: CAR_CRITERIA,
+      presentation: CAR_PRESENTATION,
+      scoreboard,
+    });
+  }
+
+  it('starts the queue at the option the board actually ranks first', () => {
+    const leaderLabel = scoreboard.board.options[0]?.optionLabel;
+    expect(leaderLabel).toBeDefined();
+    if (leaderLabel === undefined) return;
+
+    // Deliberately fed in an order that puts the leader last, so passing
+    // could not be an accident of the fixture's own ordering.
+    const reversed = [...CAR_OPTIONS].reverse();
+    render(<WorkspaceViewSwitcher {...quickPickProps(reversed)} />);
+
+    expect(screen.getByRole('heading', { name: leaderLabel })).toBeInTheDocument();
+  });
+
+  it('leaves the caller’s order alone when there is no board to rank by', () => {
+    const reversed = [...CAR_OPTIONS].reverse();
+    const firstLabel = reversed[0]?.label;
+    expect(firstLabel).toBeDefined();
+    if (firstLabel === undefined) return;
+    render(
+      <WorkspaceViewSwitcher
+        {...buildProps({
+          mode: 'quick_pick',
+          options: reversed,
+          attributeDefinitions: CAR_DEFINITIONS,
+          criteria: CAR_CRITERIA,
+          presentation: CAR_PRESENTATION,
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: firstLabel })).toBeInTheDocument();
+  });
+});

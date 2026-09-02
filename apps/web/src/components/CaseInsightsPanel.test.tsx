@@ -95,7 +95,13 @@ describe('CaseInsightsPanel', () => {
       'data-severity',
       'attention',
     );
-    expect(screen.getByTestId('case-insight-leader')).toHaveAttribute('data-severity', 'info');
+    // Retargeted, not weakened. This assertion named `leader` specifically,
+    // and the energy fixture's top two are close enough that the engine now
+    // suppresses `leader` in favour of `close_call` -- announcing a winner
+    // and a toss-up in the same panel was the contradiction that change
+    // removed. The subject here is that an `info` insight renders distinctly
+    // from an `attention` one, which `close_call` carries just as well.
+    expect(screen.getByTestId('case-insight-close_call')).toHaveAttribute('data-severity', 'info');
     expect(screen.getByTestId('case-insight-non_discriminating')).toHaveAttribute(
       'data-severity',
       'info',

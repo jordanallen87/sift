@@ -1436,3 +1436,105 @@ describe('coverage_gap describes only options that were actually scored', () => 
     expect(deriveInsights(board).some((insight) => insight.kind === 'coverage_gap')).toBe(false);
   });
 });
+
+describe('a near-tie gets one statement, not two contradictory ones', () => {
+  const definitions = [definition('a.x'), definition('a.y')];
+
+  function nearTie() {
+    return scoreCase({
+      options: [
+        option('a', { 'a.x': { type: 'number', value: 100 }, 'a.y': { type: 'number', value: 0 } }),
+        option('b', { 'a.x': { type: 'number', value: 0 }, 'a.y': { type: 'number', value: 100 } }),
+      ],
+      criteria: [
+        criterion('c.x', { weight: 51, appliesToAttribute: 'a.x' }),
+        criterion('c.y', { weight: 49, appliesToAttribute: 'a.y' }),
+      ],
+      definitions,
+    });
+  }
+
+  it('does not announce a winner and a toss-up at the same time', () => {
+    // Caught on the rendered energy board: "Switch to a different rate plan
+    // scores highest ... leads Monitor for one more billing cycle by 0%"
+    // sat directly above "close enough to be a genuine toss-up". Both
+    // cannot be the honest summary, and a lead that rounds to zero is not
+    // a lead.
+    const insights = deriveInsights(nearTie());
+    expect(insights.some((insight) => insight.kind === 'close_call')).toBe(true);
+    expect(insights.some((insight) => insight.kind === 'leader')).toBe(false);
+  });
+
+  it('never states a separation of 0%', () => {
+    const closeCall = deriveInsights(nearTie()).find((insight) => insight.kind === 'close_call');
+    expect(closeCall?.detail).not.toContain('0%');
+  });
+
+  it('still names a leader when the lead is real', () => {
+    const board = scoreCase({
+      options: [
+        option('clear', {
+          'a.x': { type: 'number', value: 100 },
+          'a.y': { type: 'number', value: 100 },
+        }),
+        option('behind', {
+          'a.x': { type: 'number', value: 0 },
+          'a.y': { type: 'number', value: 0 },
+        }),
+      ],
+      criteria: [
+        criterion('c.x', { appliesToAttribute: 'a.x' }),
+        criterion('c.y', { appliesToAttribute: 'a.y' }),
+      ],
+      definitions,
+    });
+
+    const insights = deriveInsights(board);
+    expect(insights.some((insight) => insight.kind === 'leader')).toBe(true);
+    expect(insights.some((insight) => insight.kind === 'close_call')).toBe(false);
+  });
+});
+
+describe('coverage_gap does not recite the whole field back', () => {
+  it('says "every option" rather than naming all of them', () => {
+    // Naming four full vehicle labels to state something true of the whole
+    // case produced the longest block on a 390px pane, and a reader
+    // scanning that list for the ones singled out finds there are none.
+    const board = scoreCase({
+      options: [
+        option('a', { 'a.x': { type: 'number', value: 9 }, 'a.y': null }),
+        option('b', { 'a.x': { type: 'number', value: 1 }, 'a.y': null }),
+        option('c', { 'a.x': { type: 'number', value: 5 }, 'a.y': null }),
+      ],
+      criteria: [
+        criterion('c.x', { appliesToAttribute: 'a.x' }),
+        criterion('c.y', { appliesToAttribute: 'a.y' }),
+      ],
+      definitions: [definition('a.x'), definition('a.y')],
+    });
+
+    const gap = deriveInsights(board).find((insight) => insight.kind === 'coverage_gap');
+    expect(gap?.detail).toContain('Every option is');
+    expect(gap?.detail).not.toContain('A, B, C');
+  });
+
+  it('still names them when only some are affected', () => {
+    const board = scoreCase({
+      options: [
+        option('thin', { 'a.x': { type: 'number', value: 9 }, 'a.y': null }),
+        option('full', {
+          'a.x': { type: 'number', value: 1 },
+          'a.y': { type: 'number', value: 1 },
+        }),
+      ],
+      criteria: [
+        criterion('c.x', { appliesToAttribute: 'a.x' }),
+        criterion('c.y', { appliesToAttribute: 'a.y' }),
+      ],
+      definitions: [definition('a.x'), definition('a.y')],
+    });
+
+    const gap = deriveInsights(board).find((insight) => insight.kind === 'coverage_gap');
+    expect(gap?.detail).toContain('THIN');
+  });
+});

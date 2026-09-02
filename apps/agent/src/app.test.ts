@@ -121,7 +121,11 @@ describe('buildApp', () => {
 
     const response = await request(app).get('/does-not-exist');
 
-    expect(response.status).toBe(404);
+    // Body included in the failure message: this assertion has flaked under
+    // `pnpm verify`'s parallel workers with a bare `expected 400 to be 404`,
+    // which is a dead end -- nothing before routing should be able to reject
+    // an unknown path with a 400 at all.
+    expect(response.status, JSON.stringify(response.body)).toBe(404);
   });
 
   it('wires GET /api/packs (empty registry -> empty list)', async () => {

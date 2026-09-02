@@ -948,23 +948,32 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
   // Leading a field of one says nothing at all, so it is not said.
   if (leader !== undefined && runnerUp !== undefined) {
     const gap = leader.total! - runnerUp.total!;
-    insights.push({
-      id: 'insight.leader',
-      kind: 'leader',
-      severity: 'info',
-      headline: `${leader.optionLabel} scores highest against what you said matters.`,
-      detail: `${leader.optionLabel} leads ${runnerUp.optionLabel} by ${percent(gap)}, measured across ${percent(leader.coverage)} of the weight you have assigned.`,
-      optionIds: [leader.optionId, runnerUp.optionId],
-      criterionIds: [],
-    });
 
+    // A near-tie gets ONE statement, not two contradictory ones. Emitting
+    // both produced exactly that on the energy board: "Switch to a
+    // different rate plan scores highest ... leads Monitor for one more
+    // billing cycle by 0%" sitting directly above "close enough to be a
+    // genuine toss-up". Announcing a winner and announcing there is no
+    // meaningful winner cannot both be the honest summary, and a lead that
+    // rounds to zero is not a lead. `close_call` names both options in its
+    // own headline, so nothing is lost by letting it speak alone.
     if (gap <= CLOSE_CALL_THRESHOLD) {
       insights.push({
         id: 'insight.close_call',
         kind: 'close_call',
         severity: 'info',
         headline: `${leader.optionLabel} and ${runnerUp.optionLabel} are close enough to be a genuine toss-up.`,
-        detail: `Only ${percent(gap)} separates them, which is within the range where a preference you have not recorded yet would decide it.`,
+        detail: `Less than ${percent(Math.max(gap, 0.01))} separates them, which is within the range where a preference you have not recorded yet would decide it.`,
+        optionIds: [leader.optionId, runnerUp.optionId],
+        criterionIds: [],
+      });
+    } else {
+      insights.push({
+        id: 'insight.leader',
+        kind: 'leader',
+        severity: 'info',
+        headline: `${leader.optionLabel} scores highest against what you said matters.`,
+        detail: `${leader.optionLabel} leads ${runnerUp.optionLabel} by ${percent(gap)}, measured across ${percent(leader.coverage)} of the weight you have assigned.`,
         optionIds: [leader.optionId, runnerUp.optionId],
         criterionIds: [],
       });
@@ -1059,9 +1068,8 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
   // rule 1 exists to prevent, made by the insight meant to warn about it.
   // That option's real state is already stated where it belongs: it is
   // unranked, and the workspace says so on its own card.
-  const thin = board.options.filter(
-    (option) => option.total !== null && option.coverage < COVERAGE_ATTENTION_THRESHOLD,
-  );
+  const scoredOptions = board.options.filter((option) => option.total !== null);
+  const thin = scoredOptions.filter((option) => option.coverage < COVERAGE_ATTENTION_THRESHOLD);
   if (thin.length > 0) {
     const worst = Math.min(...thin.map((option) => option.coverage));
     insights.push({
@@ -1069,7 +1077,15 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
       kind: 'coverage_gap',
       severity: 'attention',
       headline: `Some of what you said matters has not been established yet.`,
-      detail: `${thin.map((option) => option.optionLabel).join(', ')} ${thin.length === 1 ? 'is' : 'are'} scored on as little as ${percent(worst)} of the weight you assigned. The missing factors are not counted against them — they are simply not counted.`,
+      // Naming every option when every option is affected produced the
+      // longest, least useful block on the narrow pane -- four full vehicle
+      // labels to say something true of the whole case. A reader scanning
+      // that list is looking for the ones singled out, and there are none.
+      detail: `${
+        thin.length === scoredOptions.length && thin.length > 1
+          ? 'Every option is'
+          : `${thin.map((option) => option.optionLabel).join(', ')} ${thin.length === 1 ? 'is' : 'are'}`
+      } scored on as little as ${percent(worst)} of the weight you assigned. The missing factors are not counted against them — they are simply not counted.`,
       optionIds: thin.map((option) => option.optionId),
       criterionIds: [],
     });

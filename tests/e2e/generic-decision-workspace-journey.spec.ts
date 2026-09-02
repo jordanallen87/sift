@@ -202,18 +202,33 @@ test.describe('generic decision workspace -- §61 journey', () => {
     await expect(page.getByTestId('workspace-view-content-quick_pick')).toBeVisible();
     await expect(page.getByTestId('quick-pick-view')).toBeVisible();
 
-    // --- §61 step 6: "Change shortlist state." Quick Pick's order matches
-    // `CaseState.entities` order, so position 0 is the first seeded
-    // candidate; `quick-pick-shortlist` calls through the same
-    // `focusOption` command a Compare-view focus click uses (App.tsx's
-    // `handleQuickPickShortlist`), a real persisted effect this proves via
-    // `getCaseState`, not merely local UI state. ---
-    await expect(page.getByTestId('quick-pick-card-candidate-rav4')).toBeVisible();
+    // --- §61 step 6: "Change shortlist state." `quick-pick-shortlist` calls
+    // through the same `focusOption` command a Compare-view focus click uses
+    // (App.tsx's `handleQuickPickShortlist`), a real persisted effect this
+    // proves via `getCaseState`, not merely local UI state.
+    //
+    // This block used to assert `quick-pick-card-candidate-rav4` on the
+    // stated assumption that "Quick Pick's order matches `CaseState.entities`
+    // order, so position 0 is the first seeded candidate". That assumption is
+    // no longer true and should not be: the tab is labelled "Best Match", and
+    // it now genuinely walks the deterministic ranking rather than insertion
+    // order. Retargeted rather than re-pinned to whichever option happens to
+    // rank first, which would only move the same brittleness. Reading the id
+    // off the card actually on screen and asserting the SAME id persisted is
+    // a strictly stronger proof of this step's real subject -- that the
+    // button shortlists the option the person is looking at. ---
+    const quickPickCard = page.locator('[data-testid^="quick-pick-card-"]').first();
+    await expect(quickPickCard).toBeVisible();
+    const shownOptionId = (await quickPickCard.getAttribute('data-testid'))?.replace(
+      'quick-pick-card-',
+      '',
+    );
+    expect(shownOptionId).toBeTruthy();
     await expect(page.getByTestId('quick-pick-shortlist')).toBeVisible();
     await page.getByTestId('quick-pick-shortlist').click();
     await expect
       .poll(async () => (await getCaseState(page.request, caseId))['selectedOptionId'])
-      .toBe('candidate-rav4');
+      .toBe(shownOptionId);
 
     // --- §61 step 7: "Open Compare." A real visible-control tab switch --
     // the exact same `setView` command a `sift_set_view` WebMCP call would

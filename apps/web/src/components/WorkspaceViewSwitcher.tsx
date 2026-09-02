@@ -112,6 +112,7 @@
  * so `compareVisibleAttributeIds`/`comparePinnedAttributeIds` read the
  * top-level fields directly, unlike `compareOptionIds`.
  */
+import { useMemo } from 'react';
 import { WORKSPACE_VIEW_MODES, type WorkspaceViewMode } from '@sift/contracts';
 import type {
   AttributeDefinition,
@@ -197,6 +198,43 @@ const VIEW_TAB_LABEL: Record<WorkspaceViewMode, string> = {
   board: 'Board',
 };
 
+/**
+ * Quick Pick's tab is labelled **"Best Match"**, and until the deterministic
+ * scoreboard existed that label described nothing: the queue walked the
+ * case's own insertion order, so "Best Match — 1 of 4" showed whichever
+ * option happened to be added first.
+ *
+ * That was survivable while nothing else on the page ranked anything. It
+ * stopped being survivable the moment `CaseInsightsPanel` began saying "the
+ * Outback scores highest against what you said matters" directly above a
+ * card headed "Best Match" showing the RAV4 — the workspace contradicting
+ * itself about the one question it exists to answer, which is precisely the
+ * drift ADR 0012 argues against.
+ *
+ * So the queue is ordered by the board when there is one. Options the board
+ * could not rank keep their relative order and go last: an unscored option
+ * is not worse, it is unmeasured (scoring rule 1), and it still belongs in
+ * a triage queue whose whole purpose is deciding what to look at next.
+ *
+ * Falls back to the caller's order verbatim when no scoreboard is supplied
+ * or nothing is rankable, so an unranked case behaves exactly as it did.
+ */
+function orderByRank(
+  options: EntityRecord[],
+  scoreboard: WorkspaceScoreboard | undefined,
+): EntityRecord[] {
+  if (scoreboard?.isRankable !== true) return options;
+  const rank = scoreboard.rankByOptionId;
+  return [...options].sort((a, b) => {
+    const rankA = rank.get(a.id);
+    const rankB = rank.get(b.id);
+    if (rankA === undefined && rankB === undefined) return 0;
+    if (rankA === undefined) return 1;
+    if (rankB === undefined) return -1;
+    return rankA - rankB;
+  });
+}
+
 export function WorkspaceViewSwitcher({
   mode,
   onModeChange,
@@ -220,6 +258,8 @@ export function WorkspaceViewSwitcher({
   boardPlacement,
   onMoveOption,
 }: WorkspaceViewSwitcherProps) {
+  const rankedForQuickPick = useMemo(() => orderByRank(options, scoreboard), [options, scoreboard]);
+
   const widthMode = useWidthMode();
 
   return (
@@ -248,7 +288,7 @@ export function WorkspaceViewSwitcher({
 
         <TabsContent data-testid="workspace-view-content-quick_pick" value="quick_pick">
           <QuickPickView
-            options={options}
+            options={rankedForQuickPick}
             attributeDefinitions={attributeDefinitions}
             position={quickPickPosition}
             onPass={onQuickPickPass}
