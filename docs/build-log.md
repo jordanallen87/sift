@@ -5904,3 +5904,13 @@ Both halves are fixed: the field name, and the swallow. A failed interaction now
 ### Proof
 
 `tests/e2e/adaptive-vehicle-journey.spec.ts` now clicks the dock's primary action, asserts the `requestInteraction` POST is made and succeeds, asserts the pack's own question renders, answers it, and polls the API until the case has genuinely gained a topic — then asserts the question just answered is no longer the next one. 96 Playwright tests, 3950 unit tests.
+
+## 2026-09-02 — what could not be ranked, said out loud
+
+`packages/core`'s scorer produces warnings like "Advertised price could not be ranked: values use different currencies". ChatGPT could read them through `sift_get_ranking`. The person looking at the ranking could not.
+
+That is an asymmetry in exactly the wrong direction. A criterion that could not be scored is a limit on the answer being shown, and the person reading the answer is the one who needs it.
+
+They now appear in `WorkspaceAlertBanner`. The derivation and its cap moved into `apps/web/src/app/scoring-alerts.ts` so both are testable without mounting the workspace: two warnings shown in full, the rest counted. The cap is a real trade — the banner sits above the recommendation and an uncapped list would push the answer off the screen — and the count is what keeps it honest, because dropping the remainder silently would be the product hiding its own limits.
+
+Warnings pass through in the scorer's own words rather than being paraphrased, so the wording lives in one place.

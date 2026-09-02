@@ -219,6 +219,7 @@ import {
   type WorkInFlight,
 } from '../components/DecisionOrientationShell.js';
 import { summarizeRunPlanResponse } from './run-plan-summary.js';
+import { buildScoringAlerts } from './scoring-alerts.js';
 import { buildInteractionForTopic } from './build-interaction.js';
 import { DiscoveryInteraction } from '../components/DiscoveryInteraction.js';
 import { ContextActionDock } from '../components/ContextActionDock.js';
@@ -1909,6 +1910,10 @@ export function App() {
       message: 'Connection lost. Sift will keep trying to reconnect.',
     });
   }
+  // Scoring warnings, which say what could *not* be ranked and why.
+  // Derivation and its cap live in `scoring-alerts.ts` so they are testable
+  // without mounting the workspace.
+  alertItems.push(...buildScoringAlerts(scoreboard.board.warnings));
 
   return (
     <div
