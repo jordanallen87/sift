@@ -28,7 +28,7 @@ import { assertNoHorizontalOverflow } from './helpers/layout-assertions.js';
  */
 const NARROW_WIDTHS = [390, 430, 480] as const;
 
-async function orientation(page: Page) {
+function orientation(page: Page) {
   return {
     shell: page.getByTestId('decision-orientation-shell'),
     // The decision is named by the app bar, not repeated by the shell
@@ -49,7 +49,7 @@ test.describe('the adaptive vehicle journey', () => {
     await sift.open();
     await sift.launchCarPurchase();
 
-    const frame = await orientation(page);
+    const frame = orientation(page);
 
     // The frame exists on screen, not merely in the component tree.
     await expect(frame.shell).toBeVisible();
@@ -74,7 +74,7 @@ test.describe('the adaptive vehicle journey', () => {
     await sift.open();
     await sift.launchCarPurchase();
 
-    const frame = await orientation(page);
+    const frame = orientation(page);
     const phaseText = (await frame.phase.textContent()) ?? '';
 
     if (await frame.coverage.isVisible()) {
@@ -166,7 +166,7 @@ test.describe('the adaptive vehicle journey', () => {
       await sift.open();
       await sift.launchCarPurchase();
 
-      const frame = await orientation(page);
+      const frame = orientation(page);
       await expect(frame.shell).toBeVisible();
       await assertNoHorizontalOverflow(page);
 
@@ -192,7 +192,7 @@ test.describe('the adaptive vehicle journey', () => {
     await sift.open();
     await sift.launchCarPurchase();
 
-    const frame = await orientation(page);
+    const frame = orientation(page);
     await expect(frame.shell).toBeVisible();
     await expect(frame.nextStep).not.toBeEmpty();
     await assertNoHorizontalOverflow(page);
