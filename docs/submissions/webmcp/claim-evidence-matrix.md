@@ -53,12 +53,13 @@ Legend for **Proof**: `automated` = a test fails if the claim stops being true. 
 
 | # | Non-claim | Why |
 |---|---|---|
-| E1 | "The experience scores well on usability." | `pnpm test:persona` reports `scored: false` until a diagnostic pass supplies scores with cited turn evidence. No such pass has been run, and the harness refuses to default a number. |
+| E1 | "The experience scores well on usability." | A diagnostic pass has been run (`packages/scenarios/fixtures/personas/diagnostics.ts`, Claude Opus 5, 2026-09-02) and every score cites a quote from the turn artifact it scores — `DiagnosticScoreSchema` refuses one that does not. It is still **one model reading a text record of a journey**: not a user study, and not evidence that real people find this usable. It also does not score uniformly well — the dock offering "Continue Quick Pick" at 0-of-5 coverage stands at 3 and is left visible rather than rounded away. |
 | E2 | "Accessibility and console cleanliness are proven for every persona turn." | The persona harness runs in process and reports those two gates as `not_evaluated` with a reason. Browser-level axe and console evidence comes from `tests/e2e/`, which covers the journeys it names and not every persona turn. |
 | E3 | "Listings, prices, dealers, or availability are real." | `packages/catalog/data/vehicle-demo-profiles.json` is `curated_demo` provenance and has no price, dealer, or availability field at all. The pane labels demo data. |
 | E4 | "Sift verifies every concern a person raises." | A concern with no matching pack capability is recorded in `RunPlan.unverifiable` and stays an explicit unknown. |
 | E5 | "The model chose the ranking." | It did not, and where Sift's scoring disagrees with the model's recommendation the pane says so and caps confidence. |
-| E6 | "A real ChatGPT host session has been recorded." | See `host-acceptance.md`. That requires a person with a WebMCP-capable host and is not something this build can attest to. |
+| E6 | "A real **ChatGPT** host session has been recorded." | A real **host** session has: `pnpm test:host` drives Chrome 152's native WebMCP over the CDP `WebMCP` domain, 14/14 checks against the live deployment (ADR 0013, `host-acceptance.md`). That is a browser, not that product. A page cannot tell hosts apart, so the page-side contract is identical — but naming a product needs a session in it. |
+| E7 | "A model discovered and sequenced these tools on its own." | `pnpm test:host` chooses every call. It proves the catalog is discoverable, callable, correctly scoped, and correctly refused; it proves nothing about a model's unaided use of it. |
 
 ## F. Items that require a human attestation
 

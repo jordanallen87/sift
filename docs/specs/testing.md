@@ -177,7 +177,9 @@ Playwright waits on domain state and test IDs. Fixed sleeps are prohibited.
 - WebMCP tool registration in a compatible Chromium run;
 - no secrets in returned payloads.
 
-The ChatGPT in-app browser itself is an external host that cannot be run in repository CI. Release evidence therefore includes one manual host smoke record with timestamp, deployed URL, tool names discovered, and outcome. All page-side semantics remain automated through the adapter and compatible Chromium tests.
+`pnpm test:host` drives a **real WebMCP host** against a running instance (ADR 0013). Chrome 152 ships WebMCP natively (`document.modelContext`) and exposes a `WebMCP` CDP domain — `enable`, `invokeTool`, `cancelInvocation`, and the `toolsAdded`/`toolsRemoved`/`toolInvoked`/`toolResponded` events — so tool discovery, schema delivery, invocation, both-direction state control, reload persistence, and host reconnect are automated rather than transcribed by hand. It is opt-in (`SIFT_HOST_URL`), never part of `pnpm verify`/`verify:release`, exits non-zero rather than degrading to a meaningless pass when no WebMCP host is available, and writes evidence to `artifacts/host-acceptance/<runId>/`.
+
+This replaces the manual host-smoke record, which existed because no WebMCP host could be driven — a fact that stopped being true. Two things it does not prove, both recorded in its own `report.json`: it is **Chrome, not ChatGPT** (a page cannot tell hosts apart, so the page-side contract is the same, but a claim naming a product needs a session in that product), and **no model chose anything** (the script picks every call). A session in a specific assistant remains the only evidence for those two, and is narrowed to exactly them.
 
 ## Demo traceability matrix
 
@@ -223,6 +225,7 @@ pnpm test:observability Runtime Inspector, trace correlation, redaction, and exp
 pnpm test:mutation      targeted core invariant mutation tests
 pnpm test:live          opt-in Bedrock tests
 pnpm test:deployed      opt-in public deployment tests
+pnpm test:host          opt-in real WebMCP host acceptance in Chrome 152+ (ADR 0013)
 pnpm verify             static + unit + coverage + pack + integration + contract + scenario + E2E
 pnpm verify:release     verify + mutation + build + Docker contract + submission checks
 ```

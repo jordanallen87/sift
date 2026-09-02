@@ -28,6 +28,18 @@ describe('WebMcpStatus', () => {
     expect(screen.queryByTestId('webmcp-status-unsupported')).not.toBeInTheDocument();
   });
 
+  it('does not name a specific assistant, because the page cannot tell which host is connected', () => {
+    // `adapter.supported()` is a feature detect for `document.modelContext`.
+    // It proves a WebMCP host exists and reveals nothing about which one.
+    // This line previously read "ChatGPT can operate this page directly",
+    // and the first real host to render it was Chrome 152's native WebMCP
+    // implementation (ADR 0013) -- the pane told the person a product that
+    // was not there was driving.
+    render(<WebMcpStatus adapter={new InMemoryModelContextAdapter()} />);
+    const status = screen.getByTestId('webmcp-status-supported');
+    expect(status.textContent).not.toMatch(/chatgpt|claude|gemini|copilot/i);
+  });
+
   it('has no axe violations in either state', async () => {
     const { container: unsupported } = render(
       <WebMcpStatus adapter={new BrowserModelContextAdapter()} />,

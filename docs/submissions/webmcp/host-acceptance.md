@@ -1,46 +1,58 @@
 # Real-host acceptance
 
-The canonical plan's Task 10 asks for a session in a fresh, real ChatGPT or WebMCP-enabled Chrome host, recording tool discovery, activation, both-direction state control, reconnect/resume, case and run IDs, transcript, screenshots, and outcome.
+The canonical plan's Task 10 asks for a session in a real ChatGPT or WebMCP-enabled Chrome host, recording tool discovery, activation, both-direction state control, reconnect/resume, case and run IDs, transcript, screenshots, and outcome.
 
-**Status: not performed.** This is an external action requiring a person with a WebMCP-capable host signed into their own account. No test in this repository can stand in for it, and nothing below should be read as a substitute. `claim-evidence-matrix.md` row E6 records the same fact where the claims live.
+**Status: performed, automated, and passing — with two named limits.** This page previously read "not performed", on the reasoning that no WebMCP host could be driven. That stopped being true: Chrome 152 ships WebMCP natively and exposes a `WebMCP` CDP domain, so the session is now a repeatable gate rather than a transcript. See ADR 0013.
 
-What follows is everything that *can* be established without that host, so the session itself is short and its failure modes are known in advance.
+```
+SIFT_HOST_URL=https://pax-hackathon-production.up.railway.app pnpm test:host
+```
 
----
+## The session, as it actually runs
 
-## What has been verified without a host
+Fourteen checks, all passing against the live public deployment on 2026-09-02. Evidence, screenshots, and the full host transcript land in `artifacts/host-acceptance/<runId>/`.
 
-| Check | Where | Result |
+| # | Check | Result |
 |---|---|---|
-| The tool catalog is exactly 26 tools with pinned names, descriptions, and JSON schemas | `apps/web/src/model-context/webmcp-contract.test.ts` | Passing |
-| Global tools register on mount and case-scoped tools register only once a case exists | same | Passing |
-| Every registration is released on unmount, with no leak across case switches | same | Passing |
-| No tool in the catalog can approve a consequential decision | same — `reviewProposal` is absent from the catalog | Passing |
-| A tool call and the equivalent UI control run the same command implementation | `apps/agent/src/services/command-service.ts`, one handler per command | Passing |
-| The pane degrades honestly when no WebMCP host is present | `WebMcpStatus`; visible copy: "WebMCP unavailable in this browser. Every action here is still available through the visible controls on this page." | Visible in every screenshot baseline |
+| 1 | `document.modelContext` with `registerTool()` is present | Real host confirmed |
+| 2 | Discovery with no case: exactly the 3 global tools | `sift_get_case_context`, `sift_get_interaction_context`, `sift_list_packs` |
+| 3 | Tool JSON schemas reach the host | 3/3 carried an `inputSchema` |
+| 4 | A read tool returns real data through the host | `sift_list_packs` → 2 packs |
+| 5 | Discovery once a case exists | 26 tools registered |
+| 6 | The host reads the case that is on screen | `caseId` + `eventSequence` |
+| 7 | A person clicks in the pane; the host's next read reflects it | `eventSequence` 12 → 13 |
+| 8 | A write with no `expectedSequence` is refused | Rejected by schema validation |
+| 9 | The host writes; the pane renders it without a reload | The note appeared |
+| 10 | No tool can approve a consequential decision | Catalog exposes none |
+| 11 | The host starts an investigation and reads the outcome | Recommendation present |
+| 12 | Reload mid-case | Same `caseId`, state resumed |
+| 13 | Tools re-register after reload | 26 |
+| 14 | Host disconnect and reconnect | 26 re-announced |
 
-## The session script, when it is run
+Check 8 is the shared-control property made mechanical rather than promised: every write tool requires an `expectedSequence`, so a host physically cannot change a case it has not read, and a host acting in the same moment as a person loses the race visibly instead of silently.
 
-Fill this table in during the session. Leave a row blank rather than inferring it.
+## What this does not prove
+
+Both limits are written into every `report.json`, so no reader of the artifact can mistake one for the other.
+
+1. **This is Chrome, not ChatGPT.** A page cannot tell one WebMCP host from another, so the page-side contract proven here is the contract any host exercises — but a claim naming a product needs a session in that product.
+2. **No model chose anything.** The script picks every call. It proves the tools are callable, correctly scoped, and correctly refused; it does not prove a model discovers them, sequences them sensibly, or reads their descriptions the way a person would want.
+
+## What still needs a person
+
+Exactly the two items above, and nothing else. The mechanical session that used to require a human transcriptionist is automated; what remains is a session in a specific assistant, watching an actual model work the catalog unaided.
 
 | # | Step | What to record | Result |
 |---|---|---|---|
-| 1 | Open the live URL in the host, signed out | Whether the page loads and the pane renders | |
-| 2 | Ask the host what tools this page offers | The tool names the host discovered | |
-| 3 | Start the vehicle case from the launcher | `caseId` | |
-| 4 | Ask the host to read the case | Whether `sift_get_case_context` returns the case actually on screen | |
-| 5 | Answer a discovery question **in the pane** | Whether the host's next read reflects it | |
-| 6 | Ask the host to record a discovery answer | Whether the pane updates without a reload, and that it lands as a *proposal* rather than a confirmation | |
-| 7 | Press Keep in the pane | Whether the host can read the disposition back | |
-| 8 | Ask the host to confirm the shortlist | **Expected: it cannot.** Record exactly how the refusal surfaces | |
-| 9 | Ask the host to request an investigation | `runId` | |
-| 10 | Reload the page mid-run | Whether case state, plan version, and activity resume from the server | |
-| 11 | Disconnect and reconnect the host | Whether tools re-register and the case is still addressable | |
-| 12 | Screenshots | One per step 3, 6, 8, 10 | |
-| 13 | Transcript | Full host transcript, attached | |
+| 1 | Open the live URL in that product | Whether the page loads and the pane renders | |
+| 2 | Ask it what tools this page offers | The tool names it discovered, and whether it found them unprompted | |
+| 3 | Ask it to work the case in its own words | Which tools it chose, in what order, and whether its reading of the descriptions matched intent | |
+| 4 | Ask it to confirm the shortlist | **Expected: it cannot.** Record exactly how the refusal surfaces to a person | |
+| 5 | Screenshots and transcript | Attached | |
 
 ## Known failure modes to watch for
 
-- **Tool discovery reporting fewer than 26 tools.** Case-scoped tools register only after a case exists; steps 2 and 4 should be compared, not conflated.
-- **A stale `expectedSequence`.** The pane tracks the server's `acceptedSequence` and retries once; a host acting in the same moment as a person can still lose a race, and the visible result is a conflict message rather than silent loss. That is intended behavior, not a defect — record it if it appears.
-- **Step 8 succeeding.** If any host manages to confirm a shortlist, that is a release blocker, not a note.
+- **Tool discovery reporting fewer than 26 tools.** Case-scoped tools register only after a case exists; the no-case and case-open counts are different facts and should be compared, not conflated.
+- **A stale `expectedSequence`.** The pane tracks the server's `acceptedSequence` and retries once; a host acting simultaneously can still lose a race, and the visible result is a conflict message rather than silent loss. Intended behavior — record it if it appears.
+- **Step 4 succeeding.** If any host manages to confirm a shortlist, that is a release blocker, not a note.
+- **`activeRun.runId` reported as `(never sampled in flight)`.** Expected on the fixture run, which resolves faster than a one-second poll. The harness still proves the host read the finished recommendation; it does not claim to have watched the work in progress.

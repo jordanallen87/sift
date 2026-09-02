@@ -12,9 +12,13 @@
  * migration ledger persist afterward." Also required, best-effort here:
  * public web health/static assets, CORS from the public web origin,
  * AgentCore `/ping` (skipped with an honest reason when the deployment
- * isn't AgentCore-backed), and a note on WebMCP registration (which needs a
- * real WebMCP-enabled browser this script cannot drive -- see
- * docs/specs/testing.md's own "one manual host smoke record" allowance).
+ * isn't AgentCore-backed), and a note on WebMCP registration.
+ *
+ * WebMCP registration is checked properly by `pnpm test:host`, which drives
+ * a real WebMCP host (Chrome 152's native `document.modelContext`, over the
+ * CDP `WebMCP` domain) against a running instance -- see ADR 0013. This
+ * script's header used to say that browser "cannot be driven"; that was
+ * true of this script and is no longer true of the repository.
  *
  * Every check is a real HTTP call against a real deployment. No mocks, no
  * fixtures standing in for the network. `railway redeploy` is invoked via

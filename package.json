@@ -24,6 +24,7 @@
     "test:mutation": "stryker run",
     "test:live": "tsx scripts/stage-not-implemented.ts test:live",
     "test:deployed": "tsx scripts/test-deployed.ts",
+    "test:host": "tsx scripts/test-host.ts",
     "test:submission": "tsx scripts/test-submission.ts",
     "check:source": "tsx scripts/check-source.ts",
     "docs:diagram": "tsx scripts/generate-diagram.ts",

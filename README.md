@@ -138,6 +138,16 @@ SIFT_DEPLOYED_URL=https://pax-hackathon-production.up.railway.app pnpm test:depl
 
 It checks health/static assets, a real fixture case and investigation run, Runtime Inspector availability, same-origin CORS, and — its core assertion — that a case survives a real Railway redeploy byte-identically.
 
+`pnpm test:host` is opt-in and drives a **real WebMCP host** against a running instance. Chrome 152 ships WebMCP natively (`document.modelContext`) and exposes a `WebMCP` CDP domain, so the host acceptance session is automated rather than transcribed by hand (ADR 0013):
+
+```bash
+SIFT_HOST_URL=https://pax-hackathon-production.up.railway.app pnpm test:host
+```
+
+It launches Chrome with a throwaway profile — never your own — and checks tool discovery before and after a case exists, that JSON schemas reach the host, that a person's click in the pane is visible to the host and the host's write is visible in the pane without a reload, that a write with no `expectedSequence` is refused, that **no tool in the catalog can approve a decision**, an investigation from request to recommendation, reload persistence, and re-registration after a host reconnect. Evidence and screenshots land in `artifacts/host-acceptance/<runId>/`.
+
+Two things it does not prove, and says so in its own report: it is **Chrome, not ChatGPT** (a page cannot tell hosts apart, so the page-side contract is the same, but naming a product needs a session in that product), and **no model chose anything** — the script picks every call. It exits non-zero rather than reporting a pass when no WebMCP host is available, and never falls back to Playwright's bundled Chromium, which has no WebMCP at all.
+
 ```bash
 pnpm verify:release
 ```
