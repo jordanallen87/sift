@@ -726,6 +726,19 @@ export function App() {
   // tools register once per (adapter, commands) identity; `getActiveCase`/
   // `listPacks` read fresh values via refs on every call rather than
   // re-registering the two global tools on every snapshot/pack-list change.
+  /**
+   * The highest `eventSequence` the server has confirmed, taken from command
+   * receipts rather than from the event stream.
+   *
+   * `snapshot` arrives over SSE (or the polling fallback), so immediately
+   * after a command it is one behind. A `CommandReceipt.acceptedSequence` is
+   * the server's authoritative sequence *after* that command, and it is
+   * available the moment the call resolves. Presentation writes consult this
+   * so an ordinary human sequence -- press Keep, then press Compare -- does
+   * not send a stale `expectedSequence` and take an avoidable 409.
+   */
+  const lastAcceptedSequenceRef = useRef(0);
+
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
   const activeCaseIdRef = useRef(activeCaseId);
@@ -815,19 +828,53 @@ export function App() {
           ...(intendedFilters !== undefined ? { filters: intendedFilters } : {}),
           mode,
         });
+        // The freshest sequence either side knows about: the streamed
+        // snapshot, or the last receipt the server handed back.
+        const expectedSequence = Math.max(current.eventSequence, lastAcceptedSequenceRef.current);
         try {
-          await commands.setView({ caseId, expectedSequence: current.eventSequence, view });
+          await commands.setView({ caseId, expectedSequence, view });
         } catch {
-          // Swallowed deliberately, and deliberately NOT a revert. A
-          // rejection here is almost always a stale `expectedSequence`
-          // during a live run: the run advances `eventSequence` constantly,
-          // while this command routes through `updateSelection()` and
-          // changes no decision state at all (change-set §54). The person is
-          // still looking at the view they chose, so an error toast would be
-          // noise about something that did not affect them.
+          // One retry against the freshest sequence, then give up quietly.
           //
-          // The real cost is that an unpersisted choice may not survive a
-          // reload. That is a stated limitation, not a hidden one.
+          // The retry was added when Quick Pick became canonical. Before
+          // that, "Shortlist" wrote through `updateSelection()` and never
+          // advanced `eventSequence`, so the stale-sequence conflict this
+          // comment already disclosed was rare enough to live with. Keep,
+          // Pass, and Unsure append real events, which makes an ordinary
+          // human sequence -- press Keep, then press Compare -- land a view
+          // write with a sequence that is one behind. Silently dropping that
+          // one makes a tab look broken, which is a different and worse
+          // thing than an unpersisted preference.
+          //
+          // `snapshotRef.current` is re-read rather than reused: by the time
+          // the first attempt failed, the event that invalidated it has
+          // usually already arrived over SSE.
+          const refreshed = snapshotRef.current;
+          const retrySequence =
+            refreshed === null
+              ? lastAcceptedSequenceRef.current
+              : Math.max(refreshed.eventSequence, lastAcceptedSequenceRef.current);
+          if (retrySequence !== expectedSequence) {
+            try {
+              await commands.setView({
+                caseId,
+                expectedSequence: retrySequence,
+                view: applyIntendedNarrowing(intendedViewRef.current, {
+                  ...(refreshed?.view ?? {}),
+                  ...(intendedFilters !== undefined ? { filters: intendedFilters } : {}),
+                  mode,
+                }),
+              });
+            } catch {
+              // Still swallowed, and still deliberately NOT a revert. The
+              // person is looking at the view they chose; this command routes
+              // through `updateSelection()` and changes no decision state at
+              // all (change-set §54), so an error toast would be noise about
+              // something that did not affect them. The real cost is that an
+              // unpersisted choice may not survive a reload -- a stated
+              // limitation, not a hidden one.
+            }
+          }
         }
         // Only clear if nothing newer arrived while this write was in flight.
         if (desiredViewRef.current === mode) desiredViewRef.current = null;
@@ -918,8 +965,11 @@ export function App() {
           mode: intendedViewRef.current.mode ?? current.view?.mode ?? 'quick_pick',
           filters: nextFilters,
         });
+        // The freshest sequence either side knows about: the streamed
+        // snapshot, or the last receipt the server handed back.
+        const expectedSequence = Math.max(current.eventSequence, lastAcceptedSequenceRef.current);
         try {
-          await commands.setView({ caseId, expectedSequence: current.eventSequence, view });
+          await commands.setView({ caseId, expectedSequence, view });
         } catch {
           // Swallowed deliberately, same reasoning as the view-mode writer
           // above: a stale `expectedSequence` during a live run is expected
@@ -1401,10 +1451,16 @@ export function App() {
       commands
         .setCandidateDisposition({
           caseId: activeCaseId,
-          expectedSequence: snapshot.eventSequence,
+          expectedSequence: Math.max(snapshot.eventSequence, lastAcceptedSequenceRef.current),
           actor: 'human',
           entityId: optionId,
           disposition,
+        })
+        .then((receipt) => {
+          lastAcceptedSequenceRef.current = Math.max(
+            lastAcceptedSequenceRef.current,
+            receipt.acceptedSequence,
+          );
         })
         .catch(() => undefined);
       // Undo puts the candidate back in the queue rather than moving past

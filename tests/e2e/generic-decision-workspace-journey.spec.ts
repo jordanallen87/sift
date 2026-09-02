@@ -224,11 +224,30 @@ test.describe('generic decision workspace -- §61 journey', () => {
       '',
     );
     expect(shownOptionId).toBeTruthy();
-    await expect(page.getByTestId('quick-pick-shortlist')).toBeVisible();
-    await page.getByTestId('quick-pick-shortlist').click();
+
+    // Retargeted, and strictly stronger than what it replaced. This block
+    // used to click "Shortlist" and assert `selectedOptionId` -- but that
+    // button only ever *focused* the option, so the step proved a
+    // presentation change while reading as a decision. Quick Pick now
+    // records a canonical, undoable judgment, and disposition is
+    // deliberately separate from focus: keeping a candidate for a closer
+    // look is not the same act as pointing the pane at it, and it is not
+    // shortlist confirmation either.
+    //
+    // The subject is unchanged -- the button acts on the option the person
+    // is actually looking at, and the effect is canonical -- but the
+    // observable is now a durable judgment rather than a highlight.
+    await expect(page.getByTestId('quick-pick-keep')).toBeVisible();
+    await page.getByTestId('quick-pick-keep').click();
     await expect
-      .poll(async () => (await getCaseState(page.request, caseId))['selectedOptionId'])
-      .toBe(shownOptionId);
+      .poll(async () => {
+        const state = await getCaseState(page.request, caseId);
+        const discovery = state['discovery'] as
+          { dispositions?: { entityId: string; disposition: string }[] } | undefined;
+        return discovery?.dispositions?.find((record) => record.entityId === shownOptionId)
+          ?.disposition;
+      })
+      .toBe('keep');
 
     // --- §61 step 7: "Open Compare." A real visible-control tab switch --
     // the exact same `setView` command a `sift_set_view` WebMCP call would
