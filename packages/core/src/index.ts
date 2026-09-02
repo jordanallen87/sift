@@ -196,11 +196,15 @@ export type {
 export {
   applyDiscoveryResponse,
   compileDiscoveryTopics,
+  deriveDecisionPhase,
+  deriveDisplayedCoverage,
   deriveDiscoveryReadiness,
   deriveNextMoves,
   planDiscoveryResponse,
+  DECISION_PHASES,
 } from './discovery.js';
 export type {
+  DecisionPhase,
   DiscoveryReadiness,
   DiscoveryRejection,
   DiscoveryRejectionReason,

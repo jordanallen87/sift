@@ -570,3 +570,113 @@ export function deriveNextMoves(caseState: CaseState, pack: CompiledDecisionPack
 
   return moves;
 }
+
+// --- Decision phase ---
+
+/**
+ * Where a case is, as one word.
+ *
+ * This lived in `apps/web/src/components/decision-orientation.ts` until the
+ * persona harness needed the same answer. Two implementations of "what
+ * phase is this case in" would be two things that can disagree, and the
+ * `state_ui_contradiction` gate would then be testing a copy of the
+ * product's logic rather than the product's logic. It belongs here for the
+ * same reason `deriveDiscoveryReadiness` does: it is a pure derivation from
+ * case state and pack, and everything that renders or checks a phase should
+ * be reading the same one.
+ *
+ * The order below is the order a person moves through, and each branch is
+ * a claim the state actually supports: `decided` because the case says so,
+ * `deciding` because a recommendation is ready, `triage`/`investigating`
+ * because candidates exist and either have or have not been judged.
+ */
+export const DECISION_PHASES = [
+  'discovery',
+  'blind_spot_review',
+  'discovering_candidates',
+  'triage',
+  'investigating',
+  'deciding',
+  'decided',
+] as const;
+export type DecisionPhase = (typeof DECISION_PHASES)[number];
+
+export function deriveDecisionPhase(
+  caseState: CaseState,
+  pack: CompiledDecisionPack,
+): DecisionPhase {
+  if (caseState.status === 'decided') return 'decided';
+  if (caseState.recommendation !== null && caseState.recommendation.status === 'ready') {
+    return 'deciding';
+  }
+
+  const readiness = deriveDiscoveryReadiness(caseState, pack);
+  const requiredComplete =
+    readiness.coverage.requiredResolved === readiness.coverage.requiredTotal &&
+    readiness.coverage.requiredTotal > 0;
+
+  const candidates = caseState.entities.filter((entity) => entity.kind === 'candidate');
+  if (candidates.length > 0 && (requiredComplete || caseState.discovery === undefined)) {
+    // Having options is not the same as being ready to narrow them down.
+    //
+    // Found by the known-listing persona: someone who opens with "I am
+    // looking at a RAV4 Hybrid" has a candidate after one turn and has
+    // answered one question of five. Calling that `triage` put "Narrowing
+    // down what you found" directly above "1 of 5 covered" -- the same
+    // contradiction the companion frame was repaired for once already,
+    // reached by a different route. Sift's honest next move there is still
+    // to ask, so the phase is still discovery.
+    //
+    // A case with no discovery state at all (a seeded demo) is the other
+    // side of the same rule: it makes no coverage claim, so there is
+    // nothing for `triage` to contradict.
+    const dispositions = new Map(
+      (caseState.discovery?.dispositions ?? []).map((record) => [
+        record.entityId,
+        record.disposition,
+      ]),
+    );
+    const untriaged = candidates.filter(
+      (entity) => (dispositions.get(entity.id) ?? 'unreviewed') === 'unreviewed',
+    );
+    return untriaged.length > 0 ? 'triage' : 'investigating';
+  }
+
+  if (readiness.readyToDiscover) return 'discovering_candidates';
+
+  return requiredComplete ? 'blind_spot_review' : 'discovery';
+}
+
+/**
+ * The coverage a pane may honestly display.
+ *
+ * A case that arrived with candidates but never ran discovery — a seeded
+ * demo, or a person who pasted in a specific vehicle — has a pack that
+ * declares required topics and a journey that never asked any of them.
+ * Reporting "0 of 5 covered" there invites someone to watch a denominator
+ * they were never offered a way to move, and pairs badly with any phase
+ * label that mentions progress.
+ *
+ * So: no discovery, no coverage claim. The counts are real the moment the
+ * person answers anything.
+ *
+ * Lives in core rather than in the shell because the persona harness checks
+ * the same claim the shell renders, and two copies of this rule would mean
+ * the gate was testing its own copy rather than the product's.
+ */
+export function deriveDisplayedCoverage(
+  caseState: CaseState,
+  pack: CompiledDecisionPack,
+): DiscoveryCoverage {
+  const started = caseState.discovery !== undefined;
+  if (!started) {
+    return {
+      requiredTotal: 0,
+      requiredResolved: 0,
+      softTotal: 0,
+      softResolved: 0,
+      blindSpotReviewComplete: false,
+    };
+  }
+  return deriveDiscoveryReadiness(caseState, pack).coverage;
+}

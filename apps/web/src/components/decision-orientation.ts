@@ -17,7 +17,12 @@
  *    person at every moment, including before a pack has finished loading.
  */
 import type { CaseState, CompiledDecisionPack } from '@sift/contracts';
-import { deriveDiscoveryReadiness, deriveNextMoves } from '@sift/core';
+import {
+  deriveDecisionPhase,
+  deriveDisplayedCoverage,
+  deriveDiscoveryReadiness,
+  deriveNextMoves,
+} from '@sift/core';
 import type { DecisionOrientation } from './DecisionOrientationShell.js';
 
 /**
@@ -47,34 +52,6 @@ const ROUTE_TO_OUTCOME: Record<string, string> = {
 
 const FALLBACK_NEXT_STEP = 'Open the case to see where it stands';
 
-function phaseOf(caseState: CaseState, readiness: ReturnType<typeof deriveDiscoveryReadiness>) {
-  if (caseState.status === 'decided') return 'decided';
-  if (caseState.recommendation !== null && caseState.recommendation.status === 'ready') {
-    return 'deciding';
-  }
-
-  const candidates = caseState.entities.filter((entity) => entity.kind === 'candidate');
-  if (candidates.length > 0) {
-    const dispositions = new Map(
-      (caseState.discovery?.dispositions ?? []).map((record) => [
-        record.entityId,
-        record.disposition,
-      ]),
-    );
-    const untriaged = candidates.filter(
-      (candidate) => (dispositions.get(candidate.id) ?? 'unreviewed') === 'unreviewed',
-    );
-    return untriaged.length > 0 ? 'triage' : 'investigating';
-  }
-
-  if (readiness.readyToDiscover) return 'discovering_candidates';
-
-  const requiredComplete =
-    readiness.coverage.requiredResolved === readiness.coverage.requiredTotal &&
-    readiness.coverage.requiredTotal > 0;
-  return requiredComplete ? 'blind_spot_review' : 'discovery';
-}
-
 /**
  * The last thing that actually changed about the decision, in the person's
  * own words where possible.
@@ -102,21 +79,7 @@ export function buildDecisionOrientation(
   caseState: CaseState,
   pack: CompiledDecisionPack | null,
 ): DecisionOrientation {
-  /**
-   * A case that arrived with candidates but never ran discovery -- the
-   * seeded demo cases do exactly this -- gets no coverage claim.
-   *
-   * Found by rendering it: the shell showed "Narrowing down what you found"
-   * directly above "0 of 5 covered", which is two contradictory statements
-   * about the same case, and precisely the state/UI contradiction the
-   * persona hard gates exist to fail. Neither number was wrong on its own;
-   * the pairing was. Reporting the phase honestly and declining to invent a
-   * denominator for a journey that never asked a question is the truthful
-   * reading.
-   */
-  const startedDiscovery = caseState.discovery !== undefined;
-
-  if (pack === null || !startedDiscovery) {
+  if (pack === null) {
     // The packs request can still be in flight while a case renders. Report
     // what is genuinely known and no more — an invented coverage denominator
     // here would be a number the person could watch change for no reason.
@@ -127,15 +90,8 @@ export function buildDecisionOrientation(
       softResolved: 0,
       blindSpotReviewComplete: false,
     } as const;
-    const phase =
-      pack === null
-        ? 'discovery'
-        : phaseOf(caseState, {
-            ...deriveDiscoveryReadiness(caseState, pack),
-            coverage: emptyCoverage,
-            readyToDiscover: false,
-          });
-    const moves = pack === null ? [] : deriveNextMoves(caseState, pack);
+    const phase = 'discovery';
+    const moves: ReturnType<typeof deriveNextMoves> = [];
 
     return {
       decisionTitle: caseState.title,
@@ -153,7 +109,21 @@ export function buildDecisionOrientation(
 
   const readiness = deriveDiscoveryReadiness(caseState, pack);
   const moves = deriveNextMoves(caseState, pack);
-  const phase = phaseOf(caseState, readiness);
+  const phase = deriveDecisionPhase(caseState, pack);
+  /**
+   * The coverage claim the pane is entitled to make.
+   *
+   * A case that arrived with candidates but never ran discovery -- the
+   * seeded demo cases do exactly this -- gets none. Found by rendering it:
+   * the shell showed "Narrowing down what you found" directly above "0 of 5
+   * covered", which is two contradictory statements about the same case.
+   * Neither number was wrong on its own; the pairing was.
+   *
+   * The rule lives in `@sift/core` rather than here because the persona
+   * harness checks this exact claim, and a second copy would mean the gate
+   * was testing its own copy of the rule instead of the product's.
+   */
+  const coverage = deriveDisplayedCoverage(caseState, pack);
 
   const focusTopic =
     readiness.nextTopicId === null
@@ -168,7 +138,7 @@ export function buildDecisionOrientation(
     packName: packNameFor(caseState, pack),
     phase,
     phaseLabel: PHASE_LABELS[phase] ?? 'In progress',
-    coverage: readiness.coverage,
+    coverage,
     // Suppressed when it would merely repeat the next step. "In focus:
     // Budget" directly above "Next: Budget" is two lines saying one thing,
     // and it crowds out the lines that are saying different things.

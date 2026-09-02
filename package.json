@@ -18,6 +18,7 @@
     "test:integration": "vitest run apps/agent/src/routes apps/agent/src/store apps/agent/src/db apps/agent/src/app.test.ts apps/agent/src/runtime/strands-adapter.test.ts apps/agent/src/runtime/event-normalizer.test.ts apps/agent/src/runtime/interventions.test.ts apps/agent/src/runtime/plugins.test.ts apps/agent/src/runtime/model-provider.test.ts apps/agent/src/runtime/session-adapter.test.ts apps/agent/src/runtime/car-purchase-engine.test.ts apps/agent/src/runtime/home-energy-engine.test.ts",
     "test:contract": "vitest run apps/web/src/model-context/webmcp-contract.test.ts apps/agent/src/routes/agentcore.test.ts",
     "test:scenario": "vitest run --project tests",
+    "test:persona": "tsx scripts/test-persona.ts",
     "test:e2e": "pnpm --filter @sift/web build && playwright test",
     "test:observability": "tsx scripts/stage-not-implemented.ts test:observability",
     "test:mutation": "stryker run",

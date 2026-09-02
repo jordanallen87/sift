@@ -253,3 +253,235 @@ export const DemoScenarioSchema = z
   })
   .strict();
 export type DemoScenario = z.infer<typeof DemoScenarioSchema>;
+
+// --- Persona UX harness (final-hackathon-execution-plan.md Task 8) ---
+//
+// A persona is a scripted sequence of human turns through the companion
+// pane, run against the real stack. Running one produces a `TurnArtifact`
+// per turn; hard gates then run over those artifacts deterministically.
+//
+// Two rules are structural here, for the same reason they are elsewhere in
+// this build:
+//
+// 1. **A diagnostic score must cite a turn.** `DiagnosticScore.evidence` is
+//    required, so "orientation: 4" with nothing behind it cannot be
+//    written down. These scores are judgments a model or a person makes;
+//    the harness validates and enforces them but never invents one.
+// 2. **A gate that could not be evaluated is not a gate that passed.**
+//    `HardGateOutcome` has a third value, `not_evaluated`, because an
+//    in-process harness genuinely cannot see a browser console or an axe
+//    tree. Collapsing that into `pass` would be the exact fabrication the
+//    gates exist to catch.
+
+export const PERSONA_IDS = ['family-novice', 'landscaping-owner', 'known-listing-shopper'] as const;
+export type PersonaId = (typeof PERSONA_IDS)[number];
+
+/** Who took the turn. An agent turn is held to the authority rules a human turn is not. */
+export const PERSONA_TURN_ACTORS = ['human', 'agent'] as const;
+export type PersonaTurnActor = (typeof PERSONA_TURN_ACTORS)[number];
+
+export const PersonaTurnSchema = z
+  .object({
+    label: safeString(200),
+    actor: z.enum(PERSONA_TURN_ACTORS),
+    /** What the person said or did, in their own words. Rendered into the artifact's chat record. */
+    utterance: safeString(1000).optional(),
+    /** The command this turn performs, if any. A turn may be pure narration. */
+    command: safeString(100).optional(),
+    input: JsonValueSchema.optional(),
+  })
+  .strict();
+export type PersonaTurn = z.infer<typeof PersonaTurnSchema>;
+
+export const PersonaSchema = z
+  .object({
+    id: z.enum(PERSONA_IDS),
+    title: safeString(200),
+    /** What this person is actually trying to do, in one sentence. */
+    goal: safeString(500),
+    packId: idString(),
+    demoId: z.enum(DEMO_IDS),
+    mode: z.enum(['companion', 'standalone']),
+    turns: z.array(PersonaTurnSchema).min(1).max(60),
+  })
+  .strict();
+export type Persona = z.infer<typeof PersonaSchema>;
+
+/** The eleven deterministic failures from the canonical plan's Task 8. */
+export const HARD_GATE_IDS = [
+  'state_ui_contradiction',
+  'unsupported_claim',
+  'authority_violation',
+  'incomplete_companion_discovery',
+  'blocker_inference',
+  'missing_next_action',
+  'broken_persistent_frame',
+  'fabricated_progress',
+  'accessibility',
+  'console_or_network_error',
+  'outcome_dead_end',
+] as const;
+export type HardGateId = (typeof HARD_GATE_IDS)[number];
+
+/**
+ * `not_evaluated` is a first-class outcome, not a synonym for `pass`. A gate
+ * whose evidence this harness cannot see reports that plainly so a reader
+ * knows what was and was not checked.
+ */
+export const HARD_GATE_OUTCOMES = ['pass', 'fail', 'not_evaluated'] as const;
+export type HardGateOutcome = (typeof HARD_GATE_OUTCOMES)[number];
+
+export const HardGateFindingSchema = z
+  .object({
+    gateId: z.enum(HARD_GATE_IDS),
+    turnIndex: z.number().int().min(0).max(200),
+    /** What exactly went wrong, specific enough to repair from without re-running. */
+    detail: safeString(1000),
+  })
+  .strict();
+export type HardGateFinding = z.infer<typeof HardGateFindingSchema>;
+
+export const HardGateResultSchema = z
+  .object({
+    gateId: z.enum(HARD_GATE_IDS),
+    outcome: z.enum(HARD_GATE_OUTCOMES),
+    findings: z.array(HardGateFindingSchema).max(200),
+    /** Required when `not_evaluated`: why this harness could not check it. */
+    notEvaluatedReason: safeString(500).optional(),
+  })
+  .strict()
+  .superRefine((result, ctx) => {
+    if (result.outcome === 'not_evaluated' && result.notEvaluatedReason === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['notEvaluatedReason'],
+        message: 'a gate that was not evaluated must say why',
+      });
+    }
+    if (result.outcome === 'fail' && result.findings.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['findings'],
+        message: 'a failing gate must name at least one finding',
+      });
+    }
+    if (result.outcome === 'pass' && result.findings.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['findings'],
+        message: 'a passing gate cannot carry findings',
+      });
+    }
+  });
+export type HardGateResult = z.infer<typeof HardGateResultSchema>;
+
+export const DIAGNOSTIC_DIMENSIONS = [
+  'orientation',
+  'next_action_clarity',
+  'relevance',
+  'efficiency',
+  'conversation_canvas_coherence',
+  'control_flexibility',
+  'trust_evidence',
+  'cognitive_load',
+] as const;
+export type DiagnosticDimension = (typeof DIAGNOSTIC_DIMENSIONS)[number];
+
+/**
+ * The two dimensions the canonical plan holds to a higher bar: no single
+ * turn may score below 3 on either, because a person who cannot tell where
+ * they are or what to do next has no way to recover on their own.
+ */
+export const CRITICAL_DIAGNOSTIC_DIMENSIONS = ['orientation', 'next_action_clarity'] as const;
+
+export const DiagnosticEvidenceSchema = z
+  .object({
+    turnIndex: z.number().int().min(0).max(200),
+    /** Text actually present in that turn's artifact. A score is not an opinion about the product in general. */
+    quote: safeString(1000),
+  })
+  .strict();
+
+export const DiagnosticScoreSchema = z
+  .object({
+    dimension: z.enum(DIAGNOSTIC_DIMENSIONS),
+    turnIndex: z.number().int().min(0).max(200),
+    score: z.number().int().min(1).max(5),
+    /** Required: a score with nothing behind it is not expressible. */
+    evidence: DiagnosticEvidenceSchema,
+  })
+  .strict();
+export type DiagnosticScore = z.infer<typeof DiagnosticScoreSchema>;
+
+export const TURN_OWNERSHIP = ['human', 'agent', 'shared'] as const;
+export type TurnOwnership = (typeof TURN_OWNERSHIP)[number];
+
+export const TurnArtifactSchema = z
+  .object({
+    index: z.number().int().min(0).max(200),
+    label: safeString(200),
+    actor: z.enum(PERSONA_TURN_ACTORS),
+    chat: z
+      .object({
+        utterance: safeString(1000).optional(),
+        reply: safeString(2000).optional(),
+      })
+      .strict(),
+    /** Command/tool names invoked on this turn, in order. */
+    tools: z.array(safeString(100)).max(50),
+    sequenceBefore: z.number().int().min(0),
+    sequenceAfter: z.number().int().min(0),
+    /** One line per meaningful change, so a failure points at what moved. */
+    stateDiff: z.array(safeString(300)).max(100),
+    coverage: z
+      .object({
+        requiredTotal: z.number().int().min(0),
+        requiredResolved: z.number().int().min(0),
+      })
+      .strict(),
+    phase: safeString(100),
+    nextMove: z
+      .object({ kind: safeString(100), label: safeString(300), humanOnly: z.boolean() })
+      .strict()
+      .nullable(),
+    runPlan: z
+      .object({
+        version: z.number().int().min(1),
+        plannedItems: z.number().int().min(0),
+        deepItems: z.number().int().min(0),
+        reused: z.number().int().min(0),
+        added: z.number().int().min(0),
+      })
+      .strict()
+      .nullable(),
+    events: z.array(safeString(300)).max(100),
+    view: safeString(100),
+    ownership: z.enum(TURN_OWNERSHIP),
+    /** What a person could actually press on this turn. */
+    visibleControls: z.array(safeString(200)).max(50),
+    /** Present only when a browser captured one; absent is honest, a placeholder is not. */
+    screenshotPath: safeString(500).optional(),
+    accessibility: z
+      .object({ seriousViolations: z.number().int().min(0), checked: z.boolean() })
+      .strict(),
+    consoleErrors: z.array(safeString(500)).max(50),
+    networkFailures: z.array(safeString(500)).max(50),
+    latencyMs: z.number().min(0),
+    estimatedCostUsd: z.number().min(0),
+  })
+  .strict();
+export type TurnArtifact = z.infer<typeof TurnArtifactSchema>;
+
+export const PersonaRunReportSchema = z
+  .object({
+    schemaVersion: z.literal('1.0'),
+    personaId: z.enum(PERSONA_IDS),
+    caseId: idString(),
+    turns: z.array(TurnArtifactSchema).max(200),
+    gates: z.array(HardGateResultSchema).max(50),
+    /** Absent until a diagnostic pass has genuinely been run. Never defaulted to a number. */
+    scores: z.array(DiagnosticScoreSchema).max(400).optional(),
+    passed: z.boolean(),
+  })
+  .strict();
+export type PersonaRunReport = z.infer<typeof PersonaRunReportSchema>;

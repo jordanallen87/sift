@@ -28,3 +28,20 @@ export { writeScenarioArtifacts } from './artifact-writer.js';
 export type { ScenarioArtifactPaths, WriteScenarioArtifactsInput } from './artifact-writer.js';
 export { runScenarioSteps } from './runner.js';
 export type { ScenarioCommandExecutor, ScenarioRunnerDeps } from './runner.js';
+
+// Persona UX harness (final-hackathon-execution-plan.md Task 8).
+export { evaluateHardGates, hardGatesPassed } from './persona-gates.js';
+export type { PersonaGateContext } from './persona-gates.js';
+export {
+  summarizeDiagnostics,
+  DIAGNOSTIC_MEDIAN_FLOOR,
+  CRITICAL_TURN_FLOOR,
+} from './persona-diagnostics.js';
+export type { DiagnosticSummary } from './persona-diagnostics.js';
+export { runPersona } from './persona-runner.js';
+export type {
+  PersonaTurnExecutor,
+  PersonaTurnObservation,
+  RunPersonaOptions,
+} from './persona-runner.js';
+export { PERSONAS, personaById } from '../fixtures/personas/index.js';

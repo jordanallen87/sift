@@ -5749,3 +5749,38 @@ Reuse itself is decided by `inputsHash` — a hash of exactly the state an item'
 Proven end to end over real HTTP against a real migrated SQLite database (`routes/run-plan.test.ts`), using only endpoints the browser and ChatGPT use — no service reached into, no store written directly. Before triage every planned item is `shallow`; pressing Keep produces version 2 with `reason: 'triage_changed'`, the candidate as `trigger`, `enrich_candidate:<id>` in `reusedSignatures`, a `plan.revised` event whose summary names what it reused, and both versions readable from `run_plans`.
 
 `PUBLIC_ACTIVITY_EVENT_TYPES` gained `plan.created` and `plan.revised` (19 → 21), with labels in the person's vocabulary — "Sift worked out what to look into" / "Sift updated what it is looking into". Two exhaustiveness tests and one contracts pinning test were updated intentionally; the label table is `satisfies Record<PublicActivityEventType, …>`, so an omission would have been a compile error.
+
+## 2026-09-02 — Task 8: the persona UX harness
+
+`pnpm test:persona` runs three personas against the real stack in process — the real compiled Vehicle Selection pack, the real `CommandService`, the real `RunPlanService`, real SQLite, and the same `@sift/core` derivations the pane renders from.
+
+### The executor answers whatever Sift asks
+
+A persona turn says what the *person* would say ("Under about thirty-five thousand"), not which topic id to write. The executor resolves each turn against current state: it asks `deriveDiscoveryReadiness` what Sift wants next and answers that.
+
+This is what makes the harness worth running. A hard-coded input per turn would still pass if the pack started asking a completely different set of questions — the script would answer the old ones into the void. Answering whatever is actually asked means the landscaping persona diverges from the family persona because the *pack's conditional topics* diverge, not because two scripts differ.
+
+### Two rules made structural
+
+1. **A diagnostic score must cite a turn.** `DiagnosticScore.evidence` is required, so "orientation: 4" with nothing behind it cannot be written down. These are judgments a model or a person makes; the harness validates and enforces them and never invents one. `summarizeDiagnostics(undefined)` returns `scored: false, passed: false` with a reason — not a default number, and not a pass.
+2. **A gate that could not be evaluated is not a gate that passed.** `HardGateOutcome` has a third value. An in-process harness cannot see a browser console or an axe tree, and reports `not_evaluated` with a reason for those two; a third gate, `unsupported_claim`, reports the same when no turn produced model-authored prose. A green run from this script means "eight gates passed and three were not checked", and it says so on every run.
+
+### Three findings, and what each turned out to be
+
+The first run failed all three personas. Two were defects in my own gates and one was a real defect in the product.
+
+**`unsupported_claim` firing on "What", "Budget", "Where" — my executor's fault.** It was putting the next move's *label* into `chat.reply`, so the gate was checking Sift's own button text for invented option names. Fixed at the source: this harness produces no prose, so `reply` is absent and the gate reports `not_evaluated`.
+
+**`incomplete_companion_discovery` failing the known-listing shopper — my gate's fault.** Someone who opens with "I am looking at a RAV4 Hybrid" has a candidate after one turn and has answered almost nothing. That is a legitimate state and *the person* put it there. The gate now fires only when Sift itself introduced options before it knew what the person needed. Left as written, it would have pushed the product toward refusing to accept an option until an interrogation finished — the opposite of what this pane is for.
+
+**`state_ui_contradiction` on the known-listing shopper — a real defect.** `deriveDecisionPhase` moved past discovery whenever a candidate existed, so the pane would have said "Narrowing down what you found" directly above "1 of 5 covered". That is the same contradiction the companion frame was repaired for in the previous session, reached by a completely different route, and it is exactly what this harness is for.
+
+The fix distinguishes two cases that look alike: a case with *no discovery state at all* (a seeded demo) makes no coverage claim, so `triage` contradicts nothing; a case where discovery has *started but is incomplete* is still in discovery, because Sift's honest next move is still to ask.
+
+### One duplication removed rather than added
+
+`deriveDecisionPhase` and `deriveDisplayedCoverage` now live in `@sift/core`, not in `apps/web/src/components/decision-orientation.ts`. The harness checks the same phase and the same coverage claim the shell renders; two copies would have meant the gate was testing its own copy of the rule instead of the product's. The shell's 16 tests pass unchanged against the shared derivations.
+
+### Verification
+
+`pnpm test:persona` passes all three personas. 272 scenario/orientation tests, 2413 core/web/contracts tests. Reports land in `artifacts/persona/<persona>.json` with every turn's state diff, coverage, phase, next move, RunPlan version, and events.
