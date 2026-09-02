@@ -79,6 +79,30 @@ interface SseConnection {
   close: () => void;
 }
 
+/**
+ * Every client request this file opens, so `afterEach` can destroy the ones
+ * a test did not close itself.
+ *
+ * This matters far beyond tidiness. `Server.close()` stops the server
+ * *accepting* new connections; it does not terminate the ones already open.
+ * An SSE connection is open by definition, so without this registry a
+ * client socket outlives the server it was talking to and the ephemeral
+ * port is released while that socket is still around. Another Vitest worker
+ * -- a different OS process -- then binds the same port for its own
+ * supertest server, and a stray socket from here lands on it.
+ *
+ * That is not hypothetical. It was the cause of a long-standing intermittent
+ * failure that appeared only under `pnpm verify`, always in a *different*
+ * file, with symptoms that made no sense in isolation: a 200 for a request
+ * deliberately sent without an idempotency key, a 400 where a 404 was
+ * expected, snapshots coming back with empty entity arrays. Every one of
+ * those was another file's test receiving a response to a request it never
+ * sent. Running `apps/agent/src/routes` with `--no-file-parallelism` was
+ * clean 5/5; excluding only this file, with parallelism on, was also clean
+ * 5/5; with both, it failed roughly one run in three.
+ */
+const openConnections: { destroy: () => void }[] = [];
+
 function openSseConnection(
   port: number,
   path: string,
@@ -96,10 +120,16 @@ function openSseConnection(
           buffer = parsed.remainder;
           events.push(...parsed.events);
         });
-        resolve({ events, close: () => req.destroy() });
+        resolve({
+          events,
+          close: () => {
+            req.destroy();
+          },
+        });
       },
     );
     req.on('error', reject);
+    openConnections.push(req);
     req.end();
   });
 }
@@ -124,10 +154,16 @@ function openRawSseConnection(port: number, path: string): Promise<RawSseConnect
         res.on('data', (chunk: Buffer) => {
           buffer += chunk.toString('utf8');
         });
-        resolve({ raw: () => buffer, close: () => req.destroy() });
+        resolve({
+          raw: () => buffer,
+          close: () => {
+            req.destroy();
+          },
+        });
       },
     );
     req.on('error', reject);
+    openConnections.push(req);
     req.end();
   });
 }
@@ -138,7 +174,15 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
   let port = 0;
 
   afterEach(async () => {
+    // Destroy every client socket first, then force the server to drop any
+    // it still holds, and only then close the listener. Any other order
+    // releases the port while a socket is still live -- see
+    // `openConnections` above for the cross-process failure that causes.
+    while (openConnections.length > 0) {
+      openConnections.pop()?.destroy();
+    }
     if (server !== undefined) {
+      server.closeAllConnections();
       await new Promise<void>((resolve) => server?.close(() => resolve()));
     }
     harness?.cleanup();
