@@ -5619,3 +5619,35 @@ Deployed to Railway twice (`afd24dc7-…`, then `5755fca7-…` carrying the band
 **Recorded, not fixed** (`artifacts/verification/latest/BLOCKED.md`, git-ignored by design): an intermittent `apps/agent` failure that appears **only under full `pnpm verify`** -- a different test each run, five observed so far, three symptom shapes (a 400 where 200/404 was expected, a 404 assertion receiving 400, a SQLite liveness probe returning false). Not reproducible in isolation: `test:integration` ran clean 8 consecutive times and `events.test.ts` 5. Three hypotheses ruled out with evidence -- shared stores (each harness `mkdtempSync`s its own SQLite), FD exhaustion (`ulimit -n` is 1048576), and a memoized prepared statement (`health.ts` prepares on every request). Two assertions that failed uninformatively now carry the response body, so the next occurrence names a status and an error code instead of dead-ending on `undefined.length`.
 
 **Also open:** `CaseScoreboard.warnings` renders nowhere -- neither shipped pack emits one, so shipping an untestable surface was declined. `CaseExtensionReviewCard.tsx` remains unreachable from the command path. Several test files create SQLite handles without cleanup (`commands.test.ts:655-656`, the `sqlite-*-store` suites); harmless at this FD limit, worth tidying.
+
+---
+
+## 2026-09-02 — Task 0: integration checkpoint for the canonical final plan
+
+`docs/final-plan/` arrived as approved, untracked work, and `CLAUDE.md` gained a precedence notice pointing at it. `docs/final-plan/final-hackathon-execution-plan.md` is now the sole task control plane; `final-approved-experience.md` is the product authority. Both outrank this repository's older specs wherever they disagree.
+
+### Baseline
+
+| Check | Result |
+| --- | --- |
+| `git branch --show-current` | `main` |
+| `git rev-parse --short HEAD` | `da3ad9f` |
+| `git status --short` | ` M CLAUDE.md`, `?? docs/final-plan/` |
+| `pnpm typecheck` | clean, exit 0 |
+| `pnpm test:unit` | **3515 passed / 176 files**, exit 0 |
+
+**No pre-existing failures.** Nothing needed repair before implementation, so no unrelated work was touched.
+
+### Ownership
+
+The concurrent Claude Code session referenced by the plan is this session's own predecessor, and it has stopped -- the ranking/`Insight` work it describes is committed through `da3ad9f`, and its accepted `tests/e2e/*-snapshots/*.png` baselines were inspected at capture time (see the section above). There is no second writer, so no worktree isolation is required and Task 1 may edit the mapped seams directly.
+
+The two dirty paths are the plan package itself. They are committed here as a docs-only checkpoint before any product edit, exactly as the handoff prompt requires, so that later feature commits carry only their own owned files.
+
+### Discovery engine
+
+No repository path was supplied for the user's separate discovery engine. Per the canonical plan it is **non-blocking external input**: Task 2 implements the repository-native deterministic discovery contract. If the path arrives before Task 2 closes, its stages/coverage rules/next-question logic get an explicit keep/adapt/retire record here.
+
+### Gate
+
+**Passed.** Baseline, ownership, and overlaps are unambiguous; no existing failure is being carried into the new work.

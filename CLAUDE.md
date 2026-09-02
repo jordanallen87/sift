@@ -1,5 +1,16 @@
 # Sift Autonomous Build Instructions
 
+## Current execution authority — September 2, 2026
+
+The user has approved the final hackathon scope and experience in:
+
+1. `docs/final-plan/final-approved-experience.md`
+2. `docs/final-plan/final-hackathon-execution-plan.md`
+
+Read those two files immediately after this file. They supersede this file, older plans, and active specifications wherever scope, product behavior, demo priority, or execution order conflicts. In particular, the WebMCP deadline build is one complete Vehicle Selection hero plus a brief landscaping-business contrast; Home Energy remains cross-pack/AWS proof, and AWS-specific work waits until the WebMCP build is frozen. Do not restore work explicitly cut by the canonical plan. Update the older active specifications incrementally as required by the canonical plan's **Docs to update during implementation** checklist.
+
+The approved Claude Code handoff prompt is `docs/final-plan/claude-code-implementation-prompt.md`.
+
 ## Mission
 
 Build Sift into a working, polished, tested, deployable dual-hackathon submission. The output is running software and verifiable evidence, not a scaffold, design exercise, or partial prototype.
