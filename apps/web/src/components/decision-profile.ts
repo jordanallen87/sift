@@ -51,12 +51,30 @@
  *
  * `Criterion.weight` is a real, already-validated integer 0-100
  * (webmcp.md `sift_update_criteria`: "Weights must be integers from 0
- * through 100"). This module divides that range into three roughly equal
- * thirds (100 / 3 ~= 33.3), so no band gets an arbitrary, asymmetric cut:
+ * through 100"), and weights across a case's active criteria are meant to
+ * be read against each other rather than against the raw 0-100 range.
  *
- *   -   0-33  -> `somewhat_important`
- *   -  34-66  -> `important`
- *   -  67-100 -> `very_important`
+ * The bands were originally fixed thirds of that range (0-33 / 34-66 /
+ * 67-100). That looked principled and produced nothing usable: weights on
+ * a real case sum to roughly 100 ACROSS ALL CRITERIA, so a five-criterion
+ * case can only reach 67 if one criterion crowds out every other. The car
+ * pack ships 30/30/20/15/5 -- every one of them under 34 -- so all five
+ * priorities rendered as "Somewhat important", in a panel whose entire job
+ * is conveying which priorities outrank which. Five identical labels is not
+ * a simplification of the weights, it is the loss of them.
+ *
+ * So a concern is banded against its own case's distribution: how its share
+ * of the total compares to an EQUAL share. That is the comparison a person
+ * is actually making when they read the list.
+ *
+ *   -  >= 1.5x an equal share  -> `very_important`
+ *   -  >= 0.75x an equal share -> `important`
+ *   -  below that              -> `somewhat_important`
+ *
+ * On the car pack that reads 30/30 as very important, 20/15 as important,
+ * and 5 as somewhat -- which is what the household actually said. Two
+ * criteria at 50/50 both land on "important" rather than both on "very
+ * important", because equal weights mean neither outranks the other.
  *
  * The exact numeric weight is never discarded -- it is retained on every
  * projected concern (`weight`) precisely so an advanced view can still show
@@ -172,9 +190,40 @@ export const PRIORITY_BANDS = ['very_important', 'important', 'somewhat_importan
 export type PriorityBand = (typeof PRIORITY_BANDS)[number];
 
 /** See the module header, "Weight banding," for the threshold rationale. */
-export function bandWeight(weight: number): PriorityBand {
-  if (weight >= 67) return 'very_important';
-  if (weight >= 34) return 'important';
+export interface PriorityBandContext {
+  /** Summed `weight` of every criterion being banded together. */
+  readonly totalWeight: number;
+  /** How many criteria share that total. */
+  readonly criterionCount: number;
+}
+
+/**
+ * Bands one criterion's weight against its own case's distribution.
+ *
+ * Falls back to treating the weight as a share of 100 when no context is
+ * given, so an existing caller that has only a number still gets a sane
+ * answer rather than a crash -- but every caller inside this module passes
+ * the real distribution.
+ */
+export function bandWeight(weight: number, context?: PriorityBandContext): PriorityBand {
+  const totalWeight = context?.totalWeight ?? 100;
+  const criterionCount = context?.criterionCount ?? 1;
+
+  // A case where nothing carries weight has no priority ordering to
+  // convey, and dividing by zero would invent one.
+  if (totalWeight <= 0 || criterionCount <= 0) return 'somewhat_important';
+
+  const share = weight / totalWeight;
+  const equalShare = 1 / criterionCount;
+  // Epsilon because these thresholds land on exact boundaries constantly:
+  // a five-criterion case's equal share is 0.2, and `0.2 * 1.5` evaluates to
+  // 0.30000000000000004, so a criterion weighted exactly 30 of 100 -- the
+  // car pack's own top two -- would fall a band short of the boundary it
+  // sits precisely on. Comparing bare would make the banding depend on
+  // binary representation rather than on the weights.
+  const epsilon = 1e-9;
+  if (share >= equalShare * 1.5 - epsilon) return 'very_important';
+  if (share >= equalShare * 0.75 - epsilon) return 'important';
   return 'somewhat_important';
 }
 
@@ -246,13 +295,13 @@ export interface DecisionProfile {
   suggestedQuestions: DecisionProfileSuggestedQuestion[];
 }
 
-function toConcern(criterion: Criterion): DecisionProfileConcern {
+function toConcern(criterion: Criterion, context: PriorityBandContext): DecisionProfileConcern {
   return {
     id: criterion.id,
     label: criterion.label,
     kind: criterion.kind,
     weight: criterion.weight,
-    priorityBand: bandWeight(criterion.weight),
+    priorityBand: bandWeight(criterion.weight, context),
     origin: criterion.origin,
     target: criterion.target !== undefined ? formatAttributeValue(criterion.target) : null,
     question: criterion.question ?? null,
@@ -410,14 +459,24 @@ export function deriveDecisionProfile(
 ): DecisionProfile {
   const activeCriteria = caseState.criteria.filter((criterion) => criterion.status === 'active');
 
+  // Banding compares a concern against the WHOLE active distribution, not
+  // against the others of its own kind: a person reading the list is asking
+  // "which of these outranks which", and that question spans the sections.
+  const bandContext: PriorityBandContext = {
+    totalWeight: activeCriteria.reduce((sum, criterion) => sum + criterion.weight, 0),
+    criterionCount: activeCriteria.length,
+  };
+  const asConcern = (criterion: Criterion): DecisionProfileConcern =>
+    toConcern(criterion, bandContext);
+
   const mustHave = activeCriteria
     .filter((criterion) => criterion.kind === 'hard_constraint')
-    .map(toConcern)
+    .map(asConcern)
     .sort(byWeightDescending);
 
   const preferenceConcerns = activeCriteria
     .filter((criterion) => criterion.kind === 'preference')
-    .map(toConcern);
+    .map(asConcern);
   const important = preferenceConcerns
     .filter((concern) => concern.priorityBand !== 'somewhat_important')
     .sort(byWeightDescending);
@@ -427,7 +486,7 @@ export function deriveDecisionProfile(
 
   const context = activeCriteria
     .filter((criterion) => criterion.kind === 'consideration')
-    .map(toConcern)
+    .map(asConcern)
     .sort(byWeightDescending);
 
   const personalConcerns: DecisionProfilePersonalConcern[] = caseState.caseExtensions

@@ -72,19 +72,53 @@ function buildExtension(overrides: Partial<CaseExtension> = {}): CaseExtension {
 }
 
 describe('bandWeight', () => {
-  it('bands the bottom third (0-33) as somewhat_important', () => {
-    expect(bandWeight(0)).toBe('somewhat_important');
-    expect(bandWeight(33)).toBe('somewhat_important');
+  // Retargeted from fixed thirds of the raw 0-100 range. Those thresholds
+  // looked principled and produced nothing usable: weights on a real case
+  // sum to ~100 ACROSS ALL criteria, so a five-criterion case can only reach
+  // 67 if one criterion crowds out every other. The car pack's 30/30/20/15/5
+  // therefore rendered five identical "Somewhat important" labels in the one
+  // panel whose job is conveying which priority outranks which. The
+  // assertions below pin the same three bands against the comparison a
+  // person is actually making -- this concern's share versus an equal share.
+  const fiveWay = { totalWeight: 100, criterionCount: 5 };
+
+  it('bands a concern carrying well over an equal share as very_important', () => {
+    // Equal share of five is 20%. 30 is 1.5x that.
+    expect(bandWeight(30, fiveWay)).toBe('very_important');
+    expect(bandWeight(100, { totalWeight: 100, criterionCount: 5 })).toBe('very_important');
   });
 
-  it('bands the middle third (34-66) as important', () => {
-    expect(bandWeight(34)).toBe('important');
-    expect(bandWeight(66)).toBe('important');
+  it('bands a concern near an equal share as important', () => {
+    expect(bandWeight(20, fiveWay)).toBe('important');
+    expect(bandWeight(15, fiveWay)).toBe('important');
   });
 
-  it('bands the top third (67-100) as very_important', () => {
-    expect(bandWeight(67)).toBe('very_important');
-    expect(bandWeight(100)).toBe('very_important');
+  it('bands a concern well under an equal share as somewhat_important', () => {
+    expect(bandWeight(5, fiveWay)).toBe('somewhat_important');
+    expect(bandWeight(0, fiveWay)).toBe('somewhat_important');
+  });
+
+  it('does not call equally-weighted concerns very important, since neither outranks the other', () => {
+    expect(bandWeight(50, { totalWeight: 100, criterionCount: 2 })).toBe('important');
+  });
+
+  it('separates the car pack’s real distribution instead of flattening it', () => {
+    // The regression this rewrite exists for: all five used to band
+    // identically, which is the loss of the weights rather than a
+    // simplification of them.
+    const bands = [30, 30, 20, 15, 5].map((weight) => bandWeight(weight, fiveWay));
+    expect(new Set(bands).size).toBeGreaterThan(1);
+    expect(bands).toEqual([
+      'very_important',
+      'very_important',
+      'important',
+      'important',
+      'somewhat_important',
+    ]);
+  });
+
+  it('reports somewhat_important rather than dividing by zero when nothing carries weight', () => {
+    expect(bandWeight(0, { totalWeight: 0, criterionCount: 3 })).toBe('somewhat_important');
   });
 });
 
@@ -150,7 +184,13 @@ describe('deriveDecisionProfile', () => {
     const profile = deriveDecisionProfile(caseState);
     expect(profile.context).toHaveLength(1);
     expect(profile.context[0]?.weight).toBe(15);
-    expect(profile.context[0]?.priorityBand).toBe('somewhat_important');
+    // This asserted `somewhat_important`, which came from the old absolute
+    // thresholds reading a bare 15 as low. It is the ONLY active criterion
+    // on this case, so it carries all of the weight there is, and calling
+    // the sole thing a person said they care about "somewhat important" was
+    // never right. This test's subject is the routing and the preserved
+    // exact weight above; the band just has to be present and honest.
+    expect(profile.context[0]?.priorityBand).toBe('important');
     expect(profile.mustHave).toEqual([]);
     expect(profile.important).toEqual([]);
   });
