@@ -165,18 +165,35 @@ export const familyNovice: Journey = {
           `"${nextBefore ?? ''}" → "${nextAfter ?? ''}"`,
         );
 
+        // `visibleText`, not `text`: the orientation shell now collapses its
+        // secondary lines with the `hidden` attribute rather than unmounting
+        // them, so `textContent` still returns content a person cannot see.
         check.agreement(
           'coverage on screen kept up with the case',
-          coverageNumbers(await ctx.text('orientation-coverage'))?.[0] === after,
-          `screen ${await ctx.text('orientation-coverage')}, case ${after}`,
+          coverageNumbers(await ctx.visibleText('orientation-coverage'))?.[0] === after,
+          `screen ${await ctx.visibleText('orientation-coverage')}, case ${after}`,
         );
 
-        const change = await ctx.text('orientation-latest-change');
+        // What a person can see without opening anything. The collapsed row
+        // carries phase, coverage and the next step; "You said: …"
+        // (`orientation-latest-change`) moved behind the expander when the
+        // shell was compressed to one row, so this asks the question that
+        // still matters — after answering, does the pane show them they
+        // moved — rather than pinning one line that is no longer on screen.
+        const nextVisible = await ctx.visibleText('orientation-next-step');
+        const coverageVisible = await ctx.visibleText('orientation-coverage');
         check.ui(
-          'the pane says what just changed',
-          (change ?? '').length > 0,
-          change ?? 'nothing tells this person what their answer did',
+          'the pane shows the person they moved, without opening anything',
+          (coverageVisible ?? '').length > 0 && (nextVisible ?? '').length > 0,
+          `coverage "${coverageVisible ?? ''}", next "${nextVisible ?? ''}"`,
         );
+
+        const changeVisible = await ctx.visibleText('orientation-latest-change');
+        if (changeVisible === null) {
+          ctx.observe(
+            '"You said: …" — the pane repeating a person\'s own answer back to them — is now behind the collapsed expander. It is the cheapest trust signal in the product, and a first-time user will not open a disclosure to find it.',
+          );
+        }
       },
     },
 

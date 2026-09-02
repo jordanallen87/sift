@@ -18,6 +18,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { DecisionOrientationShell } from './DecisionOrientationShell.js';
 import type { DecisionOrientation } from './DecisionOrientationShell.js';
@@ -270,5 +271,157 @@ describe('DecisionOrientationShell: what Sift is working on', () => {
     const line = screen.getByTestId('orientation-unverifiable');
     expect(line.textContent).toContain('nothing Sift can check');
     expect(line.textContent).toContain('judge it yourself');
+  });
+});
+
+/**
+ * The shell used to spend four stacked lines plus a full-width progress bar
+ * on the top of a 390-640px pane, which is most of a phone screen before a
+ * single option is visible. It is now one row plus an expander.
+ *
+ * The tests that matter here are not the compression ones -- they are the
+ * three about what compression is *not allowed* to do: hide a warning, let
+ * the visible row contradict what it hid, or clip a sentence mid-thought.
+ */
+describe('DecisionOrientationShell: one row, detail behind an expander', () => {
+  it('carries where you are, how far along, and what is next without opening anything', () => {
+    render(<DecisionOrientationShell orientation={orientation()} layout="narrow" />);
+
+    expect(screen.getByTestId('orientation-phase')).toBeVisible();
+    expect(screen.getByTestId('orientation-coverage')).toBeVisible();
+    expect(screen.getByTestId('orientation-next-step')).toBeVisible();
+  });
+
+  it('keeps the secondary lines in the document but out of sight until asked', () => {
+    // Out of sight, not out of the DOM: these testids are read by the e2e
+    // and journey suites, and an element that vanishes when collapsed would
+    // turn a layout change into a silent contract change.
+    render(
+      <DecisionOrientationShell
+        orientation={orientation()}
+        layout="narrow"
+        workInFlight={{
+          plannedItems: 6,
+          optionsUnderInvestigation: 2,
+          unverifiableConcerns: 0,
+          planVersion: 2,
+        }}
+      />,
+    );
+
+    for (const testId of [
+      'orientation-route',
+      'orientation-focus',
+      'orientation-latest-change',
+      'orientation-work-in-flight',
+    ]) {
+      expect(screen.getByTestId(testId), testId).toBeInTheDocument();
+      expect(screen.getByTestId(testId), testId).not.toBeVisible();
+    }
+  });
+
+  it('never collapses the line that says the answer is provisional', () => {
+    // A warning that only appears once someone opens a disclosure is a
+    // warning the product has decided not to give.
+    render(
+      <DecisionOrientationShell orientation={orientation({ provisional: true })} layout="narrow" />,
+    );
+
+    expect(screen.getByTestId('orientation-provisional')).toBeVisible();
+  });
+
+  it('never collapses a concern nothing can check', () => {
+    render(
+      <DecisionOrientationShell
+        orientation={orientation()}
+        layout="narrow"
+        workInFlight={{
+          plannedItems: 6,
+          optionsUnderInvestigation: 2,
+          unverifiableConcerns: 1,
+          planVersion: 2,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('orientation-unverifiable')).toBeVisible();
+  });
+
+  it('opens and closes from a real button that reports its own state', async () => {
+    const user = userEvent.setup();
+    render(<DecisionOrientationShell orientation={orientation()} layout="narrow" />);
+
+    const toggle = screen.getByTestId('orientation-details-toggle');
+    expect(toggle.tagName).toBe('BUTTON');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', screen.getByTestId('orientation-details').id);
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('orientation-route')).toBeVisible();
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('orientation-route')).not.toBeVisible();
+  });
+
+  it('opens from the keyboard alone', async () => {
+    const user = userEvent.setup();
+    render(<DecisionOrientationShell orientation={orientation()} layout="narrow" />);
+
+    const toggle = screen.getByTestId('orientation-details-toggle');
+    toggle.focus();
+    await user.keyboard('{Enter}');
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('remembers nothing: every fresh render starts closed', async () => {
+    // Deliberate. A remembered disclosure means two people looking at the
+    // same case see different panes, and a screenshot of one of them is no
+    // longer evidence of what the product shows.
+    const user = userEvent.setup();
+    const first = render(<DecisionOrientationShell orientation={orientation()} layout="narrow" />);
+    await user.click(screen.getByTestId('orientation-details-toggle'));
+    expect(screen.getByTestId('orientation-details-toggle')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    first.unmount();
+
+    render(<DecisionOrientationShell orientation={orientation()} layout="narrow" />);
+    expect(screen.getByTestId('orientation-details-toggle')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('renders no expander when there is nothing behind it', () => {
+    // An empty disclosure is a control that lies about having something.
+    render(
+      <DecisionOrientationShell
+        orientation={orientation({
+          currentFocus: null,
+          latestChange: null,
+          routeToOutcome: '',
+        })}
+        layout="narrow"
+      />,
+    );
+
+    expect(screen.queryByTestId('orientation-details-toggle')).toBeNull();
+    // The row itself is untouched by that.
+    expect(screen.getByTestId('orientation-phase')).toBeVisible();
+    expect(screen.getByTestId('orientation-next-step')).toBeVisible();
+  });
+
+  it('has no accessibility violations with the detail open', async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <DecisionOrientationShell orientation={orientation()} layout="narrow" />,
+    );
+    await user.click(screen.getByTestId('orientation-details-toggle'));
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

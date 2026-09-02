@@ -123,8 +123,25 @@ export interface TurnContext {
   write(tool: string, input?: Record<string, unknown>): Promise<ToolEnvelope>;
   /** Waits until the case stops changing, rather than for a fixed time. */
   settle(): Promise<void>;
-  /** Text content of a testid, or null when it is not on screen. */
+  /**
+   * Text content of a testid, or null when the element is not in the DOM.
+   *
+   * Reads `textContent`, which a hidden element still has. Use this to ask
+   * what the page *holds*; use `visibleText` to ask what a person can
+   * actually read.
+   */
   text(testId: string): Promise<string | null>;
+  /**
+   * Text content of a testid, or null when a person cannot see it.
+   *
+   * The distinction is not academic. `DecisionOrientationShell` collapses
+   * its secondary lines with the `hidden` attribute rather than unmounting
+   * them, so every testid stays in the DOM and `text()` keeps returning
+   * their content — a `ui` check written against `text()` reported that
+   * "the pane says what just changed" while the person saw nothing at all.
+   * A `ui` check is a claim about what is on screen, so it belongs on this.
+   */
+  visibleText(testId: string): Promise<string | null>;
   /** Whether a testid is currently visible. */
   visible(testId: string): Promise<boolean>;
   /** A note for the UX review — an observation, not a pass/fail. */
@@ -284,6 +301,13 @@ export async function runJourney(
       const locator = host.page.getByTestId(testId);
       if ((await locator.count()) === 0) return null;
       return (await locator.first().textContent())?.trim() ?? null;
+    },
+    async visibleText(testId) {
+      const locator = host.page.getByTestId(testId);
+      if ((await locator.count()) === 0) return null;
+      const first = locator.first();
+      if (!(await first.isVisible().catch(() => false))) return null;
+      return (await first.textContent())?.trim() ?? null;
     },
     async visible(testId) {
       const locator = host.page.getByTestId(testId);
