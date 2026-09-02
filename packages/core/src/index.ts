@@ -187,3 +187,22 @@ export type {
   OptionScore,
   ScoreCaseInput,
 } from './scoring.js';
+
+// Deterministic discovery derivation (discovery.ts). Coverage, readiness,
+// next moves, and the authority rules that govern turning a response into
+// state. Identical state always produces identical readiness, allowed moves,
+// and required pane view -- which is what makes reload/resume restore a
+// person's exact place rather than an approximation of it.
+export {
+  applyDiscoveryResponse,
+  compileDiscoveryTopics,
+  deriveDiscoveryReadiness,
+  deriveNextMoves,
+  planDiscoveryResponse,
+} from './discovery.js';
+export type {
+  DiscoveryReadiness,
+  DiscoveryRejection,
+  DiscoveryRejectionReason,
+  DiscoveryResponsePlan,
+} from './discovery.js';
