@@ -2,7 +2,7 @@
 
 Session date: 2026-09-02.
 Plan executed: `docs/final-plan/final-hackathon-execution-plan.md`.
-Baseline: `main` @ `da3ad9f`. Final SHA at time of writing: `768535e`.
+Baseline: `main` @ `da3ad9f`. Final SHA at time of writing: `b7a150f`.
 
 This report covers Tasks 0–5 and Task 7 of the canonical plan. **Tasks 6 and
 8–11 were not reached.** What that means concretely is in
@@ -12,15 +12,15 @@ in [What Codex must independently review and retest](#what-codex-must-independen
 ## Verification
 
 `pnpm verify`: **PASSED, all ten stages** (run
-`2026-09-02T07-44-21-571Z-96a57882`).
+`2026-09-02T08-06-39-095Z-7e4e500a`).
 
 | Stage | Result |
 | --- | --- |
 | `format:check` | PASS |
 | `lint` (eslint + `check:source`) | PASS |
 | `typecheck` | PASS |
-| `test:unit` | PASS — **3792 tests / 183 files** (baseline: 3515 / 176) |
-| `test:coverage` | PASS — against the unchanged 95/90/95/95 gate |
+| `test:unit` | PASS — **3808 tests / 184 files** (baseline: 3515 / 176) |
+| `test:coverage` | PASS — 96.85 / 93.07 / 97.19 / 97.48 against the unchanged 95/90/95/95 gate |
 | `test:pack` | PASS |
 | `test:integration` | PASS — 427 tests |
 | `test:contract` | PASS |
@@ -130,11 +130,30 @@ focused — the judgment vanished on reload and the model could not read it
 back, which made the bidirectional claim untrue at the beat the demo rests
 on. Undo is a forward command carrying `previousDisposition`.
 
-### Task 7 — companion frame (components only)
+### Task 7 — companion frame
 
 `DecisionOrientationShell`, `ContextActionDock`, and `DiscoveryInteraction`
-are built and fully tested (25 + 15 tests, axe-clean, 390/430/480 overflow
-checks). **They are not yet wired into `App.tsx`** — see below.
+are built, fully tested (axe-clean, 390/430/480 overflow checks), and the
+shell and dock are **wired into the workspace**. `buildDecisionOrientation`
+turns case state into the six answers the shell renders, and the dock is fed
+by `deriveNextMoves` — the same list `sift_get_interaction_context` returns,
+so the pane and the model cannot disagree about what to do next.
+
+Rendering it exposed three contradictions every unit test had missed,
+because each field was correct in isolation: "Narrowing down what you found"
+above "0 of 5 covered"; the pack name on screen three times; and "In focus:
+Budget" above "Next: Budget". All three are fixed at the root — see
+`b7a150f`.
+
+The shell and dock render **only for a case that has genuinely begun
+adaptive discovery**. A seeded demo case arrives with candidates and no
+discovery, and the shell has nothing true to add to one. That is why no
+screenshot baseline changed for this task, and it is also why the frame has
+no end-to-end coverage yet: it awaits Task 9's adaptive journey.
+
+`DiscoveryInteraction` has no host in `App.tsx` yet, because nothing creates
+an `InteractionRequest` in the running product — that is Task 4's tool
+reaching a pane surface, which Task 9 would exercise.
 
 ## Defects found and fixed
 
@@ -181,7 +200,7 @@ completion for work that does not exist.
 | Task | Status |
 | --- | --- |
 | **6 — continuous RunPlan** | **Not started.** The demo's "new concern revises already-running agent work" beat is not implemented. `apps/agent/src/runtime/run-plan.ts` does not exist. |
-| **7 — frame integration** | **Components built and tested; not wired into `App.tsx`.** The pane does not yet render the orientation shell or the action dock, and `DiscoveryInteraction` has no host. |
+| **7 — frame integration** | **Shell and dock wired; `DiscoveryInteraction` has no host.** The frame renders only once discovery has started, so no existing journey exercises it end to end. |
 | **8 — persona UX harness** | **Not started.** There is no `pnpm test:persona`, no persona fixtures, and no turn-artifact capture. |
 | **9 — adaptive E2E journey** | **Not started.** `tests/e2e/adaptive-vehicle-journey.spec.ts` does not exist. The existing 52 e2e tests cover the *previous* journey and all pass. |
 | **10 — submission freeze** | **Not started.** No host-acceptance record, no claim-evidence matrix, no deployment this session. |
@@ -269,4 +288,6 @@ c3f343f feat(vehicle): persist triage and living recommendations
 f6ef672 fix(test): stop agent HTTP tests contending for ephemeral ports
 22fa71a style: apply prettier formatting
 768535e fix(web): keep view writes on the server's real sequence
+e95467c docs: completion report for the adaptive decision experience
+b7a150f feat(web): wire the companion frame into the workspace
 ```
