@@ -63,6 +63,7 @@ The official rules and live Devpost forms prevail if they change. Refresh both c
 - [ ] Error, blocked, waiting, and recovery states are understandable to a judge.
 - [ ] The deployed build displays a nonintrusive release identifier that maps to the final commit.
 - [ ] The live URL passes an incognito smoke test after the last deployment.
+- [ ] A real-host acceptance session has been run and recorded in [`webmcp/host-acceptance.md`](./webmcp/host-acceptance.md). Until then that file states plainly that it has not, and step 8 of its script — a host attempting to confirm a shortlist — is a release blocker if it ever succeeds.
 
 ## Automated verification
 
@@ -76,6 +77,9 @@ The official rules and live Devpost forms prevail if they change. Refresh both c
 - [ ] The release suite checks URLs, repository visibility, license, required files, artifact sizes, video durations, and release metadata.
 - [ ] The final verification report clearly separates passing tests, waived checks, external blockers, and human attestations.
 - [ ] There are no skipped, focused-only, or quarantined tests affecting a submission claim.
+- [ ] `pnpm test:persona` passes all three personas' hard gates, and its `not_evaluated` list is read rather than skimmed — a gate that could not be checked is not a gate that passed.
+- [ ] Every claim in the submission copy appears in [`webmcp/claim-evidence-matrix.md`](./webmcp/claim-evidence-matrix.md) with an implementation, a proof, and a limitation. A claim with no row is a claim we do not make.
+- [ ] The matrix's "claims we deliberately do not make" section has been re-read against the current submission text, so nothing crept back in.
 
 ## Shared presentation assets
 

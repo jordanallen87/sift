@@ -146,6 +146,16 @@ runs `pnpm verify` (above), then `pnpm test:mutation` (real Stryker-based mutati
 
 `pnpm test:submission` (`scripts/test-submission.ts`) is the automated half of `docs/submissions/`: it checks that required submission files exist, README commands match real `package.json` scripts, `LICENSE` is present and MIT, `.env.example` contains no likely secrets, the architecture diagram source/export exist, fixture/reuse attribution is real, both hero scenarios' deterministic assertion reports exist and passed, the latest `pnpm verify` report's Git SHA matches the current commit, any present demo recording is within its competition's time limit, and required public URL fields are set in `docs/submissions/release-metadata.json`. It never marks eligibility, country, submitter type, learning, career-value, AWS Builder ID ownership, or other personal/legal attestations complete — those stay human-only gates in the Markdown checklists under `docs/submissions/`. `docs/submissions/release-metadata.json` now exists and both hero scenarios' reports (`artifacts/verification/scenarios/car-purchase/`, `artifacts/verification/scenarios/home-energy-guardian/`) have been generated; the video URL fields in that metadata file remain empty pending the actual demo recordings — see the checklists under `docs/submissions/` for current submission-readiness status rather than treating this paragraph as a live status report.
 
+```bash
+pnpm test:persona
+```
+
+runs the **persona UX harness** (`scripts/test-persona.ts`): three scripted people — a family novice, a landscaping business owner, and someone who arrives with one specific vehicle already in mind — walked through the real stack in process, then checked against eleven deterministic hard gates.
+
+The executor answers whatever Sift actually asks rather than replaying a fixed input per turn, so the landscaping journey diverges from the family journey because the pack's conditional topics diverge, not because two scripts differ.
+
+Two things it will not do. It never invents a usability score: a run with no diagnostic pass reports `scored: false` rather than a number, and a `DiagnosticScore` with no cited turn evidence cannot be constructed at all. And it never reports a gate it could not check as passing — accessibility, console/network, and unsupported-claim gates report `not_evaluated` with a reason, because an in-process run has no browser console, no axe tree, and no model-authored prose to inspect. Per-turn reports land in `artifacts/persona/<persona>.json`.
+
 `test:observability` and `test:live` remain declared stubs (`scripts/stage-not-implemented.ts`) — they print an honest "not yet implemented" message and exit `0`; do not treat either as release evidence yet. See [`docs/specs/testing.md`](docs/specs/testing.md) for the full intended verification pyramid and which layers are real today.
 
 ## Architecture
