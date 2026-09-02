@@ -33,7 +33,7 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
 
   async function startDemo(): Promise<{ caseId: string; expectedSequence: number }> {
     if (harness === undefined) throw new Error('harness not initialized');
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post('/api/cases/demo')
       .set('Idempotency-Key', 'cmd-start')
       .send({ demoId: 'car-purchase' });
@@ -43,9 +43,9 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
 
   describe('GET /ping', () => {
     it('returns exactly {status: "Healthy", time_of_last_update: <unix seconds>}', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
 
-      const response = await request(harness.app).get('/ping');
+      const response = await request(harness.server).get('/ping');
 
       expect(response.status).toBe(200);
       const body = asJson<PingBody>(response.body);
@@ -55,10 +55,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     });
 
     it('never advances time_of_last_update across repeated pings (AWS: "Do not set time_of_last_update to the current time on every ping")', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
 
-      const first = await request(harness.app).get('/ping');
-      const second = await request(harness.app).get('/ping');
+      const first = await request(harness.server).get('/ping');
+      const second = await request(harness.server).get('/ping');
 
       expect(asJson<PingBody>(second.body).time_of_last_update).toBe(
         asJson<PingBody>(first.body).time_of_last_update,
@@ -75,10 +75,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     });
 
     it('rejects commandName "reviewProposal" as a schema validation failure, never reaching CommandService', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .set('Idempotency-Key', 'cmd-invoke-1')
         .send({
@@ -99,10 +99,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     });
 
     it('rejects commandName "reviewCaseExtension" as a schema validation failure', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .set('Idempotency-Key', 'cmd-invoke-2')
         .send({
@@ -118,10 +118,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
 
   describe('POST /invocations: real command dispatch', () => {
     it('dispatches a real command (selectPack) into CommandService and durably persists the result', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .set('Idempotency-Key', 'cmd-invoke-3')
         .send({
@@ -140,10 +140,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     });
 
     it('requires an Idempotency-Key header for a mutating commandName call', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .send({
           caseId,
@@ -180,10 +180,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     // the status code) below makes that guarantee visible in the test
     // itself, not just in this comment.
     it('returns a 409 conflict envelope with the latest snapshot for a stale expectedSequence', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .set('Idempotency-Key', 'cmd-invoke-4')
         .send({
@@ -202,7 +202,7 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     });
 
     it('is idempotent over HTTP: retrying the same Idempotency-Key returns the same accepted sequence', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
       const body = {
         caseId,
@@ -210,11 +210,11 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
         input: { packId: 'car-purchase', expectedSequence },
       };
 
-      const first = await request(harness.app)
+      const first = await request(harness.server)
         .post('/invocations')
         .set('Idempotency-Key', 'cmd-invoke-5')
         .send(body);
-      const second = await request(harness.app)
+      const second = await request(harness.server)
         .post('/invocations')
         .set('Idempotency-Key', 'cmd-invoke-5')
         .send(body);
@@ -227,10 +227,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
 
   describe('POST /invocations: input defaulting when the input field is omitted', () => {
     it("defaults input to {} for a commandName dispatch (still requiring the command's own required fields)", async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .set('Idempotency-Key', 'cmd-invoke-no-input')
         .send({ caseId, commandName: 'selectPack' });
@@ -245,10 +245,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
 
   describe('POST /invocations: requestInvestigation dispatch (RunService, the real engine)', () => {
     it('creates a real, durably recorded run via action: "requestInvestigation"', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .set('Idempotency-Key', 'cmd-invoke-6')
         .send({ caseId, action: 'requestInvestigation', input: { expectedSequence } });
@@ -266,10 +266,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     });
 
     it('requires an Idempotency-Key header for action: "requestInvestigation" too, not just commandName dispatch', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .send({ caseId, action: 'requestInvestigation', input: { expectedSequence } });
 
@@ -278,10 +278,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     });
 
     it('defaults input to {} for action: "requestInvestigation" (still requiring expectedSequence via RequestInvestigationInputSchema)', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .set('Idempotency-Key', 'cmd-invoke-no-input-run')
         .send({ caseId, action: 'requestInvestigation' });
@@ -291,10 +291,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     });
 
     it('rejects commandName and action supplied together as a validation failure', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .set('Idempotency-Key', 'cmd-invoke-7')
         .send({
@@ -310,10 +310,10 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
 
   describe('POST /invocations: default read-only case context', () => {
     it('returns the real case snapshot when neither commandName nor action is given', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId } = await startDemo();
 
-      const response = await request(harness.app).post('/invocations').send({ caseId });
+      const response = await request(harness.server).post('/invocations').send({ caseId });
 
       expect(response.status).toBe(200);
       const envelope = asJson<InvocationEnvelope<{ id: string }>>(response.body);
@@ -322,9 +322,9 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
     });
 
     it('returns 404 for an unknown case', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post('/invocations')
         .send({ caseId: 'does-not-exist' });
 
@@ -334,17 +334,17 @@ describe('AgentCore contract: GET /ping / POST /invocations', () => {
 
   describe('POST /invocations: malformed input', () => {
     it('returns 400 for a non-object (array) JSON body', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
 
-      const response = await request(harness.app).post('/invocations').send([1, 2, 3]);
+      const response = await request(harness.server).post('/invocations').send([1, 2, 3]);
 
       expect(response.status).toBe(400);
     });
 
     it('returns 400 when caseId is missing', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
 
-      const response = await request(harness.app).post('/invocations').send({});
+      const response = await request(harness.server).post('/invocations').send({});
 
       expect(response.status).toBe(400);
     });

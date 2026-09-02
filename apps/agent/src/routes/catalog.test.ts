@@ -13,9 +13,9 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/years returns a non-empty descending array', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/catalog/years');
+    const response = await request(harness.server).get('/api/catalog/years');
 
     expect(response.status).toBe(200);
     const body = asJson<{ years: number[] }>(response.body);
@@ -26,9 +26,9 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/makes returns makes including Toyota', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/catalog/makes');
+    const response = await request(harness.server).get('/api/catalog/makes');
 
     expect(response.status).toBe(200);
     const body = asJson<{ makes: string[] }>(response.body);
@@ -36,13 +36,13 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/makes?year= filters correctly', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const yearsResponse = await request(harness.app).get('/api/catalog/years');
+    const yearsResponse = await request(harness.server).get('/api/catalog/years');
     const { years } = asJson<{ years: number[] }>(yearsResponse.body);
     const year = years[0]!;
 
-    const response = await request(harness.app).get('/api/catalog/makes').query({ year });
+    const response = await request(harness.server).get('/api/catalog/makes').query({ year });
 
     expect(response.status).toBe(200);
     const body = asJson<{ makes: string[] }>(response.body);
@@ -50,9 +50,9 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/models?make=Toyota returns models including Camry', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .get('/api/catalog/models')
       .query({ make: 'Toyota' });
 
@@ -62,9 +62,9 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/models without make responds 400', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/catalog/models');
+    const response = await request(harness.server).get('/api/catalog/models');
 
     expect(response.status).toBe(400);
     const body = asJson<{ error: { code: string } }>(response.body);
@@ -72,9 +72,9 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/body-styles returns a non-empty array', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/catalog/body-styles');
+    const response = await request(harness.server).get('/api/catalog/body-styles');
 
     expect(response.status).toBe(200);
     const body = asJson<{ bodyStyles: string[] }>(response.body);
@@ -82,9 +82,9 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/fuel-types returns a non-empty array', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/catalog/fuel-types');
+    const response = await request(harness.server).get('/api/catalog/fuel-types');
 
     expect(response.status).toBe(200);
     const body = asJson<{ fuelTypes: string[] }>(response.body);
@@ -98,9 +98,9 @@ describe('GET /api/catalog/*', () => {
    * someone notices the results ignore the filter.
    */
   it('GET /api/catalog/vehicles?fuelType= filters over HTTP', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/catalog/vehicles?fuelType=Electric');
+    const response = await request(harness.server).get('/api/catalog/vehicles?fuelType=Electric');
 
     expect(response.status).toBe(200);
     const body = asJson<{ records: { fuelType: string | null }[]; total: number }>(response.body);
@@ -110,15 +110,15 @@ describe('GET /api/catalog/*', () => {
       expect(record.fuelType).toBe('Electric');
     }
 
-    const unfiltered = await request(harness.app).get('/api/catalog/vehicles');
+    const unfiltered = await request(harness.server).get('/api/catalog/vehicles');
     const unfilteredTotal = asJson<{ total: number }>(unfiltered.body).total;
     expect(body.total).toBeLessThan(unfilteredTotal);
   });
 
   it('GET /api/catalog/vehicles with no params returns a bounded default page with a total', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/catalog/vehicles');
+    const response = await request(harness.server).get('/api/catalog/vehicles');
 
     expect(response.status).toBe(200);
     const body = asJson<{ records: VehicleCatalogRecord[]; total: number }>(response.body);
@@ -128,9 +128,9 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/vehicles?query=camry filters correctly', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .get('/api/catalog/vehicles')
       .query({ query: 'camry' });
 
@@ -143,9 +143,9 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/vehicles?limit=1000 stays bounded to MAX_SEARCH_RESULTS', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/catalog/vehicles').query({ limit: 1000 });
+    const response = await request(harness.server).get('/api/catalog/vehicles').query({ limit: 1000 });
 
     expect(response.status).toBe(200);
     const body = asJson<{ records: VehicleCatalogRecord[]; total: number }>(response.body);
@@ -153,9 +153,9 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/vehicles?limit=notanumber responds 400 VALIDATION', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .get('/api/catalog/vehicles')
       .query({ limit: 'notanumber' });
 
@@ -165,15 +165,15 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/vehicles/:id returns the exact record for a real id', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const listResponse = await request(harness.app).get('/api/catalog/vehicles');
+    const listResponse = await request(harness.server).get('/api/catalog/vehicles');
     const { records } = asJson<{ records: VehicleCatalogRecord[]; total: number }>(
       listResponse.body,
     );
     const target = records[0]!;
 
-    const response = await request(harness.app).get(`/api/catalog/vehicles/${target.id}`);
+    const response = await request(harness.server).get(`/api/catalog/vehicles/${target.id}`);
 
     expect(response.status).toBe(200);
     const body = asJson<VehicleCatalogRecord>(response.body);
@@ -181,9 +181,9 @@ describe('GET /api/catalog/*', () => {
   });
 
   it('GET /api/catalog/vehicles/:id for an unknown id responds 404 NOT_FOUND', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/catalog/vehicles/not-a-real-id');
+    const response = await request(harness.server).get('/api/catalog/vehicles/not-a-real-id');
 
     expect(response.status).toBe(404);
     const body = asJson<{ error: { code: string } }>(response.body);

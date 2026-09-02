@@ -27,7 +27,7 @@ describe('GET /api/cases/:caseId/events?mode=poll (polling fallback)', () => {
 
   async function startDemo(): Promise<{ caseId: string; expectedSequence: number }> {
     if (harness === undefined) throw new Error('harness not initialized');
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post('/api/cases/demo')
       .set('Idempotency-Key', 'cmd-start')
       .send({ demoId: 'car-purchase' });
@@ -36,10 +36,10 @@ describe('GET /api/cases/:caseId/events?mode=poll (polling fallback)', () => {
   }
 
   it('returns the current snapshot and every activity event when afterSequence is omitted (success)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
 
-    const response = await request(harness.app).get(`/api/cases/${caseId}/events?mode=poll`);
+    const response = await request(harness.server).get(`/api/cases/${caseId}/events?mode=poll`);
 
     expect(response.status).toBe(200);
     const body = asJson<PollResponse>(response.body);
@@ -49,14 +49,14 @@ describe('GET /api/cases/:caseId/events?mode=poll (polling fallback)', () => {
   });
 
   it('returns only events after afterSequence', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
-    await request(harness.app)
+    await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence });
 
-    const all = await request(harness.app).get(`/api/cases/${caseId}/events?mode=poll`);
+    const all = await request(harness.server).get(`/api/cases/${caseId}/events?mode=poll`);
     // Assert the response actually succeeded before indexing into its body.
     // This test has flaked twice under `pnpm verify`'s parallel workers, and
     // both times the only evidence was `TypeError: Cannot read properties of
@@ -68,7 +68,7 @@ describe('GET /api/cases/:caseId/events?mode=poll (polling fallback)', () => {
     expect(all.status, JSON.stringify(all.body)).toBe(200);
     expect(asJson<PollResponse>(all.body).events.length).toBe(2);
 
-    const afterFirst = await request(harness.app).get(
+    const afterFirst = await request(harness.server).get(
       `/api/cases/${caseId}/events?mode=poll&afterSequence=1`,
     );
     const body = asJson<PollResponse>(afterFirst.body);
@@ -77,7 +77,7 @@ describe('GET /api/cases/:caseId/events?mode=poll (polling fallback)', () => {
   });
 
   it('falls back to the pre-fetch snapshot if the case becomes momentarily unavailable between the initial existence check and the second, response-time read (defensive re-load fallback)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
     const realCaseStore = harness.caseStore;
 
@@ -114,18 +114,18 @@ describe('GET /api/cases/:caseId/events?mode=poll (polling fallback)', () => {
   });
 
   it('returns not_found for an unknown case', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/cases/does-not-exist/events?mode=poll');
+    const response = await request(harness.server).get('/api/cases/does-not-exist/events?mode=poll');
 
     expect(response.status).toBe(404);
   });
 
   it('returns validation for a malformed afterSequence', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
 
-    const response = await request(harness.app).get(
+    const response = await request(harness.server).get(
       `/api/cases/${caseId}/events?mode=poll&afterSequence=not-a-number`,
     );
 

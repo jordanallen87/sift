@@ -16,7 +16,7 @@ describe('GET /api/debug/runs/:runId', () => {
 
   async function startDemo(): Promise<{ caseId: string }> {
     if (harness === undefined) throw new Error('harness not initialized');
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post('/api/cases/demo')
       .set('Idempotency-Key', 'cmd-start')
       .send({ demoId: 'car-purchase' });
@@ -62,23 +62,23 @@ describe('GET /api/debug/runs/:runId', () => {
   }
 
   it('returns 404 for a run that does not exist', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/debug/runs/does-not-exist');
+    const response = await request(harness.server).get('/api/debug/runs/does-not-exist');
     expect(response.status).toBe(404);
   });
 
   it('returns 404 for every debug route when SIFT_DEBUG_ENABLED is false', async () => {
-    harness = createHttpTestHarness({ debugEnabled: false });
+    harness = await createHttpTestHarness({ debugEnabled: false });
     const { caseId } = await startDemo();
     seedRun(caseId, 'run-1');
 
-    const response = await request(harness.app).get('/api/debug/runs/run-1');
+    const response = await request(harness.server).get('/api/debug/runs/run-1');
     expect(response.status).toBe(404);
   });
 
   it('returns a real Overview computed from RunStore + persisted runtime_events, and an ordered Timeline', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
     seedRun(caseId, 'run-1');
     harness.runStore.updateStatus('run-1', {
@@ -102,7 +102,7 @@ describe('GET /api/debug/runs/:runId', () => {
       }),
     );
 
-    const response = await request(harness.app).get('/api/debug/runs/run-1');
+    const response = await request(harness.server).get('/api/debug/runs/run-1');
     expect(response.status).toBe(200);
 
     const body = asJson<{
@@ -136,7 +136,7 @@ describe('GET /api/debug/runs/:runId', () => {
   });
 
   it('narrows the Timeline (events) by ?category= without changing the Overview counts', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
     seedRun(caseId, 'run-1');
 
@@ -145,7 +145,7 @@ describe('GET /api/debug/runs/:runId', () => {
       draftEvent('run-1', caseId, 1, { category: 'skill', name: 'skill.activated' }),
     );
 
-    const response = await request(harness.app).get('/api/debug/runs/run-1?category=skill');
+    const response = await request(harness.server).get('/api/debug/runs/run-1?category=skill');
     expect(response.status).toBe(200);
 
     const body = asJson<{
@@ -159,7 +159,7 @@ describe('GET /api/debug/runs/:runId', () => {
   });
 
   it('narrows the Timeline by ?level=', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
     seedRun(caseId, 'run-1');
 
@@ -168,7 +168,7 @@ describe('GET /api/debug/runs/:runId', () => {
       draftEvent('run-1', caseId, 1, { level: 'warn', category: 'intervention' }),
     );
 
-    const response = await request(harness.app).get('/api/debug/runs/run-1?level=warn');
+    const response = await request(harness.server).get('/api/debug/runs/run-1?level=warn');
     expect(response.status).toBe(200);
 
     const body = asJson<{ events: { level: string }[] }>(response.body);
@@ -177,27 +177,27 @@ describe('GET /api/debug/runs/:runId', () => {
   });
 
   it('returns 400 for an invalid ?category=', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
     seedRun(caseId, 'run-1');
 
-    const response = await request(harness.app).get(
+    const response = await request(harness.server).get(
       '/api/debug/runs/run-1?category=not-a-category',
     );
     expect(response.status).toBe(400);
   });
 
   it('returns 400 for an invalid ?level=', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
     seedRun(caseId, 'run-1');
 
-    const response = await request(harness.app).get('/api/debug/runs/run-1?level=not-a-level');
+    const response = await request(harness.server).get('/api/debug/runs/run-1?level=not-a-level');
     expect(response.status).toBe(400);
   });
 
   it('aggregates tokenUsage and estimatedCostUsd across events into the Overview when at least one event carries them', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
     seedRun(caseId, 'run-1');
 
@@ -221,7 +221,7 @@ describe('GET /api/debug/runs/:runId', () => {
     // to undefined/zero -- the aggregation only adds when present.
     harness.runtimeEventStore.append(draftEvent('run-1', caseId, 2, {}));
 
-    const response = await request(harness.app).get('/api/debug/runs/run-1');
+    const response = await request(harness.server).get('/api/debug/runs/run-1');
     expect(response.status).toBe(200);
 
     const body = asJson<{
@@ -236,7 +236,7 @@ describe('GET /api/debug/runs/:runId', () => {
   });
 
   it('defaults to enabled when DebugRouterDeps.enabled is omitted entirely, not just when it is explicitly true', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
     seedRun(caseId, 'run-1');
 
@@ -260,11 +260,11 @@ describe('GET /api/debug/runs/:runId', () => {
   });
 
   it('returns a null durationMs/completedAt for a run still in progress', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
     seedRun(caseId, 'run-1');
 
-    const response = await request(harness.app).get('/api/debug/runs/run-1');
+    const response = await request(harness.server).get('/api/debug/runs/run-1');
     const body = asJson<{ overview: { durationMs: number | null; completedAt: string | null } }>(
       response.body,
     );

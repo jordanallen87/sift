@@ -7,6 +7,8 @@
  * one endpoint it is testing.
  */
 import type { Application } from 'express';
+import { createServer, type Server } from 'node:http';
+import { once } from 'node:events';
 import { buildApp } from '../app.js';
 import { createTestDatabase, type TestDatabase } from '../db/connection.js';
 import { applyMigrations } from '../db/migrate.js';
@@ -23,6 +25,25 @@ import { SqliteRuntimeEventStore } from '../store/runtime-event-store.js';
 
 export interface HttpTestHarness {
   readonly app: Application;
+  /**
+   * One already-listening server per harness, and what tests hand to
+   * supertest instead of `app`.
+   *
+   * `request(app)` starts a *fresh* ephemeral-port server for every single
+   * request. Across this suite that is ~138 call sites and many hundreds of
+   * short-lived listeners. Ephemeral ports are a per-machine resource shared
+   * with every other process on the box, and on a busy machine a socket
+   * occasionally reaches a port that has already been recycled: tests here
+   * have received a `401` and a `403`, statuses this application does not
+   * produce on those routes at all. Reusing one listener per harness cuts
+   * that exposure by roughly an order of magnitude.
+   *
+   * This is why `createHttpTestHarness` is async: `listen()` is, and
+   * supertest reads `server.address()` synchronously when it builds a
+   * request. Returning before the `listening` event would hand it a server
+   * with a null address.
+   */
+  readonly server: Server;
   readonly database: TestDatabase;
   readonly caseStore: SqliteCaseStore;
   readonly activityStore: SqliteActivityStore;
@@ -37,7 +58,9 @@ export interface HttpTestHarnessOptions {
   readonly debugEnabled?: boolean;
 }
 
-export function createHttpTestHarness(options: HttpTestHarnessOptions = {}): HttpTestHarness {
+export async function createHttpTestHarness(
+  options: HttpTestHarnessOptions = {},
+): Promise<HttpTestHarness> {
   const database = createTestDatabase();
   applyMigrations(database.sqlite);
 
@@ -79,13 +102,25 @@ export function createHttpTestHarness(options: HttpTestHarnessOptions = {}): Htt
       : {}),
   });
 
+  const server = createServer(app);
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
   return {
     app,
+    server,
     database,
     caseStore,
     activityStore,
     runStore,
     runtimeEventStore,
-    cleanup: () => database.cleanup(),
+    cleanup: () => {
+      // Drop live connections before closing. `close()` alone only stops the
+      // server accepting new ones, and a socket that outlives its server is
+      // exactly what lets a later listener inherit its port.
+      server.closeAllConnections();
+      server.close();
+      database.cleanup();
+    },
   };
 }

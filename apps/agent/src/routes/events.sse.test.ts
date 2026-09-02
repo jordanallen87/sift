@@ -203,7 +203,7 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
 
   async function startDemo(): Promise<{ caseId: string; expectedSequence: number }> {
     if (harness === undefined) throw new Error('harness not initialized');
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post('/api/cases/demo')
       .set('Idempotency-Key', 'cmd-start')
       .send({ demoId: 'car-purchase' });
@@ -212,7 +212,7 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
   }
 
   it('replays every existing activity event on connect, with id: set to its sequence (success)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     await startListening();
     const { caseId } = await startDemo();
 
@@ -231,14 +231,14 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
   });
 
   it('delivers a new event live to an already-connected client', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     await startListening();
     const { caseId, expectedSequence } = await startDemo();
 
     const connection = await openSseConnection(port, `/api/cases/${caseId}/events`);
     await waitFor(() => connection.events.length >= 1);
 
-    await request(harness.app)
+    await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence });
@@ -250,10 +250,10 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
   });
 
   it('replays only events after Last-Event-ID on reconnect (duplicate suppression input)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     await startListening();
     const { caseId, expectedSequence } = await startDemo();
-    await request(harness.app)
+    await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence });
@@ -270,18 +270,18 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
   });
 
   it('SSE and the polling fallback produce the same final visible state', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     await startListening();
     const { caseId, expectedSequence } = await startDemo();
 
     const connection = await openSseConnection(port, `/api/cases/${caseId}/events`);
     await waitFor(() => connection.events.length >= 1);
 
-    await request(harness.app)
+    await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence });
-    await request(harness.app)
+    await request(harness.server)
       .post(`/api/cases/${caseId}/commands/upsertOption`)
       .set('Idempotency-Key', 'cmd-3')
       .send({
@@ -293,14 +293,14 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
     await waitFor(() => connection.events.length >= 3);
     connection.close();
 
-    const poll = await request(harness.app).get(`/api/cases/${caseId}/events?mode=poll`);
+    const poll = await request(harness.server).get(`/api/cases/${caseId}/events?mode=poll`);
     const pollBody = asJson<{ snapshot: CaseState; events: PublicActivityEvent[] }>(poll.body);
     const sseSequences = connection.events.map((event) => Number(event.id)).sort((a, b) => a - b);
     const pollSequences = pollBody.events.map((event) => event.sequence).sort((a, b) => a - b);
 
     expect(sseSequences).toEqual(pollSequences);
 
-    const finalCase = await request(harness.app).get(`/api/cases/${caseId}`);
+    const finalCase = await request(harness.server).get(`/api/cases/${caseId}`);
     expect(finalCase.status).toBe(200);
     expect(pollBody.snapshot).toEqual(asJson<CaseState>(finalCase.body));
     // Also cross-checked directly against the store, independent of any
@@ -318,10 +318,10 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
     // test, but the *effect* of write() persistently returning `false` is
     // exactly what `sse.ts`'s bounded writer reacts to, so this exercises
     // the real resync wiring in `events.ts` end-to-end without flakiness.
-    harness = createHttpTestHarness({ sseMaxQueueLength: 1 });
+    harness = await createHttpTestHarness({ sseMaxQueueLength: 1 });
     const { caseId, expectedSequence } = await startDemo();
     // A second activity event so the initial replay alone exceeds maxQueueLength (1).
-    await request(harness.app)
+    await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence });
@@ -367,13 +367,13 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
     // *second* replayed event, leaving the loop's `if (writer.closed)
     // break;` check on the still-pending third one as the only thing that
     // can stop it from also being sent.
-    harness = createHttpTestHarness({ sseMaxQueueLength: 1 });
+    harness = await createHttpTestHarness({ sseMaxQueueLength: 1 });
     const { caseId, expectedSequence } = await startDemo();
-    await request(harness.app)
+    await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence });
-    await request(harness.app)
+    await request(harness.server)
       .post(`/api/cases/${caseId}/commands/upsertOption`)
       .set('Idempotency-Key', 'cmd-3')
       .send({
@@ -418,7 +418,7 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
   });
 
   it('skips delivering a live activity event to an already-closed SSE writer instead of crashing or double-sending', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
 
     function burstEvent(sequence: number, summary: string): PublicActivityEvent {
@@ -485,7 +485,7 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
   });
 
   it('sends a periodic heartbeat comment while the connection stays open', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
 
     const app = express();
@@ -508,10 +508,10 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
   });
 
   it('never sends a heartbeat once the writer has already closed, however long the interval keeps ticking', async () => {
-    harness = createHttpTestHarness({ sseMaxQueueLength: 1 });
+    harness = await createHttpTestHarness({ sseMaxQueueLength: 1 });
     const { caseId, expectedSequence } = await startDemo();
     // A second activity event so the initial replay alone exceeds maxQueueLength (1).
-    await request(harness.app)
+    await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence });
@@ -554,10 +554,10 @@ describe('GET /api/cases/:caseId/events (SSE)', () => {
   });
 
   it('returns 404 for an unknown case instead of upgrading to SSE', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     await startListening();
 
-    const response = await request(harness.app).get('/api/cases/does-not-exist/events');
+    const response = await request(harness.server).get('/api/cases/does-not-exist/events');
 
     expect(response.status).toBe(404);
     expect(response.headers['content-type']).not.toContain('text/event-stream');

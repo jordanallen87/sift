@@ -15,7 +15,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
 
   async function startDemo(): Promise<{ caseId: string; expectedSequence: number }> {
     if (harness === undefined) throw new Error('harness not initialized');
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post('/api/cases/demo')
       .set('Idempotency-Key', 'cmd-start')
       .send({ demoId: 'car-purchase' });
@@ -24,10 +24,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   }
 
   it('dispatches selectPack and persists the result (success)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence });
@@ -39,10 +39,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('returns 404 for an unknown command name', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/notARealCommand`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, expectedSequence });
@@ -52,10 +52,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('returns 400 without an Idempotency-Key header (validation)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .send({ caseId, packId: 'car-purchase', expectedSequence });
 
@@ -64,14 +64,14 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it("falls back to an empty body when no request body is sent at all, still requiring the command's own fields via validation", async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
 
     // Deliberately no `.send(...)` at all -- no Content-Type header reaches
     // the server, so `express.json()` never parses a body and `req.body`
     // stays `undefined` (not even `{}`), exercising the
     // `typeof req.body === 'object'` false branch of the fallback.
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-no-body');
 
@@ -80,10 +80,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('returns 400 when the body caseId does not match the URL caseId (validation)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId: 'a-different-case-id', packId: 'car-purchase', expectedSequence });
@@ -92,10 +92,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('returns 400 for schema-invalid input (validation)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence: -1 });
@@ -105,9 +105,9 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('returns 404 for a command against an unknown case', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post('/api/cases/does-not-exist/commands/selectPack')
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId: 'does-not-exist', packId: 'car-purchase', expectedSequence: 0 });
@@ -117,10 +117,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('returns 409 with the latest snapshot for a stale expectedSequence (conflict)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence: expectedSequence + 5 });
@@ -132,10 +132,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('returns 403 for a policy violation (removing a protected criterion)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/updateCriteria`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, expectedSequence, operations: [{ op: 'remove', criterionId: 'price' }] });
@@ -145,7 +145,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('is idempotent over HTTP: retrying the same Idempotency-Key does not double-apply', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
     const body = {
       caseId,
@@ -153,11 +153,11 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
       option: { label: 'Honda Civic', kind: 'car', attributes: [] },
     };
 
-    const first = await request(harness.app)
+    const first = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/upsertOption`)
       .set('Idempotency-Key', 'cmd-2')
       .send(body);
-    const second = await request(harness.app)
+    const second = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/upsertOption`)
       .set('Idempotency-Key', 'cmd-2')
       .send(body);
@@ -168,7 +168,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('returns 500 INTERNAL when the command service throws unexpectedly, without leaking the error', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
     // updateCriteria throws a plain Error (not a ServiceFailure) when the
     // case's pinned pack is missing from the registry -- a real invariant
@@ -177,7 +177,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
       throw new Error('simulated store failure');
     };
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/selectPack`)
       .set('Idempotency-Key', 'cmd-2')
       .send({ caseId, packId: 'car-purchase', expectedSequence });
@@ -188,10 +188,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('round-trips a model-defined comparison column AND its values through real HTTP and real SQLite in one transaction, including an explicit reasoned unknown (ADR 0011)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence: afterDemo } = await startDemo();
 
-    const first = await request(harness.app)
+    const first = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/upsertOption`)
       .set('Idempotency-Key', 'cmd-opt-1')
       .send({
@@ -199,7 +199,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
         expectedSequence: afterDemo,
         option: { label: 'Honda CR-V', kind: 'car', attributes: [] },
       });
-    const second = await request(harness.app)
+    const second = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/upsertOption`)
       .set('Idempotency-Key', 'cmd-opt-2')
       .send({
@@ -211,7 +211,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     const optionIds = (seeded.snapshot?.entities ?? []).map((entity) => entity.id);
     expect(optionIds).toHaveLength(2);
 
-    const defined = await request(harness.app)
+    const defined = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/defineCaseAttribute`)
       .set('Idempotency-Key', 'cmd-define-with-values')
       .send({
@@ -262,10 +262,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('dispatches setView through real HTTP, persisting the view without advancing eventSequence (ADR 0005)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/setView`)
       .set('Idempotency-Key', 'cmd-set-view')
       .send({ caseId, expectedSequence, view: { mode: 'list' } });
@@ -278,10 +278,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('dispatches setOptionAttribute through real HTTP, merging one attribute onto an existing option (ADR 0006 decision 4)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const upserted = await request(harness.app)
+    const upserted = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/upsertOption`)
       .set('Idempotency-Key', 'cmd-option')
       .send({
@@ -293,7 +293,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     const optionId = optionReceipt.snapshot?.entities[0]?.id;
     if (optionId === undefined) throw new Error('expected an option id');
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/setOptionAttribute`)
       .set('Idempotency-Key', 'cmd-set-attr')
       .send({
@@ -316,10 +316,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('dispatches addNote through real HTTP, persisting a first-class CaseNote', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/addNote`)
       .set('Idempotency-Key', 'cmd-note')
       .send({
@@ -338,10 +338,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   });
 
   it('dispatches every remaining commandName to its CommandService method over real HTTP', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence: afterDemo } = await startDemo();
 
-    const upserted = await request(harness.app)
+    const upserted = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/upsertOption`)
       .set('Idempotency-Key', 'cmd-option')
       .send({
@@ -355,13 +355,13 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     if (optionId === undefined) throw new Error('expected an option id');
     const afterOption = optionReceipt.acceptedSequence;
 
-    const focused = await request(harness.app)
+    const focused = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/focusOption`)
       .set('Idempotency-Key', 'cmd-focus-option')
       .send({ caseId, optionId, expectedSequence: afterOption });
     expect(focused.status).toBe(200);
 
-    const defined = await request(harness.app)
+    const defined = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/defineCaseAttribute`)
       .set('Idempotency-Key', 'cmd-define')
       .send({
@@ -391,7 +391,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     // only an already-REJECTED extension is terminal. The real dispatch
     // branch is exercised either way; the terminal-rejection validation path
     // is covered in `command-service.test.ts`.
-    const reviewed = await request(harness.app)
+    const reviewed = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/reviewCaseExtension`)
       .set('Idempotency-Key', 'cmd-review-ext')
       .send({ caseId, extensionId, decision: 'confirm', expectedSequence: afterDefine });
@@ -474,13 +474,13 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     const afterSeed = seeded?.eventSequence;
     if (afterSeed === undefined) throw new Error('expected a seeded case');
 
-    const focusedEvidence = await request(harness.app)
+    const focusedEvidence = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/focusEvidence`)
       .set('Idempotency-Key', 'cmd-focus-evidence')
       .send({ caseId, evidenceId: 'evidence-1', expectedSequence: afterSeed });
     expect(focusedEvidence.status).toBe(200);
 
-    const disposed = await request(harness.app)
+    const disposed = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/setEvidenceDisposition`)
       .set('Idempotency-Key', 'cmd-dispose')
       .send({
@@ -493,7 +493,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     expect(disposed.status).toBe(200);
     const afterDisposition = asJson<CommandReceipt>(disposed.body).acceptedSequence;
 
-    const submitted = await request(harness.app)
+    const submitted = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/submitSource`)
       .set('Idempotency-Key', 'cmd-source')
       .send({
@@ -508,7 +508,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
       });
     expect(submitted.status).toBe(200);
 
-    const revised = await request(harness.app)
+    const revised = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/requestRevision`)
       .set('Idempotency-Key', 'cmd-revise')
       .send({
@@ -522,7 +522,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
 
     // The proposal is now `revision_requested`, not `pending` -- reviewing
     // it again correctly rejects, still exercising the real dispatch branch.
-    const approved = await request(harness.app)
+    const approved = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/reviewProposal`)
       .set('Idempotency-Key', 'cmd-approve')
       .send({
@@ -543,10 +543,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
   // command implementation.
   describe('X-Sift-Command-Origin (I1: WebMCP call provenance)', () => {
     it('returns 400 VALIDATION for an unrecognized origin value, never reaching CommandService', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const response = await request(harness.app)
+      const response = await request(harness.server)
         .post(`/api/cases/${caseId}/commands/selectPack`)
         .set('Idempotency-Key', 'cmd-2')
         .set('X-Sift-Command-Origin', 'ui')
@@ -560,10 +560,10 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     });
 
     it('accepts "webmcp" and records it on the activity trail; an omitted header records nothing', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const tagged = await request(harness.app)
+      const tagged = await request(harness.server)
         .post(`/api/cases/${caseId}/commands/selectPack`)
         .set('Idempotency-Key', 'cmd-tagged')
         .set('X-Sift-Command-Origin', 'webmcp')
@@ -581,17 +581,17 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     });
 
     it('records the marker uniformly for setView, setOptionAttribute, and addNote too', async () => {
-      harness = createHttpTestHarness();
+      harness = await createHttpTestHarness();
       const { caseId, expectedSequence } = await startDemo();
 
-      const setViewResponse = await request(harness.app)
+      const setViewResponse = await request(harness.server)
         .post(`/api/cases/${caseId}/commands/setView`)
         .set('Idempotency-Key', 'cmd-view')
         .set('X-Sift-Command-Origin', 'webmcp')
         .send({ caseId, expectedSequence, view: { mode: 'list' } });
       expect(setViewResponse.status).toBe(200);
 
-      const upserted = await request(harness.app)
+      const upserted = await request(harness.server)
         .post(`/api/cases/${caseId}/commands/upsertOption`)
         .set('Idempotency-Key', 'cmd-option')
         .send({
@@ -603,7 +603,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
       const optionId = optionReceipt.snapshot?.entities[0]?.id;
       if (optionId === undefined) throw new Error('expected an option id');
 
-      const setAttrResponse = await request(harness.app)
+      const setAttrResponse = await request(harness.server)
         .post(`/api/cases/${caseId}/commands/setOptionAttribute`)
         .set('Idempotency-Key', 'cmd-attr')
         .set('X-Sift-Command-Origin', 'webmcp')
@@ -619,7 +619,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
       expect(setAttrResponse.status).toBe(200);
       const afterAttr = asJson<CommandReceipt>(setAttrResponse.body).acceptedSequence;
 
-      const noteResponse = await request(harness.app)
+      const noteResponse = await request(harness.server)
         .post(`/api/cases/${caseId}/commands/addNote`)
         .set('Idempotency-Key', 'cmd-note')
         .set('X-Sift-Command-Origin', 'webmcp')
@@ -652,8 +652,8 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     });
 
     it('never changes what a command does: identical case state and eventSequence advance with and without the marker', async () => {
-      const harnessA = createHttpTestHarness();
-      const harnessB = createHttpTestHarness();
+      const harnessA = await createHttpTestHarness();
+      const harnessB = await createHttpTestHarness();
       try {
         const startA = await request(harnessA.app)
           .post('/api/cases/demo')

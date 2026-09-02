@@ -14,7 +14,7 @@ describe('POST /api/cases/:caseId/run', () => {
 
   async function startDemo(): Promise<{ caseId: string; expectedSequence: number }> {
     if (harness === undefined) throw new Error('harness not initialized');
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post('/api/cases/demo')
       .set('Idempotency-Key', 'cmd-start')
       .send({ demoId: 'car-purchase' });
@@ -23,10 +23,10 @@ describe('POST /api/cases/:caseId/run', () => {
   }
 
   it('creates a run and returns a RunReceipt (success), and it is durably recorded', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/run`)
       .set('Idempotency-Key', 'cmd-run-1')
       .send({ caseId, expectedSequence });
@@ -46,14 +46,14 @@ describe('POST /api/cases/:caseId/run', () => {
   });
 
   it('falls back to an empty body when no request body is sent at all, still requiring expectedSequence via validation', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
 
     // Deliberately no `.send(...)` at all -- no Content-Type header reaches
     // the server, so `express.json()` never parses a body and `req.body`
     // stays `undefined` (not even `{}`), exercising the
     // `typeof req.body === 'object'` false branch of the fallback.
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/run`)
       .set('Idempotency-Key', 'cmd-run-no-body');
 
@@ -61,10 +61,10 @@ describe('POST /api/cases/:caseId/run', () => {
   });
 
   it('returns 400 without an Idempotency-Key header (validation)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/run`)
       .send({ caseId, expectedSequence });
 
@@ -72,9 +72,9 @@ describe('POST /api/cases/:caseId/run', () => {
   });
 
   it('returns 404 for an unknown case', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post('/api/cases/does-not-exist/run')
       .set('Idempotency-Key', 'cmd-run-1')
       .send({ caseId: 'does-not-exist', expectedSequence: 0 });
@@ -83,10 +83,10 @@ describe('POST /api/cases/:caseId/run', () => {
   });
 
   it('returns 409 with the latest snapshot for a stale expectedSequence (conflict)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/run`)
       .set('Idempotency-Key', 'cmd-run-1')
       .send({ caseId, expectedSequence: expectedSequence + 5 });
@@ -97,10 +97,10 @@ describe('POST /api/cases/:caseId/run', () => {
   });
 
   it('rejects an explicit unknown obligationId (validation)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
 
-    const response = await request(harness.app)
+    const response = await request(harness.server)
       .post(`/api/cases/${caseId}/run`)
       .set('Idempotency-Key', 'cmd-run-1')
       .send({ caseId, obligationId: 'does-not-exist', expectedSequence });
@@ -109,15 +109,15 @@ describe('POST /api/cases/:caseId/run', () => {
   });
 
   it('is idempotent over HTTP: retrying the same Idempotency-Key returns the same run', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
     const { caseId, expectedSequence } = await startDemo();
     const body = { caseId, expectedSequence };
 
-    const first = await request(harness.app)
+    const first = await request(harness.server)
       .post(`/api/cases/${caseId}/run`)
       .set('Idempotency-Key', 'cmd-run-1')
       .send(body);
-    const second = await request(harness.app)
+    const second = await request(harness.server)
       .post(`/api/cases/${caseId}/run`)
       .set('Idempotency-Key', 'cmd-run-1')
       .send(body);

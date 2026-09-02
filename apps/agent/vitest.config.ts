@@ -19,32 +19,35 @@ export default defineConfig({
      * This project's tests bind real TCP ports, so its files must not run
      * against each other.
      *
-     * Nearly every test here drives the real Express app through supertest,
-     * which starts an ephemeral-port server per request, and
-     * `events.sse.test.ts` opens genuine long-lived SSE connections.
-     * Ephemeral ports are a per-machine resource shared across Vitest's
-     * worker *processes*, so two files running concurrently can end up with
-     * one binding a port the other's socket is still using -- and a request
-     * lands on the wrong app.
+     * Ephemeral ports are a per-machine resource shared with every other
+     * process on the box, and Vitest's workers are separate OS processes.
+     * When two of this project's files run concurrently, a socket can reach
+     * a port that has already been recycled — and a request lands somewhere
+     * it was never sent. That produced a long-standing intermittent failure
+     * whose symptoms were impossible to explain in isolation: a 200 for a
+     * request deliberately sent with no idempotency key, a 400 where a 404
+     * was expected, snapshots with empty entity arrays, and — conclusively —
+     * a `401` and a `403`, statuses this application does not produce on the
+     * routes that received them.
      *
-     * That produced a long-standing intermittent failure that looked
-     * impossible in isolation: a 200 for a request deliberately sent with no
-     * idempotency key, a 400 where a 404 was expected, a 409 arriving as a
-     * 400, snapshots with empty entity arrays. Each one was a test receiving
-     * the response to a request another file had sent.
+     * Three fixes, each measured, and all three were needed:
      *
-     * Measured, not assumed. `apps/agent/src/routes` with parallelism failed
-     * roughly one run in three; with `--no-file-parallelism` it was clean
-     * 5/5; excluding only the SSE file (with parallelism on) was also clean
-     * 5/5. Destroying that file's lingering client sockets -- a real defect,
-     * fixed in the same change -- cut the rate to about one in eight but
-     * could not remove it, because supertest's own per-request servers
-     * contend for the same resource.
+     * 1. `events.sse.test.ts` opened real SSE client sockets and never
+     *    destroyed them. `Server.close()` stops a server *accepting*
+     *    connections but does not terminate open ones, so a client socket
+     *    outlived its server and its port could be recycled while still in
+     *    use. Rate: ~1 in 3 runs → ~1 in 8.
+     * 2. `createHttpTestHarness` now holds one already-listening server per
+     *    harness instead of letting supertest start a fresh ephemeral-port
+     *    server per request (~138 call sites, many hundreds of listeners).
+     *    This is why that factory is async: `listen()` is, and supertest
+     *    reads `server.address()` synchronously.
+     * 3. This flag. Removing it after fix 2 still failed 1 run in 8; with
+     *    it, 10 consecutive clean runs.
      *
      * Cost: this project goes from ~6s to ~26s. Every test still runs with
      * every assertion intact; only the scheduling changes. The other
-     * projects (web, contracts, core, packs, scenarios) touch no ports and
-     * keep full parallelism, so `pnpm test:unit` overall stays fast.
+     * projects touch no ports and keep full parallelism.
      */
     fileParallelism: false,
     coverage: {

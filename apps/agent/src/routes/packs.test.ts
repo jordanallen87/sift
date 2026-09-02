@@ -13,9 +13,9 @@ describe('GET /api/packs', () => {
   });
 
   it('lists the registered synthetic pack (success)', async () => {
-    harness = createHttpTestHarness();
+    harness = await createHttpTestHarness();
 
-    const response = await request(harness.app).get('/api/packs');
+    const response = await request(harness.server).get('/api/packs');
 
     expect(response.status).toBe(200);
     const body = asJson<{ packs: CompiledDecisionPack[] }>(response.body);
