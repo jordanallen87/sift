@@ -113,7 +113,11 @@
  * top-level fields directly, unlike `compareOptionIds`.
  */
 import { useMemo } from 'react';
-import { WORKSPACE_VIEW_MODES, type WorkspaceViewMode } from '@sift/contracts';
+import {
+  WORKSPACE_VIEW_MODES,
+  type WorkspaceViewMode,
+  type CandidateDisposition,
+} from '@sift/contracts';
 import type {
   AttributeDefinition,
   CaseExtension,
@@ -172,9 +176,12 @@ export interface WorkspaceViewSwitcherProps {
   // Quick Pick's own triage queue position -- see this file's header
   // comment on why this is caller state, not local state here.
   quickPickPosition: number;
+  /** Canonical Quick Pick judgments, keyed by option id -- read from case state so a reload lands on the same picture. */
+  quickPickDispositions: Record<string, CandidateDisposition>;
+  onQuickPickKeep: (optionId: string) => void;
   onQuickPickPass: (optionId: string) => void;
-  onQuickPickMaybe: (optionId: string) => void;
-  onQuickPickShortlist: (optionId: string) => void;
+  onQuickPickUnsure: (optionId: string) => void;
+  onQuickPickUndo: (optionId: string) => void;
   onQuickPickFocusChange: (optionId: string) => void;
 
   // Board placement, held by the caller for the same reason `mode` is: it
@@ -251,9 +258,11 @@ export function WorkspaceViewSwitcher({
   compareVisibleAttributeIds,
   comparePinnedAttributeIds,
   quickPickPosition,
+  quickPickDispositions,
+  onQuickPickKeep,
   onQuickPickPass,
-  onQuickPickMaybe,
-  onQuickPickShortlist,
+  onQuickPickUnsure,
+  onQuickPickUndo,
   onQuickPickFocusChange,
   boardPlacement,
   onMoveOption,
@@ -291,9 +300,11 @@ export function WorkspaceViewSwitcher({
             options={rankedForQuickPick}
             attributeDefinitions={attributeDefinitions}
             position={quickPickPosition}
+            dispositions={quickPickDispositions}
+            onKeep={onQuickPickKeep}
             onPass={onQuickPickPass}
-            onMaybe={onQuickPickMaybe}
-            onShortlist={onQuickPickShortlist}
+            onUnsure={onQuickPickUnsure}
+            onUndo={onQuickPickUndo}
             layout={widthMode}
             onFocusChange={onQuickPickFocusChange}
           />

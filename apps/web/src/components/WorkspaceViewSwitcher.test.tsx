@@ -54,9 +54,11 @@ function buildProps(
     selectedOptionId: null,
     onFocusOption: vi.fn(),
     quickPickPosition: 0,
+    quickPickDispositions: {},
+    onQuickPickKeep: vi.fn(),
     onQuickPickPass: vi.fn(),
-    onQuickPickMaybe: vi.fn(),
-    onQuickPickShortlist: vi.fn(),
+    onQuickPickUnsure: vi.fn(),
+    onQuickPickUndo: vi.fn(),
     onQuickPickFocusChange: vi.fn(),
     boardPlacement: {},
     onMoveOption: vi.fn(),
@@ -157,11 +159,11 @@ describe('WorkspaceViewSwitcher', () => {
 
   it('routes Quick Pick actions to the supplied handlers', async () => {
     const user = userEvent.setup();
-    const onQuickPickShortlist = vi.fn();
-    render(<WorkspaceViewSwitcher {...buildProps({ mode: 'quick_pick', onQuickPickShortlist })} />);
+    const onQuickPickKeep = vi.fn();
+    render(<WorkspaceViewSwitcher {...buildProps({ mode: 'quick_pick', onQuickPickKeep })} />);
 
-    await user.click(screen.getByTestId('quick-pick-shortlist'));
-    expect(onQuickPickShortlist).toHaveBeenCalledWith('candidate-rav4');
+    await user.click(screen.getByTestId('quick-pick-keep'));
+    expect(onQuickPickKeep).toHaveBeenCalledWith('candidate-rav4');
   });
 
   it('routes OptionCompareView focus clicks to onFocusOption', async () => {
@@ -515,5 +517,56 @@ describe('"Best Match" shows the best match', () => {
     );
 
     expect(screen.getByRole('heading', { name: firstLabel })).toBeInTheDocument();
+  });
+});
+
+describe('Quick Pick judgments reach the command layer', () => {
+  it('reports Keep, Pass, Unsure, and undo as four distinct judgments', async () => {
+    // The proof that the pane-to-conversation half of the loop is real: a
+    // Quick Pick action has to leave the component as a specific judgment
+    // about a specific candidate, not as an anonymous "advance".
+    const user = userEvent.setup();
+    const onQuickPickKeep = vi.fn();
+    const onQuickPickPass = vi.fn();
+    const onQuickPickUnsure = vi.fn();
+    const onQuickPickUndo = vi.fn();
+
+    const { rerender } = render(
+      <WorkspaceViewSwitcher
+        {...buildProps({
+          mode: 'quick_pick',
+          onQuickPickKeep,
+          onQuickPickPass,
+          onQuickPickUnsure,
+          onQuickPickUndo,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByTestId('quick-pick-keep'));
+    expect(onQuickPickKeep).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByTestId('quick-pick-pass'));
+    expect(onQuickPickPass).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByTestId('quick-pick-unsure'));
+    expect(onQuickPickUnsure).toHaveBeenCalledTimes(1);
+
+    const keptId = onQuickPickKeep.mock.calls[0]?.[0] as string;
+    rerender(
+      <WorkspaceViewSwitcher
+        {...buildProps({
+          mode: 'quick_pick',
+          quickPickDispositions: { [keptId]: 'keep' },
+          onQuickPickKeep,
+          onQuickPickPass,
+          onQuickPickUnsure,
+          onQuickPickUndo,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByTestId('quick-pick-undo'));
+    expect(onQuickPickUndo).toHaveBeenCalledWith(keptId);
   });
 });

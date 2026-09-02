@@ -206,6 +206,7 @@ import { DemoLauncher } from '../components/DemoLauncher.js';
 import { VehicleCatalogFlow } from '../components/VehicleCatalogFlow.js';
 import { DisclosureSection } from '../components/DisclosureSection.js';
 import { RecommendationHero } from '../components/RecommendationHero.js';
+import type { CandidateDisposition } from '@sift/contracts';
 import type { ApprovalCardReview } from '../components/ApprovalCard.js';
 import { deriveWorkspaceStatus } from '../components/workspace-status.js';
 import { ReadinessPanel } from '../components/ReadinessPanel.js';
@@ -1382,13 +1383,70 @@ export function App() {
     setQuickPickPosition((position) => position + 1);
   }, []);
 
-  const handleQuickPickShortlist = useCallback(
-    (optionId: string) => {
-      handleFocusOption(optionId);
-      handleQuickPickAdvance();
+  /**
+   * A Quick Pick judgment, persisted.
+   *
+   * Before this, Keep/Pass/Unsure only moved a local counter and "Shortlist"
+   * merely focused the option -- the person's judgment vanished on reload
+   * and ChatGPT could not read it back on its next turn, which made the
+   * whole bidirectional claim untrue at exactly the beat the demo rests on.
+   *
+   * `unreviewed` is how undo is expressed: it puts the candidate back in the
+   * queue as a normal forward command, so the history of what someone
+   * considered and rejected stays in the event log rather than being erased.
+   */
+  const handleQuickPickDisposition = useCallback(
+    (optionId: string, disposition: CandidateDisposition) => {
+      if (snapshot === null || activeCaseId === null) return;
+      commands
+        .setCandidateDisposition({
+          caseId: activeCaseId,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          entityId: optionId,
+          disposition,
+        })
+        .catch(() => undefined);
+      // Undo puts the candidate back in the queue rather than moving past
+      // it; every other judgment advances.
+      if (disposition !== 'unreviewed') handleQuickPickAdvance();
     },
-    [handleFocusOption, handleQuickPickAdvance],
+    [commands, snapshot, activeCaseId, handleQuickPickAdvance],
   );
+
+  const handleQuickPickKeep = useCallback(
+    (optionId: string) => {
+      handleQuickPickDisposition(optionId, 'keep');
+    },
+    [handleQuickPickDisposition],
+  );
+  const handleQuickPickPass = useCallback(
+    (optionId: string) => {
+      handleQuickPickDisposition(optionId, 'pass');
+    },
+    [handleQuickPickDisposition],
+  );
+  const handleQuickPickUnsure = useCallback(
+    (optionId: string) => {
+      handleQuickPickDisposition(optionId, 'unsure');
+    },
+    [handleQuickPickDisposition],
+  );
+  const handleQuickPickUndo = useCallback(
+    (optionId: string) => {
+      handleQuickPickDisposition(optionId, 'unreviewed');
+    },
+    [handleQuickPickDisposition],
+  );
+
+  /** Canonical Quick Pick judgments, projected for the view. Derived from case state, never held locally. */
+  const quickPickDispositions = useMemo<Record<string, CandidateDisposition>>(() => {
+    const map: Record<string, CandidateDisposition> = {};
+    for (const record of snapshot?.discovery?.dispositions ?? []) {
+      map[record.entityId] = record.disposition;
+    }
+    return map;
+  }, [snapshot]);
 
   // Scroll target for the narrow-mode "Add something Sift should check"
   // disclosure -- only ever used by `handleReviewPendingExtension` below.
@@ -1790,9 +1848,11 @@ export function App() {
               compareVisibleAttributeIds={compareVisibleAttributeIds}
               comparePinnedAttributeIds={comparePinnedAttributeIds}
               quickPickPosition={quickPickPosition}
-              onQuickPickPass={handleQuickPickAdvance}
-              onQuickPickMaybe={handleQuickPickAdvance}
-              onQuickPickShortlist={handleQuickPickShortlist}
+              quickPickDispositions={quickPickDispositions}
+              onQuickPickKeep={handleQuickPickKeep}
+              onQuickPickPass={handleQuickPickPass}
+              onQuickPickUnsure={handleQuickPickUnsure}
+              onQuickPickUndo={handleQuickPickUndo}
               onQuickPickFocusChange={() => undefined}
               // Real `Criterion[]`, so a card can rank its few facts by what
               // the person actually said matters whenever a pack declares no
@@ -1843,9 +1903,11 @@ export function App() {
             compareVisibleAttributeIds={compareVisibleAttributeIds}
             comparePinnedAttributeIds={comparePinnedAttributeIds}
             quickPickPosition={quickPickPosition}
-            onQuickPickPass={handleQuickPickAdvance}
-            onQuickPickMaybe={handleQuickPickAdvance}
-            onQuickPickShortlist={handleQuickPickShortlist}
+            quickPickDispositions={quickPickDispositions}
+            onQuickPickKeep={handleQuickPickKeep}
+            onQuickPickPass={handleQuickPickPass}
+            onQuickPickUnsure={handleQuickPickUnsure}
+            onQuickPickUndo={handleQuickPickUndo}
             onQuickPickFocusChange={() => undefined}
             criteria={snapshot?.criteria ?? []}
             scoreboard={scoreboard}

@@ -166,12 +166,20 @@
  *      `MAX_PROMINENT_ATTRIBUTES_NARROW`/`_EXPANDED` already establishes.
  */
 import { useEffect, useMemo } from 'react';
-import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
+import type { AttributeDefinition, CandidateDisposition, EntityRecord } from '@sift/contracts';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatAttributeValue } from './attribute-value-format.js';
 import { isIdentityAttribute, meetsEvidenceExpectation } from '../lib/evidence-expectation.js';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
+
+/** How the card refers back to a decision already made. */
+const DISPOSITION_PAST_TENSE: Record<CandidateDisposition, string> = {
+  unreviewed: 'have not judged',
+  keep: 'kept',
+  pass: 'passed on',
+  unsure: 'were unsure about',
+};
 
 export interface QuickPickViewProps {
   /** The full triage queue, in the caller's order. Only `options[position]` is rendered -- one option dominates the pane (change set §9). */
@@ -179,12 +187,21 @@ export interface QuickPickViewProps {
   attributeDefinitions: AttributeDefinition[];
   /** 0-based index into `options` for the option currently on screen. `position >= options.length` (including an empty queue) renders the explicit end-of-queue state. */
   position: number;
-  /** Fired with the current option's id when the user passes on it. Does not advance the queue itself -- the caller decides what happens next. */
+  /**
+   * The judgment already recorded for each candidate, keyed by option id.
+   * Read from canonical case state, not held here: a reload has to land on
+   * the same picture, and ChatGPT has to be able to read back what the
+   * person actually did.
+   */
+  dispositions: Record<string, CandidateDisposition>;
+  /** Fired with the current option's id when the person keeps it for a closer look. */
+  onKeep: (optionId: string) => void;
+  /** Fired with the current option's id when the person passes on it. Does not advance the queue itself -- the caller decides what happens next. */
   onPass: (optionId: string) => void;
-  /** Fired with the current option's id when the user is undecided. */
-  onMaybe: (optionId: string) => void;
-  /** Fired with the current option's id when the user shortlists it. */
-  onShortlist: (optionId: string) => void;
+  /** Fired with the current option's id when the person is undecided. Creates an information need rather than a verdict. */
+  onUnsure: (optionId: string) => void;
+  /** Fired with the current option's id to put it back to unreviewed. */
+  onUndo: (optionId: string) => void;
   /** Caller-decided information architecture (ADR 0005 Decision 4) -- this component never calls `matchMedia` itself. `WorkspaceViewSwitcher` resolves the real viewport via `useWidthMode` and passes it down, exactly like `OptionListView`/`OptionCompareView`/`OptionBoardView` already receive it. See this file's header comment "EXPANDED LAYOUT" section for exactly what changes at each value. */
   layout: 'narrow' | 'expanded';
   /** Fired with an option's id whenever it becomes the one rendered on screen -- on mount and whenever the caller changes `position`/`options` to bring a different option into view. Never fired while the queue is empty/exhausted. */
@@ -424,14 +441,17 @@ export function QuickPickView({
   options,
   attributeDefinitions,
   position,
+  dispositions,
+  onKeep,
   onPass,
-  onMaybe,
-  onShortlist,
+  onUnsure,
+  onUndo,
   layout,
   onFocusChange,
 }: QuickPickViewProps) {
   const currentOption = options[position] ?? null;
   const currentOptionId = currentOption?.id ?? null;
+  const currentDisposition = currentOptionId === null ? undefined : dispositions[currentOptionId];
 
   const applicableDefinitions = useMemo(() => {
     if (currentOption === null) return [];
@@ -797,6 +817,25 @@ export function QuickPickView({
             </>
           )}
 
+          {currentDisposition !== undefined && currentDisposition !== 'unreviewed' && (
+            <p
+              data-testid="quick-pick-current-disposition"
+              className="text-[length:var(--text-sm)] text-[color:var(--color-muted-foreground)]"
+            >
+              You {DISPOSITION_PAST_TENSE[currentDisposition]} this one.{' '}
+              <button
+                type="button"
+                data-testid="quick-pick-undo"
+                className="underline underline-offset-2"
+                onClick={() => {
+                  onUndo(currentOption.id);
+                }}
+              >
+                Undo
+              </button>
+            </p>
+          )}
+
           <div
             data-testid="quick-pick-actions"
             className={
@@ -805,48 +844,68 @@ export function QuickPickView({
                   // trailing edge of the now much wider card rather than
                   // spreading `justify-between` across its full width --
                   // spreading them would isolate Pass ~1100px away from
-                  // Maybe/Shortlist on a wide viewport, reading as three
+                  // the others on a wide viewport, reading as three
                   // unrelated controls instead of one action cluster.
-                  'flex items-center justify-end gap-[var(--space-3)]'
-                : 'flex items-center justify-between gap-[var(--space-2)]'
+                  'flex flex-col items-end gap-[var(--space-2)]'
+                : 'flex flex-col gap-[var(--space-2)]'
             }
           >
-            <Button
-              type="button"
-              variant="secondary"
-              data-testid="quick-pick-pass"
-              aria-label={`Pass on ${currentOption.label}`}
-              className="min-h-[var(--size-touch-target-min)]"
-              onClick={() => {
-                onPass(currentOption.id);
-              }}
+            <div
+              className={
+                layout === 'expanded'
+                  ? 'flex items-center justify-end gap-[var(--space-3)]'
+                  : 'flex w-full items-center justify-between gap-[var(--space-2)]'
+              }
             >
-              Pass
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              data-testid="quick-pick-maybe"
-              aria-label={`Maybe: ${currentOption.label}`}
-              className="min-h-[var(--size-touch-target-min)]"
-              onClick={() => {
-                onMaybe(currentOption.id);
-              }}
-            >
-              Maybe
-            </Button>
-            <Button
-              type="button"
-              variant="default"
-              data-testid="quick-pick-shortlist"
-              aria-label={`Shortlist ${currentOption.label}`}
-              className="min-h-[var(--size-touch-target-min)]"
-              onClick={() => {
-                onShortlist(currentOption.id);
-              }}
-            >
-              Shortlist
-            </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                data-testid="quick-pick-pass"
+                aria-label={`Pass on ${currentOption.label}`}
+                className="min-h-[var(--size-touch-target-min)]"
+                onClick={() => {
+                  onPass(currentOption.id);
+                }}
+              >
+                Pass
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                data-testid="quick-pick-unsure"
+                aria-label={`Unsure about ${currentOption.label}`}
+                className="min-h-[var(--size-touch-target-min)]"
+                onClick={() => {
+                  onUnsure(currentOption.id);
+                }}
+              >
+                Unsure
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                data-testid="quick-pick-keep"
+                aria-label={`Keep ${currentOption.label} for a closer look`}
+                className="min-h-[var(--size-touch-target-min)]"
+                onClick={() => {
+                  onKeep(currentOption.id);
+                }}
+              >
+                Keep
+              </Button>
+            </div>
+            {/*
+              What Keep means, said where the person forms their idea of it.
+              Keep retains a candidate for comparison and points deeper work
+              at it; confirming a shortlist is a separate, later step that
+              only a person can take. A card that let "Keep" read as "I have
+              chosen this" would lose the human-authority claim before the
+              shortlist screen ever appears.
+            */}
+            <p className="text-[length:var(--text-xs)] text-[color:var(--color-muted-foreground)]">
+              Keep keeps it for a closer look. Nothing is decided here, and you can change any of
+              these later.
+            </p>
           </div>
         </article>
       )}

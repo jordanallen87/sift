@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import type { AttributeDefinition, EntityRecord } from '@sift/contracts';
-import { QuickPickView } from './QuickPickView.js';
+import { QuickPickView, type QuickPickViewProps } from './QuickPickView.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
 
 const DEFINITIONS: AttributeDefinition[] = [
@@ -115,23 +115,26 @@ function buildQueue(): EntityRecord[] {
 // an implicit default for `layout`).
 function renderQuickPick(overrides: Partial<React.ComponentProps<typeof QuickPickView>> = {}) {
   const onPass = vi.fn();
-  const onMaybe = vi.fn();
-  const onShortlist = vi.fn();
+  const onUnsure = vi.fn();
+  const onKeep = vi.fn();
+  const onUndo = vi.fn();
   const onFocusChange = vi.fn();
   const utils = render(
     <QuickPickView
       options={buildQueue()}
       attributeDefinitions={DEFINITIONS}
       position={1}
+      dispositions={{}}
       onPass={onPass}
-      onMaybe={onMaybe}
-      onShortlist={onShortlist}
+      onUnsure={onUnsure}
+      onKeep={onKeep}
+      onUndo={onUndo}
       layout="narrow"
       onFocusChange={onFocusChange}
       {...overrides}
     />,
   );
-  return { ...utils, onPass, onMaybe, onShortlist, onFocusChange };
+  return { ...utils, onPass, onUnsure, onKeep, onUndo, onFocusChange };
 }
 
 describe('QuickPickView', () => {
@@ -618,34 +621,34 @@ describe('QuickPickView', () => {
 
   it('fires onPass with the current option id when Pass is clicked', async () => {
     const user = userEvent.setup();
-    const { onPass, onMaybe, onShortlist } = renderQuickPick({ position: 1 });
+    const { onPass, onUnsure, onKeep } = renderQuickPick({ position: 1 });
 
     await user.click(screen.getByTestId('quick-pick-pass'));
 
     expect(onPass).toHaveBeenCalledTimes(1);
     expect(onPass).toHaveBeenCalledWith('candidate-crv');
-    expect(onMaybe).not.toHaveBeenCalled();
-    expect(onShortlist).not.toHaveBeenCalled();
+    expect(onUnsure).not.toHaveBeenCalled();
+    expect(onKeep).not.toHaveBeenCalled();
   });
 
-  it('fires onMaybe with the current option id when Maybe is clicked', async () => {
+  it('fires onUnsure with the current option id when Unsure is clicked', async () => {
     const user = userEvent.setup();
-    const { onMaybe } = renderQuickPick({ position: 1 });
+    const { onUnsure } = renderQuickPick({ position: 1 });
 
-    await user.click(screen.getByTestId('quick-pick-maybe'));
+    await user.click(screen.getByTestId('quick-pick-unsure'));
 
-    expect(onMaybe).toHaveBeenCalledTimes(1);
-    expect(onMaybe).toHaveBeenCalledWith('candidate-crv');
+    expect(onUnsure).toHaveBeenCalledTimes(1);
+    expect(onUnsure).toHaveBeenCalledWith('candidate-crv');
   });
 
-  it('fires onShortlist with the current option id when Shortlist is clicked', async () => {
+  it('fires onKeep with the current option id when Keep is clicked', async () => {
     const user = userEvent.setup();
-    const { onShortlist } = renderQuickPick({ position: 1 });
+    const { onKeep } = renderQuickPick({ position: 1 });
 
-    await user.click(screen.getByTestId('quick-pick-shortlist'));
+    await user.click(screen.getByTestId('quick-pick-keep'));
 
-    expect(onShortlist).toHaveBeenCalledTimes(1);
-    expect(onShortlist).toHaveBeenCalledWith('candidate-crv');
+    expect(onKeep).toHaveBeenCalledTimes(1);
+    expect(onKeep).toHaveBeenCalledWith('candidate-crv');
   });
 
   it('reports the focused option on mount and does not fire again for a stable position', () => {
@@ -661,9 +664,11 @@ describe('QuickPickView', () => {
         options={buildQueue()}
         attributeDefinitions={DEFINITIONS}
         position={0}
+        dispositions={{}}
         onPass={vi.fn()}
-        onMaybe={vi.fn()}
-        onShortlist={vi.fn()}
+        onUnsure={vi.fn()}
+        onKeep={vi.fn()}
+        onUndo={vi.fn()}
         layout="narrow"
         onFocusChange={onFocusChange}
       />,
@@ -675,9 +680,11 @@ describe('QuickPickView', () => {
         options={buildQueue()}
         attributeDefinitions={DEFINITIONS}
         position={1}
+        dispositions={{}}
         onPass={vi.fn()}
-        onMaybe={vi.fn()}
-        onShortlist={vi.fn()}
+        onUnsure={vi.fn()}
+        onKeep={vi.fn()}
+        onUndo={vi.fn()}
         layout="narrow"
         onFocusChange={onFocusChange}
       />,
@@ -687,7 +694,7 @@ describe('QuickPickView', () => {
 
   it('supports reaching and activating all three actions by keyboard alone', async () => {
     const user = userEvent.setup();
-    const { onPass, onMaybe, onShortlist } = renderQuickPick({ position: 1 });
+    const { onPass, onUnsure, onKeep } = renderQuickPick({ position: 1 });
 
     await user.tab();
     expect(screen.getByTestId('quick-pick-pass')).toHaveFocus();
@@ -695,14 +702,14 @@ describe('QuickPickView', () => {
     expect(onPass).toHaveBeenCalledWith('candidate-crv');
 
     await user.tab();
-    expect(screen.getByTestId('quick-pick-maybe')).toHaveFocus();
+    expect(screen.getByTestId('quick-pick-unsure')).toHaveFocus();
     await user.keyboard('{Enter}');
-    expect(onMaybe).toHaveBeenCalledWith('candidate-crv');
+    expect(onUnsure).toHaveBeenCalledWith('candidate-crv');
 
     await user.tab();
-    expect(screen.getByTestId('quick-pick-shortlist')).toHaveFocus();
+    expect(screen.getByTestId('quick-pick-keep')).toHaveFocus();
     await user.keyboard(' ');
-    expect(onShortlist).toHaveBeenCalledWith('candidate-crv');
+    expect(onKeep).toHaveBeenCalledWith('candidate-crv');
   });
 
   it('renders an explicit end-of-queue state once the position runs past the last option, without crashing', () => {
@@ -725,9 +732,11 @@ describe('QuickPickView', () => {
         options={buildQueue()}
         attributeDefinitions={DEFINITIONS}
         position={1}
+        dispositions={{}}
         onPass={vi.fn()}
-        onMaybe={vi.fn()}
-        onShortlist={vi.fn()}
+        onUnsure={vi.fn()}
+        onKeep={vi.fn()}
+        onUndo={vi.fn()}
         layout="narrow"
         onFocusChange={vi.fn()}
       />,
@@ -739,9 +748,11 @@ describe('QuickPickView', () => {
         options={buildQueue()}
         attributeDefinitions={DEFINITIONS}
         position={3}
+        dispositions={{}}
         onPass={vi.fn()}
-        onMaybe={vi.fn()}
-        onShortlist={vi.fn()}
+        onUnsure={vi.fn()}
+        onKeep={vi.fn()}
+        onUndo={vi.fn()}
         layout="narrow"
         onFocusChange={vi.fn()}
       />,
@@ -755,9 +766,11 @@ describe('QuickPickView', () => {
         options={buildQueue()}
         attributeDefinitions={DEFINITIONS}
         position={1}
+        dispositions={{}}
         onPass={vi.fn()}
-        onMaybe={vi.fn()}
-        onShortlist={vi.fn()}
+        onUnsure={vi.fn()}
+        onKeep={vi.fn()}
+        onUndo={vi.fn()}
         layout="narrow"
         onFocusChange={vi.fn()}
       />,
@@ -810,8 +823,8 @@ describe('QuickPickView', () => {
       );
       expect(screen.getByTestId('quick-pick-actions')).toBeInTheDocument();
       expect(screen.getByTestId('quick-pick-pass')).toBeInTheDocument();
-      expect(screen.getByTestId('quick-pick-maybe')).toBeInTheDocument();
-      expect(screen.getByTestId('quick-pick-shortlist')).toBeInTheDocument();
+      expect(screen.getByTestId('quick-pick-unsure')).toBeInTheDocument();
+      expect(screen.getByTestId('quick-pick-keep')).toBeInTheDocument();
     });
 
     it('names the next option in the queue and how many remain after it -- context the narrow pane never renders', () => {
@@ -931,9 +944,11 @@ describe('QuickPickView', () => {
           options={buildQueue()}
           attributeDefinitions={DEFINITIONS}
           position={1}
+          dispositions={{}}
           onPass={vi.fn()}
-          onMaybe={vi.fn()}
-          onShortlist={vi.fn()}
+          onUnsure={vi.fn()}
+          onKeep={vi.fn()}
+          onUndo={vi.fn()}
           layout="expanded"
           onFocusChange={vi.fn()}
         />,
@@ -945,9 +960,11 @@ describe('QuickPickView', () => {
           options={buildQueue()}
           attributeDefinitions={DEFINITIONS}
           position={3}
+          dispositions={{}}
           onPass={vi.fn()}
-          onMaybe={vi.fn()}
-          onShortlist={vi.fn()}
+          onUnsure={vi.fn()}
+          onKeep={vi.fn()}
+          onUndo={vi.fn()}
           layout="expanded"
           onFocusChange={vi.fn()}
         />,
@@ -957,7 +974,7 @@ describe('QuickPickView', () => {
 
     it('still supports reaching and activating all three actions by keyboard alone at expanded layout', async () => {
       const user = userEvent.setup();
-      const { onPass, onMaybe, onShortlist } = renderQuickPick({
+      const { onPass, onUnsure, onKeep } = renderQuickPick({
         position: 1,
         layout: 'expanded',
       });
@@ -968,14 +985,131 @@ describe('QuickPickView', () => {
       expect(onPass).toHaveBeenCalledWith('candidate-crv');
 
       await user.tab();
-      expect(screen.getByTestId('quick-pick-maybe')).toHaveFocus();
+      expect(screen.getByTestId('quick-pick-unsure')).toHaveFocus();
       await user.keyboard('{Enter}');
-      expect(onMaybe).toHaveBeenCalledWith('candidate-crv');
+      expect(onUnsure).toHaveBeenCalledWith('candidate-crv');
 
       await user.tab();
-      expect(screen.getByTestId('quick-pick-shortlist')).toHaveFocus();
+      expect(screen.getByTestId('quick-pick-keep')).toHaveFocus();
       await user.keyboard(' ');
-      expect(onShortlist).toHaveBeenCalledWith('candidate-crv');
+      expect(onKeep).toHaveBeenCalledWith('candidate-crv');
     });
+  });
+});
+
+describe('QuickPickView: durable Keep / Pass / Unsure triage', () => {
+  const AT = '2026-09-02T00:00:00.000Z';
+
+  function options(): EntityRecord[] {
+    return [
+      {
+        id: 'candidate-rav4',
+        kind: 'candidate',
+        label: '2026 Toyota RAV4 AWD Hybrid',
+        attributes: {},
+        createdAt: AT,
+        updatedAt: AT,
+      },
+      {
+        id: 'candidate-crv',
+        kind: 'candidate',
+        label: '2026 Honda CR-V AWD Hybrid',
+        attributes: {},
+        createdAt: AT,
+        updatedAt: AT,
+      },
+    ];
+  }
+
+  function renderView(overrides: Partial<QuickPickViewProps> = {}) {
+    const onKeep = vi.fn();
+    const onPass = vi.fn();
+    const onUnsure = vi.fn();
+    const onUndo = vi.fn();
+    const result = render(
+      <QuickPickView
+        options={options()}
+        attributeDefinitions={[]}
+        position={0}
+        dispositions={{}}
+        onKeep={onKeep}
+        onPass={onPass}
+        onUnsure={onUnsure}
+        onUndo={onUndo}
+        layout="narrow"
+        onFocusChange={() => undefined}
+        {...overrides}
+      />,
+    );
+    return { result, onKeep, onPass, onUnsure, onUndo };
+  }
+
+  it('offers Keep, Pass, and Unsure by those names', () => {
+    // "Shortlist" was the old label and it was wrong: keeping a candidate
+    // for a closer look is not the same act as saying these are the ones you
+    // want to go and drive. Confirming the shortlist is a separate, later,
+    // human-only step, and a button that conflated them taught the person
+    // the wrong model of what they had just done.
+    renderView();
+
+    expect(screen.getByTestId('quick-pick-keep')).toHaveTextContent('Keep');
+    expect(screen.getByTestId('quick-pick-pass')).toHaveTextContent('Pass');
+    expect(screen.getByTestId('quick-pick-unsure')).toHaveTextContent('Unsure');
+    expect(screen.queryByTestId('quick-pick-shortlist')).toBeNull();
+  });
+
+  it('reports each judgment with the candidate it was about', async () => {
+    const user = userEvent.setup();
+    const { onKeep, onPass, onUnsure } = renderView();
+
+    await user.click(screen.getByTestId('quick-pick-keep'));
+    expect(onKeep).toHaveBeenCalledWith('candidate-rav4');
+
+    await user.click(screen.getByTestId('quick-pick-pass'));
+    expect(onPass).toHaveBeenCalledWith('candidate-rav4');
+
+    await user.click(screen.getByTestId('quick-pick-unsure'));
+    expect(onUnsure).toHaveBeenCalledWith('candidate-rav4');
+  });
+
+  it('shows the decision already recorded for a candidate, so a reload lands somewhere legible', () => {
+    renderView({ dispositions: { 'candidate-rav4': 'keep' } });
+
+    expect(screen.getByTestId('quick-pick-current-disposition')).toHaveTextContent(/kept/i);
+  });
+
+  it('shows nothing about a candidate nobody has judged yet', () => {
+    renderView();
+    expect(screen.queryByTestId('quick-pick-current-disposition')).toBeNull();
+  });
+
+  it('offers undo only once there is a decision to undo', async () => {
+    const user = userEvent.setup();
+    const { onUndo } = renderView({ dispositions: { 'candidate-rav4': 'pass' } });
+
+    const undo = screen.getByTestId('quick-pick-undo');
+    await user.click(undo);
+    expect(onUndo).toHaveBeenCalledWith('candidate-rav4');
+  });
+
+  it('hides undo when there is nothing to undo', () => {
+    renderView();
+    expect(screen.queryByTestId('quick-pick-undo')).toBeNull();
+  });
+
+  it('says plainly that Keep is not a purchase or a shortlist commitment', () => {
+    // The card is where a person forms their idea of what Keep means. If it
+    // reads as "I have chosen this", the human-authority claim is already
+    // lost by the time the shortlist screen appears.
+    renderView();
+
+    expect(screen.getByTestId('quick-pick-actions')).toHaveTextContent(
+      /keeps it for a closer look|not a final choice|nothing is decided/i,
+    );
+  });
+
+  it('never tells the person which one to keep', () => {
+    const { result } = renderView();
+    expect(result.container.textContent).not.toMatch(/we recommend|you should (keep|buy|choose)/i);
   });
 });
