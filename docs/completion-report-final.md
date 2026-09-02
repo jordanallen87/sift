@@ -14,10 +14,10 @@ Supersedes `completion-report-adaptive-experience.md`, which was written mid-ses
 
 | Command | Result |
 | --- | --- |
-| `pnpm verify` | **PASSED, all ten stages** (final run `2026-09-02T14-42-40-728Z-fd358d72`, at the release commit) |
-| `pnpm test:persona` | **PASSED** — three personas, all hard gates |
+| `pnpm verify` | **PASSED, all ten stages** (final run `2026-09-02T16-09-49-922Z-4b9d867c`) |
+| `pnpm test:persona` | **PASSED** — three personas, all twelve hard gates, all eight diagnostic dimensions, contrast check green |
 | `pnpm test:deployed` | **PASSED** — 11 passed, 1 skipped, 0 failed, against the live public URL |
-| `npx vitest run` | **3930 tests / 192 files** (session baseline: 3515 / 176) |
+| `npx vitest run` | **3956 tests / 194 files** (session baseline: 3515 / 176) |
 | `pnpm verify:release` | See [Release gate](#release-gate) |
 
 ### `pnpm verify` stages
@@ -33,7 +33,7 @@ Supersedes `completion-report-adaptive-experience.md`, which was written mid-ses
 | `test:integration` | PASS |
 | `test:contract` | PASS |
 | `test:scenario` | PASS |
-| `test:e2e` | PASS — 92 Playwright tests at 390/430/480/1440 |
+| `test:e2e` | PASS — 96 Playwright tests at 390/430/480/1440 |
 
 ### `pnpm test:deployed`
 
@@ -95,6 +95,12 @@ Reuse is decided by `inputsHash` — a hash of exactly the state a result depend
 
 `tests/e2e/adaptive-vehicle-journey.spec.ts`, ten tests across all four viewports. Orientation contract, the state/UI contradiction gate checked against real pixels, Quick Pick surviving a reload, no control that approves a decision, sticky-dock geometry, no horizontal overflow, axe, keyboard, and the same journey rendering identically from two independent browser contexts.
 
+### Task 9 continued — the diagnostic pass
+
+Run by Claude Opus 5 reading every turn artifact; provenance and its limitation recorded in `packages/scenarios/fixtures/personas/diagnostics.ts`. It is one model's judgment of a text record, not a user study.
+
+It **failed** the family persona on the first pass — `conversation_canvas_coherence` median 3 — and the finding was real: the RunPlan had an HTTP route, two activity events, and no surface a person could point at. Fixed by adding the plan to the orientation shell. Re-scored 4. All three personas now pass all eight dimensions.
+
 ### Task 10 — submission evidence
 
 - `docs/submissions/webmcp/claim-evidence-matrix.md` — every claim mapped to implementation, automated proof, visible proof, provenance, and limitation, plus an explicit **"claims we deliberately do not make"** section and a table of human-only attestations.
@@ -107,7 +113,7 @@ Reuse is decided by `inputsHash` — a hash of exactly the state a result depend
 
 ## Defects found and fixed after the mid-session report
 
-Four, each found by a different technique. None was found by a unit test.
+Eight, each found by a different technique. **None was found by a unit test**, and every unit test passed throughout.
 
 ### 1. The companion frame rendered for nobody — found by a browser
 
@@ -140,6 +146,28 @@ Nothing had finished — all four carried-over items were still `planned` — an
 
 `RunPlanRevisionCause` gained an optional `triggerLabel`, separate from `trigger` because correlation needs a stable id and a person needs a name. With no label the sentence omits the trigger rather than falling back to the id. "reused N finished results" became "kept N unchanged".
 
+### 5. The persona harness reported PASS on a journey that never worked — found by reading its own artifacts
+
+The first green run hid a family journey whose last seven turns were byte-identical: same phase, same coverage, empty diffs, no plan ever created. Discovery never finished, no candidate was triaged, the concern beat never fired. All eleven gates passed, because none of them asks whether the journey *moved*.
+
+Added the twelfth gate (`stalled_turn`) and fixed the five causes: an incomplete state diff, a harness stack under-wired versus `server.ts`, an executor that swallowed impossible turns, a persona that hard-coded one turn per question, and a diff that could not see plan changes.
+
+### 6. A new concern did not revise the plan — found by the repaired harness
+
+Only `setCandidateDisposition` and `updateDiscovery` notified the plan. The headline beat was not wired. `updateCriteria` now notifies, because adding a criterion is what synthesizes the case-extension obligation the plan turns into work.
+
+Also: a concern nothing can verify minted no version at all, so the dog-crate concern left the plan at v1 with nothing to show. A new explicit unknown is one of the more important things this product says.
+
+### 7. The contrast beat was broken — found by the same harness, missed by its own unit test
+
+The landscaping journey was receiving the **family** question set. The executor wrote the persona's prose into `valueSummary` where the topic offers a choice, so `business` never matched the conditional branch. The persona-set unit test passed throughout, because it compared scripted utterances rather than the questions Sift asked. A cross-persona contrast check now fails if the journeys converge.
+
+### 8. Adaptive discovery had no input path at all — found by wiring an E2E test for it
+
+`DiscoveryInteraction` built and tested, both commands implemented and routed, and the dock rendered the next question as a button that only switched views. A person could not answer a question in the pane.
+
+The first fix emitted `helpText` where `InteractionOptionSchema` uses `detail`; the strict schema rejected it, the client threw before any HTTP call, and a bare `.catch(() => undefined)` swallowed it — a button that did nothing, with no console error, no failed request, and no page exception. Both halves fixed.
+
 ### Two of my own gates were wrong, and I fixed the gates
 
 The persona harness's first run failed all three personas. One failure was defect 3 above. The other two were mine:
@@ -166,15 +194,10 @@ The persona harness's first run failed all three personas. One failure was defec
 
 Correctly not started. It is gated on the WebMCP entry being frozen.
 
-### Diagnostic scores
+### Still open
 
-`pnpm test:persona` reports `scored: false` for all three personas. A diagnostic pass has not been run, and the harness refuses to default a number. The canonical plan's "median ≥ 4, no orientation or next-action turn below 3" thresholds are **implemented and enforced** (`summarizeDiagnostics`) but have nothing to enforce against yet.
-
-### Still open from the earlier report
-
-- `CaseScoreboard.warnings` renders nowhere.
-- `CaseExtensionReviewCard.tsx` is unreachable from the command path.
-- `DiscoveryInteraction` has no host — nothing in the running product creates an `InteractionRequest`. The component is built and tested.
+- `CaseExtensionReviewCard.tsx` is reachable only through the add-concern disclosure, not from a dedicated review path. Documented in `App.tsx`; not a claim made anywhere.
+- The dock offers "Continue Quick Pick" from turn 0, at 0 of 5 coverage, before there is anything to triage against. Scored 3 by the diagnostic pass — above the per-turn floor, recorded rather than rounded away.
 - `test:observability` and `test:live` remain declared stubs and are cited as evidence nowhere.
 
 ---
