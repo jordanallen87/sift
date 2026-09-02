@@ -2,12 +2,16 @@
 
 Session date: 2026-09-02.
 Plan executed: `docs/final-plan/final-hackathon-execution-plan.md`.
-Baseline: `main` @ `da3ad9f`. Final SHA at time of writing: `b7a150f`.
+Baseline: `main` @ `da3ad9f`.
 
-This report covers Tasks 0–5 and Task 7 of the canonical plan. **Tasks 6 and
-8–11 were not reached.** What that means concretely is in
-[What is not done](#what-is-not-done), and what Codex should verify first is
-in [What Codex must independently review and retest](#what-codex-must-independently-review-and-retest).
+This report covers Tasks 0–5 and Task 7. **It was written mid-session and
+its "what is not done" section is now out of date.** Tasks 6, 8, 9, and
+most of 10 were completed after it; see
+[`completion-report-final.md`](./completion-report-final.md), which
+supersedes this file for anything that section claims.
+
+What remains accurate here: the per-task implementation detail for Tasks
+0–5 and 7, the defect log, and the screenshot inventory.
 
 ## Verification
 
