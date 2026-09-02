@@ -328,7 +328,21 @@ export class CommandService {
         timestamp: seed.createdAt,
         commandId,
         type: 'case.created',
-        payload: { title: seed.title, pack: seed.pack },
+        // The decision mode is recorded here, not left absent.
+        //
+        // `case.created` seeds `CaseState.discovery` only when `mode` is
+        // present, and the companion frame's render gate is
+        // `snapshot.discovery !== undefined`. Without this, every case had
+        // an undefined discovery, that gate was false on every real case,
+        // and the whole orientation shell -- written, unit tested, and
+        // wired into `App.tsx` -- rendered for nobody while every unit test
+        // passed. Caught by `tests/e2e/adaptive-vehicle-journey.spec.ts`,
+        // which is the only test that looks at a screen.
+        //
+        // `companion` is the truthful value: both entry points create a
+        // case for the right-pane experience, and only a standalone entry
+        // point may defer a soft topic.
+        payload: { title: seed.title, pack: seed.pack, mode: 'companion' },
       },
       {
         eventId: this.deps.idGenerator.next('event'),
@@ -428,7 +442,10 @@ export class CommandService {
         timestamp: seed.createdAt,
         commandId,
         type: 'case.created',
-        payload: { title: seed.title, pack: seed.pack },
+        // Same reasoning as `startDemo` above: without a recorded mode the
+        // case has no discovery state, and the companion frame never
+        // renders.
+        payload: { title: seed.title, pack: seed.pack, mode: 'companion' },
       },
       {
         eventId: this.deps.idGenerator.next('event'),

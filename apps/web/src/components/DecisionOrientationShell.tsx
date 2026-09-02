@@ -53,11 +53,24 @@ export interface DecisionOrientation {
 export interface DecisionOrientationShellProps {
   readonly orientation: DecisionOrientation;
   readonly layout: 'narrow' | 'expanded';
+  /**
+   * Whether this shell names the decision, or leaves that to something
+   * above it.
+   *
+   * `WorkspaceAppBar` renders the case title immediately above this shell
+   * in the live workspace, so repeating it here put the same words on
+   * screen twice in a row -- visible the moment the shell was rendered for
+   * a real case, and invisible to every unit test, which renders the shell
+   * alone. Defaults to `true` so the shell is self-sufficient wherever
+   * nothing else names the decision.
+   */
+  readonly showDecisionTitle?: boolean;
 }
 
 export function DecisionOrientationShell({
   orientation,
   layout,
+  showDecisionTitle = true,
 }: DecisionOrientationShellProps): React.JSX.Element {
   const { coverage } = orientation;
   const total = coverage.requiredTotal;
@@ -84,20 +97,22 @@ export function DecisionOrientationShell({
         'pt-[max(var(--space-3),env(safe-area-inset-top))]',
       ].join(' ')}
     >
-      <div className="flex items-baseline justify-between gap-[var(--space-2)]">
-        <h1
-          data-testid="orientation-decision"
-          className="truncate text-[length:var(--text-base)] font-semibold text-[color:var(--color-foreground)]"
-        >
-          {orientation.decisionTitle}
-        </h1>
-        <span
-          data-testid="orientation-pack"
-          className="shrink-0 text-[length:var(--text-xs)] text-[color:var(--color-muted-foreground)]"
-        >
-          {orientation.packName}
-        </span>
-      </div>
+      {showDecisionTitle && (
+        <div className="flex items-baseline justify-between gap-[var(--space-2)]">
+          <h1
+            data-testid="orientation-decision"
+            className="truncate text-[length:var(--text-base)] font-semibold text-[color:var(--color-foreground)]"
+          >
+            {orientation.decisionTitle}
+          </h1>
+          <span
+            data-testid="orientation-pack"
+            className="shrink-0 text-[length:var(--text-xs)] text-[color:var(--color-muted-foreground)]"
+          >
+            {orientation.packName}
+          </span>
+        </div>
+      )}
 
       <p
         data-testid="orientation-phase"

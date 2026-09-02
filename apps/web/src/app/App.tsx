@@ -1836,7 +1836,14 @@ export function App() {
         individual field was correct in isolation.
       */}
       {decisionOrientation !== null && snapshot?.discovery !== undefined && (
-        <DecisionOrientationShell orientation={decisionOrientation} layout={layout} />
+        <DecisionOrientationShell
+          orientation={decisionOrientation}
+          layout={layout}
+          // `WorkspaceAppBar` directly above already names the decision.
+          // Repeating it here stacked the same words twice, which no unit
+          // test could see because they render the shell on its own.
+          showDecisionTitle={false}
+        />
       )}
 
       <WorkspaceAlertBanner items={alertItems} layout={layout} />

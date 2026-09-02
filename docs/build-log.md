@@ -5784,3 +5784,33 @@ The fix distinguishes two cases that look alike: a case with *no discovery state
 ### Verification
 
 `pnpm test:persona` passes all three personas. 272 scenario/orientation tests, 2413 core/web/contracts tests. Reports land in `artifacts/persona/<persona>.json` with every turn's state diff, coverage, phase, next move, RunPlan version, and events.
+
+## 2026-09-02 — Task 9: the adaptive vehicle journey in a browser
+
+`tests/e2e/adaptive-vehicle-journey.spec.ts`, ten tests across all four viewports.
+
+### What it caught on the first run
+
+Nine of ten failed, and the cause was the kind of defect only a browser can find.
+
+The companion frame — `DecisionOrientationShell`, `ContextActionDock`, `buildDecisionOrientation` — was written, unit-tested (16 tests), and wired into `App.tsx`. It rendered for nobody. Its gate is `snapshot.discovery !== undefined`, `case.created` seeds `discovery` only when its payload carries a `mode`, and neither `startDemo` nor `startCase` recorded one. Every unit test passed because unit tests render the shell directly; the render gate lives one level above them.
+
+Fixed at the cause: both case-creation paths now record `mode: 'companion'`, which is the truthful value — both entry points create a case for the right-pane experience, and only a standalone entry point may defer a soft topic.
+
+### A second defect, found by looking rather than asserting
+
+With the frame finally visible, the first screenshot showed "Vehicle Selection" twice in a row: `WorkspaceAppBar` names the case, and the shell immediately beneath repeated it. `packNameFor` already suppressed the redundant *pack chip*; nothing suppressed the redundant *title*, because the shell's own tests render it alone, where the title is the only thing naming the decision.
+
+`DecisionOrientationShell` gained `showDecisionTitle`, defaulting to `true` so the shell stays self-sufficient wherever nothing else names the decision. `App.tsx` passes `false`. The E2E assertion moved to `workspace-app-bar-title`, so it tests the contract ("a person can see what decision this is") rather than which element carries it.
+
+### What the spec asserts
+
+Orientation contract at 390/430/480/1440; the `state_ui_contradiction` gate checked against real pixels rather than state; Quick Pick judgments surviving a reload and readable back from the server; no control that approves a decision on the person's behalf; sticky dock never overlapping the shell; no horizontal overflow; axe clean; keyboard reachable; and the same journey rendering identically from two independent browser contexts — which is what "twice from clean state" has to mean, since reusing one page carries the first case's storage into the second run.
+
+### Screenshot baselines
+
+40 baselines changed, all from the one intentional change: the frame now renders, so every case view is ~350px taller. The actual, expected, and diff images were opened and inspected at 390px before and after the title fix; the second inspection is what surfaced the duplication above. No baseline was accepted merely because it differed.
+
+### Known: the E2E suite is load-sensitive
+
+Under four parallel workers against one shared server the suite reports a rotating handful of failures — `ECONNRESET`, 30s timeouts, and one optimistic-concurrency conflict where an in-flight app command lands between a test's read and its write. Every one of them passes in isolation, and the failing set differs between runs. This is the same machine-contention signature already recorded for the `apps/agent` suite, not a product regression.
