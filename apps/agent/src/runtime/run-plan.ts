@@ -668,6 +668,12 @@ export function describeRunPlanRevision(plan: RunPlan): string {
     return `Plan v${String(plan.version)}: first plan, with ${String(plan.items.length)} items and nothing to reuse.`;
   }
   const because = REASON_PHRASES[revision.reason](revision.triggerLabel);
+  // A concern nothing can verify is reported, not omitted. It is the one
+  // outcome where the plan's honest answer is "I cannot check this."
+  const unknowns =
+    plan.unverifiable.length === 0
+      ? ''
+      : ` ${String(plan.unverifiable.length)} concern(s) have nothing that can check them and stay explicit unknowns.`;
   // "kept ... unchanged", not "reused ... finished results". A carried-over
   // item may still be planned or running; on the live deployment the first
   // revision reported "reused 4 finished results" when nothing had
@@ -676,7 +682,7 @@ export function describeRunPlanRevision(plan: RunPlan): string {
     `Plan v${String(plan.version)}: ${because} added ${String(revision.addedSignatures.length)} new items, ` +
     `kept ${String(revision.reusedSignatures.length)} unchanged, ` +
     `re-ran ${String(revision.staledSignatures.length)} whose inputs changed, ` +
-    `and cancelled ${String(revision.cancelledSignatures.length)}.`
+    `and cancelled ${String(revision.cancelledSignatures.length)}.${unknowns}`
   );
 }
 

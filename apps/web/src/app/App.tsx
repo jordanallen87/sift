@@ -214,7 +214,11 @@ import { FindingsSheet } from '../components/FindingsSheet.js';
 import { OptionEditor } from '../components/OptionEditor.js';
 import { WorkspaceViewSwitcher } from '../components/WorkspaceViewSwitcher.js';
 import { DecisionProfileView } from '../components/DecisionProfileView.js';
-import { DecisionOrientationShell } from '../components/DecisionOrientationShell.js';
+import {
+  DecisionOrientationShell,
+  type WorkInFlight,
+} from '../components/DecisionOrientationShell.js';
+import { summarizeRunPlanResponse } from './run-plan-summary.js';
 import { ContextActionDock } from '../components/ContextActionDock.js';
 import { buildDecisionOrientation } from '../components/decision-orientation.js';
 import { deriveDecisionProfile } from '../components/decision-profile.js';
@@ -434,6 +438,15 @@ export function App() {
   // being restored (both render the plain launcher immediately).
   const [restoringCaseId, setRestoringCaseId] = useState<string | null>(() => readStoredCaseId());
   const [installedPacks, setInstalledPacks] = useState<CompiledDecisionPack[]>([]);
+  /**
+   * What Sift is currently working on, read from `GET /api/cases/:id/run-plan`.
+   *
+   * `null` until a plan exists, which is most of discovery — a case has no
+   * plan until someone asks for an investigation. A transient failure here
+   * degrades to `null` rather than blocking the workspace: the plan is a
+   * derived projection and the pane is fully usable without it.
+   */
+  const [workInFlight, setWorkInFlight] = useState<WorkInFlight | null>(null);
   const [lastRunReceipt, setLastRunReceipt] = useState<LiveRunStatusReceipt | null>(null);
   // Runtime Inspector (Task A5 extends this beyond the pre-existing
   // run-scoped "Inspect run" trigger): `runtimeInspectorOpen` is the single
@@ -672,6 +685,35 @@ export function App() {
       cancelled = true;
     };
   }, [apiConfig]);
+
+  // The RunPlan, refreshed whenever the case's activity sequence moves.
+  //
+  // Keyed on `eventSequence` rather than polling: every command that can
+  // change the plan also advances the case, so this refetches exactly when
+  // there is something new to show and never in between.
+  useEffect(() => {
+    const caseId = snapshot?.id;
+    if (caseId === undefined) {
+      setWorkInFlight(null);
+      return;
+    }
+    let cancelled = false;
+    const baseUrl = apiConfig.baseUrl ?? '';
+    const fetchImpl = apiConfig.fetchImpl ?? fetch;
+    fetchImpl(`${baseUrl}/api/cases/${encodeURIComponent(caseId)}/run-plan`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload: unknown) => {
+        if (cancelled) return;
+        const summary = summarizeRunPlanResponse(payload);
+        setWorkInFlight(summary);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkInFlight(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshot?.id, snapshot?.eventSequence, apiConfig]);
 
   // Reload-restore verification: a stored caseId is never trusted directly
   // (product.md "Canonical snapshots update only from committed case
@@ -1839,6 +1881,7 @@ export function App() {
         <DecisionOrientationShell
           orientation={decisionOrientation}
           layout={layout}
+          workInFlight={workInFlight}
           // `WorkspaceAppBar` directly above already names the decision.
           // Repeating it here stacked the same words twice, which no unit
           // test could see because they render the shell on its own.

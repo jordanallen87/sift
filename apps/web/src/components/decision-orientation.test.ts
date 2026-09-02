@@ -319,6 +319,98 @@ describe('buildDecisionOrientation: it must never contradict itself on screen', 
     expect(buildDecisionOrientation(sameName, PACK).packName).toBe('');
   });
 
+  it('qualifies a ready recommendation reached without asking anything', () => {
+    // The contradiction found by looking at a release screenshot: a seeded
+    // demo case reaches a ready recommendation without anyone answering a
+    // question, so the shell rendered "Ready for your decision" directly
+    // above "0 of 5 covered". Both statements are true; the pairing is not.
+    const seeded: CaseState = {
+      ...caseWith({
+        mode: 'companion',
+        topics: [],
+        blindSpotReview: { status: 'pending', offeredPromptIds: [], selectedPromptIds: [] },
+        dispositions: [],
+        pendingInteraction: null,
+        updatedAt: AT,
+      }),
+      entities: [
+        {
+          id: 'candidate-1',
+          kind: 'candidate',
+          label: 'A car',
+          attributes: {},
+          createdAt: AT,
+          updatedAt: AT,
+        },
+      ],
+      // The recommendation is what forces a post-discovery phase here, and
+      // is exactly the state the release screenshot showed.
+      recommendation: {
+        id: 'rec-1',
+        status: 'ready',
+        favoredOptionId: 'candidate-1',
+        rationale: 'The catalog favours this one.',
+        facts: [],
+        hypotheses: [],
+        confidence: 0.6,
+        limitations: [],
+        sourceIds: [],
+        resolvedObligationIds: [],
+        acceptedUncertaintyObligationIds: [],
+        generatedAt: AT,
+      },
+    };
+
+    const orientation = buildDecisionOrientation(seeded, PACK);
+
+    expect(orientation.phase).toBe('deciding');
+    expect(orientation.provisional).toBe(true);
+    expect(orientation.provisionalReason).toMatch(/has not asked you everything/i);
+    // And it names what would change it, rather than only flagging doubt.
+    expect(orientation.provisionalReason).toMatch(/answering the questions/i);
+  });
+
+  it('uses the deferral wording when that is the actual reason', () => {
+    const orientation = buildDecisionOrientation(
+      caseWith({
+        mode: 'standalone',
+        topics: [
+          {
+            topicId: 'vehicle.use_case',
+            label: 'What this vehicle is for',
+            status: 'confirmed',
+            necessity: 'required',
+            valueSummary: 'family',
+            origin: 'user',
+            humanConfirmed: true,
+            updatedAt: AT,
+          },
+          {
+            topicId: 'vehicle.budget',
+            label: 'Budget',
+            status: 'deferred',
+            necessity: 'required',
+            origin: 'user',
+            humanConfirmed: false,
+            updatedAt: AT,
+          },
+        ],
+        blindSpotReview: { status: 'pending', offeredPromptIds: [], selectedPromptIds: [] },
+        dispositions: [],
+        pendingInteraction: null,
+        updatedAt: AT,
+      }),
+      PACK,
+    );
+
+    expect(orientation.provisional).toBe(true);
+    expect(orientation.provisionalReason).toMatch(/deferred/i);
+  });
+
+  it('says nothing about provisionality when there is nothing to qualify', () => {
+    expect(buildDecisionOrientation(startedDiscovery(), PACK).provisionalReason).toBeNull();
+  });
+
   it('does not put the same thing in focus and in the next step', () => {
     const orientation = buildDecisionOrientation(caseWith(), PACK);
     expect(orientation.currentFocus).not.toBe(orientation.nextStepLabel);

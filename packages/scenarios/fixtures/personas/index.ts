@@ -46,7 +46,7 @@ const FAMILY_NOVICE: Persona = PersonaSchema.parse({
     {
       label: 'Say what the car is for',
       actor: 'human',
-      utterance: 'Mostly school runs and a long trip a few times a year.',
+      utterance: 'Personal or family use — school runs and a long trip a few times a year.',
       command: 'updateDiscovery',
     },
     {
@@ -62,6 +62,15 @@ const FAMILY_NOVICE: Persona = PersonaSchema.parse({
       command: 'updateDiscovery',
     },
     {
+      // A person answers everything they are asked. The persona does not
+      // hard-code how many questions that is: a pack that adds a topic
+      // should lengthen the journey, not silently leave it short.
+      label: 'Answer the rest of what Sift asks',
+      actor: 'human',
+      utterance: 'A garage, and we would rather not spend much on fuel.',
+      command: 'finishDiscovery',
+    },
+    {
       label: 'Finish the check for anything missed',
       actor: 'human',
       command: 'completeBlindSpotReview',
@@ -69,6 +78,15 @@ const FAMILY_NOVICE: Persona = PersonaSchema.parse({
     { label: 'See what Sift found', actor: 'human' },
     { label: 'Keep the first option', actor: 'human', command: 'setCandidateDisposition' },
     { label: 'Pass on the second option', actor: 'human', command: 'setCandidateDisposition' },
+    {
+      // Investigation starts BEFORE the concern is raised. That ordering is
+      // the whole demo beat: a concern that arrives after the plan exists
+      // revises work already under way. Raised first, it would simply be
+      // part of the opening plan and would prove nothing.
+      label: 'Ask Sift to look into what is kept',
+      actor: 'human',
+      command: 'requestInvestigation',
+    },
     {
       label: 'Raise a concern nobody asked about',
       actor: 'human',
@@ -101,7 +119,7 @@ const LANDSCAPING_OWNER: Persona = PersonaSchema.parse({
     {
       label: 'Say it is for the business, not the family',
       actor: 'human',
-      utterance: 'It is for work — crews, tools, and a trailer.',
+      utterance: 'A business or trade — crews, tools, and a trailer.',
       command: 'updateDiscovery',
     },
     {
@@ -115,6 +133,12 @@ const LANDSCAPING_OWNER: Persona = PersonaSchema.parse({
       actor: 'human',
       utterance: 'If it is off the road for a week I lose jobs.',
       command: 'updateDiscovery',
+    },
+    {
+      label: 'Answer the rest of what Sift asks',
+      actor: 'human',
+      utterance: 'Gravel sites, and it has to carry a crew.',
+      command: 'finishDiscovery',
     },
     { label: 'See a different set of options', actor: 'human' },
   ],
@@ -142,13 +166,24 @@ const KNOWN_LISTING_SHOPPER: Persona = PersonaSchema.parse({
     {
       label: 'Say what it is for',
       actor: 'human',
-      utterance: 'Family car, mostly city driving.',
+      utterance: 'Personal or family use, mostly city driving.',
       command: 'updateDiscovery',
+    },
+    {
+      label: 'Answer the rest of what Sift asks',
+      actor: 'human',
+      utterance: 'City driving, a garage, and a modest budget.',
+      command: 'finishDiscovery',
     },
     {
       label: 'Keep it while Sift looks into it',
       actor: 'human',
       command: 'setCandidateDisposition',
+    },
+    {
+      label: 'Ask Sift to look into it',
+      actor: 'human',
+      command: 'requestInvestigation',
     },
     { label: 'Read what Sift can and cannot say about it', actor: 'human' },
   ],

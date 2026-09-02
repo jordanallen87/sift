@@ -278,6 +278,40 @@ describe('broken_persistent_frame', () => {
   });
 });
 
+describe('stalled_turn', () => {
+  it('fails when a turn invokes a tool and nothing changes', () => {
+    // The gate the first real persona run needed. Without it, a journey
+    // whose last seven turns were identical reported PASS.
+    const gates = evaluateHardGates(
+      context([turn(0, { tools: ['setCandidateDisposition'], stateDiff: [] })]),
+    );
+    expect(outcomeOf(gates, 'stalled_turn')?.outcome).toBe('fail');
+    expect(outcomeOf(gates, 'stalled_turn')?.findings[0]?.detail).toContain(
+      'setCandidateDisposition',
+    );
+  });
+
+  it('allows a narration turn to change nothing', () => {
+    // "See what Sift found" is a real turn in a real journey and it
+    // legitimately mutates nothing. Failing it would make the gate noise,
+    // and a noisy gate gets switched off.
+    const gates = evaluateHardGates(context([turn(0, { tools: [], stateDiff: [] })]));
+    expect(outcomeOf(gates, 'stalled_turn')?.outcome).toBe('pass');
+  });
+
+  it('passes when a tool turn genuinely moves the case', () => {
+    const gates = evaluateHardGates(
+      context([
+        turn(0, {
+          tools: ['updateDiscovery'],
+          stateDiff: ['topic vehicle.budget -> confirmed (origin: user)'],
+        }),
+      ]),
+    );
+    expect(outcomeOf(gates, 'stalled_turn')?.outcome).toBe('pass');
+  });
+});
+
 describe('browser-only gates', () => {
   it('reports accessibility and console gates as not evaluated when no browser ran', () => {
     const gates = evaluateHardGates(context([turn(0)]));

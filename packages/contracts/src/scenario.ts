@@ -320,6 +320,13 @@ export const HARD_GATE_IDS = [
   'accessibility',
   'console_or_network_error',
   'outcome_dead_end',
+  // Added after the first real run: a turn that ran a command and changed
+  // nothing. Every other gate passed on a family journey whose last seven
+  // turns were byte-identical -- same phase, same coverage, same next
+  // move, empty diffs -- because "nothing happened" violates none of them.
+  // A green report on a journey that never moved is the exact fabricated
+  // pass these gates exist to prevent.
+  'stalled_turn',
 ] as const;
 export type HardGateId = (typeof HARD_GATE_IDS)[number];
 

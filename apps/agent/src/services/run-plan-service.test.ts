@@ -207,6 +207,49 @@ describe('RunPlanService.revisePlan', () => {
     ]);
   });
 
+  it('mints a version for a concern nothing can verify, even though it adds no work', () => {
+    // Found by the persona harness: raising the dog-crate concern left the
+    // plan at v1 with nothing to show. The concern had no capability behind
+    // it, so it added no items -- but the case had genuinely gained a
+    // visible unknown, and "Sift noted your concern and has nothing that
+    // can check it" is one of the more important things this product says.
+    const { service, caseStore } = harness(keptCase());
+    service.ensurePlan('case-plan');
+
+    const state = caseStore.load('case-plan');
+    if (state === undefined) throw new Error('fixture case vanished');
+    caseStore.seed({
+      ...state,
+      obligations: [
+        ...state.obligations,
+        concernObligation('dog_crate', {
+          id: 'ob-dog',
+          preferredSpecialists: ['specialist.nobody_has_this'],
+        }),
+      ],
+    });
+
+    const revised = service.revisePlan('case-plan', {
+      reason: 'new_concern',
+      trigger: 'dog_crate',
+      triggerLabel: 'Dog crate fit',
+    });
+
+    expect(revised?.version).toBe(2);
+    expect(revised?.revision?.addedSignatures).toEqual([]);
+    expect(revised?.unverifiable.map((entry) => entry.concernId)).toEqual(['dog_crate']);
+  });
+
+  it('still mints no version when neither the work nor the unknowns changed', () => {
+    const { service, planStore } = harness(keptCase());
+    service.ensurePlan('case-plan');
+
+    expect(
+      service.revisePlan('case-plan', { reason: 'triage_changed', trigger: 'rav4' }),
+    ).toBeUndefined();
+    expect(planStore.listVersions('case-plan')).toHaveLength(1);
+  });
+
   it('does nothing for a case with no plan yet, rather than back-filling one', () => {
     // Reviewing a concern on a case Sift has never planned for is not an
     // error; it just has no plan to revise.

@@ -204,3 +204,71 @@ describe('DecisionOrientationShell', () => {
     expect(await axe(expanded.container)).toHaveNoViolations();
   });
 });
+
+describe('DecisionOrientationShell: what Sift is working on', () => {
+  const base = orientation();
+
+  it('says nothing about work in flight when there is no plan', () => {
+    // Most of discovery happens before Sift has anything to work on.
+    // "Sift is looking into 0 things" reads as a broken product.
+    render(<DecisionOrientationShell orientation={base} layout="narrow" />);
+    expect(screen.queryByTestId('orientation-work-in-flight')).toBeNull();
+  });
+
+  it('says nothing when a plan exists but nothing is outstanding', () => {
+    render(
+      <DecisionOrientationShell
+        orientation={base}
+        layout="narrow"
+        workInFlight={{
+          plannedItems: 0,
+          optionsUnderInvestigation: 0,
+          unverifiableConcerns: 0,
+          planVersion: 2,
+        }}
+      />,
+    );
+    expect(screen.queryByTestId('orientation-work-in-flight')).toBeNull();
+  });
+
+  it('reports outstanding work in the person`s terms', () => {
+    render(
+      <DecisionOrientationShell
+        orientation={base}
+        layout="narrow"
+        workInFlight={{
+          plannedItems: 6,
+          optionsUnderInvestigation: 2,
+          unverifiableConcerns: 0,
+          planVersion: 2,
+        }}
+      />,
+    );
+    const line = screen.getByTestId('orientation-work-in-flight');
+    expect(line.textContent).toContain('6 things');
+    expect(line.textContent).toContain('2 options');
+    // Never the engine's vocabulary.
+    expect(line.textContent).not.toMatch(/item|signature|plan v/i);
+  });
+
+  it('surfaces a concern nothing can check rather than burying it', () => {
+    // The one thing the person asked about that Sift has to admit it
+    // cannot answer. Hiding it would be the quiet fabrication this whole
+    // product is built to avoid.
+    render(
+      <DecisionOrientationShell
+        orientation={base}
+        layout="narrow"
+        workInFlight={{
+          plannedItems: 6,
+          optionsUnderInvestigation: 2,
+          unverifiableConcerns: 1,
+          planVersion: 2,
+        }}
+      />,
+    );
+    const line = screen.getByTestId('orientation-unverifiable');
+    expect(line.textContent).toContain('nothing Sift can check');
+    expect(line.textContent).toContain('judge it yourself');
+  });
+});

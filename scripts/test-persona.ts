@@ -32,7 +32,13 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CaseState, NextMove, Persona, PersonaTurn } from '../packages/contracts/src/index.js';
+import type {
+  CaseState,
+  CompiledDecisionPack,
+  NextMove,
+  Persona,
+  PersonaTurn,
+} from '../packages/contracts/src/index.js';
 import {
   deriveDecisionPhase,
   deriveDisplayedCoverage,
@@ -44,6 +50,10 @@ import {
 } from '../packages/core/src/index.js';
 import { PackRegistry, compileCarPurchasePack } from '../packages/packs/src/index.js';
 import { PERSONAS } from '../packages/scenarios/fixtures/personas/index.js';
+import {
+  DIAGNOSTIC_PASS,
+  DIAGNOSTIC_PASS_PROVENANCE,
+} from '../packages/scenarios/fixtures/personas/diagnostics.js';
 import {
   runPersona,
   type PersonaTurnExecutor,
@@ -57,7 +67,9 @@ import { SqliteActivityStore } from '../apps/agent/src/store/activity-store.js';
 import { SqliteRunPlanStore } from '../apps/agent/src/store/run-plan-store.js';
 import { CommandService } from '../apps/agent/src/services/command-service.js';
 import { RunPlanService } from '../apps/agent/src/services/run-plan-service.js';
+import { RunService, SqliteRunStore } from '../apps/agent/src/services/run-service.js';
 import { carPurchaseCapabilityCatalog } from '../apps/agent/src/runtime/car-purchase-scenario.js';
+import { buildCarPurchaseCandidateEntities } from '../packages/scenarios/src/seeds.js';
 
 const ARTIFACT_DIR = fileURLToPath(new URL('../artifacts/persona', import.meta.url));
 
@@ -87,6 +99,7 @@ interface Stack {
   readonly caseStore: SqliteCaseStore;
   readonly activityStore: SqliteActivityStore;
   readonly commandService: CommandService;
+  readonly runService: RunService;
   readonly runPlanService: RunPlanService;
   readonly registry: PackRegistry;
   readonly clock: Clock;
@@ -120,12 +133,27 @@ function buildStack(): Stack {
     clock,
     idGenerator,
     runPlanRevisor: runPlanService,
+    // Wired exactly as `server.ts` wires it. Without this a demo case has
+    // no candidates at all, and every triage turn in every persona was a
+    // silent no-op -- which is how a completely stuck family journey
+    // reported PASS on its first run.
+    demoSeedEntities: { 'car-purchase': buildCarPurchaseCandidateEntities },
+  });
+
+  const runService = new RunService({
+    caseStore,
+    activityStore,
+    runStore: new SqliteRunStore(database),
+    clock,
+    idGenerator,
+    runPlanService,
   });
 
   return {
     caseStore,
     activityStore,
     commandService,
+    runService,
     runPlanService,
     registry,
     clock,
@@ -142,10 +170,30 @@ function visibleControlsFor(moves: readonly NextMove[]): string[] {
   return moves.slice(0, 2).map((move) => move.label);
 }
 
-/** One line per meaningful change between two snapshots, for the fabricated-progress gate. */
+/**
+ * One line per meaningful change between two snapshots.
+ *
+ * Every gate that asks "did anything happen" reads this, so an incomplete
+ * diff makes those gates unreliable in the most dangerous direction: it
+ * reports a working turn as a stall, and — worse — would report a
+ * fabricated-progress turn as fine. The first version covered topics,
+ * dispositions, entities and obligations only, which made
+ * `completeBlindSpotReview` and `defineCaseAttribute` look like no-ops when
+ * they had both worked.
+ */
 function diffSnapshots(before: CaseState | undefined, after: CaseState | undefined): string[] {
-  if (before === undefined || after === undefined) return [];
+  if (after === undefined) return [];
   const lines: string[] = [];
+
+  if (before === undefined) {
+    // The case did not exist a moment ago. That is the largest change a
+    // turn can make, and reporting it as "nothing happened" was the first
+    // false stall this gate found.
+    lines.push(`case ${after.id} created against pack ${after.pack.id}`);
+    for (const entity of after.entities) lines.push(`option ${entity.id} seeded`);
+    for (const obligation of after.obligations) lines.push(`concern ${obligation.id} seeded`);
+    return lines;
+  }
 
   const beforeTopics = new Map(
     (before.discovery?.topics ?? []).map((topic) => [topic.topicId, topic]),
@@ -158,6 +206,12 @@ function diffSnapshots(before: CaseState | undefined, after: CaseState | undefin
           (topic.importance === undefined ? '' : ` importance ${topic.importance}`),
       );
     }
+  }
+
+  const beforeReview = before.discovery?.blindSpotReview.status;
+  const afterReview = after.discovery?.blindSpotReview.status;
+  if (beforeReview !== afterReview && afterReview !== undefined) {
+    lines.push(`blind-spot review -> ${afterReview}`);
   }
 
   const beforeDispositions = new Map(
@@ -176,12 +230,72 @@ function diffSnapshots(before: CaseState | undefined, after: CaseState | undefin
 
   const beforeObligations = new Set(before.obligations.map((obligation) => obligation.id));
   for (const obligation of after.obligations) {
-    if (!beforeObligations.has(obligation.id)) {
-      lines.push(`concern ${obligation.id} added`);
+    if (!beforeObligations.has(obligation.id)) lines.push(`concern ${obligation.id} added`);
+  }
+
+  const beforeAttributes = new Set(before.attributeDefinitions.map((entry) => entry.id));
+  for (const definition of after.attributeDefinitions) {
+    if (!beforeAttributes.has(definition.id)) lines.push(`attribute ${definition.id} defined`);
+  }
+
+  const beforeExtensions = new Set(before.caseExtensions.map((entry) => entry.definition.id));
+  for (const extension of after.caseExtensions) {
+    if (!beforeExtensions.has(extension.definition.id)) {
+      lines.push(`case concern ${extension.definition.id} proposed`);
     }
   }
 
+  const beforeCriteria = new Set(before.criteria.map((entry) => entry.id));
+  for (const criterion of after.criteria) {
+    if (!beforeCriteria.has(criterion.id)) lines.push(`criterion ${criterion.id} added`);
+  }
+
+  if (before.status !== after.status) lines.push(`case status -> ${after.status}`);
+  if (before.recommendation?.status !== after.recommendation?.status) {
+    lines.push(`recommendation -> ${String(after.recommendation?.status ?? 'none')}`);
+  }
+
   return lines;
+}
+
+/**
+ * The value a person's answer actually records.
+ *
+ * A topic with option seeds is a topic where a person picks a choice, and
+ * the choice carries a canonical token (`family`, `business`) that the
+ * pack's conditional topics match on. Writing the person's prose into
+ * `valueSummary` instead meant `conditionMet` never matched, so the
+ * landscaping journey silently received the *family* question set —
+ * identical to the family journey, which is precisely what that persona
+ * exists to disprove. The persona-set test passed anyway, because it
+ * compared the personas' utterances rather than the questions Sift asked.
+ *
+ * Matching is deliberately dumb: a seed applies when its label or its value
+ * appears in what the person said. Anything cleverer would be this harness
+ * inventing comprehension the product does not have.
+ */
+function answerValueFor(
+  template: {
+    optionSeeds: readonly { label: string; valueSummary: string }[];
+    escapeHatches: { allowCustom: boolean };
+    id: string;
+  },
+  utterance: string | undefined,
+  personaId: string,
+): string {
+  const said = (utterance ?? '').toLowerCase();
+  const seed = template.optionSeeds.find(
+    (option) =>
+      said.includes(option.valueSummary.toLowerCase()) || said.includes(option.label.toLowerCase()),
+  );
+  if (seed !== undefined) return seed.valueSummary;
+  if (template.optionSeeds.length > 0 && !template.escapeHatches.allowCustom) {
+    throw new Error(
+      `Persona "${personaId}" answered "${utterance ?? ''}" for topic "${template.id}", which offers only ` +
+        `${template.optionSeeds.map((option) => option.valueSummary).join(', ')} and allows no custom answer.`,
+    );
+  }
+  return utterance ?? 'Answered during the persona run';
 }
 
 class RealPersonaExecutor implements PersonaTurnExecutor {
@@ -217,6 +331,10 @@ class RealPersonaExecutor implements PersonaTurnExecutor {
     const before = this.snapshot();
     const activityBefore =
       this.caseIdValue === '' ? 0 : this.stack.activityStore.latestSequence(this.caseIdValue);
+    const planVersionBefore =
+      this.caseIdValue === ''
+        ? undefined
+        : this.stack.runPlanService.currentPlan(this.caseIdValue)?.version;
 
     const tools = this.applyTurn(turn, index);
 
@@ -250,7 +368,22 @@ class RealPersonaExecutor implements PersonaTurnExecutor {
       tools,
       sequenceBefore: before?.eventSequence ?? 0,
       sequenceAfter: after.eventSequence,
-      stateDiff: diffSnapshots(before, after),
+      // A turn's changes are not only changes to `CaseState`.
+      // `requestInvestigation` deliberately appends no case event -- no
+      // `run.*` variant exists -- so it moves the plan and nothing else.
+      // Reporting that as "changed nothing" made a working turn look like
+      // a stall, which is the mirror image of the bug the stall gate
+      // exists to catch.
+      stateDiff: [
+        ...diffSnapshots(before, after),
+        ...(plan !== undefined && plan.version !== planVersionBefore
+          ? [
+              planVersionBefore === undefined
+                ? `run plan created at v${String(plan.version)} with ${String(plan.items.length)} item(s)`
+                : `run plan v${String(planVersionBefore)} -> v${String(plan.version)}`,
+            ]
+          : []),
+      ],
       // The coverage the *pane* would show, not the raw readiness counts:
       // a UX gate can only meaningfully check a claim the person can see.
       coverage: {
@@ -311,6 +444,10 @@ class RealPersonaExecutor implements PersonaTurnExecutor {
     switch (turn.command) {
       case 'updateDiscovery':
         return this.answerNextTopic(snapshot, turn, index);
+      case 'finishDiscovery':
+        return this.answerEveryRemainingTopic(snapshot, turn);
+      case 'requestInvestigation':
+        return this.requestInvestigation(snapshot);
       case 'completeBlindSpotReview':
         return this.completeBlindSpots(snapshot);
       case 'setCandidateDisposition':
@@ -319,6 +456,8 @@ class RealPersonaExecutor implements PersonaTurnExecutor {
         return this.addKnownOption(snapshot, turn);
       case 'defineCaseAttribute':
         return this.raiseConcern(snapshot, turn);
+      case 'reviewCaseExtension':
+        return this.confirmConcern(snapshot);
       default:
         throw new Error(
           `Persona "${this.persona.id}" turn ${String(index)} names command "${turn.command}", which this executor does not know how to perform.`,
@@ -331,10 +470,13 @@ class RealPersonaExecutor implements PersonaTurnExecutor {
     const readiness = deriveDiscoveryReadiness(snapshot, pack);
     const topicId = readiness.nextTopicId;
     if (topicId === null) {
-      // Nothing left to ask. Not an error: a persona that keeps answering
-      // past the end of discovery is telling us discovery got shorter,
-      // which the artifact records rather than crashes on.
-      return [];
+      // A persona turn that says "answer the next question" when Sift is
+      // asking none is a real mismatch between the journey and the
+      // product. Reporting it as a silent no-op is how seven dead turns
+      // passed every gate on the first run.
+      throw new Error(
+        `Persona "${this.persona.id}" turn ${String(index)} ("${turn.label}") tried to answer a question, but Sift is asking none.`,
+      );
     }
     const receipt = this.stack.commandService.updateDiscovery(this.nextCommandId(), {
       caseId: snapshot.id,
@@ -344,7 +486,11 @@ class RealPersonaExecutor implements PersonaTurnExecutor {
         {
           op: 'confirm',
           topicId,
-          valueSummary: turn.utterance ?? `Answered on turn ${String(index)}`,
+          valueSummary: answerValueFor(
+            this.templateFor(pack, topicId),
+            turn.utterance ?? `Answered on turn ${String(index)}`,
+            this.persona.id,
+          ),
         },
       ],
     });
@@ -354,10 +500,75 @@ class RealPersonaExecutor implements PersonaTurnExecutor {
     return ['updateDiscovery'];
   }
 
+  /**
+   * The person answers everything Sift still wants to know.
+   *
+   * A persona should not have to know how many questions a pack asks --
+   * that is the number most likely to change, and hard-coding one turn per
+   * question means a pack that adds a topic silently leaves the journey
+   * short. This loops until `nextTopicId` is null, so the journey always
+   * reaches the end of discovery no matter how long discovery is.
+   */
+  private answerEveryRemainingTopic(initial: CaseState, turn: PersonaTurn): string[] {
+    const tools: string[] = [];
+    let snapshot = initial;
+    // Bounded: `DiscoveryStateSchema` caps topics at 100, so a loop that
+    // does not terminate is a bug rather than a long pack.
+    for (let guard = 0; guard < 100; guard += 1) {
+      const pack = this.requirePack(snapshot);
+      const topicId = deriveDiscoveryReadiness(snapshot, pack).nextTopicId;
+      if (topicId === null) break;
+      const receipt = this.stack.commandService.updateDiscovery(this.nextCommandId(), {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        actor: 'human',
+        operations: [
+          {
+            op: 'confirm',
+            topicId,
+            valueSummary: answerValueFor(
+              this.templateFor(pack, topicId),
+              turn.utterance,
+              this.persona.id,
+            ),
+          },
+        ],
+      });
+      if (receipt.status !== 'ok') {
+        throw new Error(`updateDiscovery("${topicId}") failed: ${JSON.stringify(receipt)}`);
+      }
+      tools.push('updateDiscovery');
+      const next = this.snapshot();
+      if (next === undefined) throw new Error('case vanished mid-discovery');
+      snapshot = next;
+    }
+    if (tools.length === 0) {
+      throw new Error(
+        `Persona "${this.persona.id}" turn "${turn.label}" had nothing left to answer.`,
+      );
+    }
+    return tools;
+  }
+
+  private requestInvestigation(snapshot: CaseState): string[] {
+    const receipt = this.stack.runService.requestInvestigation(this.nextCommandId(), {
+      caseId: snapshot.id,
+      expectedSequence: snapshot.eventSequence,
+    });
+    if (receipt.status !== 'ok') {
+      throw new Error(`requestInvestigation failed: ${JSON.stringify(receipt)}`);
+    }
+    return ['requestInvestigation'];
+  }
+
   private completeBlindSpots(snapshot: CaseState): string[] {
     const pack = this.requirePack(snapshot);
     const offered = (pack.discovery?.blindSpots ?? []).map((prompt) => prompt.id);
-    if (offered.length === 0) return [];
+    if (offered.length === 0) {
+      throw new Error(
+        `Persona "${this.persona.id}" completes a blind-spot review, but pack "${pack.identity.id}" declares no blind spots.`,
+      );
+    }
     const receipt = this.stack.commandService.completeBlindSpotReview(this.nextCommandId(), {
       caseId: snapshot.id,
       expectedSequence: snapshot.eventSequence,
@@ -383,7 +594,11 @@ class RealPersonaExecutor implements PersonaTurnExecutor {
         entity.kind === 'candidate' &&
         (dispositions.get(entity.id) ?? 'unreviewed') === 'unreviewed',
     );
-    if (target === undefined) return [];
+    if (target === undefined) {
+      throw new Error(
+        `Persona "${this.persona.id}" turn "${turn.label}" triages a candidate, but every candidate is already triaged.`,
+      );
+    }
 
     const disposition = /pass/i.test(turn.label) ? 'pass' : 'keep';
     const receipt = this.stack.commandService.setCandidateDisposition(this.nextCommandId(), {
@@ -433,7 +648,74 @@ class RealPersonaExecutor implements PersonaTurnExecutor {
     if (receipt.status !== 'ok') {
       throw new Error(`defineCaseAttribute failed: ${JSON.stringify(receipt)}`);
     }
-    return ['defineCaseAttribute'];
+
+    // Raising a concern is two commands, not one. `defineCaseAttribute`
+    // creates the attribute; adding a criterion that scores against it is
+    // what synthesizes the case-extension obligation the runtime can
+    // actually work on. Stopping after the first left the concern
+    // recorded but inert, and the plan correctly refused to revise for
+    // work that did not exist.
+    const afterAttribute = this.snapshot();
+    if (afterAttribute === undefined) throw new Error('case vanished after defineCaseAttribute');
+    const criteriaReceipt = this.stack.commandService.updateCriteria(this.nextCommandId(), {
+      caseId: afterAttribute.id,
+      expectedSequence: afterAttribute.eventSequence,
+      operations: [
+        {
+          op: 'add',
+          criterion: {
+            id: 'custom.dog_crate_fit',
+            label: 'Dog crate fit',
+            kind: 'preference',
+            weight: 20,
+            direction: 'higher_better',
+            appliesToAttribute: 'custom.dog_crate_fit',
+            question: turn.utterance ?? 'Does a dog crate fit behind the back seats?',
+          },
+        },
+      ],
+    });
+    if (criteriaReceipt.status !== 'ok') {
+      throw new Error(`updateCriteria failed: ${JSON.stringify(criteriaReceipt)}`);
+    }
+    return ['defineCaseAttribute', 'updateCriteria'];
+  }
+
+  /**
+   * The person confirms the concern they raised.
+   *
+   * Separate from raising it, because that separation is the product's
+   * central authority rule: a proposed concern is a proposal until a human
+   * says otherwise, and only the confirmation turns it into an obligation
+   * the runtime will work on. That is also what makes the plan revise.
+   */
+  private confirmConcern(snapshot: CaseState): string[] {
+    const pending = snapshot.caseExtensions.find(
+      (extension) => extension.definition.confirmation !== 'confirmed',
+    );
+    if (pending === undefined) {
+      throw new Error(
+        `Persona "${this.persona.id}" confirms a concern, but the case has none awaiting review.`,
+      );
+    }
+    const receipt = this.stack.commandService.reviewCaseExtension(this.nextCommandId(), {
+      caseId: snapshot.id,
+      extensionId: pending.id,
+      decision: 'confirm',
+      expectedSequence: snapshot.eventSequence,
+    });
+    if (receipt.status !== 'ok') {
+      throw new Error(`reviewCaseExtension failed: ${JSON.stringify(receipt)}`);
+    }
+    return ['reviewCaseExtension'];
+  }
+
+  private templateFor(pack: CompiledDecisionPack, topicId: string) {
+    const template = (pack.discovery?.topics ?? []).find((entry) => entry.id === topicId);
+    if (template === undefined) {
+      throw new Error(`Pack "${pack.identity.id}" declares no topic "${topicId}".`);
+    }
+    return template;
   }
 
   private requirePack(snapshot: CaseState) {
@@ -456,14 +738,55 @@ function extractOptionLabel(utterance: string | undefined): string | undefined {
   return match?.[1];
 }
 
+/**
+ * The questions Sift actually asked, per persona.
+ *
+ * This is the only evidence that the discovery is adaptive rather than
+ * staged, and it has to be compared *across* runs, which no per-run gate
+ * can do. Its absence is how a broken contrast beat stayed green: the
+ * landscaping journey silently received the family question set, and the
+ * persona-set unit test passed because it compared the personas' scripted
+ * utterances rather than what Sift asked in response to them.
+ */
+function topicsAsked(report: { turns: readonly { stateDiff: readonly string[] }[] }): string[] {
+  const topics = new Set<string>();
+  for (const turn of report.turns) {
+    for (const line of turn.stateDiff) {
+      const match = /^topic (\S+) ->/.exec(line);
+      if (match?.[1] !== undefined) topics.add(match[1]);
+    }
+  }
+  return [...topics].sort((a, b) => a.localeCompare(b));
+}
+
+function assertJourneysDiverge(asked: ReadonlyMap<string, readonly string[]>): string[] {
+  const family = asked.get('family-novice');
+  const business = asked.get('landscaping-owner');
+  if (family === undefined || business === undefined) return [];
+
+  const familyOnly = family.filter((topic) => !business.includes(topic));
+  const businessOnly = business.filter((topic) => !family.includes(topic));
+  const problems: string[] = [];
+  if (familyOnly.length === 0 || businessOnly.length === 0) {
+    problems.push(
+      'The family and landscaping journeys were asked the same questions. The contrast beat ' +
+        'claims one pack adapts to two very different people; identical question sets disprove it.',
+    );
+  }
+  return problems;
+}
+
 async function main(): Promise<void> {
   mkdirSync(ARTIFACT_DIR, { recursive: true });
   let failures = 0;
+  const asked = new Map<string, readonly string[]>();
 
   for (const persona of PERSONAS) {
     const stack = buildStack();
     try {
-      const report = await runPersona(persona, new RealPersonaExecutor(stack, persona));
+      const report = await runPersona(persona, new RealPersonaExecutor(stack, persona), {
+        scores: DIAGNOSTIC_PASS[persona.id],
+      });
       const diagnostics = summarizeDiagnostics(report.scores);
 
       writeFileSync(
@@ -472,6 +795,7 @@ async function main(): Promise<void> {
         'utf8',
       );
 
+      asked.set(persona.id, topicsAsked(report));
       const failed = report.gates.filter((gate) => gate.outcome === 'fail');
       const notEvaluated = report.gates.filter((gate) => gate.outcome === 'not_evaluated');
 
@@ -493,10 +817,36 @@ async function main(): Promise<void> {
       }
       if (!diagnostics.scored) {
         process.stdout.write(`  · ${diagnostics.reason ?? 'unscored'}\n`);
+      } else {
+        const medians = Object.entries(diagnostics.medians)
+          .map(([dimension, value]) => `${dimension} ${String(value)}`)
+          .join(', ');
+        process.stdout.write(
+          `  · diagnostics ${diagnostics.passed ? 'PASS' : 'FAIL'} (${DIAGNOSTIC_PASS_PROVENANCE.scoredBy}, ${DIAGNOSTIC_PASS_PROVENANCE.scoredAt}): ${medians}\n`,
+        );
+        for (const failure of diagnostics.failures) {
+          failures += 1;
+          process.stdout.write(`  ✗ diagnostic: ${failure}\n`);
+        }
       }
     } finally {
       stack.cleanup();
     }
+  }
+
+  const divergence = assertJourneysDiverge(asked);
+  for (const problem of divergence) {
+    failures += 1;
+    process.stdout.write(`\n  ✗ contrast: ${problem}\n`);
+  }
+  if (divergence.length === 0) {
+    const family = asked.get('family-novice') ?? [];
+    const business = asked.get('landscaping-owner') ?? [];
+    process.stdout.write(
+      `\ncontrast: the same pack asked the family journey about ` +
+        `${family.filter((topic) => !business.includes(topic)).join(', ')} and the landscaping ` +
+        `journey about ${business.filter((topic) => !family.includes(topic)).join(', ')}.\n`,
+    );
   }
 
   process.stdout.write(

@@ -1332,6 +1332,18 @@ export class CommandService {
           commandOrigin,
         );
       }
+      // A new concern is the change the RunPlan exists to absorb. Without
+      // this the headline beat -- "raising a concern revises work already
+      // under way" -- was simply not wired: only triage and discovery
+      // notified the plan, so a concern raised mid-run left the plan at
+      // its previous version. Found by the persona harness, whose family
+      // journey sat on plan v1 through the turn that was supposed to move
+      // it to v2.
+      notifyRunPlan(this.deps, input.caseId, {
+        reason: 'new_concern',
+        trigger: input.definition.id,
+        triggerLabel: input.definition.label,
+      });
     }
     return this.toReceipt(commandId, result);
   }
@@ -1946,6 +1958,19 @@ export class CommandService {
           },
           commandOrigin,
         );
+      }
+      // Adding a criterion is what synthesizes a case-extension obligation
+      // (`synthesizeUserConcernObligationTemplate`), and a new obligation is
+      // exactly what the RunPlan turns into new work. This is the command
+      // that completes the "raise a concern" chain, so it is the one that
+      // must tell the plan.
+      const added = input.operations.find((operation) => operation.op === 'add');
+      if (added !== undefined) {
+        notifyRunPlan(this.deps, input.caseId, {
+          reason: 'new_concern',
+          trigger: added.criterion.id,
+          triggerLabel: added.criterion.label,
+        });
       }
     }
     return this.toReceipt(commandId, result);

@@ -39,12 +39,19 @@ export function createRunsRouter(deps: RunsRouterDeps): Router {
       return;
     }
     const caseId = req.params.caseId;
-    const plan = planService.currentPlan(caseId);
-    if (plan === undefined) {
-      res.status(404).json({ error: `Case "${caseId}" has no run plan yet.` });
-      return;
-    }
-    res.json({ plan, history: planService.history(caseId) });
+    // A case with no plan yet answers 200 with `plan: null`, not 404.
+    //
+    // Most of discovery happens before anyone asks Sift to investigate, so
+    // "no plan yet" is the ordinary state of a valid case, and a 404 made
+    // the browser log a failed resource on nearly every case load -- caught
+    // by the E2E console guard, correctly. A missing *resource* and an
+    // *empty* answer are different things; only the first is a 404.
+    //
+    // The build-level 404 above stays: "this deployment has no plans at
+    // all" genuinely is a missing route, and conflating it with "this case
+    // has none yet" would hide a misconfiguration.
+    const plan = planService.currentPlan(caseId) ?? null;
+    res.json({ plan, history: plan === null ? [] : planService.history(caseId) });
   });
 
   router.post('/api/cases/:caseId/run', (req, res) => {

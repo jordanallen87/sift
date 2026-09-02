@@ -32,6 +32,7 @@ import {
   type RunPlanContext,
 } from './run-plan.js';
 import {
+  DEFAULT_SPECIALIST_ID,
   candidate,
   concernObligation,
   packWithCapabilities,
@@ -485,6 +486,31 @@ describe('reviseRunPlan: a new concern revises work rather than restarting it', 
     expect(explanation).toMatch(/2 new/i);
     // Never a bare "the plan changed": the reason has to be in the sentence.
     expect(explanation.length).toBeGreaterThan(30);
+  });
+
+  it('says plainly when a concern has nothing that can check it', () => {
+    const pack = packWithCapabilities({ specialistIds: [DEFAULT_SPECIALIST_ID] });
+    const state = withDisposition(
+      planCase({
+        entities: [candidate('rav4')],
+        obligations: [
+          concernObligation('reliability'),
+          concernObligation('dog_crate', { preferredSpecialists: ['specialist.nobody'] }),
+        ],
+      }),
+      'rav4',
+      'keep',
+    );
+    const plan = buildRunPlan('plan-1', ctx(state, pack));
+    const revised = reviseRunPlan(plan, ctx(state, pack, LATER), {
+      reason: 'new_concern',
+      trigger: 'dog_crate',
+      triggerLabel: 'Dog crate fit',
+    });
+
+    const sentence = describeRunPlanRevision(revised);
+    expect(sentence).toMatch(/explicit unknown/i);
+    expect(sentence).toContain('1 concern');
   });
 
   it('carries the revision summary in the plan itself, so proof survives a reload', () => {

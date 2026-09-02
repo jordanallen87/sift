@@ -289,6 +289,32 @@ const consoleOrNetworkError: GateEvaluator = ({ turns, browserEvidence }) => {
   ]);
 };
 
+/**
+ * A turn that asked Sift to do something and nothing happened.
+ *
+ * The gate the first real run needed and did not have. The family
+ * journey's last seven turns were identical — same phase, same coverage,
+ * same next move, empty diffs — and every other gate passed, because none
+ * of them asks whether the journey actually moved. A run can be perfectly
+ * self-consistent and completely stuck.
+ *
+ * Scoped to turns that invoked a tool: a narration turn ("See what Sift
+ * found") legitimately changes nothing, and failing those would make the
+ * gate noise.
+ */
+const stalledTurn: GateEvaluator = ({ turns }) =>
+  turns.flatMap((turn) =>
+    turn.tools.length > 0 && turn.stateDiff.length === 0
+      ? [
+          finding(
+            'stalled_turn',
+            turn.index,
+            `Turn ran ${turn.tools.join(', ')} and changed nothing about the case.`,
+          ),
+        ]
+      : [],
+  );
+
 /** A run that simply stops: the last turn neither decides nor offers a way forward. */
 const outcomeDeadEnd: GateEvaluator = ({ turns }) => {
   const last = turns.at(-1);
@@ -316,6 +342,7 @@ const EVALUATORS: Record<HardGateId, GateEvaluator> = {
   accessibility,
   console_or_network_error: consoleOrNetworkError,
   outcome_dead_end: outcomeDeadEnd,
+  stalled_turn: stalledTurn,
 };
 
 export function evaluateHardGates(ctx: PersonaGateContext): HardGateResult[] {

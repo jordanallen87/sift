@@ -110,7 +110,7 @@ export class RunPlanService {
       cause,
     );
 
-    if (!changesTheWork(candidate)) return undefined;
+    if (!changesTheWork(candidate, previous)) return undefined;
 
     this.deps.planStore.save(candidate);
     this.emit(candidate, PLAN_REVISED, describeRunPlanRevision(candidate), {
@@ -121,6 +121,7 @@ export class RunPlanService {
       added: candidate.revision?.addedSignatures.length ?? 0,
       rerun: candidate.revision?.staledSignatures.length ?? 0,
       cancelled: candidate.revision?.cancelledSignatures.length ?? 0,
+      unverifiable: candidate.unverifiable.length,
     });
     return candidate;
   }
@@ -188,17 +189,28 @@ export class RunPlanService {
 }
 
 /**
- * Whether a candidate revision describes different work from the version it
- * came from. Compares the revision summary rather than the item arrays: if
- * nothing was added, staled, or cancelled, then by construction every item
- * is a reuse of an identical one, and the "new" version would be a copy.
+ * Whether a candidate revision says something the previous version did not.
+ *
+ * Not only "is there different work". A concern nothing can verify adds no
+ * items at all, and the first version of this predicate therefore refused
+ * to mint a version for it — so raising the dog-crate concern left the plan
+ * sitting at v1 with nothing to show, even though the case had genuinely
+ * gained a visible unknown. Found by the persona harness.
+ *
+ * A new unknown is one of the more important things this product has to
+ * say. "Sift noted your concern and has nothing that can check it" is
+ * useful; silence is not.
  */
-function changesTheWork(candidate: RunPlan): boolean {
+function changesTheWork(candidate: RunPlan, previous: RunPlan): boolean {
   const revision = candidate.revision;
   if (revision === undefined) return false;
-  return (
+  const workChanged =
     revision.addedSignatures.length > 0 ||
     revision.staledSignatures.length > 0 ||
-    revision.cancelledSignatures.length > 0
-  );
+    revision.cancelledSignatures.length > 0;
+  const previousUnknowns = new Set(previous.unverifiable.map((entry) => entry.concernId));
+  const unknownsChanged =
+    candidate.unverifiable.length !== previous.unverifiable.length ||
+    candidate.unverifiable.some((entry) => !previousUnknowns.has(entry.concernId));
+  return workChanged || unknownsChanged;
 }

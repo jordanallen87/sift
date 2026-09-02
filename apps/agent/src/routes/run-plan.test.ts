@@ -72,13 +72,20 @@ describe('GET /api/cases/:caseId/run-plan', () => {
     return asJson<RunReceipt>(response.body).acceptedSequence;
   }
 
-  it('reports 404 for a case that has no plan yet, rather than an empty one', async () => {
+  it('answers a case with no plan yet with an empty plan, not a 404', async () => {
+    // "Nobody has asked Sift to investigate yet" is the ordinary state of a
+    // valid case, not a missing resource. Answering 404 made the browser
+    // log a failed resource on nearly every case load, which the E2E
+    // console guard caught.
     harness = await createHttpTestHarness();
     const { caseId } = await startDemo();
 
     const response = await request(harness.server).get(`/api/cases/${caseId}/run-plan`);
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    const body = asJson<{ plan: RunPlan | null; history: RunPlan[] }>(response.body);
+    expect(body.plan).toBeNull();
+    expect(body.history).toEqual([]);
   });
 
   it('serves the plan a requested run created', async () => {

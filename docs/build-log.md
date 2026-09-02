@@ -5814,3 +5814,69 @@ Orientation contract at 390/430/480/1440; the `state_ui_contradiction` gate chec
 ### Known: the E2E suite is load-sensitive
 
 Under four parallel workers against one shared server the suite reports a rotating handful of failures — `ECONNRESET`, 30s timeouts, and one optimistic-concurrency conflict where an in-flight app command lands between a test's read and its write. Every one of them passes in isolation, and the failing set differs between runs. This is the same machine-contention signature already recorded for the `apps/agent` suite, not a product regression.
+
+## 2026-09-02 — the persona harness reported PASS on a journey that never worked
+
+The first real run of `pnpm test:persona` was green. Reading its artifacts showed the family journey's last seven turns were byte-identical: same phase, same coverage of 3 of 5, same next move, empty diffs, no RunPlan ever created. Discovery never finished, no candidate was ever triaged, and the concern beat never fired.
+
+Every one of the eleven hard gates passed, because none of them asks whether the journey moved. A run can be perfectly self-consistent and completely stuck. That is the exact fabricated green the whole harness was built to prevent, and I shipped it.
+
+### The missing gate
+
+`stalled_turn`: a turn that invoked a tool and changed nothing. Scoped to tool turns, because a narration turn ("See what Sift found") legitimately changes nothing and a gate that fires on those gets switched off.
+
+Adding it turned all three personas red immediately, which is what a working gate does.
+
+### Five causes behind the stall
+
+1. **`diffSnapshots` was incomplete.** It covered topics, dispositions, entities and obligations. Blind-spot review, attribute definitions, case extensions, criteria, status, recommendation, and case creation itself were all invisible, so working turns looked like no-ops. Every gate that asks "did anything happen" reads this, which makes an incomplete diff dangerous in both directions.
+2. **The harness stack was under-wired versus `server.ts`.** No `demoSeedEntities`, so the case had no candidates and every triage turn was a silent no-op. No `RunService`, so no plan was ever created.
+3. **The executor swallowed impossible turns.** `return []` where it could not perform a command. Now every one throws and names the persona, the turn, and why.
+4. **The persona hard-coded one turn per question.** Five required topics, three answering turns. Replaced with a `finishDiscovery` action that loops until Sift stops asking, so a pack that adds a topic lengthens the journey instead of silently truncating it.
+5. **A turn's changes are not only `CaseState` changes.** `requestInvestigation` deliberately appends no case event, so it moved the plan and nothing else — and the new stall gate called that working turn a stall. The artifact's diff now includes plan version changes.
+
+### Two product defects the repaired harness then found
+
+**A new concern did not revise the plan.** Only `setCandidateDisposition` and `updateDiscovery` notified. The headline beat — "raising a concern revises work already under way" — was not wired. `defineCaseAttribute` and `updateCriteria` now notify; the second is the one that matters, because adding a criterion is what synthesizes the case-extension obligation the plan turns into work.
+
+**A concern nothing can verify minted no version.** `changesTheWork` asked only whether *work* changed, so the dog-crate concern — which correctly has no capability behind it — left the plan at v1 with nothing to show. A new explicit unknown is one of the more important things this product has to say. The live sentence now reads:
+
+> Plan v2: a new concern (Dog crate fit) added 0 new items, kept 10 unchanged, re-ran 0 whose inputs changed, and cancelled 0. 1 concern(s) have nothing that can check them and stay explicit unknowns.
+
+### The contrast beat was broken, and the test that should have caught it did not
+
+The landscaping journey was receiving the **family** question set. `conditionMet` matches a topic's confirmed `valueSummary` against `equalsAnyOf`, and the executor was writing the persona's prose into `valueSummary` instead of the option seed a person would actually pick. `business` never matched, so the conditional branch never opened.
+
+The persona-set unit test passed throughout, because it compared the personas' *scripted utterances* rather than the questions Sift asked in response. Utterances differing proves nothing about adaptivity.
+
+Fixed at the source: the executor now picks the seed whose label or value appears in what the person said, and throws when a seeded topic that forbids custom answers gets prose. A cross-persona contrast check now runs after all personas and fails if the two journeys were asked the same questions. It prints what actually diverged:
+
+> the same pack asked the family journey about `vehicle.cargo_household`, `vehicle.child_seats`, `vehicle.occupants` and the landscaping journey about `vehicle.downtime_risk`, `vehicle.equipment_access`, `vehicle.operating_cost`, `vehicle.payload_towing`, `vehicle.upfit`, `vehicle.worksite_access`.
+
+## 2026-09-02 — the diagnostic pass, and the two things it changed
+
+Scored by Claude Opus 5 reading every turn artifact. Provenance and its limitation are recorded in `packages/scenarios/fixtures/personas/diagnostics.ts`: one model's judgment of a text record, not a user study.
+
+The first pass **failed** the family persona — `conversation_canvas_coherence` median 3, driven by a 2 on the turn meant to show the plan revising.
+
+**The finding was real: the RunPlan had no surface.** An HTTP route, two activity events, and nothing a person could point at. Fixed by adding `GET /api/cases/:id/run-plan` to the workspace and two lines to the orientation shell — "Sift is looking into N things across M options", and a separate line for a concern nothing can check, because an unknown the person raised is not a footnote. Re-scored 4: the line reports the plan's current shape, not what changed about it.
+
+One finding stands at 3 and is left visible rather than rounded away: the dock offers "Continue Quick Pick" from turn 0, at 0 of 5 coverage, before there is anything to triage against.
+
+### A contradiction found by looking at a release screenshot
+
+With the new line in place, the recommendation-ready baseline showed:
+
+> Ready for your decision · 0 of 5 covered · Next: What this vehicle is for
+
+Both statements true; the pairing reads as a lie. A seeded demo case reaches a ready recommendation without anyone answering a question. `provisional` was a bare boolean with one hard-coded sentence about deferral, which did not fit.
+
+It now carries a reason, and the two reasons get different words. The screen reads: *"Sift has not asked you everything yet, so this is based on the catalog rather than on what matters to you. Answering the questions above will change it."* A contradiction became a qualification, which is what it always was.
+
+### One regression I introduced and fixed
+
+The new plan fetch made the browser log a failed resource on nearly every case load, because "this case has no plan yet" answered 404. The E2E console guard caught it. A missing resource and an empty answer are different things: the route now answers 200 with `plan: null`. The build-level 404 stays, because "this deployment has no plans at all" genuinely is a missing route.
+
+### Verification
+
+`pnpm test:persona`: three personas, all hard gates, all diagnostics, contrast check green. 3947 unit tests. 92 Playwright tests. 16 screenshot baselines updated for the two intentional shell additions, inspected at 390px before acceptance — that inspection is what found the contradiction above.

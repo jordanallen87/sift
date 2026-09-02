@@ -16,7 +16,7 @@
  * 2. **`nextStepLabel` is never empty.** It is the one answer the pane owes a
  *    person at every moment, including before a pack has finished loading.
  */
-import type { CaseState, CompiledDecisionPack } from '@sift/contracts';
+import type { CaseState, CompiledDecisionPack, DiscoveryCoverage } from '@sift/contracts';
 import {
   deriveDecisionPhase,
   deriveDisplayedCoverage,
@@ -104,6 +104,7 @@ export function buildDecisionOrientation(
       nextStepLabel: moves[0]?.label ?? FALLBACK_NEXT_STEP,
       routeToOutcome: ROUTE_TO_OUTCOME[phase] ?? '',
       provisional: false,
+      provisionalReason: null,
     };
   }
 
@@ -146,9 +147,54 @@ export function buildDecisionOrientation(
     latestChange: latestChangeOf(caseState),
     nextStepLabel,
     routeToOutcome: ROUTE_TO_OUTCOME[phase] ?? '',
-    provisional: readiness.provisional,
+    ...provisionalityOf(phase, coverage, readiness.provisional),
   };
 }
+
+/**
+ * Whether what the pane is showing rests on an incomplete picture, and why.
+ *
+ * Two different reasons, and they need different words. A deferred topic is
+ * a person choosing to skip something; unanswered required questions
+ * beneath a ready recommendation is Sift having gone ahead without them.
+ * The second one was rendering as a flat contradiction -- "Ready for your
+ * decision" directly above "0 of 5 covered" -- until it had a sentence of
+ * its own.
+ */
+function provisionalityOf(
+  phase: string,
+  coverage: DiscoveryCoverage,
+  deferred: boolean,
+): { provisional: boolean; provisionalReason: string | null } {
+  const askedNothing =
+    PAST_DISCOVERY_PHASES.has(phase) &&
+    coverage.requiredTotal > 0 &&
+    coverage.requiredResolved < coverage.requiredTotal;
+
+  if (askedNothing) {
+    return {
+      provisional: true,
+      provisionalReason:
+        'Sift has not asked you everything yet, so this is based on the catalog rather than on what matters to you. Answering the questions above will change it.',
+    };
+  }
+  if (deferred) {
+    return {
+      provisional: true,
+      provisionalReason:
+        'Provisional — something was deferred, so this is not the whole picture yet.',
+    };
+  }
+  return { provisional: false, provisionalReason: null };
+}
+
+/** Phases that assert a person is past answering questions. */
+const PAST_DISCOVERY_PHASES = new Set([
+  'triage',
+  'investigating',
+  'deciding',
+  'discovering_candidates',
+]);
 
 /**
  * The pack name, unless the case is already called that.

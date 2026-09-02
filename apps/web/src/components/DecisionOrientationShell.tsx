@@ -48,6 +48,36 @@ export interface DecisionOrientation {
   readonly routeToOutcome: string;
   /** True when something was deferred, so any result built on this is not the whole picture. */
   readonly provisional: boolean;
+  /**
+   * Why this is provisional, in the person's words. `null` when it is not.
+   *
+   * A single boolean was not enough once a second reason appeared. A seeded
+   * demo case reaches a ready recommendation without anyone answering a
+   * question, so the shell rendered "Ready for your decision" directly above
+   * "0 of 5 covered" — two true statements whose pairing reads as a lie.
+   * Naming the reason turns a contradiction into a qualification, which is
+   * what it actually is.
+   */
+  readonly provisionalReason?: string | null;
+}
+
+/**
+ * What Sift is actually working on, in the person's terms.
+ *
+ * Added because the RunPlan had an HTTP route and two activity events and
+ * no surface at all: the plan revised, the event fired, and the pane showed
+ * nothing a person could point at. A diagnostic pass scored the turn that
+ * was meant to show the revision at 2 for exactly that reason.
+ *
+ * `null` when there is no plan yet, which is honest — most of discovery
+ * happens before Sift has anything to work on.
+ */
+export interface WorkInFlight {
+  readonly plannedItems: number;
+  readonly optionsUnderInvestigation: number;
+  /** Concerns nothing in the pack can check. Shown because an unknown a person raised is not a detail. */
+  readonly unverifiableConcerns: number;
+  readonly planVersion: number;
 }
 
 export interface DecisionOrientationShellProps {
@@ -65,12 +95,14 @@ export interface DecisionOrientationShellProps {
    * nothing else names the decision.
    */
   readonly showDecisionTitle?: boolean;
+  readonly workInFlight?: WorkInFlight | null;
 }
 
 export function DecisionOrientationShell({
   orientation,
   layout,
   showDecisionTitle = true,
+  workInFlight = null,
 }: DecisionOrientationShellProps): React.JSX.Element {
   const { coverage } = orientation;
   const total = coverage.requiredTotal;
@@ -182,6 +214,38 @@ export function DecisionOrientationShell({
         {orientation.nextStepLabel}
       </p>
 
+      {workInFlight !== null && workInFlight.plannedItems > 0 && (
+        <p
+          data-testid="orientation-work-in-flight"
+          className="text-[length:var(--text-xs)] text-[color:var(--color-muted-foreground)]"
+        >
+          Sift is looking into {workInFlight.plannedItems} thing
+          {workInFlight.plannedItems === 1 ? '' : 's'}
+          {workInFlight.optionsUnderInvestigation > 0
+            ? ` across ${String(workInFlight.optionsUnderInvestigation)} option${workInFlight.optionsUnderInvestigation === 1 ? '' : 's'}`
+            : ''}
+          .
+        </p>
+      )}
+
+      {/*
+        A concern nothing can check is not a footnote. It is the one thing
+        the person asked about that Sift has to say it cannot answer, and
+        burying it would be the quiet fabrication this product exists to
+        avoid.
+      */}
+      {workInFlight !== null && workInFlight.unverifiableConcerns > 0 && (
+        <p
+          data-testid="orientation-unverifiable"
+          className="text-[length:var(--text-xs)] text-[color:var(--color-warning-foreground,var(--color-foreground))]"
+        >
+          {workInFlight.unverifiableConcerns} thing
+          {workInFlight.unverifiableConcerns === 1 ? '' : 's'} you raised{' '}
+          {workInFlight.unverifiableConcerns === 1 ? 'has' : 'have'} nothing Sift can check — you
+          will need to judge {workInFlight.unverifiableConcerns === 1 ? 'it' : 'them'} yourself.
+        </p>
+      )}
+
       <p
         data-testid="orientation-route"
         className="text-[length:var(--text-xs)] text-[color:var(--color-muted-foreground)]"
@@ -194,7 +258,8 @@ export function DecisionOrientationShell({
           data-testid="orientation-provisional"
           className="text-[length:var(--text-xs)] text-[color:var(--color-warning-foreground,var(--color-foreground))]"
         >
-          Provisional — something was deferred, so this is not the whole picture yet.
+          {orientation.provisionalReason ??
+            'Provisional — something was deferred, so this is not the whole picture yet.'}
         </p>
       )}
     </section>
