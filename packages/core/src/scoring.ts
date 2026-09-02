@@ -937,7 +937,33 @@ function percent(value: number): string {
  * not. A pure function of the board — no model, no re-scoring, no access to
  * anything the UI cannot also see.
  */
-export function deriveInsights(board: CaseScoreboard): Insight[] {
+export interface InsightContext {
+  /**
+   * Whether the weights being scored reflect anything this person has
+   * actually told Sift.
+   *
+   * Before discovery, the weights are the pack's defaults. Copy that says
+   * "what you said matters" and "the weight you have assigned" is then
+   * simply untrue, and it was the first thing a new person read: at
+   * "0 of 5 covered", the pane announced a leader "against what you said
+   * matters" when they had said nothing at all. The orientation shell says
+   * the honest version two inches higher — "Sift has not asked you
+   * everything yet, so this is based on the catalog rather than on what
+   * matters to you" — so the same screen was making both claims at once.
+   *
+   * Found by `pnpm test:journey family-novice` (ADR 0014).
+   */
+  readonly weightsAreTheirs: boolean;
+}
+
+/**
+ * Defaults to the person's own weights so every existing caller keeps its
+ * current copy; a caller that can tell the difference passes the truth.
+ */
+export function deriveInsights(
+  board: CaseScoreboard,
+  context: InsightContext = { weightsAreTheirs: true },
+): Insight[] {
   const insights: Insight[] = [];
   const ranked = board.options.filter((option) => option.total !== null);
   const compliant = ranked.filter((option) => option.violatedConstraintIds.length === 0);
@@ -972,8 +998,12 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
         id: 'insight.leader',
         kind: 'leader',
         severity: 'info',
-        headline: `${leader.optionLabel} scores highest against what you said matters.`,
-        detail: `${leader.optionLabel} leads ${runnerUp.optionLabel} by ${percent(gap)}, measured across ${percent(leader.coverage)} of the weight you have assigned.`,
+        headline: context.weightsAreTheirs
+          ? `${leader.optionLabel} scores highest against what you said matters.`
+          : `${leader.optionLabel} scores highest on the starting priorities.`,
+        detail: context.weightsAreTheirs
+          ? `${leader.optionLabel} leads ${runnerUp.optionLabel} by ${percent(gap)}, measured across ${percent(leader.coverage)} of the weight you have assigned.`
+          : `${leader.optionLabel} leads ${runnerUp.optionLabel} by ${percent(gap)}, measured across ${percent(leader.coverage)} of the weight — none of which you have set yet. Answering Sift's questions will change this.`,
         optionIds: [leader.optionId, runnerUp.optionId],
         criterionIds: [],
       });
@@ -1076,7 +1106,9 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
       id: 'insight.coverage_gap',
       kind: 'coverage_gap',
       severity: 'attention',
-      headline: `Some of what you said matters has not been established yet.`,
+      headline: context.weightsAreTheirs
+        ? `Some of what you said matters has not been established yet.`
+        : `Some of what this comparison weighs has not been established yet.`,
       // Naming every option when every option is affected produced the
       // longest, least useful block on the narrow pane -- four full vehicle
       // labels to say something true of the whole case. A reader scanning
@@ -1085,7 +1117,7 @@ export function deriveInsights(board: CaseScoreboard): Insight[] {
         thin.length === scoredOptions.length && thin.length > 1
           ? 'Every option is'
           : `${thin.map((option) => option.optionLabel).join(', ')} ${thin.length === 1 ? 'is' : 'are'}`
-      } scored on as little as ${percent(worst)} of the weight you assigned. The missing factors are not counted against them — they are simply not counted.`,
+      } scored on as little as ${percent(worst)} of ${context.weightsAreTheirs ? 'the weight you assigned' : 'the weight in play'}. The missing factors are not counted against them — they are simply not counted.`,
       optionIds: thin.map((option) => option.optionId),
       criterionIds: [],
     });

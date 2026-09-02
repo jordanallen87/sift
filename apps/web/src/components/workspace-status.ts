@@ -69,6 +69,23 @@ export interface WorkspaceStatusInput {
   proposal: DecisionProposal | null;
   flaggedFindingsCount: number;
   /**
+   * Human label of `recommendation.favoredOptionId`, when the caller can
+   * resolve it from `CaseState.entities`.
+   *
+   * The hero is the answer-first region (ADR 0004), and until this existed
+   * the one phase that actually *had* an answer was the only phase whose
+   * headline did not state it: a completed investigation favouring the RAV4
+   * rendered the words "Current recommendation" with the car named nowhere
+   * above the fold. Found by `pnpm test:journey`, which asks after every
+   * turn whether the screen and the case agree; the state said
+   * `favoredOptionId: candidate-rav4` and the screen said a section label
+   * (ADR 0014).
+   *
+   * Optional because a caller that cannot resolve the label must fall back
+   * to the generic heading rather than render a dangling "Leading so far:".
+   */
+  favoredOptionLabel?: string;
+  /**
    * True exactly when the most recent draft was withheld by validation
    * (a `draft.withheld` `PublicActivityEvent`) and no recommendation has
    * been produced/accepted yet. Distinguishes "investigating, nothing
@@ -112,7 +129,15 @@ const DECIDED_HEADLINE: Record<Exclude<DecisionProposal['status'], 'pending'>, s
 };
 
 export function deriveWorkspaceStatus(input: WorkspaceStatusInput): WorkspaceStatus {
-  const { isRunActive, recommendation, proposal, flaggedFindingsCount, withheld = false } = input;
+  const {
+    isRunActive,
+    recommendation,
+    proposal,
+    flaggedFindingsCount,
+    withheld = false,
+    favoredOptionLabel,
+  } = input;
+  const named = favoredOptionLabel !== undefined && favoredOptionLabel.trim() !== '';
 
   // Priority order mirrors the original next-step banner exactly (a settled
   // or pending proposal always wins, since it is the most consequential
@@ -127,7 +152,10 @@ export function deriveWorkspaceStatus(input: WorkspaceStatusInput): WorkspaceSta
   if (proposal !== null && proposal.status === 'pending') {
     return {
       phase: 'pending_approval',
-      headline: 'Sift has a recommendation ready for your decision.',
+      headline: named
+        ? `Sift recommends ${favoredOptionLabel}.`
+        : 'Sift has a recommendation ready for your decision.',
+      ...(named ? { detail: 'Your decision.' } : {}),
     };
   }
 
@@ -145,9 +173,19 @@ export function deriveWorkspaceStatus(input: WorkspaceStatusInput): WorkspaceSta
       flaggedFindingsCount > 0
         ? `${flaggedFindingsCount} ${pluralFinding(flaggedFindingsCount)} may need a closer look before Sift can finish.`
         : undefined;
+    // "Leading so far", never "Our pick": readiness is by definition NOT
+    // earned in this phase (change-set §38), so the headline names the
+    // answer without claiming it is settled. Naming it is the point --
+    // this is the answer-first region, and a person should not have to
+    // scroll to learn which option is ahead.
     return {
       phase: 'ready_blocked',
-      headline: recommendation !== null ? 'Current recommendation' : 'Not ready yet',
+      headline:
+        recommendation !== null
+          ? named
+            ? `Leading so far: ${favoredOptionLabel}`
+            : 'Current recommendation'
+          : 'Not ready yet',
       ...(detail !== undefined ? { detail } : {}),
       ...(flaggedFindingsCount > 0
         ? { action: { label: 'Review findings', kind: 'review_findings' as const } }

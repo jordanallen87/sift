@@ -30,23 +30,41 @@ import type { DecisionOrientation } from './DecisionOrientationShell.js';
  * pane. The left column is the state machine's word and appears only in
  * `data-` attributes; the right is what renders.
  */
-const PHASE_LABELS: Record<string, string> = {
+export const PHASE_LABELS: Record<string, string> = {
   discovery: 'Understanding what you need',
   blind_spot_review: 'Checking for anything missed',
   discovering_candidates: 'Finding models that fit',
   triage: 'Narrowing down what you found',
   investigating: 'Looking into what you kept',
-  deciding: 'Ready for your decision',
+  // "Yours to decide", not "Ready for your decision".
+  //
+  // `deriveDecisionPhase` reaches `deciding` as soon as a recommendation is
+  // `ready`, which is not the same as nothing being outstanding. The hero
+  // has a separate `ready_blocked` phase for exactly that case, so the pane
+  // read "Ready for your decision" at "8 of 8 covered" directly above "4
+  // findings need your attention" and "4 findings may need a closer look
+  // before Sift can finish" — three lines, two meanings, one screen (ADR
+  // 0014).
+  //
+  // This label names whose turn it is, which is true in both cases, and
+  // leaves the readiness claim to the hero, which knows. Fixing the phase
+  // derivation instead would mean a second implementation of "flagged
+  // findings" here, and two derivations that agree today are two that can
+  // drift.
+  deciding: 'Yours to decide',
   decided: 'Decided',
 };
 
-const ROUTE_TO_OUTCOME: Record<string, string> = {
+export const ROUTE_TO_OUTCOME: Record<string, string> = {
   discovery: 'Then one quick check for anything missed, and Sift searches the catalog.',
   blind_spot_review: 'Then Sift searches the catalog and you triage what it finds.',
   discovering_candidates: 'Then you keep or pass on each one, and Sift digs into what you keep.',
   triage: 'Then Sift investigates what you kept and shows you where things stand.',
-  investigating: 'Then you confirm which models are worth going to see.',
-  deciding: 'Confirming the shortlist is yours alone — Sift cannot do it for you.',
+  // Pack-neutral: this shell renders for every pack, and Home Energy
+  // Guardian — a case about an HVAC inspection — was told "then you confirm
+  // which models are worth going to see" (ADR 0014).
+  investigating: 'Then you confirm which options move forward.',
+  deciding: 'Confirming this is yours alone — Sift cannot do it for you.',
   decided: 'This decision is complete. Nothing further is needed.',
 };
 

@@ -148,6 +148,37 @@ It launches Chrome with a throwaway profile — never your own — and checks to
 
 Two things it does not prove, and says so in its own report: it is **Chrome, not ChatGPT** (a page cannot tell hosts apart, so the page-side contract is the same, but naming a product needs a session in that product), and **no model chose anything** — the script picks every call. It exits non-zero rather than reporting a pass when no WebMCP host is available, and never falls back to Playwright's bundled Chromium, which has no WebMCP at all.
 
+`pnpm test:journey` runs four **turn-based journeys** through the rendered pane in the same real WebMCP browser, and after every turn evaluates three things separately (ADR 0014):
+
+| Kind        | Question                                               |
+| ----------- | ------------------------------------------------------ |
+| `data`      | Is the case state what this turn should have produced? |
+| `ui`        | Does the pane show what a person should now see?       |
+| `agreement` | Do those two describe the same case?                   |
+
+```bash
+SIFT_HOST_URL=http://localhost:8080 pnpm test:journey            # all four
+SIFT_HOST_URL=http://localhost:8080 pnpm test:journey webmcp-hero
+```
+
+The journeys are `webmcp-hero` (the eight beats of the WebMCP demo script, with every assistant action a real tool call), `aws-hero` (the Strands runtime claims of the AWS demo script), `shared-control` (a person and a host alternating on one case), and `family-novice` (a first-time person answering questions on screen). A turn is taken by the **person**, through visible controls, or by the **assistant**, through WebMCP — interleaving them is the only way to test the claim that both reach the same command implementation. Screenshots and a `summary.md` land in `artifacts/journey/<runId>/`; they are the input to `docs/ux-review-2026-09-02.md`.
+
+`pnpm webmcp:bridge` lets a **real model** drive the page. It is a stdio MCP server that maps `tools/list` to the page's live WebMCP registrations and `tools/call` to `WebMCP.invokeTool`, so Codex, Claude Code, or any MCP client can operate Sift with the real tool descriptions:
+
+```jsonc
+{
+  "mcpServers": {
+    "sift-page": {
+      "command": "pnpm",
+      "args": ["-s", "webmcp:bridge"],
+      "env": { "SIFT_HOST_URL": "http://localhost:8080" },
+    },
+  },
+}
+```
+
+This is the half no scripted harness can reach — whether a model _finds_ the tools and sequences them sensibly. It is a development tool, not part of the product, and it hands a model real control of a real page: point it at a local build, not at anything whose state you care about.
+
 ```bash
 pnpm verify:release
 ```

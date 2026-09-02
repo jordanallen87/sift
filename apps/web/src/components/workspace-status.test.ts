@@ -76,11 +76,51 @@ describe('deriveWorkspaceStatus', () => {
     expect(status.action).toBeUndefined();
   });
 
-  it('a real recommendation with no proposal yet reaches ready_blocked with the "Current recommendation" headline', () => {
+  it('falls back to the generic "Current recommendation" headline when the favoured option cannot be named', () => {
     const status = deriveWorkspaceStatus(
       buildInput({ recommendation: buildRecommendation({ status: 'ready' }) }),
     );
     expect(status.phase).toBe('ready_blocked');
+    expect(status.headline).toBe('Current recommendation');
+  });
+
+  it('names the leading option in the headline once the caller can resolve its label', () => {
+    // The answer-first region (ADR 0004) must state the answer. A completed
+    // investigation favouring the RAV4 used to render the words "Current
+    // recommendation" with the car named nowhere above the fold -- the one
+    // phase that actually had an answer was the only one whose headline did
+    // not say it. Found by `pnpm test:journey` (ADR 0014).
+    const status = deriveWorkspaceStatus(
+      buildInput({
+        recommendation: buildRecommendation({ status: 'ready' }),
+        favoredOptionLabel: '2022 Toyota RAV4 XLE Hybrid AWD',
+      }),
+    );
+    expect(status.phase).toBe('ready_blocked');
+    expect(status.headline).toBe('Leading so far: 2022 Toyota RAV4 XLE Hybrid AWD');
+  });
+
+  it('says "Leading so far", never "Our pick", while readiness is still blocked', () => {
+    // change-set §38: readiness is by definition not earned in this phase,
+    // so the headline names the answer without claiming it is settled.
+    const status = deriveWorkspaceStatus(
+      buildInput({
+        recommendation: buildRecommendation({ status: 'ready' }),
+        favoredOptionLabel: '2022 Honda CR-V EX-L AWD',
+        flaggedFindingsCount: 3,
+      }),
+    );
+    expect(status.headline).not.toMatch(/our pick/i);
+    expect(status.headline).toContain('2022 Honda CR-V EX-L AWD');
+  });
+
+  it('ignores a blank label rather than rendering a dangling "Leading so far:"', () => {
+    const status = deriveWorkspaceStatus(
+      buildInput({
+        recommendation: buildRecommendation({ status: 'ready' }),
+        favoredOptionLabel: '   ',
+      }),
+    );
     expect(status.headline).toBe('Current recommendation');
   });
 
@@ -94,9 +134,25 @@ describe('deriveWorkspaceStatus', () => {
     );
     expect(status.phase).toBe('pending_approval');
     expect(status.headline).toBe('Sift has a recommendation ready for your decision.');
+    // No redundant action -- see below.
     // No redundant action -- ApprovalCard's own Approve/Reject/Revise
     // controls are the real next action, rendered directly in the hero.
     expect(status.action).toBeUndefined();
+  });
+
+  it('names the option a person is being asked to decide about', () => {
+    // Being asked to approve something the screen does not name is the
+    // sharpest form of the same defect: the decision is the whole point of
+    // this phase.
+    const status = deriveWorkspaceStatus(
+      buildInput({
+        recommendation: buildRecommendation({ status: 'ready' }),
+        proposal: buildProposal({ status: 'pending' }),
+        favoredOptionLabel: '2022 Honda CR-V EX-L AWD',
+      }),
+    );
+    expect(status.headline).toBe('Sift recommends 2022 Honda CR-V EX-L AWD.');
+    expect(status.detail).toBe('Your decision.');
   });
 
   it.each([

@@ -720,6 +720,25 @@ describe('insights are derived, never asserted', () => {
     expect(leader?.optionIds[0]).toBe('rav4');
   });
 
+  it('does not claim the person set weights they have never been asked about', () => {
+    // The first screen a new person saw announced a leader "against what
+    // you said matters", "measured across 95% of the weight you have
+    // assigned", at 0 of 5 topics covered — while the orientation shell two
+    // inches above said the opposite, honestly. Found by
+    // `pnpm test:journey family-novice` (ADR 0014).
+    const insights = deriveInsights(board(), { weightsAreTheirs: false });
+    const leader = insights.find((insight) => insight.kind === 'leader');
+    expect(leader?.headline).not.toMatch(/what you said matters/i);
+    expect(leader?.detail).not.toMatch(/weight you have assigned/i);
+    expect(leader?.detail).toMatch(/none of which you have set yet/i);
+  });
+
+  it('still speaks in the person’s own terms once they have told Sift something', () => {
+    const insights = deriveInsights(board(), { weightsAreTheirs: true });
+    const leader = insights.find((insight) => insight.kind === 'leader');
+    expect(leader?.headline).toMatch(/what you said matters/i);
+  });
+
   it('identifies the criterion that, alone, decides the top two', () => {
     // The demo beat this exists for: "price alone is what puts the RAV4
     // ahead -- drop it and the CR-V wins." Computed by re-scoring without

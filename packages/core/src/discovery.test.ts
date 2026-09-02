@@ -958,6 +958,13 @@ describe('deriveNextMoves: the pane always has a next action', () => {
     expect(shortlist).toBeDefined();
     expect(shortlist?.humanOnly).toBe(true);
     expect(shortlist?.toolName).toBeUndefined();
+    // Derived for every pack, so its wording may not belong to one of them.
+    // Home Energy Guardian — a case about an HVAC inspection — used to
+    // offer "Confirm your test-drive shortlist", explained as "only you can
+    // decide which models are worth going to see" (ADR 0014).
+    expect(`${shortlist?.label ?? ''} ${shortlist?.reason ?? ''}`).not.toMatch(
+      /test-drive|models|vehicle|car/i,
+    );
   });
 
   it('every derived move satisfies the NextMove contract', async () => {

@@ -533,8 +533,20 @@ export function deriveNextMoves(caseState: CaseState, pack: CompiledDecisionPack
   if (caseState.recommendation !== null && caseState.recommendation.status === 'ready') {
     moves.push({
       kind: 'confirm_shortlist',
-      label: 'Confirm your test-drive shortlist',
-      reason: 'Only you can decide which models are worth going to see',
+      // Deliberately pack-neutral. This move is derived for every pack, and
+      // the copy used to be written for exactly one of them: Home Energy
+      // Guardian — a case about whether to get an HVAC inspection — offered
+      // "Confirm your test-drive shortlist" and explained it as "only you
+      // can decide which models are worth going to see". Seen in the real
+      // rendering while reviewing journey screenshots (ADR 0014); no test
+      // asserted the label, so nothing caught it.
+      //
+      // The better long-term answer is a pack-declared term for what its
+      // options *are*, so the car pack can say "test-drive shortlist" and
+      // the energy pack can say "response". That is a pack-schema change
+      // and is not made here; this wording is true for both.
+      label: 'Confirm what moves forward',
+      reason: 'Only you can decide which options go ahead',
       requiredView: 'confirmation',
       // No `toolName`. `NextMoveSchema` refuses one on a human-only move, so
       // nothing walking this list can find a tool to register for it.

@@ -89,7 +89,7 @@ test.describe('the adaptive vehicle journey', () => {
         expect(
           phaseText,
           `phase "${phaseText}" claims discovery is finished while coverage reads ${coverageText}`,
-        ).not.toMatch(/Narrowing down|Looking into what you kept|Ready for your decision/);
+        ).not.toMatch(/Narrowing down|Looking into what you kept|Yours to decide/);
       }
     }
   });

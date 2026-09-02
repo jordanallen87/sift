@@ -159,9 +159,34 @@ counts update live as each obligation moves between groups.
 
 ## Beat 4 — 1:30–2:05 — Premature answer rejected
 
-**On screen:** A draft recommendation attempt surfaces and is visibly
-withheld. Render the exact required copy as a card in the Activity or
-Recommendation region:
+> **⚠ This beat cannot be filmed live as written. Read
+> `docs/submissions/agents-for-humans/demo-script.md` "Flagged gap #1"
+> before recording — its beat 3 is the version to shoot.**
+>
+> Verified repeatedly, most recently by `pnpm test:journey aws-hero` (ADR
+> 0014): on the live click-through the decision-synthesizer's structured
+> output **validates on attempt 1** (`goal.validated`, "Recommendation
+> draft validated on attempt 1"), because by the time synthesis runs every
+> obligation — `energy.household_change` included — is already resolved.
+> No `goal.validation_failed` is emitted and no `draft.withheld` public
+> activity event is produced by any runtime path, so the card below never
+> appears.
+>
+> The rejection mechanism itself is real and proven — `apps/agent/src/
+> runtime/home-energy-swarm.test.ts`, "intervention integrity", *"rejects a
+> decision-synthesizer draft with no source citation, then accepts a
+> corrected retry (GoalLoop maxAttempts: 2)"* — and the deterministic
+> scenario genuinely constructs it. It just does not fire on the path a
+> camera sees.
+>
+> **Do not re-cut this into a fake "Draft withheld" moment.** Show the real
+> live `goal.validated` proof that GoalLoop runs, and say plainly on camera
+> that the rejection path is proven by the automated suite. The text below
+> is retained as the specification of the mechanism, not as a shot list.
+
+**On screen (specification, not a live shot):** A draft recommendation
+attempt surfaces and is visibly withheld. The exact required copy, as a
+card in the Activity or Recommendation region:
 
 ```
 Draft withheld
@@ -198,6 +223,13 @@ change consumption?`.
   (`value-proposition.md` § "Premature-conclusion sequence").
 - This is a genuine validator rejection, not a scripted UI state — `maxAttempts`
   is 2, and this is attempt 1.
+
+**Where that list actually holds today:** in `home-energy-swarm.test.ts` and
+in the deterministic scenario, both of which exercise the real mechanism. It
+does **not** hold on the live click-through — see the warning at the top of
+this beat. `pnpm test:journey aws-hero` asserts that nothing claims a
+"Draft withheld" that did not happen, so this divergence cannot silently
+return.
 
 **Caption:** the exact required copy block, shown as above (this is the
 on-screen text, not just narration).

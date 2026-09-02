@@ -35,6 +35,7 @@ import { deriveInsights, scoreCaseState } from '@sift/core';
 import type { SiftCommands } from '../api/sift-client.js';
 import { createFakeSiftCommands } from '../test/fake-sift-commands.js';
 import { buildFixtureCaseState } from '../test/fixtures.js';
+import { buildWorkspaceScoreboard } from '../components/case-scoreboard.js';
 import { InMemoryModelContextAdapter } from './adapter.js';
 import { registerSiftTools } from './register-sift-tools.js';
 import type { RankingExplanation } from './ranking-context.js';
@@ -310,7 +311,12 @@ describe('sift_explain_ranking: it returns Sift’s analysis, not the model’s'
     const result = await invokeTool<RankingExplanation>(adapter, 'sift_explain_ranking', {
       caseId: 'case-1',
     });
-    const expected = deriveInsights(scoreCaseState(caseState));
+    // Derived the way the app derives it, so this stays a test of the
+    // *projection* rather than of the insight copy. `deriveInsights` now
+    // takes an `InsightContext` (whether the weights are the person's own
+    // or the pack's untouched defaults), and calling it bare here compared
+    // the tool's output against a differently-worded set.
+    const expected = buildWorkspaceScoreboard(caseState).insights;
 
     expect(result.data?.insights.items.map((insight) => insight.id)).toEqual(
       expected.map((insight) => insight.id),

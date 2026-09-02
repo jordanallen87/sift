@@ -53,6 +53,56 @@ describe('ContextActionDock', () => {
     expect(screen.getAllByTestId(/^dock-action-/)).toHaveLength(2);
   });
 
+  it('keeps a human-only action even when it is last in the move list', () => {
+    // The defect this pins: `confirm_shortlist` is the only human-only move
+    // Sift derives and it is sixth in `deriveNextMoves`' order, so a plain
+    // `slice(0, 2)` deleted it — and with it the "only you can do this"
+    // note — on any case where two earlier moves also applied. A person
+    // with a ready recommendation was never offered the one action that is
+    // theirs alone. Found by `pnpm test:journey family-novice` (ADR 0014).
+    const moves = [
+      move({ label: 'One' }),
+      move({ kind: 'quick_pick', label: 'Two', topicId: undefined }),
+      move({ kind: 'compare_retained', label: 'Three', topicId: undefined }),
+      move({
+        kind: 'confirm_shortlist',
+        label: 'Confirm your test-drive shortlist',
+        topicId: undefined,
+        toolName: undefined,
+        humanOnly: true,
+        requiredView: 'confirmation',
+      }),
+    ];
+
+    render(<ContextActionDock moves={moves} onAct={vi.fn()} layout="narrow" />);
+
+    expect(screen.getAllByTestId(/^dock-action-/)).toHaveLength(2);
+    expect(screen.getByText('Confirm your test-drive shortlist')).toBeInTheDocument();
+    expect(screen.getByTestId('dock-human-only-note')).toBeInTheDocument();
+  });
+
+  it('keeps the derived order among the actions it does show', () => {
+    // Authority decides what survives truncation; it does not reorder what
+    // a person reads. The human-only move is still shown after the earlier
+    // move it did not displace.
+    const moves = [
+      move({ label: 'One' }),
+      move({ kind: 'quick_pick', label: 'Two', topicId: undefined }),
+      move({
+        kind: 'confirm_shortlist',
+        label: 'Confirm your test-drive shortlist',
+        topicId: undefined,
+        toolName: undefined,
+        humanOnly: true,
+        requiredView: 'confirmation',
+      }),
+    ];
+
+    render(<ContextActionDock moves={moves} onAct={vi.fn()} layout="narrow" />);
+
+    expect(screen.getByTestId('dock-action-primary')).toHaveTextContent('One');
+  });
+
   it('renders nothing at all when there is nothing to do', () => {
     const { container } = render(<ContextActionDock moves={[]} onAct={vi.fn()} layout="narrow" />);
     expect(container).toBeEmptyDOMElement();

@@ -1851,12 +1851,21 @@ export function App() {
     evidenceItems?.filter((item) => item.evidenceLink.verdict !== 'pass' || item.evidenceLink.stale)
       .length ?? 0;
 
+  // The favoured option's own label, resolved from the case's entities so
+  // the answer-first hero can state the answer instead of labelling the
+  // region "Current recommendation" with the option named nowhere on
+  // screen (see `workspace-status.ts`'s `favoredOptionLabel`).
+  const favoredOptionLabel = snapshot?.entities.find(
+    (entity) => entity.id === snapshot.recommendation?.favoredOptionId,
+  )?.label;
+
   const workspaceStatus = deriveWorkspaceStatus({
     isRunActive,
     recommendation: snapshot?.recommendation ?? null,
     proposal: snapshot?.proposal ?? null,
     flaggedFindingsCount,
     withheld: withheld !== null,
+    ...(favoredOptionLabel === undefined ? {} : { favoredOptionLabel }),
   });
 
   // `WorkspaceAlertBanner` items (ADR 0008 decision 2/req 2 of this task):

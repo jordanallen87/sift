@@ -179,6 +179,10 @@ Playwright waits on domain state and test IDs. Fixed sleeps are prohibited.
 
 `pnpm test:host` drives a **real WebMCP host** against a running instance (ADR 0013). Chrome 152 ships WebMCP natively (`document.modelContext`) and exposes a `WebMCP` CDP domain — `enable`, `invokeTool`, `cancelInvocation`, and the `toolsAdded`/`toolsRemoved`/`toolInvoked`/`toolResponded` events — so tool discovery, schema delivery, invocation, both-direction state control, reload persistence, and host reconnect are automated rather than transcribed by hand. It is opt-in (`SIFT_HOST_URL`), never part of `pnpm verify`/`verify:release`, exits non-zero rather than degrading to a meaningless pass when no WebMCP host is available, and writes evidence to `artifacts/host-acceptance/<runId>/`.
 
+`pnpm test:journey` builds on the same host session to run **turn-based journeys through the rendered pane** (ADR 0014), evaluating case state, what the pane shows, and whether the two agree — separately, after every turn. A turn is taken either by the person, through visible controls, or by the assistant, through a real WebMCP tool call, so the claim that both reach the same command implementation is tested rather than asserted. It captures a screenshot per turn, which is what `docs/ux-review-2026-09-02.md` is written from.
+
+`pnpm webmcp:bridge` exposes the page's live tool registrations to any MCP client, so a real model can drive the page. That is the one thing neither gate above can establish: both choose their own calls, and neither can tell you whether a model finds the tools or sequences them sensibly.
+
 This replaces the manual host-smoke record, which existed because no WebMCP host could be driven — a fact that stopped being true. Two things it does not prove, both recorded in its own `report.json`: it is **Chrome, not ChatGPT** (a page cannot tell hosts apart, so the page-side contract is the same, but a claim naming a product needs a session in that product), and **no model chose anything** (the script picks every call). A session in a specific assistant remains the only evidence for those two, and is narrowed to exactly them.
 
 ## Demo traceability matrix
@@ -226,6 +230,8 @@ pnpm test:mutation      targeted core invariant mutation tests
 pnpm test:live          opt-in Bedrock tests
 pnpm test:deployed      opt-in public deployment tests
 pnpm test:host          opt-in real WebMCP host acceptance in Chrome 152+ (ADR 0013)
+pnpm test:journey       opt-in turn-based journeys through the rendered pane (ADR 0014)
+pnpm webmcp:bridge      dev tool: exposes the page's WebMCP tools to any MCP client (ADR 0014)
 pnpm verify             static + unit + coverage + pack + integration + contract + scenario + E2E
 pnpm verify:release     verify + mutation + build + Docker contract + submission checks
 ```

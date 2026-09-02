@@ -35,8 +35,43 @@ import { Button } from '@/components/ui/button';
 /** The most actions the dock will ever show. See the module comment. */
 const MAX_DOCK_ACTIONS = 2;
 
+/**
+ * Chooses which moves to show, keeping every human-only move.
+ *
+ * A plain `slice(0, 2)` used to do this, and it silently deleted the one
+ * thing this component exists to make visible. `confirm_shortlist` — the
+ * only `humanOnly` move Sift derives — is sixth in `deriveNextMoves`'
+ * order, so on any case where two earlier moves also applied, the person
+ * was never offered it and the "only you can do this" note never rendered.
+ * The module comment above says exactly what that costs: "the product's
+ * central claim would be missing from the exact screen where it matters
+ * most." It was.
+ *
+ * Truncation is still real — the dock never shows more than
+ * `MAX_DOCK_ACTIONS` — but what survives it is chosen by authority first
+ * and usefulness second. Output order still follows `deriveNextMoves`, so
+ * a human-only move does not jump the queue visually; it just cannot be
+ * the one that falls off the end.
+ *
+ * Found by `pnpm test:journey family-novice` (ADR 0014), which asked
+ * whether a person with a ready recommendation is actually told the
+ * decision is theirs.
+ */
+export function selectDockActions(
+  moves: readonly NextMove[],
+  max: number = MAX_DOCK_ACTIONS,
+): readonly NextMove[] {
+  if (moves.length <= max) return moves;
+  const kept = new Set<NextMove>(moves.filter((move) => move.humanOnly).slice(0, max));
+  for (const move of moves) {
+    if (kept.size >= max) break;
+    kept.add(move);
+  }
+  return moves.filter((move) => kept.has(move));
+}
+
 export interface ContextActionDockProps {
-  /** Derived moves, most useful first. Only the first two render. */
+  /** Derived moves, most useful first. At most two render — see `selectDockActions`. */
   readonly moves: readonly NextMove[];
   readonly onAct: (move: NextMove) => void;
   readonly layout: 'narrow' | 'expanded';
@@ -47,7 +82,7 @@ export function ContextActionDock({
   onAct,
   layout,
 }: ContextActionDockProps): React.JSX.Element | null {
-  const shown = moves.slice(0, MAX_DOCK_ACTIONS);
+  const shown = selectDockActions(moves);
   if (shown.length === 0) return null;
 
   const hasHumanOnly = shown.some((move) => move.humanOnly);
@@ -115,8 +150,8 @@ export function ContextActionDock({
           data-testid="dock-human-only-note"
           className="text-[length:var(--text-xs)] text-[color:var(--color-muted-foreground)]"
         >
-          Only you can take this step — Sift and ChatGPT can explain it, but neither can do it for
-          you.
+          Only you can take this step — Sift and your assistant can explain it, but neither can do
+          it for you.
         </p>
       )}
     </aside>

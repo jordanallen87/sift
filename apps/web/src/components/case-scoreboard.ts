@@ -74,9 +74,18 @@ export function buildWorkspaceScoreboard(snapshot: CaseState | null): WorkspaceS
     rankByOptionId.set(option.optionId, rank);
   }
 
+  // Whether the weights being scored are this person's, or the pack's
+  // defaults they have not touched yet. Before any topic is confirmed the
+  // criteria are the pack's, and insight copy claiming "what you said
+  // matters" is untrue on the first screen a new person ever sees. See
+  // `InsightContext` in `packages/core/src/scoring.ts`.
+  const weightsAreTheirs = (snapshot.discovery?.topics ?? []).some(
+    (topic) => topic.status === 'confirmed',
+  );
+
   return {
     board,
-    insights: deriveInsights(board),
+    insights: deriveInsights(board, { weightsAreTheirs }),
     byOptionId,
     rankByOptionId,
     isRankable: rank > 1,

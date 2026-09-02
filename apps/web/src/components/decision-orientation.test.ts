@@ -9,7 +9,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { CaseState, CompiledDecisionPack } from '@sift/contracts';
-import { buildDecisionOrientation } from './decision-orientation.js';
+import {
+  buildDecisionOrientation,
+  PHASE_LABELS,
+  ROUTE_TO_OUTCOME,
+} from './decision-orientation.js';
 import { buildFixtureCaseState, buildFixtureCompiledPack } from '../test/fixtures.js';
 
 const AT = '2026-09-02T00:00:00.000Z';
@@ -109,6 +113,26 @@ describe('buildDecisionOrientation', () => {
     expect(orientation.phaseLabel).toMatch(/^[A-Z]/);
     expect(orientation.phaseLabel).not.toBe(orientation.phase);
     expect(orientation.phaseLabel.split(' ').length).toBeGreaterThan(1);
+  });
+
+  it('never states a phase or a route in one pack`s vocabulary', () => {
+    // This shell renders for every pack. Home Energy Guardian — a case
+    // about an HVAC inspection — was told "then you confirm which models
+    // are worth going to see" (ADR 0014).
+    for (const phase of Object.keys(PHASE_LABELS)) {
+      expect(`${PHASE_LABELS[phase] ?? ''} ${ROUTE_TO_OUTCOME[phase] ?? ''}`).not.toMatch(
+        /test-drive|models are worth|vehicles?\b|cars?\b/i,
+      );
+    }
+  });
+
+  it('does not call a decision ready while the hero may still be reporting open findings', () => {
+    // `deriveDecisionPhase` reaches `deciding` as soon as a recommendation
+    // is `ready`, which is not the same as nothing being outstanding. The
+    // pane read "Ready for your decision" at 8 of 8 covered, directly above
+    // "4 findings need your attention" (ADR 0014). The phase label names
+    // whose turn it is; readiness is the hero's claim to make.
+    expect(PHASE_LABELS['deciding']).not.toMatch(/ready/i);
   });
 
   it('moves through the phases as the case progresses', () => {

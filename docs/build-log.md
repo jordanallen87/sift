@@ -5914,3 +5914,36 @@ That is an asymmetry in exactly the wrong direction. A criterion that could not 
 They now appear in `WorkspaceAlertBanner`. The derivation and its cap moved into `apps/web/src/app/scoring-alerts.ts` so both are testable without mounting the workspace: two warnings shown in full, the rest counted. The cap is a real trade — the banner sits above the recommendation and an uncapped list would push the answer off the screen — and the count is what keeps it honest, because dropping the remainder silently would be the product hiding its own limits.
 
 Warnings pass through in the scorer's own words rather than being paraphrased, so the wording lives in one place.
+
+## 2026-09-02 — turn-based journeys, and the six defects nobody could see
+
+ADR 0014. `pnpm test:journey` runs four journeys through the rendered pane in a real WebMCP browser and, after every turn, evaluates three things separately: is the case state right, does the pane show what a person should see, and **do those two describe the same case**. 92 checks.
+
+The third question is the whole point. `scripts/test-persona.ts` asserts hard on state and renders nothing — it reported a passing family journey while discovery had no input path at all. The E2E specs render the real product but never ask, turn by turn, whether the screen and the server still agree.
+
+Every assistant turn is a real WebMCP tool call through `document.modelContext`, not an HTTP request standing in for one. Both hero demo scripts claim an assistant makes those calls; now the test does what the script says.
+
+### Six defects, none reachable by an existing test
+
+1. **The answer-first hero never named the answer.** "Current recommendation" while the case favoured the RAV4. Now "Leading so far: <option>".
+2. **The dock deleted the only human-only action.** `slice(0, 2)` against a move that is sixth in the derived order — so "Confirm what moves forward" and the "only you can do this" note were absent from most cases. `selectDockActions` now keeps human-only moves through truncation.
+3. **The comparison claimed priorities nobody had given.** "against what you said matters" at 0 of 5 covered. `deriveInsights` takes an `InsightContext`.
+4. **Car copy on an energy case.** "Confirm your test-drive shortlist" on an HVAC decision. Now pack-neutral, in both `deriveNextMoves` and the orientation shell.
+5. **"Ready for your decision" above "4 findings need your attention."** The phase label is now "Yours to decide"; readiness stays the hero's claim to make, so there is no second implementation of "flagged findings" to drift.
+6. **Two demo documents disagreed about the same beat.** `aws-script.md` beat 4 told a recorder to film a GoalLoop rejection that does not fire live; `demo-script.md` documents that it doesn't. `aws-script.md` now carries the warning and `aws-hero` asserts nothing claims a "Draft withheld" that did not happen.
+
+Findings 1–3 and 5 came from the `agreement` and `ui` checks. Finding 4 came from **reading the screenshots**, which is why the harness captures one per turn.
+
+### Visual baselines updated — 37 files, deliberately
+
+Both hero specs, all four viewports, for the copy changes in findings 1–5. Each was inspected as actual/expected/diff before updating: every difference is the intended copy plus the vertical reflow it causes. No overflow, no overlap, no truncation, including the two-line headline at 390px. Nothing was updated because it merely differed.
+
+### A false green, caught
+
+The first multi-journey run printed **"31/31 checks passed"** for a run in which three of four journeys died on their first turn — a turn that throws runs no checks, so counting only checks reported a perfect score for a catastrophe. Errors are now counted and named separately. The cause was journeys leaking browser state into each other; storage is cleared on `/health`, which is the same origin without the SPA running to write the key back.
+
+### `pnpm webmcp:bridge`
+
+A stdio MCP server mapping `tools/list` to the page's live WebMCP registrations and `tools/call` to `WebMCP.invokeTool`. Point Codex or Claude Code at it and a real model drives the real page with the real tool descriptions. `test:journey` proves the tools are callable; only this can show whether a model *finds* them. Development tool, not shipped.
+
+`docs/ux-review-2026-09-02.md` records the five observations left for a human decision, and what holds up well.
