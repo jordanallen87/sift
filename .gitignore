@@ -45,3 +45,7 @@ pnpm-debug.log*
 
 # Docker
 .docker/
+
+# Local runtime database (CLAUDE.md: `.sift-data/sift.sqlite` locally, `/data` on Railway).
+# Runtime state, not a fixture -- it was tracked, so every local run dirtied the tree.
+.sift-data/
