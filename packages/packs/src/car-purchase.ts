@@ -33,13 +33,19 @@ import type { CompiledDecisionPack, DecisionPackManifest } from '@sift/contracts
 export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
   schemaVersion: '1.0',
 
+  // The pack **id** stays `car-purchase` deliberately. Every stored case
+  // pins it in `CasePackPin`, so changing it would orphan existing cases for
+  // no user-visible gain. Only the user-facing language generalises: this
+  // pack now runs a landscaping business's van decision as readily as a
+  // household's, and calling it "Choose Our Next Car" in front of a
+  // contractor would be a lie about what it does.
   identity: {
     id: 'car-purchase',
     version: '1.0.0',
-    name: 'Choose Our Next Car',
+    name: 'Vehicle Selection',
     description:
-      'Compares shortlisted vehicle candidates against household budget and non-negotiable needs, normalized deal terms, five-year ownership cost, safety and reliability records, and household fit, to recommend which candidates should advance to a household test drive.',
-    tags: ['car-purchase', 'vehicle', 'webmcp-hero', 'household-decision'],
+      'Works out what a vehicle actually has to do -- for a household, a sole trader, or a business -- and compares candidate models against those needs on budget and non-negotiables, normalized deal terms, five-year ownership cost, safety and reliability records, and practical fit, to recommend which models are worth test driving.',
+    tags: ['car-purchase', 'vehicle', 'webmcp-hero', 'vehicle-selection'],
   },
 
   // packs-and-routing.md "Choose Our Next Car Decision Pack" -> "Activation".
@@ -554,7 +560,11 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
       },
       {
         id: 'pref.household_fit',
-        label: 'Household fit (cargo, rear seat, known specification match)',
+        // Id preserved -- every stored case pins it. The label generalises
+        // because this same criterion now measures whether a landscaper's
+        // van carries what it has to carry, not only whether a family's
+        // estate fits the pram.
+        label: 'Practical fit (cargo, seating, known specification match)',
         kind: 'preference',
         weight: 15,
         direction: 'higher_better',
@@ -1078,6 +1088,585 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
       "Prefer a typed custom field over noting an important comparison factor only in prose -- for example, a specific cargo item or accessibility need this pack did not anticipate. Do not infer a subjective fit or comfort judgment without supporting evidence or a household member's own observation.",
     presentationGuidance:
       'Deal terms and five-year ownership cost are usually worth comparing together, since a lower advertised price can still mean a higher total cost. Safety and reliability ratings are usually compared as a group rather than one attribute at a time.',
+  },
+
+  // --- Adaptive discovery ---
+  //
+  // This is what makes one pack produce two materially different journeys
+  // rather than one questionnaire with some fields greyed out. `vehicle
+  // .use_case` is asked first, at the highest priority, and almost everything
+  // else hangs off it: a family is never asked about payload, worksite
+  // access, or downtime risk, and a landscaping business is never asked about
+  // child seats or the school run.
+  //
+  // Two rules govern the phrasing of every question below:
+  //
+  // 1. **Ask functionally, not personally.** "Who and what has to fit in it
+  //    regularly?" gets the same answer as "do you have kids?" while being
+  //    none of Sift's business. The pack asks what must fit, not who someone
+  //    is.
+  // 2. **No required topic offers a skip.** `DiscoveryTopicTemplateSchema`
+  //    refuses `allowDefer` on a required topic outright, but every required
+  //    topic here still offers a genuine way out -- a custom answer, or "not
+  //    sure" -- so a person is never trapped by a question they cannot
+  //    answer. Not sure is a real answer that creates an information need;
+  //    it is not a skip.
+  discovery: {
+    topics: [
+      {
+        id: 'vehicle.use_case',
+        label: 'What this vehicle is for',
+        question: 'What will this vehicle mainly be used for?',
+        necessity: 'required',
+        priority: 100,
+        allowedInteractions: ['single_select'],
+        optionSeeds: [
+          {
+            id: 'seed.family',
+            label: 'Personal or family use',
+            detail: 'Commuting, family transport, trips',
+            valueSummary: 'family',
+          },
+          {
+            id: 'seed.business',
+            label: 'A business or trade',
+            detail: 'Carrying tools, materials, or crew to jobs',
+            valueSummary: 'business',
+          },
+          {
+            id: 'seed.mixed',
+            label: 'Both',
+            detail: 'It has to work for the family and for work',
+            valueSummary: 'mixed',
+          },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: false,
+          allowUnsure: false,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: [],
+        mapsToCriterionIds: [],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.budget',
+        label: 'Budget',
+        question:
+          'What is your budget, and is that a hard ceiling or a figure you would stretch for the right vehicle?',
+        necessity: 'required',
+        priority: 95,
+        allowedInteractions: ['range', 'free_text'],
+        optionSeeds: [],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: false,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: ['car.advertised_price', 'car.out_the_door_price'],
+        mapsToCriterionIds: ['pref.deal_value'],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.occupants',
+        label: 'Who and what has to fit',
+        question: 'Who travels in it regularly, and what has to fit in with them?',
+        necessity: 'required',
+        priority: 90,
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['family', 'mixed'] },
+        allowedInteractions: ['multi_select', 'free_text'],
+        optionSeeds: [
+          { id: 'seed.two_adults', label: 'Two adults', valueSummary: 'Two adults' },
+          {
+            id: 'seed.children',
+            label: 'Children in car seats or boosters',
+            valueSummary: 'Children in car seats or boosters',
+          },
+          {
+            id: 'seed.older_children',
+            label: 'Older children or teenagers',
+            valueSummary: 'Older children or teenagers',
+          },
+          {
+            id: 'seed.dog',
+            label: 'A dog',
+            detail: 'Loose, crated, or behind a guard',
+            valueSummary: 'A dog travelling in the vehicle',
+          },
+          {
+            id: 'seed.passengers',
+            label: 'Other regular passengers',
+            valueSummary: 'Other regular passengers',
+          },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: false,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: ['car.second_row_legroom_in'],
+        mapsToCriterionIds: ['pref.household_fit'],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.payload_towing',
+        label: 'Payload and towing',
+        question: 'What is the heaviest or largest thing this vehicle has to carry or tow?',
+        necessity: 'required',
+        priority: 90,
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['business', 'mixed'] },
+        allowedInteractions: ['multi_select', 'free_text'],
+        optionSeeds: [
+          {
+            id: 'seed.trailer',
+            label: 'A trailer',
+            detail: 'Plant, mowers, or a tipper',
+            valueSummary: 'Tows a trailer',
+          },
+          {
+            id: 'seed.loose_material',
+            label: 'Loose material',
+            detail: 'Soil, bark, aggregate, green waste',
+            valueSummary: 'Carries loose material in bulk',
+          },
+          {
+            id: 'seed.long_items',
+            label: 'Long items',
+            detail: 'Timber, poles, ladders',
+            valueSummary: 'Carries long items',
+          },
+          {
+            id: 'seed.crew',
+            label: 'A crew and their kit',
+            valueSummary: 'Carries a crew and their kit',
+          },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: false,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: ['car.cargo_volume_cu_ft', 'car.cargo_length_in'],
+        mapsToCriterionIds: ['pref.household_fit'],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.child_seats',
+        label: 'Car seat layout',
+        question: 'How many car seats or boosters have to fit at once, and in which row?',
+        necessity: 'required',
+        priority: 80,
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['family', 'mixed'] },
+        allowedInteractions: ['single_select', 'yes_no_unsure'],
+        optionSeeds: [
+          { id: 'seed.none', label: 'None', valueSummary: 'No car seats required' },
+          { id: 'seed.one', label: 'One', valueSummary: 'One car seat' },
+          { id: 'seed.two', label: 'Two', valueSummary: 'Two car seats' },
+          {
+            id: 'seed.three_across',
+            label: 'Three across',
+            detail: 'The layout most vehicles fail',
+            valueSummary: 'Three car seats across one row',
+          },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: true,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: ['car.second_row_legroom_in', 'car.rear_door_opening_width_in'],
+        mapsToCriterionIds: ['pref.household_fit'],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.equipment_access',
+        label: 'Loading and equipment access',
+        question:
+          'How does equipment get in and out, and does anything about that constrain the vehicle?',
+        necessity: 'required',
+        priority: 80,
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['business', 'mixed'] },
+        allowedInteractions: ['multi_select', 'free_text'],
+        optionSeeds: [
+          {
+            id: 'seed.ramp',
+            label: 'Ramp or tail lift',
+            valueSummary: 'Equipment is loaded by ramp or tail lift',
+          },
+          {
+            id: 'seed.side_door',
+            label: 'Side loading',
+            valueSummary: 'Needs side loading access',
+          },
+          {
+            id: 'seed.low_floor',
+            label: 'Low load floor',
+            detail: 'Lifting heavy items by hand',
+            valueSummary: 'Needs a low load floor',
+          },
+          {
+            id: 'seed.secure',
+            label: 'Lockable and weatherproof',
+            valueSummary: 'Load area must be lockable and weatherproof',
+          },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: true,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: ['car.cargo_width_in', 'car.rear_door_opening_width_in'],
+        mapsToCriterionIds: ['pref.household_fit'],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.cargo_household',
+        label: 'What you carry',
+        question: 'What do you regularly need to fit in the back?',
+        necessity: 'required',
+        priority: 75,
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['family', 'mixed'] },
+        allowedInteractions: ['multi_select', 'free_text'],
+        optionSeeds: [
+          {
+            id: 'seed.pram',
+            label: 'A pram or stroller',
+            valueSummary: 'A pram or stroller',
+          },
+          {
+            id: 'seed.sports',
+            label: 'Sports or hobby kit',
+            valueSummary: 'Sports or hobby equipment',
+          },
+          {
+            id: 'seed.holiday',
+            label: 'Luggage for everyone',
+            valueSummary: 'Luggage for the whole household',
+          },
+          {
+            id: 'seed.crate',
+            label: 'A dog crate',
+            valueSummary: 'A dog crate',
+          },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: true,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: ['car.cargo_volume_cu_ft', 'car.cargo_width_in', 'car.cargo_length_in'],
+        mapsToCriterionIds: ['pref.household_fit'],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.worksite_access',
+        label: 'Where it has to go',
+        question: 'What are the tightest or roughest places this vehicle has to get into?',
+        necessity: 'required',
+        priority: 75,
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['business', 'mixed'] },
+        allowedInteractions: ['multi_select', 'free_text'],
+        optionSeeds: [
+          {
+            id: 'seed.narrow_gates',
+            label: 'Narrow gates or lanes',
+            valueSummary: 'Narrow gates or lanes',
+          },
+          {
+            id: 'seed.soft_ground',
+            label: 'Soft or unmade ground',
+            valueSummary: 'Soft or unmade ground',
+          },
+          {
+            id: 'seed.height_limits',
+            label: 'Height-restricted car parks',
+            valueSummary: 'Height-restricted access',
+          },
+          {
+            id: 'seed.urban',
+            label: 'Dense urban streets',
+            valueSummary: 'Dense urban streets and tight parking',
+          },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: true,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: ['car.ground_clearance_in', 'car.drivetrain'],
+        mapsToCriterionIds: ['pref.household_fit'],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.usage_pattern',
+        label: 'How it gets used',
+        question: 'What does a typical week of driving look like?',
+        necessity: 'required',
+        priority: 70,
+        allowedInteractions: ['multi_select'],
+        optionSeeds: [
+          {
+            id: 'seed.short_trips',
+            label: 'Mostly short local trips',
+            valueSummary: 'Mostly short local trips',
+          },
+          {
+            id: 'seed.commute',
+            label: 'A regular commute',
+            valueSummary: 'A regular commute',
+          },
+          {
+            id: 'seed.motorway',
+            label: 'Long motorway runs',
+            valueSummary: 'Long motorway runs',
+          },
+          {
+            id: 'seed.stop_start',
+            label: 'Lots of stop-start work',
+            detail: 'Many drops in a day',
+            valueSummary: 'Frequent stop-start driving',
+          },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: false,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: ['car.combined_fuel_economy_mpg', 'car.five_year_fuel_cost'],
+        mapsToCriterionIds: ['pref.ownership_cost'],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.downtime_risk',
+        label: 'What downtime costs',
+        question: 'If this vehicle is off the road for a week, what happens to the work?',
+        necessity: 'required',
+        priority: 65,
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['business', 'mixed'] },
+        allowedInteractions: ['single_select'],
+        optionSeeds: [
+          {
+            id: 'seed.stops',
+            label: 'Work stops',
+            detail: 'There is no substitute',
+            valueSummary: 'Work stops entirely',
+          },
+          {
+            id: 'seed.slows',
+            label: 'Work slows down',
+            valueSummary: 'Work continues but slows',
+          },
+          {
+            id: 'seed.absorbed',
+            label: 'It can be absorbed',
+            valueSummary: 'Downtime can be absorbed',
+          },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: false,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: ['car.reliability_rating'],
+        mapsToCriterionIds: ['pref.safety_reliability'],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.environment',
+        label: 'Where it lives',
+        question: 'Where is it parked, and what weather or road conditions does it face?',
+        necessity: 'required',
+        priority: 60,
+        allowedInteractions: ['multi_select'],
+        optionSeeds: [
+          {
+            id: 'seed.garage',
+            label: 'A garage with limited space',
+            valueSummary: 'Parked in a size-limited garage',
+          },
+          {
+            id: 'seed.street',
+            label: 'On the street',
+            valueSummary: 'Parked on the street',
+          },
+          { id: 'seed.snow', label: 'Snow and ice', valueSummary: 'Snow and ice in winter' },
+          {
+            id: 'seed.unpaved',
+            label: 'Unpaved roads or tracks',
+            valueSummary: 'Regular unpaved roads or tracks',
+          },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: true,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: ['car.drivetrain', 'car.ground_clearance_in'],
+        mapsToCriterionIds: ['pref.household_fit'],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.priorities',
+        label: 'What matters most',
+        question:
+          'Of the things this vehicle has to get right, which matter most and which are nice to have?',
+        necessity: 'required',
+        priority: 55,
+        allowedInteractions: ['importance_sort', 'ranking'],
+        optionSeeds: [
+          {
+            id: 'seed.running_cost',
+            label: 'Running and ownership cost',
+            valueSummary: 'Running and ownership cost',
+          },
+          {
+            id: 'seed.safety',
+            label: 'Safety and reliability',
+            valueSummary: 'Safety and reliability',
+          },
+          {
+            id: 'seed.space',
+            label: 'Space and practicality',
+            valueSummary: 'Space and practicality',
+          },
+          { id: 'seed.price', label: 'Purchase price', valueSummary: 'Purchase price' },
+          { id: 'seed.comfort', label: 'Comfort to drive', valueSummary: 'Comfort to drive' },
+        ],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: false,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        mapsToAttributeIds: [],
+        mapsToCriterionIds: [
+          'pref.ownership_cost',
+          'pref.safety_reliability',
+          'pref.household_fit',
+          'pref.deal_value',
+          'pref.driving_comfort',
+        ],
+        confirmationRequired: true,
+      },
+      {
+        id: 'vehicle.operating_cost',
+        label: 'Cost per job',
+        question: 'Is fuel or running cost a figure you track per job?',
+        necessity: 'soft',
+        priority: 50,
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['business', 'mixed'] },
+        allowedInteractions: ['yes_no_unsure', 'free_text'],
+        optionSeeds: [],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: true,
+          allowUnsure: true,
+          allowDefer: true,
+        },
+        mapsToAttributeIds: ['car.five_year_fuel_cost'],
+        mapsToCriterionIds: ['pref.ownership_cost'],
+        confirmationRequired: false,
+      },
+      {
+        id: 'vehicle.upfit',
+        label: 'Racking and fit-out',
+        question: 'Does anything need fitting out afterwards -- racking, a liner, signage?',
+        necessity: 'soft',
+        priority: 45,
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['business', 'mixed'] },
+        allowedInteractions: ['free_text'],
+        optionSeeds: [],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: true,
+          allowUnsure: true,
+          allowDefer: true,
+        },
+        mapsToAttributeIds: ['car.cargo_volume_cu_ft'],
+        mapsToCriterionIds: [],
+        confirmationRequired: false,
+      },
+      {
+        id: 'vehicle.brand_preference',
+        label: 'Anything ruled in or out',
+        question: 'Is there any make or model you already know you do or do not want?',
+        necessity: 'soft',
+        priority: 20,
+        allowedInteractions: ['free_text'],
+        optionSeeds: [],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: true,
+          allowUnsure: true,
+          allowDefer: true,
+        },
+        mapsToAttributeIds: ['car.make', 'car.model'],
+        mapsToCriterionIds: [],
+        confirmationRequired: false,
+      },
+    ],
+
+    // The one required challenge pass before model discovery. These are
+    // plausible omissions, not a second questionnaire -- each one is a thing
+    // people genuinely forget until the vehicle is already on the driveway.
+    blindSpots: [
+      {
+        id: 'blindspot.child_seat_layout',
+        label: 'Car seat layout',
+        detail:
+          'Three seats across, or a rear-facing seat behind a tall driver, rules out more vehicles than anything else.',
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['family', 'mixed'] },
+      },
+      {
+        id: 'blindspot.pets_and_luggage',
+        label: 'A dog and the luggage at the same time',
+        detail: 'Space for either is common; space for both at once is not.',
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['family', 'mixed'] },
+      },
+      {
+        id: 'blindspot.garage_clearance',
+        label: 'Where it has to park',
+        detail: 'Garage length and height, or a tight communal space.',
+      },
+      {
+        id: 'blindspot.mobility_equipment',
+        label: 'Mobility or medical equipment',
+        detail: 'A folded wheelchair, a walker, or an oxygen cylinder that has to travel too.',
+      },
+      {
+        id: 'blindspot.charging_access',
+        label: 'Charging where you park',
+        detail: 'An electric vehicle is only cheap to run if you can charge it where it sleeps.',
+      },
+      {
+        id: 'blindspot.long_term_cost',
+        label: 'The cost after the purchase',
+        detail: 'Insurance, servicing, tyres, and depreciation usually outweigh the sticker gap.',
+      },
+      {
+        id: 'blindspot.load_height',
+        label: 'How high things have to be lifted',
+        detail: 'Load floor height decides whether a day of loading is manageable.',
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['business', 'mixed'] },
+      },
+      {
+        id: 'blindspot.secure_storage',
+        label: 'Leaving tools in it overnight',
+        detail: 'Whether the load area can be locked, and what the insurer requires.',
+        appliesWhen: { topicId: 'vehicle.use_case', equalsAnyOf: ['business', 'mixed'] },
+      },
+    ],
   },
 };
 

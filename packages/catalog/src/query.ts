@@ -81,9 +81,62 @@ export interface SearchVehiclesParams {
    * not a closed enum.
    */
   fuelType?: string;
+  /**
+   * Several fuel types at once. "A hybrid or an EV" is one thought, and
+   * forcing it into two queries makes the caller re-implement pagination
+   * and ordering to merge them back together.
+   */
+  fuelTypes?: readonly string[];
+  /** Several body styles at once, for the same reason as `fuelTypes`. */
+  bodyStyles?: readonly string[];
+  /** Exact match against the catalog's `drivetrain` ("AWD", "FWD", "RWD", "4WD (part-time)", ...). */
+  drivetrain?: string;
+  minYear?: number;
+  maxYear?: number;
+  minCombinedMpg?: number;
+  maxAnnualFuelCostUsd?: number;
+  minElectricRangeMiles?: number;
   /** Bounded to `MAX_SEARCH_RESULTS`; defaults to `DEFAULT_SEARCH_LIMIT`. */
   limit?: number;
   offset?: number;
+}
+
+/**
+ * Whether a record's value for a numeric constraint passes.
+ *
+ * **An unknown never passes.** A null `combinedMpg` is not "economical
+ * enough", and a null `annualFuelCostUsd` is not "cheap enough". Treating a
+ * missing measurement as a satisfied constraint is the single most tempting
+ * shortcut in this file and the one that would quietly put vehicles in front
+ * of someone that nobody has established meet their requirement.
+ *
+ * The caller that wants to say "these could not be checked" reads them back
+ * with the constraint removed and compares -- an explicit unknown, not a
+ * silent pass.
+ */
+function passesNumericFloor(value: number | null | undefined, floor: number | undefined): boolean {
+  if (floor === undefined) return true;
+  if (value === null || value === undefined) return false;
+  return value >= floor;
+}
+
+/** The categorical counterpart to `passesNumericFloor`. A null value fails an explicit filter rather than passing it. */
+function passesEnumFilter(
+  value: string | null | undefined,
+  allowed: readonly string[] | undefined,
+): boolean {
+  if (allowed === undefined) return true;
+  if (value === null || value === undefined) return false;
+  return allowed.includes(value);
+}
+
+function passesNumericCeiling(
+  value: number | null | undefined,
+  ceiling: number | undefined,
+): boolean {
+  if (ceiling === undefined) return true;
+  if (value === null || value === undefined) return false;
+  return value <= ceiling;
 }
 
 export interface SearchVehiclesResult {
@@ -109,6 +162,16 @@ export function searchVehicles(params: SearchVehiclesParams = {}): SearchVehicle
     if (params.model !== undefined && record.model !== params.model) return false;
     if (params.bodyStyle !== undefined && record.bodyStyle !== params.bodyStyle) return false;
     if (params.fuelType !== undefined && record.fuelType !== params.fuelType) return false;
+    // A null value never satisfies an explicit filter, for the same reason a
+    // null MPG never satisfies a floor: "not recorded" is not "matches".
+    if (!passesEnumFilter(record.fuelType, params.fuelTypes)) return false;
+    if (!passesEnumFilter(record.bodyStyle, params.bodyStyles)) return false;
+    if (params.drivetrain !== undefined && record.drivetrain !== params.drivetrain) return false;
+    if (params.minYear !== undefined && record.year < params.minYear) return false;
+    if (params.maxYear !== undefined && record.year > params.maxYear) return false;
+    if (!passesNumericFloor(record.combinedMpg, params.minCombinedMpg)) return false;
+    if (!passesNumericCeiling(record.annualFuelCostUsd, params.maxAnnualFuelCostUsd)) return false;
+    if (!passesNumericFloor(record.electricRangeMiles, params.minElectricRangeMiles)) return false;
     if (query !== undefined && query.length > 0) {
       const haystack = `${record.make} ${record.model} ${record.trim ?? ''}`.toLowerCase();
       if (!haystack.includes(query)) return false;

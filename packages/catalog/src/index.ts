@@ -23,3 +23,18 @@ export type { SearchVehiclesParams, SearchVehiclesResult } from './query.js';
 
 export { mapCatalogRecordToOption } from './map-to-option.js';
 export type { MappedOption, MappedOptionAttribute } from './map-to-option.js';
+
+// The curated hero cohort: decision-relevant fields the EPA source does not
+// carry, supplied for eight models and labelled `curated_demo`. Node-only
+// (reads from disk); the browser receives enriched data through the catalog
+// HTTP routes like every other catalog value.
+export {
+  DEMO_PROFILE_DISCLOSURE,
+  DEMO_RATINGS,
+  DemoProfileSchema,
+  clearDemoProfileCache,
+  enrichWithDemoProfile,
+  getDemoProfile,
+  listDemoProfiles,
+} from './demo-profiles.js';
+export type { DemoProfile, DemoRating, EnrichedVehicle, FieldProvenance } from './demo-profiles.js';

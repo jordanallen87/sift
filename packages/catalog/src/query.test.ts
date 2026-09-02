@@ -236,3 +236,101 @@ describe('searchVehicles fuelType filter', () => {
     expect(searchVehicles({ fuelType: 'Hydrogen fuel cell' }).total).toBe(0);
   });
 });
+
+describe('searchVehicles: constraint-aware discovery', () => {
+  it('filters by drivetrain, which is the single most common hard constraint', () => {
+    const result = searchVehicles({ drivetrain: 'AWD', limit: 200 });
+
+    expect(result.total).toBeGreaterThan(0);
+    for (const record of result.records) expect(record.drivetrain).toBe('AWD');
+  });
+
+  it('filters by a minimum combined fuel economy', () => {
+    const result = searchVehicles({ minCombinedMpg: 40, limit: 200 });
+
+    expect(result.total).toBeGreaterThan(0);
+    for (const record of result.records) {
+      expect(record.combinedMpg ?? 0).toBeGreaterThanOrEqual(40);
+    }
+  });
+
+  it('filters by a running-cost ceiling', () => {
+    const result = searchVehicles({ maxAnnualFuelCostUsd: 1500, limit: 200 });
+
+    expect(result.total).toBeGreaterThan(0);
+    for (const record of result.records) {
+      expect(record.annualFuelCostUsd ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1500);
+    }
+  });
+
+  it('excludes a record whose value for a filtered field is unknown, rather than assuming it passes', () => {
+    // The rule that matters here: a null combined MPG is not "fast enough".
+    // An unknown must never be silently treated as satisfying a constraint.
+    const unfiltered = searchVehicles({ limit: 1 }).total;
+    const filtered = searchVehicles({ minCombinedMpg: 0, limit: 1 }).total;
+
+    const withNulls = searchVehicles({ limit: 900 }).records.filter(
+      (record) => record.combinedMpg === null,
+    ).length;
+
+    expect(unfiltered).toBe(853);
+    expect(filtered).toBe(unfiltered - withNulls);
+  });
+
+  it('filters by a year floor', () => {
+    const result = searchVehicles({ minYear: 2026, limit: 400 });
+
+    expect(result.total).toBeGreaterThan(0);
+    for (const record of result.records) expect(record.year).toBeGreaterThanOrEqual(2026);
+  });
+
+  it('accepts several body styles at once, because "an SUV or a minivan" is one thought', () => {
+    const result = searchVehicles({ bodyStyles: ['Minivan', 'Compact SUV'], limit: 400 });
+
+    expect(result.total).toBeGreaterThan(0);
+    for (const record of result.records) {
+      expect(['Minivan', 'Compact SUV']).toContain(record.bodyStyle);
+    }
+  });
+
+  it('accepts several fuel types at once', () => {
+    const result = searchVehicles({ fuelTypes: ['Hybrid', 'Electric'], limit: 400 });
+
+    expect(result.total).toBeGreaterThan(0);
+    for (const record of result.records) {
+      expect(['Hybrid', 'Electric']).toContain(record.fuelType);
+    }
+  });
+
+  it('combines constraints conjunctively', () => {
+    const result = searchVehicles({
+      drivetrain: 'AWD',
+      fuelTypes: ['Hybrid'],
+      minYear: 2026,
+      limit: 200,
+    });
+
+    for (const record of result.records) {
+      expect(record.drivetrain).toBe('AWD');
+      expect(record.fuelType).toBe('Hybrid');
+      expect(record.year).toBeGreaterThanOrEqual(2026);
+    }
+  });
+
+  it('returns an empty result rather than relaxing a constraint nothing satisfies', () => {
+    // "No candidate satisfies all confirmed blockers" is a retained edge
+    // case. The honest answer is nothing found, and the caller surfaces the
+    // conflict -- never a quietly widened search.
+    const result = searchVehicles({ minCombinedMpg: 500, limit: 10 });
+
+    expect(result.total).toBe(0);
+    expect(result.records).toEqual([]);
+  });
+
+  it('keeps ordering stable when constraints are applied', () => {
+    const params = { drivetrain: 'AWD' as const, minYear: 2026, limit: 20 };
+    expect(searchVehicles(params).records.map((r) => r.id)).toEqual(
+      searchVehicles(params).records.map((r) => r.id),
+    );
+  });
+});

@@ -52,7 +52,11 @@ describe('CAR_PURCHASE_MANIFEST identity and activation', () => {
   it('declares the pinned pack identity', () => {
     expect(CAR_PURCHASE_MANIFEST.identity.id).toBe('car-purchase');
     expect(CAR_PURCHASE_MANIFEST.identity.version).toBe('1.0.0');
-    expect(CAR_PURCHASE_MANIFEST.identity.name).toBe('Choose Our Next Car');
+    // Renamed from "Choose Our Next Car" when the pack was generalised: it
+    // now runs a landscaping business's van decision from the same
+    // declarations, and the old name would be a lie in front of a
+    // contractor. The pack *id* is unchanged -- see the manifest comment.
+    expect(CAR_PURCHASE_MANIFEST.identity.name).toBe('Vehicle Selection');
   });
 
   it('declares the exact activation intents from packs-and-routing.md', () => {
@@ -407,5 +411,134 @@ describe('full manifest fidelity', () => {
   // mutants in this file survived every other test in the suite.)
   it('matches its full manifest snapshot', () => {
     expect(CAR_PURCHASE_MANIFEST).toMatchSnapshot();
+  });
+});
+
+describe('Vehicle Selection discovery: one pack, materially different journeys', () => {
+  const discovery = CAR_PURCHASE_MANIFEST.discovery;
+
+  function topicIdsFor(useCase: string): string[] {
+    if (discovery === undefined) throw new Error('pack declares no discovery process');
+    return discovery.topics
+      .filter(
+        (topic) =>
+          topic.appliesWhen === undefined ||
+          (topic.appliesWhen.topicId === 'vehicle.use_case' &&
+            topic.appliesWhen.equalsAnyOf.includes(useCase)),
+      )
+      .map((topic) => topic.id);
+  }
+
+  it('declares a discovery process at all', () => {
+    expect(discovery).toBeDefined();
+    expect(discovery?.topics.length).toBeGreaterThan(0);
+    expect(discovery?.blindSpots.length).toBeGreaterThan(0);
+  });
+
+  it('asks what the vehicle is for before anything else', () => {
+    // Everything conditional hangs off this answer, so it has to be first
+    // or the pack asks household questions of a landscaper.
+    const first = [...(discovery?.topics ?? [])].sort((a, b) => b.priority - a.priority)[0];
+    expect(first?.id).toBe('vehicle.use_case');
+  });
+
+  it('produces materially different topic sets for a family and a business', () => {
+    const family = topicIdsFor('family');
+    const business = topicIdsFor('business');
+
+    // Not a copy change: each branch asks questions the other never sees.
+    const familyOnly = family.filter((id) => !business.includes(id));
+    const businessOnly = business.filter((id) => !family.includes(id));
+
+    expect(familyOnly.length).toBeGreaterThan(0);
+    expect(businessOnly.length).toBeGreaterThan(0);
+  });
+
+  it('never asks a landscaping business about child seats', () => {
+    expect(topicIdsFor('business')).not.toContain('vehicle.child_seats');
+  });
+
+  it('never asks a family about payload, towing, or worksite access', () => {
+    const family = topicIdsFor('family');
+    expect(family).not.toContain('vehicle.payload_towing');
+    expect(family).not.toContain('vehicle.worksite_access');
+    expect(family).not.toContain('vehicle.equipment_access');
+  });
+
+  it('asks both branches the questions that genuinely apply to both', () => {
+    const family = topicIdsFor('family');
+    const business = topicIdsFor('business');
+
+    for (const shared of ['vehicle.use_case', 'vehicle.budget', 'vehicle.usage_pattern']) {
+      expect(family).toContain(shared);
+      expect(business).toContain(shared);
+    }
+  });
+
+  it('offers blind-spot prompts that differ by case', () => {
+    const applicable = (useCase: string) =>
+      (discovery?.blindSpots ?? [])
+        .filter(
+          (prompt) =>
+            prompt.appliesWhen === undefined || prompt.appliesWhen.equalsAnyOf.includes(useCase),
+        )
+        .map((prompt) => prompt.id);
+
+    const family = applicable('family');
+    const business = applicable('business');
+
+    expect(family).not.toEqual(business);
+    expect(family.filter((id) => !business.includes(id)).length).toBeGreaterThan(0);
+    expect(business.filter((id) => !family.includes(id)).length).toBeGreaterThan(0);
+  });
+
+  it('asks functional questions rather than unnecessary personal ones', () => {
+    // "Who and what has to fit" is the question. "Do you have kids?" is not.
+    for (const topic of discovery?.topics ?? []) {
+      expect(topic.question).not.toMatch(/do you have (kids|children)\b/i);
+      expect(topic.question).not.toMatch(/are you (married|disabled)/i);
+      expect(topic.question).not.toMatch(/how old are you/i);
+    }
+  });
+
+  it('gives every required topic an escape hatch that is not a skip', () => {
+    for (const topic of discovery?.topics ?? []) {
+      if (topic.necessity !== 'required') continue;
+      expect(topic.escapeHatches.allowDefer).toBe(false);
+      // But there is always some way out of a question a person cannot
+      // answer -- a custom answer, or saying they are not sure.
+      expect(topic.escapeHatches.allowCustom || topic.escapeHatches.allowUnsure).toBe(true);
+    }
+  });
+
+  it('routes every topic mapping at an attribute or criterion the pack actually declares', () => {
+    const attributeIds = new Set(CAR_PURCHASE_MANIFEST.attributes.map((a) => a.id));
+    const criterionIds = new Set(CAR_PURCHASE_MANIFEST.criteria.defaults.map((c) => c.id));
+
+    for (const topic of discovery?.topics ?? []) {
+      for (const id of topic.mapsToAttributeIds) {
+        expect(attributeIds.has(id), `${topic.id} maps to unknown attribute ${id}`).toBe(true);
+      }
+      for (const id of topic.mapsToCriterionIds) {
+        expect(criterionIds.has(id), `${topic.id} maps to unknown criterion ${id}`).toBe(true);
+      }
+    }
+  });
+
+  it('keeps the pack id stable so stored cases still resolve', () => {
+    // The user-facing name changes; the id a `CasePackPin` records does not.
+    expect(CAR_PURCHASE_MANIFEST.identity.id).toBe('car-purchase');
+  });
+
+  it('uses vehicle-selection language rather than household-only language', () => {
+    expect(CAR_PURCHASE_MANIFEST.identity.name).toBe('Vehicle Selection');
+    expect(CAR_PURCHASE_MANIFEST.identity.description).toMatch(/vehicle/i);
+    expect(CAR_PURCHASE_MANIFEST.identity.description).not.toMatch(/^Compares shortlisted/);
+  });
+
+  it('compiles with the discovery declaration attached', () => {
+    const clock: Clock = { now: () => '2026-09-02T00:00:00.000Z' };
+    const compiled = compileCarPurchasePack(carPurchaseCatalog(), clock);
+    expect(compiled.discovery?.topics.length).toBe(discovery?.topics.length);
   });
 });
