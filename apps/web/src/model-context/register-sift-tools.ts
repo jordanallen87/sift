@@ -108,7 +108,7 @@
  * always unregisters the previous case's tool generation before anything
  * new is registered under the same stable names.
  */
-import type { z } from 'zod';
+import { z } from 'zod';
 import {
   AddNoteInputSchema,
   DefineCaseAttributeInputSchema,
@@ -150,6 +150,11 @@ import {
   type UpdateCriteriaInput,
   type UpsertOptionInput,
   type WorkspaceViewState,
+  RequestInteractionInputSchema,
+  HUMAN_ONLY_MOVE_KINDS,
+  IMPORTANCE_TIERS,
+  type RequestInteractionInput,
+  type NextMove,
 } from '@sift/contracts';
 import type { CommandCallOptions, SiftCommands } from '../api/sift-client.js';
 import type { CatalogClientOptions } from '../api/catalog-client.js';
@@ -178,6 +183,7 @@ import {
   type CatalogSearchOutput,
 } from './catalog-search-adapter.js';
 import { buildRankingExplanation, type RankingExplanation } from './ranking-context.js';
+import { deriveDiscoveryReadiness, deriveNextMoves } from '@sift/core';
 import {
   ConfigureComparisonInputSchema,
   ExplainRankingInputSchema,
@@ -208,7 +214,11 @@ import {
   type ToolEnvelopeUi,
 } from './tool-support.js';
 
-export const GLOBAL_SIFT_TOOL_NAMES = ['sift_get_case_context', 'sift_list_packs'] as const;
+export const GLOBAL_SIFT_TOOL_NAMES = [
+  'sift_get_case_context',
+  'sift_list_packs',
+  'sift_get_interaction_context',
+] as const;
 
 export const CASE_SCOPED_SIFT_TOOL_NAMES = [
   'sift_select_pack',
@@ -232,6 +242,8 @@ export const CASE_SCOPED_SIFT_TOOL_NAMES = [
   'sift_list_notes',
   'sift_add_note',
   'sift_explain_ranking',
+  'sift_request_interaction',
+  'sift_record_discovery',
 ] as const;
 
 export const SIFT_WEBMCP_TOOL_NAMES = [
@@ -1061,7 +1073,247 @@ function buildCaseScopedTools(
     buildListNotesTool(getActiveCase, activeCaseId),
     buildAddNoteTool(commands, activeCaseId),
     buildExplainRankingTool(getActiveCase, activeCaseId),
+    buildRequestInteractionTool(commands, activeCaseId),
+    buildRecordDiscoveryTool(commands, activeCaseId),
   ];
+}
+
+// --- Adaptive discovery tools (canonical plan Task 4) ---
+//
+// Three tools, plus one deliberate absence. There is no tool for Quick Pick,
+// none for the blind-spot review, and none for confirming a shortlist --
+// those are the person's judgments, and `register-sift-tools-discovery.test
+// .ts` walks the whole registered catalog to keep that true as it grows.
+
+/** What a model needs to conduct the next turn, and nothing more. Deliberately not the whole pack. */
+interface InteractionContextSummary {
+  readonly mode: string;
+  readonly useCase: string;
+  readonly coverage: {
+    readonly requiredTotal: number;
+    readonly requiredResolved: number;
+    readonly softTotal: number;
+    readonly softResolved: number;
+    readonly blindSpotReviewComplete: boolean;
+  };
+  readonly nextTopic: {
+    readonly topicId: string;
+    readonly label: string;
+    readonly question: string;
+    readonly necessity: string;
+    readonly allowedInteractions: readonly string[];
+    readonly optionSeeds: readonly { id: string; label: string; valueSummary: string }[];
+    readonly escapeHatches: {
+      allowCustom: boolean;
+      allowNone: boolean;
+      allowUnsure: boolean;
+      allowDefer: boolean;
+    };
+  } | null;
+  readonly pendingConfirmations: readonly {
+    readonly topicId: string;
+    readonly label: string;
+    readonly valueSummary: string | undefined;
+  }[];
+  readonly answeredTopics: readonly {
+    readonly topicId: string;
+    readonly label: string;
+    readonly status: string;
+    readonly valueSummary: string | undefined;
+  }[];
+  readonly blindSpotPromptIds: readonly string[];
+  readonly nextMoves: readonly NextMove[];
+  readonly readyToDiscover: boolean;
+  readonly provisional: boolean;
+  readonly blockers: readonly string[];
+  /** Named explicitly so a model does not have to infer them from the absence of a tool. */
+  readonly humanOnlyActions: readonly string[];
+  readonly pendingInteractionId: string | null;
+}
+
+function buildGetInteractionContextTool(
+  getActiveCase: () => CaseState | null,
+  listPacks: () => CompiledDecisionPack[] | Promise<CompiledDecisionPack[]>,
+): WebMcpToolDefinition {
+  return {
+    name: 'sift_get_interaction_context',
+    description:
+      "Returns what Sift already knows about this decision and what it still needs: the discovery coverage, the single highest-value question to ask next with the exact interaction kinds and option seeds the pack allows for it, any inference waiting on the person's confirmation, the topics already answered, the bounded next moves, and the actions that are human-only and must never be attempted by a tool. Call this before asking the person anything, so you ask the one question that matters and never re-ask something already answered. It never mutates anything.",
+    inputSchema: toToolInputSchema(GetCaseContextInputSchema),
+    execute: async (rawInput: unknown, context?: WebMcpToolCallContext) => {
+      const parsed = GetCaseContextInputSchema.safeParse(rawInput);
+      if (!parsed.success) return validationFailureEnvelope();
+      try {
+        return await runAbortable(async () => {
+          const caseState = getActiveCase();
+          if (caseState === null) {
+            const envelope: ToolEnvelope<InteractionContextSummary | null> = {
+              ok: true,
+              message: 'No case is currently active.',
+              data: null,
+              ui: { changed: false },
+            };
+            return envelope;
+          }
+
+          const packs = await listPacks();
+          const pack = packs.find((candidate) => candidate.identity.id === caseState.pack.id);
+          if (pack === undefined) {
+            const envelope: ToolEnvelope<InteractionContextSummary | null> = {
+              ok: true,
+              message: `The pinned pack "${caseState.pack.id}" is not installed here.`,
+              data: null,
+              ui: { changed: false },
+            };
+            return envelope;
+          }
+
+          const readiness = deriveDiscoveryReadiness(caseState, pack);
+          const templates = new Map(
+            (pack.discovery?.topics ?? []).map((topic) => [topic.id, topic]),
+          );
+          const nextTemplate =
+            readiness.nextTopicId === null ? undefined : templates.get(readiness.nextTopicId);
+
+          const summary: InteractionContextSummary = {
+            mode: readiness.mode,
+            useCase: caseState.discovery?.useCase ?? 'unstated',
+            coverage: readiness.coverage,
+            nextTopic:
+              nextTemplate === undefined
+                ? null
+                : {
+                    topicId: nextTemplate.id,
+                    label: nextTemplate.label,
+                    question: nextTemplate.question,
+                    necessity: nextTemplate.necessity,
+                    allowedInteractions: nextTemplate.allowedInteractions,
+                    optionSeeds: nextTemplate.optionSeeds.map((seed) => ({
+                      id: seed.id,
+                      label: seed.label,
+                      valueSummary: seed.valueSummary,
+                    })),
+                    escapeHatches: nextTemplate.escapeHatches,
+                  },
+            pendingConfirmations: readiness.topics
+              .filter((topic) => topic.status === 'inferred_pending')
+              .map((topic) => ({
+                topicId: topic.topicId,
+                label: topic.label,
+                valueSummary: topic.valueSummary,
+              })),
+            answeredTopics: readiness.topics
+              .filter((topic) => topic.status !== 'unknown')
+              .map((topic) => ({
+                topicId: topic.topicId,
+                label: topic.label,
+                status: topic.status,
+                valueSummary: topic.valueSummary,
+              })),
+            blindSpotPromptIds: readiness.applicableBlindSpotIds,
+            nextMoves: deriveNextMoves(caseState, pack),
+            readyToDiscover: readiness.readyToDiscover,
+            provisional: readiness.provisional,
+            blockers: readiness.blockers,
+            humanOnlyActions: [...HUMAN_ONLY_MOVE_KINDS],
+            pendingInteractionId: caseState.discovery?.pendingInteraction?.id ?? null,
+          };
+
+          const envelope: ToolEnvelope<InteractionContextSummary> = {
+            ok: true,
+            message: 'Interaction context returned.',
+            data: summary,
+            caseId: caseState.id,
+            sequence: caseState.eventSequence,
+            ui: { changed: false },
+          };
+          return envelope;
+        }, context?.signal);
+      } catch (error) {
+        return mapErrorToEnvelope(error);
+      }
+    },
+  };
+}
+
+function buildRequestInteractionTool(
+  commands: SiftCommands,
+  activeCaseId: string,
+): WebMcpToolDefinition {
+  return buildCaseScopedCommandTool<RequestInteractionInput, CommandReceipt>({
+    name: 'sift_request_interaction',
+    description:
+      "Asks Sift to render one bounded question in the shared pane. Choose a `kind` the pack allows for the topic (see sift_get_interaction_context), supply the option list yourself from the pack's seeds narrowed to what this person has already told you, and set the escape hatches. Sift renders it -- you never supply markup, and there is no way to preselect an answer, because a suggestion the person did not choose must never be recorded as their answer. The person's response arrives back through sift_get_case_context on your next turn.",
+    inputSchema: RequestInteractionInputSchema,
+    activeCaseId,
+    call: (input, options) => commands.requestInteraction(input, options),
+    successMessage: () => 'Question rendered in the pane.',
+    ui: () => ({ changed: true }),
+  });
+}
+
+/**
+ * The model's write surface for discovery, and the narrowest one in the
+ * catalog.
+ *
+ * Its input schema has no `actor` field and no `op` field. A model cannot
+ * ask to confirm a topic, because there is nowhere in the request to put the
+ * request -- `actor: 'agent'` and `op: 'propose'` are supplied here, by
+ * Sift, on every call. That is the same guarantee `NextMove` makes for
+ * human-only moves, one layer down: the capability is absent rather than
+ * guarded.
+ */
+export const RecordDiscoveryToolInputSchema = z
+  .object({
+    caseId: z.string().min(1),
+    expectedSequence: z.number().int().min(0),
+    operations: z
+      .array(
+        z
+          .object({
+            topicId: z.string().min(1),
+            valueSummary: z.string().min(1).max(1000),
+            confidence: z.number().min(0).max(1),
+            importance: z.enum(IMPORTANCE_TIERS).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(10),
+  })
+  .strict();
+type RecordDiscoveryToolInput = z.infer<typeof RecordDiscoveryToolInputSchema>;
+
+function buildRecordDiscoveryTool(
+  commands: SiftCommands,
+  activeCaseId: string,
+): WebMcpToolDefinition {
+  return buildCaseScopedCommandTool<RecordDiscoveryToolInput, CommandReceipt>({
+    name: 'sift_record_discovery',
+    description:
+      'Records what you heard the person say, as a PROPOSAL for them to confirm. One natural answer often resolves several topics at once -- record every one of them in a single call so you never ask again about something you have already been told. Everything you record here is held as an unconfirmed inference until the person accepts it: you cannot confirm a topic, and you cannot make anything a hard requirement. If the person stated something directly, still record it here; Sift will ask them to confirm it, which is what stops a misheard requirement from quietly removing options.',
+    inputSchema: RecordDiscoveryToolInputSchema,
+    activeCaseId,
+    call: (input, options) =>
+      commands.updateDiscovery(
+        {
+          caseId: input.caseId,
+          expectedSequence: input.expectedSequence,
+          actor: 'agent',
+          operations: input.operations.map((operation) => ({
+            op: 'propose' as const,
+            topicId: operation.topicId,
+            valueSummary: operation.valueSummary,
+            confidence: operation.confidence,
+            ...(operation.importance === undefined ? {} : { importance: operation.importance }),
+          })),
+        },
+        options,
+      ),
+    successMessage: (input) =>
+      `Recorded ${String(input.operations.length)} proposed topic value(s) for confirmation.`,
+    ui: () => ({ changed: true }),
+  });
 }
 
 // --- The two global read-only tools ---
@@ -1208,6 +1460,9 @@ export async function registerSiftTools(
     signal: globalController.signal,
   });
   await adapter.registerTool(buildListPacksTool(listPacks), { signal: globalController.signal });
+  await adapter.registerTool(buildGetInteractionContextTool(getActiveCase, listPacks), {
+    signal: globalController.signal,
+  });
 
   function disposeCaseTools(): void {
     caseController?.abort();

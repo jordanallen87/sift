@@ -48,6 +48,11 @@
  */
 import {
   AddNoteInputSchema,
+  UpdateDiscoveryInputSchema,
+  RequestInteractionInputSchema,
+  SubmitInteractionResponseInputSchema,
+  SetCandidateDispositionInputSchema,
+  CompleteBlindSpotReviewInputSchema,
   CommandReceiptSchema,
   DefineCaseAttributeInputSchema,
   FocusEvidenceInputSchema,
@@ -69,6 +74,11 @@ import {
   UpdateCriteriaInputSchema,
   UpsertOptionInputSchema,
   type AddNoteInput,
+  type UpdateDiscoveryInput,
+  type RequestInteractionInput,
+  type SubmitInteractionResponseInput,
+  type SetCandidateDispositionInput,
+  type CompleteBlindSpotReviewInput,
   type CaseState,
   type CommandOrigin,
   type CommandReceipt,
@@ -212,6 +222,33 @@ export interface SiftCommands {
    * Enforced by the command handler, not by this client.
    */
   addNote: (input: AddNoteInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
+  /**
+   * Adaptive discovery. `updateDiscovery` carries an explicit `actor`, and
+   * the schema refuses everything but `propose` when that actor is an agent
+   * -- a model offers a reading of what was said; a person decides.
+   */
+  updateDiscovery: (
+    input: UpdateDiscoveryInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  requestInteraction: (
+    input: RequestInteractionInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  submitInteractionResponse: (
+    input: SubmitInteractionResponseInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  /** Quick Pick triage. Human-only: the schema refuses any other actor. */
+  setCandidateDisposition: (
+    input: SetCandidateDispositionInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
+  /** Human-only, for the same reason: nobody else can say what a person did not think of. */
+  completeBlindSpotReview: (
+    input: CompleteBlindSpotReviewInput,
+    options?: CommandCallOptions,
+  ) => Promise<CommandReceipt>;
 }
 
 export interface SiftClientErrorOptions {
@@ -525,6 +562,31 @@ export function createSiftClient(options: CreateSiftClientOptions = {}): SiftCom
     requestRevision: genericCommand<RequestRevisionInput, CommandReceipt>(
       'requestRevision',
       RequestRevisionInputSchema,
+      CommandReceiptSchema,
+    ),
+    updateDiscovery: genericCommand<UpdateDiscoveryInput, CommandReceipt>(
+      'updateDiscovery',
+      UpdateDiscoveryInputSchema,
+      CommandReceiptSchema,
+    ),
+    requestInteraction: genericCommand<RequestInteractionInput, CommandReceipt>(
+      'requestInteraction',
+      RequestInteractionInputSchema,
+      CommandReceiptSchema,
+    ),
+    submitInteractionResponse: genericCommand<SubmitInteractionResponseInput, CommandReceipt>(
+      'submitInteractionResponse',
+      SubmitInteractionResponseInputSchema,
+      CommandReceiptSchema,
+    ),
+    setCandidateDisposition: genericCommand<SetCandidateDispositionInput, CommandReceipt>(
+      'setCandidateDisposition',
+      SetCandidateDispositionInputSchema,
+      CommandReceiptSchema,
+    ),
+    completeBlindSpotReview: genericCommand<CompleteBlindSpotReviewInput, CommandReceipt>(
+      'completeBlindSpotReview',
+      CompleteBlindSpotReviewInputSchema,
       CommandReceiptSchema,
     ),
   };

@@ -86,9 +86,9 @@ describe('registerSiftTools: registration lifecycle', () => {
     expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_SIFT_TOOL_NAMES].sort());
   });
 
-  it('registers the twenty-one case-scoped tools once an active case is set', async () => {
+  it('registers the twenty-three case-scoped tools once an active case is set', async () => {
     const { adapter } = await setUpWithActiveCase('case-1');
-    expect(adapter.registeredToolNames).toHaveLength(23);
+    expect(adapter.registeredToolNames).toHaveLength(26);
     expect(adapter.registeredToolNames).toContain('sift_select_pack');
     expect(adapter.registeredToolNames).toContain('sift_request_revision');
     expect(adapter.registeredToolNames).toContain('sift_get_option_details');
@@ -102,6 +102,8 @@ describe('registerSiftTools: registration lifecycle', () => {
     expect(adapter.registeredToolNames).toContain('sift_list_notes');
     expect(adapter.registeredToolNames).toContain('sift_add_note');
     expect(adapter.registeredToolNames).toContain('sift_explain_ranking');
+    expect(adapter.registeredToolNames).toContain('sift_request_interaction');
+    expect(adapter.registeredToolNames).toContain('sift_record_discovery');
   });
 
   it('aborts the previous case-scoped generation when the active case changes', async () => {
@@ -134,7 +136,7 @@ describe('registerSiftTools: registration lifecycle', () => {
     expect(result.error?.code).toBe('NOT_FOUND');
   });
 
-  it('setActiveCase(null) unregisters the case-scoped tools, leaving only the two global tools', async () => {
+  it('setActiveCase(null) unregisters the case-scoped tools, leaving only the three global tools', async () => {
     const adapter = new InMemoryModelContextAdapter();
     const commands = createFakeSiftCommands();
     const handle = await registerSiftTools({
@@ -145,7 +147,7 @@ describe('registerSiftTools: registration lifecycle', () => {
     });
 
     await handle.setActiveCase('case-1');
-    expect(adapter.registeredToolNames).toHaveLength(23);
+    expect(adapter.registeredToolNames).toHaveLength(26);
 
     await handle.setActiveCase(null);
     expect([...adapter.registeredToolNames].sort()).toEqual([...GLOBAL_SIFT_TOOL_NAMES].sort());
@@ -1002,7 +1004,7 @@ describe('callback-vs-envelope equivalence', () => {
 });
 
 describe('no tool can approve or reject a decision proposal', () => {
-  it('never calls commands.reviewProposal from any of the twenty-three registered tools', async () => {
+  it('never calls commands.reviewProposal from any of the twenty-six registered tools', async () => {
     const reviewProposal = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
     const { adapter, commands } = await setUpWithActiveCase('case-1', { reviewProposal });
 

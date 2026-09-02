@@ -155,6 +155,100 @@ export function syntheticCarPurchaseManifest(
       attributeGroups: [{ id: 'basics', label: 'Basics', attributeIds: ['car.price'] }],
     },
     evaluation: { scenarioIds: ['car-success', 'car-negative'], requiresNegativeCase: true },
+    // A minimal but genuinely branching discovery process, so agent-side
+    // discovery tests exercise conditional topics, required-vs-soft
+    // necessity, and blind-spot applicability without depending on the real
+    // Vehicle Selection pack (which would couple every agent test to that
+    // pack's evolving question set).
+    discovery: {
+      topics: [
+        {
+          id: 'car.use_case',
+          label: 'What it is for',
+          question: 'What will this vehicle mainly be used for?',
+          necessity: 'required',
+          priority: 100,
+          allowedInteractions: ['single_select'],
+          optionSeeds: [
+            { id: 'seed.family', label: 'Family', valueSummary: 'family' },
+            { id: 'seed.business', label: 'Business', valueSummary: 'business' },
+          ],
+          escapeHatches: {
+            allowCustom: true,
+            allowNone: false,
+            allowUnsure: false,
+            allowDefer: false,
+          },
+          mapsToAttributeIds: [],
+          mapsToCriterionIds: [],
+          confirmationRequired: true,
+        },
+        {
+          id: 'car.budget',
+          label: 'Budget',
+          question: 'What is your budget?',
+          necessity: 'required',
+          priority: 90,
+          allowedInteractions: ['range', 'free_text'],
+          optionSeeds: [],
+          escapeHatches: {
+            allowCustom: true,
+            allowNone: false,
+            allowUnsure: true,
+            allowDefer: false,
+          },
+          mapsToAttributeIds: ['car.price'],
+          mapsToCriterionIds: [],
+          confirmationRequired: true,
+        },
+        {
+          id: 'car.payload',
+          label: 'Payload',
+          question: 'What does it have to carry?',
+          necessity: 'required',
+          priority: 80,
+          appliesWhen: { topicId: 'car.use_case', equalsAnyOf: ['business'] },
+          allowedInteractions: ['free_text'],
+          optionSeeds: [],
+          escapeHatches: {
+            allowCustom: true,
+            allowNone: false,
+            allowUnsure: true,
+            allowDefer: false,
+          },
+          mapsToAttributeIds: [],
+          mapsToCriterionIds: [],
+          confirmationRequired: true,
+        },
+        {
+          id: 'car.colour',
+          label: 'Colour',
+          question: 'Any colour preference?',
+          necessity: 'soft',
+          priority: 10,
+          allowedInteractions: ['free_text'],
+          optionSeeds: [],
+          escapeHatches: {
+            allowCustom: true,
+            allowNone: true,
+            allowUnsure: true,
+            allowDefer: true,
+          },
+          mapsToAttributeIds: [],
+          mapsToCriterionIds: [],
+          confirmationRequired: false,
+        },
+      ],
+      blindSpots: [
+        { id: 'blindspot.parking', label: 'Where it parks', detail: 'Garage or street size.' },
+        {
+          id: 'blindspot.worksite',
+          label: 'Worksite access',
+          detail: 'Narrow gates or soft ground.',
+          appliesWhen: { topicId: 'car.use_case', equalsAnyOf: ['business'] },
+        },
+      ],
+    },
     ...overrides,
   };
 }

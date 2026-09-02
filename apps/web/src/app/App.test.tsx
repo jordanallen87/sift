@@ -3650,12 +3650,17 @@ describe('App', () => {
       await waitFor(() => expect(adapter.pendingReleases.length).toBeGreaterThan(0));
 
       unmount();
-      // `registerSiftTools` awaits its two `registerTool` calls sequentially
-      // (`sift_get_case_context` then `sift_list_packs`), so the second one
-      // only becomes pending once the first is released.
-      adapter.pendingReleases[0]?.();
-      await waitFor(() => expect(adapter.pendingReleases.length).toBeGreaterThan(1));
-      adapter.pendingReleases[1]?.();
+      // `registerSiftTools` awaits its global `registerTool` calls
+      // sequentially, so each one only becomes pending once the previous is
+      // released. Drain them rather than releasing a hard-coded count: the
+      // subject here is that disposal unregisters everything that got
+      // registered, which must stay true as the global surface grows.
+      let released = 0;
+      while (released < adapter.pendingReleases.length) {
+        adapter.pendingReleases[released]?.();
+        released += 1;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       // The `.then()` callback's own `disposed` check called

@@ -3758,4 +3758,423 @@ describe('CommandService', () => {
       expect(result.status).toBe('not_found');
     });
   });
+
+  describe('adaptive discovery commands', () => {
+    function ready(): CaseState {
+      return startDemo();
+    }
+
+    describe('updateDiscovery', () => {
+      it('confirms a topic a person stated', () => {
+        const snapshot = ready();
+        const result = service.updateDiscovery('cmd-d1', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          operations: [{ op: 'confirm', topicId: 'car.use_case', valueSummary: 'family' }],
+        });
+        requireOk(result);
+
+        const updated = requireSnapshot(result.value);
+        const topic = updated.discovery?.topics.find((t) => t.topicId === 'car.use_case');
+        expect(topic?.status).toBe('confirmed');
+        expect(topic?.humanConfirmed).toBe(true);
+        expect(topic?.origin).toBe('user');
+      });
+
+      it('parks an agent proposal as an inference rather than a fact', () => {
+        const snapshot = ready();
+        const result = service.updateDiscovery('cmd-d2', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'agent',
+          operations: [
+            {
+              op: 'propose',
+              topicId: 'car.budget',
+              valueSummary: 'Sounds like about 40,000',
+              confidence: 0.6,
+            },
+          ],
+        });
+        requireOk(result);
+
+        const topic = requireSnapshot(result.value).discovery?.topics.find(
+          (t) => t.topicId === 'car.budget',
+        );
+        expect(topic?.status).toBe('inferred_pending');
+        expect(topic?.humanConfirmed).toBe(false);
+      });
+
+      it('refuses an agent trying to confirm', () => {
+        const snapshot = ready();
+        const result = service.updateDiscovery('cmd-d3', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'agent',
+          operations: [{ op: 'confirm', topicId: 'car.budget', valueSummary: '40,000' }],
+        });
+
+        expect(result.status).toBe('validation');
+      });
+
+      it('refuses a topic the pinned pack does not declare', () => {
+        const snapshot = ready();
+        const result = service.updateDiscovery('cmd-d4', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          operations: [{ op: 'confirm', topicId: 'car.invented', valueSummary: 'x' }],
+        });
+
+        expect(result.status).toBe('validation');
+      });
+
+      it('refuses a topic that does not apply to this case', () => {
+        // `car.payload` is business-only, and this case has not said it is a
+        // business, so nobody was ever shown that question.
+        const snapshot = ready();
+        const confirmed = service.updateDiscovery('cmd-d5', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          operations: [{ op: 'confirm', topicId: 'car.use_case', valueSummary: 'family' }],
+        });
+        requireOk(confirmed);
+
+        const result = service.updateDiscovery('cmd-d6', {
+          caseId: snapshot.id,
+          expectedSequence: requireSnapshot(confirmed.value).eventSequence,
+          actor: 'human',
+          operations: [{ op: 'confirm', topicId: 'car.payload', valueSummary: 'Two tonnes' }],
+        });
+
+        expect(result.status).toBe('validation');
+      });
+
+      it('brings a conditional topic into scope once the case says it is a business', () => {
+        const snapshot = ready();
+        const confirmed = service.updateDiscovery('cmd-d7', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          operations: [{ op: 'confirm', topicId: 'car.use_case', valueSummary: 'business' }],
+        });
+        requireOk(confirmed);
+
+        const result = service.updateDiscovery('cmd-d8', {
+          caseId: snapshot.id,
+          expectedSequence: requireSnapshot(confirmed.value).eventSequence,
+          actor: 'human',
+          operations: [{ op: 'confirm', topicId: 'car.payload', valueSummary: 'Two tonnes' }],
+        });
+
+        requireOk(result);
+      });
+
+      it('marks a topic not applicable with the reason the person gave', () => {
+        const snapshot = ready();
+        const result = service.updateDiscovery('cmd-d9', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          operations: [
+            { op: 'not_applicable', topicId: 'car.budget', reason: 'Company is paying' },
+          ],
+        });
+        requireOk(result);
+
+        const topic = requireSnapshot(result.value).discovery?.topics.find(
+          (t) => t.topicId === 'car.budget',
+        );
+        expect(topic?.status).toBe('not_applicable');
+      });
+
+      it('rejects a defer of a required topic in companion mode', () => {
+        const snapshot = ready();
+        const result = service.updateDiscovery('cmd-d10', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          operations: [{ op: 'defer', topicId: 'car.budget' }],
+        });
+
+        expect(result.status).toBe('validation');
+      });
+
+      it('allows deferring a soft topic', () => {
+        const snapshot = ready();
+        const result = service.updateDiscovery('cmd-d11', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          operations: [{ op: 'defer', topicId: 'car.colour' }],
+        });
+        requireOk(result);
+
+        const topic = requireSnapshot(result.value).discovery?.topics.find(
+          (t) => t.topicId === 'car.colour',
+        );
+        expect(topic?.status).toBe('deferred');
+      });
+
+      it('rejects an agent overwriting a human-confirmed value', () => {
+        const snapshot = ready();
+        const confirmed = service.updateDiscovery('cmd-d12', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          operations: [{ op: 'confirm', topicId: 'car.budget', valueSummary: 'Ceiling 40,000' }],
+        });
+        requireOk(confirmed);
+
+        const result = service.updateDiscovery('cmd-d13', {
+          caseId: snapshot.id,
+          expectedSequence: requireSnapshot(confirmed.value).eventSequence,
+          actor: 'agent',
+          operations: [
+            {
+              op: 'propose',
+              topicId: 'car.budget',
+              valueSummary: 'Maybe 45,000',
+              confidence: 0.5,
+            },
+          ],
+        });
+
+        expect(result.status).toBe('validation');
+      });
+
+      it('emits one topic event per operation', () => {
+        const snapshot = ready();
+        const result = service.updateDiscovery('cmd-d14', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          operations: [
+            { op: 'confirm', topicId: 'car.use_case', valueSummary: 'family' },
+            { op: 'confirm', topicId: 'car.budget', valueSummary: 'Ceiling 40,000' },
+          ],
+        });
+        requireOk(result);
+
+        const updated = requireSnapshot(result.value);
+        expect(updated.eventSequence).toBe(snapshot.eventSequence + 2);
+      });
+    });
+
+    describe('setCandidateDisposition', () => {
+      function withCandidate(): CaseState {
+        const snapshot = startDemo();
+        const result = service.upsertOption('cmd-c1', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          option: { label: 'Honda CR-V', kind: 'car', attributes: [] },
+        });
+        requireOk(result);
+        return requireSnapshot(result.value);
+      }
+
+      it('records a Keep with what it replaced', () => {
+        const snapshot = withCandidate();
+        const entityId = snapshot.entities[0]?.id;
+        if (entityId === undefined) throw new Error('expected candidate');
+
+        const result = service.setCandidateDisposition('cmd-c2', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          entityId,
+          disposition: 'keep',
+        });
+        requireOk(result);
+
+        const record = requireSnapshot(result.value).discovery?.dispositions[0];
+        expect(record?.disposition).toBe('keep');
+        expect(record?.previousDisposition).toBe('unreviewed');
+      });
+
+      it('undoes back to unreviewed while keeping what it replaced', () => {
+        const snapshot = withCandidate();
+        const entityId = snapshot.entities[0]?.id;
+        if (entityId === undefined) throw new Error('expected candidate');
+
+        const kept = service.setCandidateDisposition('cmd-c3', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          entityId,
+          disposition: 'pass',
+        });
+        requireOk(kept);
+
+        const undone = service.setCandidateDisposition('cmd-c4', {
+          caseId: snapshot.id,
+          expectedSequence: requireSnapshot(kept.value).eventSequence,
+          actor: 'human',
+          entityId,
+          disposition: 'unreviewed',
+        });
+        requireOk(undone);
+
+        const record = requireSnapshot(undone.value).discovery?.dispositions[0];
+        expect(record?.disposition).toBe('unreviewed');
+        expect(record?.previousDisposition).toBe('pass');
+      });
+
+      it('refuses an agent disposition', () => {
+        const snapshot = withCandidate();
+        const entityId = snapshot.entities[0]?.id;
+        if (entityId === undefined) throw new Error('expected candidate');
+
+        const result = service.setCandidateDisposition('cmd-c5', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'agent',
+          entityId,
+          disposition: 'pass',
+        });
+
+        expect(result.status).toBe('validation');
+      });
+
+      it('refuses a disposition on a candidate that does not exist', () => {
+        const snapshot = withCandidate();
+        const result = service.setCandidateDisposition('cmd-c6', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          entityId: 'candidate-does-not-exist',
+          disposition: 'keep',
+        });
+
+        expect(result.status).toBe('validation');
+      });
+    });
+
+    describe('completeBlindSpotReview', () => {
+      it('records the review a person answered', () => {
+        const snapshot = startDemo();
+        const result = service.completeBlindSpotReview('cmd-b1', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          offeredPromptIds: ['blindspot.parking'],
+          selectedPromptIds: ['blindspot.parking'],
+        });
+        requireOk(result);
+
+        const review = requireSnapshot(result.value).discovery?.blindSpotReview;
+        expect(review?.status).toBe('complete');
+        expect(review?.acknowledgedAt).toBeDefined();
+      });
+
+      it('accepts "none of these"', () => {
+        const snapshot = startDemo();
+        const result = service.completeBlindSpotReview('cmd-b2', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          offeredPromptIds: ['blindspot.parking'],
+          selectedPromptIds: [],
+        });
+        requireOk(result);
+        expect(requireSnapshot(result.value).discovery?.blindSpotReview.status).toBe('complete');
+      });
+
+      it('refuses a prompt the pack never declares', () => {
+        const snapshot = startDemo();
+        const result = service.completeBlindSpotReview('cmd-b3', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          actor: 'human',
+          offeredPromptIds: ['blindspot.invented'],
+          selectedPromptIds: [],
+        });
+
+        expect(result.status).toBe('validation');
+      });
+    });
+
+    describe('requestInteraction and submitInteractionResponse', () => {
+      const interaction = {
+        id: 'interaction-1',
+        topicIds: ['car.budget'],
+        kind: 'free_text' as const,
+        prompt: 'What is your budget?',
+        options: [],
+        escapeHatches: {
+          allowCustom: true,
+          allowNone: false,
+          allowUnsure: true,
+          allowDefer: false,
+        },
+        requestedBy: 'model' as const,
+        createdAt: '2026-08-27T00:00:00.000Z',
+      };
+
+      it('puts an interaction on screen and reads it back', () => {
+        const snapshot = startDemo();
+        const result = service.requestInteraction('cmd-i1', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          interaction,
+        });
+        requireOk(result);
+
+        expect(requireSnapshot(result.value).discovery?.pendingInteraction?.id).toBe(
+          'interaction-1',
+        );
+      });
+
+      it('refuses an interaction about a topic the pack does not declare', () => {
+        const snapshot = startDemo();
+        const result = service.requestInteraction('cmd-i2', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          interaction: { ...interaction, topicIds: ['car.invented'] },
+        });
+
+        expect(result.status).toBe('validation');
+      });
+
+      it('applies a human response`s mappings and clears the interaction', () => {
+        const snapshot = startDemo();
+        const requested = service.requestInteraction('cmd-i3', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence,
+          interaction,
+        });
+        requireOk(requested);
+
+        const answered = service.submitInteractionResponse('cmd-i4', {
+          caseId: snapshot.id,
+          expectedSequence: requireSnapshot(requested.value).eventSequence,
+          response: {
+            interactionId: 'interaction-1',
+            respondedBy: 'human',
+            selectedOptionIds: [],
+            customText: 'Ceiling of 40,000',
+            mappings: [
+              {
+                topicId: 'car.budget',
+                valueSummary: 'Hard ceiling of 40,000',
+                origin: 'user',
+                confidence: 1,
+                requiresConfirmation: false,
+              },
+            ],
+            respondedAt: '2026-08-27T00:00:00.000Z',
+          },
+        });
+        requireOk(answered);
+
+        const updated = requireSnapshot(answered.value);
+        expect(updated.discovery?.pendingInteraction).toBeNull();
+        expect(updated.discovery?.topics.find((t) => t.topicId === 'car.budget')?.status).toBe(
+          'confirmed',
+        );
+      });
+    });
+  });
 });

@@ -74,11 +74,16 @@ import {
   SubmitSourceInputSchema,
   UpdateCriteriaInputSchema,
   UpsertOptionInputSchema,
+  RequestInteractionInputSchema,
 } from '@sift/contracts';
 import { z } from 'zod';
 import { BrowserModelContextAdapter, InMemoryModelContextAdapter } from './adapter.js';
 import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-sift-commands.js';
-import { SIFT_WEBMCP_TOOL_NAMES, registerSiftTools } from './register-sift-tools.js';
+import {
+  RecordDiscoveryToolInputSchema,
+  SIFT_WEBMCP_TOOL_NAMES,
+  registerSiftTools,
+} from './register-sift-tools.js';
 import {
   ConfigureComparisonInputSchema,
   ExplainRankingInputSchema,
@@ -237,6 +242,24 @@ const CATALOG: CatalogFixture[] = [
       "Returns Sift's own ranking of this case's options with the reasoning attached: each option's rank, overall score, coverage, and per-criterion breakdown -- every line carrying the plain-English reason Sift recorded for it -- plus any hard constraint an option violates, any criterion whose sources contradict each other, the criteria that separate nothing, and the insights Sift derived (which option leads and by how much, whether the top two are a genuine toss-up, which single criterion is what puts the leader ahead, and whether that lead rests on contested evidence). Call this whenever the user asks why an option ranks where it does, which one is best, what would change the order, or how two options really differ, and before offering any comparative judgment of your own. This ranking is computed deterministically by Sift from the case's weighted criteria, by the same shared scoring function that validates its recommendations; no model produces it. Quote these numbers, do not re-derive them from raw attribute values, never contradict them, and never present a ranking of your own as Sift's. Four things you must read correctly. An unknown is not a zero: a criterion Sift could not measure for an option lowers that option's coverage and is left out of its score entirely rather than counted against it, so low coverage means under-researched and never bad -- calling such an option weak asserts a measurement nobody made. A disputed measurement is not a settled one: a line whose status is 'disputed' did score, but from a value whose sources contradict each other, and it is listed in that option's disputedCriterionIds -- coverage answers how much was measured and never how much is settled, so report such a line with the disagreement attached rather than as established fact, and when the disputed_evidence insight is present the leader's lead actually depends on a contested value and you must say so before calling the ranking settled. A violated hard constraint is a flag, not an elimination: the option stays ranked and stays visible, and whether a requirement is genuinely non-negotiable is the user's decision, never yours. A non-empty warnings list means a number here is less trustworthy than it looks (mixed currencies, a rating scale with no declared order), so pass the warning on rather than the number. The payload is bounded: every list reports its true total, and each breakdown reports shownWeight and omittedWeight, the share of the decision its listed lines actually account for, so say so when a breakdown explains only part of the ranking. Pass optionId for one option's fuller breakdown. Read-only: it changes nothing, including which option the page highlights -- call sift_focus_option for that.",
     sourceSchema: ExplainRankingInputSchema,
   },
+  {
+    name: 'sift_get_interaction_context',
+    description:
+      "Returns what Sift already knows about this decision and what it still needs: the discovery coverage, the single highest-value question to ask next with the exact interaction kinds and option seeds the pack allows for it, any inference waiting on the person's confirmation, the topics already answered, the bounded next moves, and the actions that are human-only and must never be attempted by a tool. Call this before asking the person anything, so you ask the one question that matters and never re-ask something already answered. It never mutates anything.",
+    sourceSchema: GetCaseContextInputSchema,
+  },
+  {
+    name: 'sift_request_interaction',
+    description:
+      "Asks Sift to render one bounded question in the shared pane. Choose a `kind` the pack allows for the topic (see sift_get_interaction_context), supply the option list yourself from the pack's seeds narrowed to what this person has already told you, and set the escape hatches. Sift renders it -- you never supply markup, and there is no way to preselect an answer, because a suggestion the person did not choose must never be recorded as their answer. The person's response arrives back through sift_get_case_context on your next turn.",
+    sourceSchema: RequestInteractionInputSchema,
+  },
+  {
+    name: 'sift_record_discovery',
+    description:
+      'Records what you heard the person say, as a PROPOSAL for them to confirm. One natural answer often resolves several topics at once -- record every one of them in a single call so you never ask again about something you have already been told. Everything you record here is held as an unconfirmed inference until the person accepts it: you cannot confirm a topic, and you cannot make anything a hard requirement. If the person stated something directly, still record it here; Sift will ask them to confirm it, which is what stops a misheard requirement from quietly removing options.',
+    sourceSchema: RecordDiscoveryToolInputSchema,
+  },
 ];
 
 interface ReceiptLikeToolResult {
@@ -272,12 +295,12 @@ async function registerFullCatalog(): Promise<InMemoryModelContextAdapter> {
 }
 
 describe('WebMCP tool catalog: exact names, descriptions, and JSON schemas', () => {
-  it('registers exactly the twenty-three catalog tool names this module defines, no more and no fewer', async () => {
+  it('registers exactly the twenty-six catalog tool names this module defines, no more and no fewer', async () => {
     const adapter = await registerFullCatalog();
     expect([...adapter.registeredToolNames].sort()).toEqual(
       [...CATALOG.map((fixture) => fixture.name)].sort(),
     );
-    expect(SIFT_WEBMCP_TOOL_NAMES).toHaveLength(23);
+    expect(SIFT_WEBMCP_TOOL_NAMES).toHaveLength(26);
   });
 
   it.each(CATALOG)(
@@ -295,7 +318,7 @@ describe('WebMCP tool catalog: exact names, descriptions, and JSON schemas', () 
 });
 
 describe('Registration lifecycle: unregister on case change and on unmount', () => {
-  it('unregisters every case-scoped tool when the active case changes, while keeping the two global tools registered throughout', async () => {
+  it('unregisters every case-scoped tool when the active case changes, while keeping the three global tools registered throughout', async () => {
     const adapter = new InMemoryModelContextAdapter();
     const handle = await registerSiftTools({
       adapter,
@@ -377,7 +400,7 @@ describe('No tool can approve or reject a decision proposal', () => {
     expect(jsonSchema.properties['actor']).toBeUndefined();
   });
 
-  it('none of the twenty-three registered tools ever calls the one SiftCommands method that can approve a proposal (reviewProposal)', async () => {
+  it('none of the twenty-six registered tools ever calls the one SiftCommands method that can approve a proposal (reviewProposal)', async () => {
     const reviewProposal = vi.fn().mockResolvedValue(buildFakeCommandReceipt());
     const adapter = new InMemoryModelContextAdapter();
     const commands = createFakeSiftCommands({ reviewProposal });

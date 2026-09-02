@@ -122,6 +122,14 @@ import {
   type PublicActivityEvent,
   type ReviewProposalInput,
   type Source,
+  UpdateDiscoveryInputSchema,
+  RequestInteractionInputSchema,
+  SubmitInteractionResponseInputSchema,
+  SetCandidateDispositionInputSchema,
+  CompleteBlindSpotReviewInputSchema,
+  type CandidateDispositionRecord,
+  type DiscoveryTopicState,
+  type BlindSpotReviewState,
 } from '@sift/contracts';
 import {
   addCriterion,
@@ -142,6 +150,8 @@ import {
   type ExistingEvidenceSignal,
   type IdGenerator,
   type PackSelection,
+  compileDiscoveryTopics,
+  planDiscoveryResponse,
 } from '@sift/core';
 import type { PackRegistry } from '@sift/packs';
 import type { ActivityStore } from '../store/activity-store.js';
@@ -2567,6 +2577,482 @@ export class CommandService {
       case 'not_found':
         return notFound('Case was not found.');
     }
+  }
+
+  // --- Adaptive discovery commands ---
+  //
+  // Each of these validates against the case's *pinned pack* before writing.
+  // That is the check a schema cannot make: `UpdateDiscoveryInputSchema`
+  // knows an agent may not confirm, but only the pack knows whether
+  // `car.payload` is a topic at all, and only the case's own answers know
+  // whether it applies here. A model writing to a topic nobody was ever
+  // shown is exactly the failure this layer exists to stop.
+
+  updateDiscovery(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
+    const parsed = UpdateDiscoveryInputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return validationFailure(
+        'Invalid updateDiscovery input.',
+        formatZodIssues(parsed.error.issues),
+      );
+    }
+    const input = parsed.data;
+
+    const duplicate = this.checkIdempotent(commandId);
+    if (duplicate !== undefined) return duplicate;
+
+    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
+    if (loaded.status !== 'ok') return loaded;
+    const snapshot = loaded.value;
+    const pack = this.requirePinnedPack(snapshot, 'updateDiscovery');
+
+    const declared = new Map((pack.discovery?.topics ?? []).map((t) => [t.id, t]));
+    const applicable = new Map(
+      compileDiscoveryTopics(snapshot, pack).map((topic) => [topic.topicId, topic]),
+    );
+    const now = this.deps.clock.now();
+    const existing = new Map(
+      (snapshot.discovery?.topics ?? []).map((topic) => [topic.topicId, topic]),
+    );
+
+    const events: CaseEvent[] = [];
+    let sequence = snapshot.eventSequence;
+
+    for (const operation of input.operations) {
+      const template = declared.get(operation.topicId);
+      if (template === undefined) {
+        return validationFailure(
+          `Topic "${operation.topicId}" is not declared by pack "${snapshot.pack.id}".`,
+        );
+      }
+      if (!applicable.has(operation.topicId)) {
+        return validationFailure(
+          `Topic "${operation.topicId}" does not apply to this case, so it was never asked.`,
+        );
+      }
+
+      const prior = existing.get(operation.topicId);
+      if (input.actor !== 'human' && prior?.humanConfirmed === true) {
+        return validationFailure(
+          `Topic "${operation.topicId}" was confirmed by a person and cannot be changed by an agent.`,
+        );
+      }
+
+      if (operation.op === 'defer' && template.necessity === 'required') {
+        // Only standalone may defer, and only a soft topic. A required
+        // conversational topic has no skip -- that is the rule that stops
+        // discovery being short-circuited into search.
+        return validationFailure(
+          `Topic "${operation.topicId}" is required and cannot be deferred.`,
+        );
+      }
+
+      const base = {
+        topicId: operation.topicId,
+        label: template.label,
+        necessity: template.necessity,
+        updatedAt: now,
+      } as const;
+
+      let topic: DiscoveryTopicState;
+      let cause: 'response' | 'confirmation' | 'correction' | 'proposal';
+      switch (operation.op) {
+        case 'confirm':
+        case 'correct': {
+          topic = {
+            ...base,
+            status: 'confirmed',
+            valueSummary: operation.valueSummary,
+            ...(operation.importance === undefined ? {} : { importance: operation.importance }),
+            origin: 'user',
+            humanConfirmed: true,
+          };
+          cause = operation.op === 'confirm' ? 'confirmation' : 'correction';
+          break;
+        }
+        case 'propose': {
+          topic = {
+            ...base,
+            status: 'inferred_pending',
+            valueSummary: operation.valueSummary,
+            // A model-proposed blocker is recorded one tier down. The need
+            // stays visible; it cannot remove options until confirmed.
+            ...(operation.importance === undefined
+              ? {}
+              : {
+                  importance:
+                    operation.importance === 'must_work'
+                      ? 'needs_verification'
+                      : operation.importance,
+                }),
+            origin: 'model',
+            confidence: operation.confidence,
+            humanConfirmed: false,
+          };
+          cause = 'proposal';
+          break;
+        }
+        case 'defer': {
+          topic = { ...base, status: 'deferred', origin: 'user', humanConfirmed: false };
+          cause = 'response';
+          break;
+        }
+        case 'not_applicable': {
+          topic = {
+            ...base,
+            status: 'not_applicable',
+            valueSummary: operation.reason,
+            origin: 'user',
+            humanConfirmed: true,
+          };
+          cause = 'confirmation';
+          break;
+        }
+        case 'reject_inference': {
+          topic = { ...base, status: 'unknown', origin: 'user', humanConfirmed: false };
+          cause = 'correction';
+          break;
+        }
+      }
+
+      sequence += 1;
+      events.push({
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence,
+        timestamp: now,
+        commandId,
+        type: 'discovery.topic_updated',
+        payload: { topic, cause },
+      });
+    }
+
+    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
+      idempotency: { commandId, commandName: 'updateDiscovery' },
+    });
+    if (result.status === 'applied') {
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: `Updated ${String(input.operations.length)} discovery topic(s).`,
+        },
+        commandOrigin,
+      );
+    }
+    return this.toReceipt(commandId, result);
+  }
+
+  requestInteraction(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
+    const parsed = RequestInteractionInputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return validationFailure(
+        'Invalid requestInteraction input.',
+        formatZodIssues(parsed.error.issues),
+      );
+    }
+    const input = parsed.data;
+
+    const duplicate = this.checkIdempotent(commandId);
+    if (duplicate !== undefined) return duplicate;
+
+    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
+    if (loaded.status !== 'ok') return loaded;
+    const snapshot = loaded.value;
+    const pack = this.requirePinnedPack(snapshot, 'requestInteraction');
+
+    const applicable = new Set(
+      compileDiscoveryTopics(snapshot, pack).map((topic) => topic.topicId),
+    );
+    for (const topicId of input.interaction.topicIds) {
+      if (!applicable.has(topicId)) {
+        return validationFailure(
+          `Interaction targets topic "${topicId}", which this case does not ask.`,
+        );
+      }
+    }
+
+    const allowed = new Map((pack.discovery?.topics ?? []).map((t) => [t.id, t]));
+    for (const topicId of input.interaction.topicIds) {
+      const template = allowed.get(topicId);
+      if (
+        template !== undefined &&
+        !template.allowedInteractions.includes(input.interaction.kind)
+      ) {
+        return validationFailure(
+          `Topic "${topicId}" does not allow a "${input.interaction.kind}" interaction.`,
+        );
+      }
+    }
+
+    const now = this.deps.clock.now();
+    const events: CaseEvent[] = [
+      {
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: snapshot.eventSequence + 1,
+        timestamp: now,
+        commandId,
+        type: 'discovery.interaction_requested',
+        payload: { interaction: input.interaction },
+      },
+    ];
+
+    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
+      idempotency: { commandId, commandName: 'requestInteraction' },
+    });
+    if (result.status === 'applied') {
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: 'Asked a question in the pane.',
+        },
+        commandOrigin,
+      );
+    }
+    return this.toReceipt(commandId, result);
+  }
+
+  submitInteractionResponse(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
+    const parsed = SubmitInteractionResponseInputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return validationFailure(
+        'Invalid submitInteractionResponse input.',
+        formatZodIssues(parsed.error.issues),
+      );
+    }
+    const input = parsed.data;
+
+    const duplicate = this.checkIdempotent(commandId);
+    if (duplicate !== undefined) return duplicate;
+
+    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
+    if (loaded.status !== 'ok') return loaded;
+    const snapshot = loaded.value;
+    const pack = this.requirePinnedPack(snapshot, 'submitInteractionResponse');
+
+    const actor = input.response.respondedBy === 'human' ? 'human' : 'agent';
+    const now = this.deps.clock.now();
+    const plan = planDiscoveryResponse(snapshot, input.response, actor, pack, now);
+
+    // A rejected mapping is reported, never silently dropped: a person needs
+    // to know their answer did not land, and a model needs to know why.
+    if (plan.rejected.length > 0) {
+      return validationFailure(
+        `Response mapping(s) rejected: ${plan.rejected
+          .map((rejection) => `${rejection.topicId} (${rejection.reason})`)
+          .join(', ')}.`,
+      );
+    }
+
+    let sequence = snapshot.eventSequence;
+    const events: CaseEvent[] = [];
+    for (const topic of plan.updatedTopics) {
+      sequence += 1;
+      events.push({
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence,
+        timestamp: now,
+        commandId,
+        type: 'discovery.topic_updated',
+        payload: { topic, cause: 'response' },
+      });
+    }
+    sequence += 1;
+    events.push({
+      eventId: this.deps.idGenerator.next('event'),
+      caseId: input.caseId,
+      sequence,
+      timestamp: now,
+      commandId,
+      type: 'discovery.interaction_answered',
+      payload: { response: input.response },
+    });
+
+    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
+      idempotency: { commandId, commandName: 'submitInteractionResponse' },
+    });
+    if (result.status === 'applied') {
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary: `Answered a question, filling ${String(plan.updatedTopics.length)} topic(s).`,
+        },
+        commandOrigin,
+      );
+    }
+    return this.toReceipt(commandId, result);
+  }
+
+  setCandidateDisposition(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
+    const parsed = SetCandidateDispositionInputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return validationFailure(
+        'Invalid setCandidateDisposition input.',
+        formatZodIssues(parsed.error.issues),
+      );
+    }
+    const input = parsed.data;
+
+    const duplicate = this.checkIdempotent(commandId);
+    if (duplicate !== undefined) return duplicate;
+
+    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
+    if (loaded.status !== 'ok') return loaded;
+    const snapshot = loaded.value;
+
+    if (!snapshot.entities.some((entity) => entity.id === input.entityId)) {
+      return validationFailure(
+        `Candidate "${input.entityId}" was not found on case "${input.caseId}".`,
+      );
+    }
+
+    const previous =
+      snapshot.discovery?.dispositions.find((record) => record.entityId === input.entityId)
+        ?.disposition ?? 'unreviewed';
+
+    const now = this.deps.clock.now();
+    const record: CandidateDispositionRecord = {
+      entityId: input.entityId,
+      disposition: input.disposition,
+      previousDisposition: previous,
+      ...(input.reason === undefined ? {} : { reason: input.reason }),
+      decidedAt: now,
+    };
+
+    const events: CaseEvent[] = [
+      {
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: snapshot.eventSequence + 1,
+        timestamp: now,
+        commandId,
+        type: 'candidate.disposition_set',
+        payload: { disposition: record },
+      },
+    ];
+
+    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
+      idempotency: { commandId, commandName: 'setCandidateDisposition' },
+    });
+    if (result.status === 'applied') {
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary:
+            input.disposition === 'unreviewed'
+              ? 'Undid a Quick Pick decision.'
+              : `Marked a candidate "${input.disposition}".`,
+        },
+        commandOrigin,
+      );
+    }
+    return this.toReceipt(commandId, result);
+  }
+
+  completeBlindSpotReview(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<CommandReceipt> {
+    const parsed = CompleteBlindSpotReviewInputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return validationFailure(
+        'Invalid completeBlindSpotReview input.',
+        formatZodIssues(parsed.error.issues),
+      );
+    }
+    const input = parsed.data;
+
+    const duplicate = this.checkIdempotent(commandId);
+    if (duplicate !== undefined) return duplicate;
+
+    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
+    if (loaded.status !== 'ok') return loaded;
+    const snapshot = loaded.value;
+    const pack = this.requirePinnedPack(snapshot, 'completeBlindSpotReview');
+
+    const declared = new Set((pack.discovery?.blindSpots ?? []).map((prompt) => prompt.id));
+    for (const promptId of input.offeredPromptIds) {
+      if (!declared.has(promptId)) {
+        return validationFailure(
+          `Blind-spot prompt "${promptId}" is not declared by pack "${snapshot.pack.id}".`,
+        );
+      }
+    }
+
+    const now = this.deps.clock.now();
+    const review: BlindSpotReviewState = {
+      status: 'complete',
+      offeredPromptIds: input.offeredPromptIds,
+      selectedPromptIds: input.selectedPromptIds,
+      acknowledgedAt: now,
+    };
+
+    const events: CaseEvent[] = [
+      {
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: snapshot.eventSequence + 1,
+        timestamp: now,
+        commandId,
+        type: 'discovery.blind_spot_reviewed',
+        payload: { review },
+      },
+    ];
+
+    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
+      idempotency: { commandId, commandName: 'completeBlindSpotReview' },
+    });
+    if (result.status === 'applied') {
+      this.emitActivity(
+        {
+          timestamp: now,
+          caseId: input.caseId,
+          commandId,
+          type: 'command.accepted',
+          phase: 'completed',
+          summary:
+            input.selectedPromptIds.length === 0
+              ? 'Completed the blind-spot review with nothing to add.'
+              : `Completed the blind-spot review, raising ${String(input.selectedPromptIds.length)} concern(s).`,
+        },
+        commandOrigin,
+      );
+    }
+    return this.toReceipt(commandId, result);
   }
 
   /**

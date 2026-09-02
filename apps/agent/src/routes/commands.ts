@@ -57,6 +57,15 @@ export const COMMAND_NAMES = [
   'setEvidenceDisposition',
   'requestRevision',
   'reviewProposal',
+  // Adaptive discovery. `setCandidateDisposition` and
+  // `completeBlindSpotReview` are reachable over this transport because the
+  // pane calls them; both refuse a non-human actor at the schema boundary,
+  // so exposing the route does not expose the authority.
+  'updateDiscovery',
+  'requestInteraction',
+  'submitInteractionResponse',
+  'setCandidateDisposition',
+  'completeBlindSpotReview',
 ] as const;
 export type CommandName = (typeof COMMAND_NAMES)[number];
 
@@ -100,6 +109,16 @@ export function dispatchCommand(
       return service.requestRevision(commandId, input, commandOrigin);
     case 'reviewProposal':
       return service.reviewProposal(commandId, input, commandOrigin);
+    case 'updateDiscovery':
+      return service.updateDiscovery(commandId, input, commandOrigin);
+    case 'requestInteraction':
+      return service.requestInteraction(commandId, input, commandOrigin);
+    case 'submitInteractionResponse':
+      return service.submitInteractionResponse(commandId, input, commandOrigin);
+    case 'setCandidateDisposition':
+      return service.setCandidateDisposition(commandId, input, commandOrigin);
+    case 'completeBlindSpotReview':
+      return service.completeBlindSpotReview(commandId, input, commandOrigin);
   }
 }
 
