@@ -6480,3 +6480,33 @@ Commands: `npx vitest run apps/web/src` — **1762 passed, 76 files**;
 **Visual baselines.** Not regenerated here. `recommendation-stale.png` at every
 viewport now differs by the chip and note text and must be regenerated centrally
 alongside the other in-flight e2e work.
+
+## 2026-09-03 — the GitHub repository was renamed `pax` -> `sift`
+
+The project owner renamed `jordanallen87/pax` to `jordanallen87/sift`, aligning
+the repository with the product's actual name for submission.
+
+Updated to the new URL: the git remote, `README.md`'s clone command and
+privacy note, `docs/submissions/release-metadata.json`'s `repositoryUrl` (the
+submission's canonical pointer), and `docs/completion-report.md`'s header.
+
+**Deliberately NOT updated:** the older `jordanallen87/pax` references in this
+log's earlier entries, `docs/completion-report-2026-08-30.md`, and the build
+plan's checked items. Those are dated records of what was true when written,
+GitHub redirects the old URL so every one of them still resolves, and editing
+a historical log to match a later rename would make the record less honest
+rather than more accurate.
+
+**A latent README defect fixed itself.** The setup block read
+`git clone .../pax.git` followed by `cd sift` -- the clone produced `pax/`, so
+the second command a judge ran would have failed. Cloning `sift.git` produces
+`sift/`, so the pair is now correct.
+
+**Unchanged, on purpose:** the Railway project (`pax-hackathon`), its service,
+and the deployed domain (`pax-hackathon-production.up.railway.app`). Those are
+live infrastructure identifiers recorded in `release-metadata.json` and quoted
+in the host-acceptance evidence; renaming them would invalidate that evidence
+chain for no submission benefit.
+
+The repository is still **private**. Making it public remains an open,
+owner-only action.

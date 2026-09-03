@@ -17,14 +17,14 @@ The deployment is a single Railway service (Docker image, `SIFT_EXECUTION_TARGET
 
 No AWS credentials are configured for this deployment, so it runs the `local` Strands execution target rather than Bedrock AgentCore; that is an honest, documented external blocker, not a missing feature.
 
-The GitHub repository is currently private (`https://github.com/jordanallen87/pax`); it will be made public before final submission.
+The GitHub repository is currently private (`https://github.com/jordanallen87/sift`); it will be made public before final submission.
 
 ## Local setup
 
 Requirements: Node.js 20+ (developed against Node 22) and pnpm 11.24.0 (pinned via `packageManager` in `package.json` — `corepack enable` will pick it up automatically). `better-sqlite3` compiles a native addon at install time; see [Troubleshooting](#troubleshooting) if that step fails.
 
 ```bash
-git clone https://github.com/jordanallen87/pax.git
+git clone https://github.com/jordanallen87/sift.git
 cd sift
 pnpm install
 cp .env.example .env

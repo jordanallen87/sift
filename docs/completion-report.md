@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-02
 **Final code commit:** `6edf2d1a53f54ac731b3b462b888b5f8ed69cc99` — every commit after it is documentation only, including the one carrying this report. A report cannot name its own commit; `pnpm test:submission`'s `release-verification-sha` check is the machine authority that the verification run and the working tree agree.
-**Repository:** https://github.com/jordanallen87/pax (currently private — see Known limitations)
+**Repository:** https://github.com/jordanallen87/sift (currently private — see Known limitations)
 **Live deployment:** https://pax-hackathon-production.up.railway.app
 
 This report is written per CLAUDE.md's completion contract. It documents what is implemented, exactly how it was verified, what remains genuinely external to this build environment, and what is honestly still missing.
