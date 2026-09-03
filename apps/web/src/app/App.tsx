@@ -114,9 +114,12 @@
  *  - Filters -> `FilterBar` + `FilterSheet`, identical in BOTH modes
  *    (ADR 0009). `visibleOptions` below is what makes them do anything at
  *    all; before it, every filter control wrote durable state no code read.
- *  - "Add a note" -> unchanged disclosure (narrow, wrapping `CaseNotes` +
- *    `AddNoteForm` as before) / a "Notes" sheet reached from the main-column
- *    toolbar (expanded).
+ *  - "Add a note" -> the app bar's create menu, in BOTH modes, opening a
+ *    dedicated "Add a note" sheet. Reading notes is unchanged: `CaseNotes`
+ *    still renders inline in the narrow column (and returns `null` on an
+ *    empty case), and the expanded main-column toolbar's "Notes" sheet still
+ *    shows `CaseNotes` + `AddNoteForm` together. Only the WRITE half moved --
+ *    see "Second follow-up" below.
  *  - "What Sift found" -> `WorkspaceAppBar`'s "Findings" control plus the
  *    alert banner's findings item, in BOTH modes -- the one region this
  *    task's brief explicitly requires to leave the bottom-of-stack pattern
@@ -124,15 +127,41 @@
  *    product" (ADR 0008).
  *  - "Still checking" -> sidebar button + sheet (expanded) / unchanged
  *    disclosure (narrow).
- *  - "Add something Sift should check" -> unchanged disclosure (narrow,
- *    still self-opening via `defaultOpen` while a proposal is pending) /
- *    main-column toolbar sheet (expanded). The alert banner's own
- *    "Sift proposed something" action is layout-aware
- *    (`handleReviewPendingExtension`): in narrow mode the disclosure is
- *    already auto-open, so the action only scrolls it into view rather than
- *    mounting a SECOND copy of the same `CustomConcernForm`/
- *    `CaseExtensionReviewCard` in a sheet, which would double-register their
- *    testids in the DOM simultaneously.
+ *  - "Add something Sift should check" -> the app bar's create menu, in BOTH
+ *    modes, opening `workspace-add-concern-sheet`. The alert banner's own
+ *    "Sift proposed something" action (`handleReviewPendingExtension`) opens
+ *    that same one sheet -- see "Second follow-up" below for why it is no
+ *    longer layout-aware.
+ *
+ * SECOND FOLLOW-UP (the project owner, reviewing the shipped narrow pane):
+ * "Add a note and add a question should be in either the header or footer
+ * toolbars -- not at the bottom of the stack," and "the header is consuming
+ * more space than it needs to... I think it's possible by using things like
+ * menus." Those two are answered together: `WorkspaceAppBar`'s single "Add
+ * option" button became a create MENU over three items -- Add option, Add a
+ * note, Add a question -- so the header grows by nothing while two full
+ * `DisclosureSection` rows leave the bottom of the narrow column for good.
+ * Each item opens a controlled `Sheet` declared with the others below.
+ *
+ * Three consequences worth naming, because each removed something real:
+ *
+ *  - The narrow "add-concern" disclosure's `defaultOpen={pendingExtension !==
+ *    null}` self-opening and its "1 needs your review" `meta` are gone with
+ *    the row. Neither signal is lost: `WorkspaceAlertBanner` already carried
+ *    the same fact at the TOP of the stack (strictly more visible than a
+ *    `<summary>` at the bottom of it), and its action now reveals the
+ *    `CaseExtensionReviewCard` itself in one click.
+ *  - `handleReviewPendingExtension` is therefore no longer layout-aware. It
+ *    used to scroll the already-auto-open narrow disclosure into view instead
+ *    of opening the sheet, purely to avoid mounting a SECOND
+ *    `CustomConcernForm`/`CaseExtensionReviewCard` over the same extension
+ *    and double-registering their testids. With the disclosure gone the sheet
+ *    is the only home for that region, so both layouts take one identical
+ *    path and the hazard cannot occur.
+ *  - The expanded main-column toolbar's "Add a question" button is gone too:
+ *    the create menu renders in both layouts over the same sheet, so a second
+ *    expanded-only entry point would be pure duplication. "Notes" and "Your
+ *    priorities" stay -- neither has a create-menu equivalent.
  *
  * "Manage options" (`OptionEditor`) was never one of the five the owner's
  * screenshot named -- it already sat right below the hero, not at the
@@ -481,6 +510,15 @@ export function App() {
   const [stillCheckingSheetOpen, setStillCheckingSheetOpen] = useState(false);
   const [decisionProfileSheetOpen, setDecisionProfileSheetOpen] = useState(false);
   const [notesSheetOpen, setNotesSheetOpen] = useState(false);
+  // The create menu's "Add a question" surface. Its "Add a note" sibling
+  // reuses `notesSheetOpen` above rather than owning a second write-only
+  // sheet.
+  //
+  // An earlier revision of this comment claimed the inline `CaseNotes` sat
+  // inside `layout === 'expanded'`. It did not -- it was in the narrow else
+  // branch, and pairing it with a shared sheet double-mounted the component
+  // and its DOM ids. The inline copy is gone now (see the note where it used
+  // to render), so one sheet is the whole story at every width.
   const [addConcernSheetOpen, setAddConcernSheetOpen] = useState(false);
   // Filters live in a sheet reachable from BOTH layouts, not in the
   // expanded-only sidebar they used to occupy (ADR 0009). That placement is
@@ -1873,27 +1911,15 @@ export function App() {
     return map;
   }, [snapshot]);
 
-  // Scroll target for the narrow-mode "Add something Sift should check"
-  // disclosure -- only ever used by `handleReviewPendingExtension` below.
-  const addConcernSectionRef = useRef<HTMLDivElement>(null);
-
-  // The alert banner's "Sift proposed something" action (ADR 0008): layout-
-  // aware because the underlying content has two different homes. In
-  // expanded mode there is no narrow-style disclosure at all, so this opens
-  // the main-column sheet. In narrow mode, `defaultOpen={pendingExtension
-  // !== null}` on the "add-concern" disclosure below ALREADY force-opens it
-  // the moment a proposal is pending -- opening `addConcernSheetOpen` here
-  // too would mount a SECOND, simultaneous copy of `CustomConcernForm`/
-  // `CaseExtensionReviewCard`, double-registering their testids in the DOM.
-  // Scrolling the already-open disclosure into view is the real, honest
-  // action available in that mode.
+  // The alert banner's "Sift proposed something" action (ADR 0008). No
+  // longer layout-aware: the narrow "add-concern" disclosure it used to
+  // scroll into view no longer exists, so `workspace-add-concern-sheet` is
+  // the single home for `CustomConcernForm`/`CaseExtensionReviewCard` in
+  // both layouts and the old double-mount hazard cannot occur. See this
+  // file's header comment ("Second follow-up") for the full reasoning.
   const handleReviewPendingExtension = useCallback(() => {
-    if (layout === 'expanded') {
-      setAddConcernSheetOpen(true);
-      return;
-    }
-    addConcernSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [layout]);
+    setAddConcernSheetOpen(true);
+  }, []);
 
   if (activeCaseId === null) {
     if (restoringCaseId !== null) {
@@ -2028,7 +2054,6 @@ export function App() {
   const isRunActive =
     lastEvent !== null &&
     (lastEvent.phase === 'active' || lastEvent.phase === 'queued' || lastEvent.phase === 'waiting');
-  const addConcernMeta = pendingExtension !== null ? '1 needs your review' : undefined;
 
   // "What Sift found" urgency signal (round-2 design review): a real count
   // of findings that are not fully verified or have aged past their
@@ -2184,6 +2209,10 @@ export function App() {
             findingsCount={flaggedFindingsCount}
             optionCount={optionsCount}
             onAddOption={() => setManageOptionsSheetOpen(true)}
+            onAddNote={() => {
+              setNotesSheetOpen(true);
+            }}
+            onAddConcern={() => setAddConcernSheetOpen(true)}
             onReviewFindings={() => setFindingsSheetOpen(true)}
             onOpenReferenceLibrary={() => setReferenceLibraryOpen(true)}
             referenceCount={snapshot?.sources.length ?? 0}
@@ -2383,15 +2412,13 @@ export function App() {
                 >
                   Notes
                 </Button>
-                <Button
-                  type="button"
-                  data-testid="workspace-expanded-open-add-concern"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setAddConcernSheetOpen(true)}
-                >
-                  Add a question
-                </Button>
+                {/* "Add a question" is deliberately NOT a button here any
+                  more: it is one of the app bar's three create-menu items,
+                  rendered identically in both layouts over this same sheet,
+                  so a second expanded-only entry point would be duplication
+                  rather than reachability. "Notes" above stays because it is
+                  the READ surface (`CaseNotes`), which the create menu does
+                  not offer and which narrow renders inline instead. */}
               </div>
 
               <FilterBar
@@ -2501,23 +2528,37 @@ export function App() {
               </DisclosureSection>
             ) : null}
 
-            {/* CaseNotes (§28/§63) renders `null` itself when there are no notes
-              (global constraint 4) -- mounted unconditionally here rather than
-              gated a second time at this call site, matching how this
-              component is meant to be used. */}
-            <CaseNotes notes={snapshot?.notes ?? []} options={snapshot?.entities ?? []} />
+            {/* `CaseNotes` used to be mounted inline here, in the narrow
+              column's read stack. It is not any more, and the reason is a
+              real defect rather than a layout preference.
 
-            {/* "Add a note" -- the human-facing add affordance for the write half
-              of §28/§63 (`AddNoteForm.tsx`'s own header comment has the full
-              reasoning for why this is a sibling disclosure row rather than
-              something mounted inside `CaseNotes` itself). A closed-by-default
-              `DisclosureSection`, like every other investigative row, so it
-              stays reachable even when `snapshot.notes` is empty without
-              growing a permanent visible empty region. */}
-            <DisclosureSection testId="add-note" title="Add a note">
-              <AddNoteForm caseId={activeCaseId} expectedSequence={snapshot?.eventSequence ?? 0} />
-            </DisclosureSection>
+              The app bar's create menu opens the Notes sheet at every width,
+              and that sheet mounts its own `CaseNotes`. With an inline copy
+              here as well, opening that sheet at <=800px put TWO
+              `data-testid="case-notes"` sections in the document, two
+              `case-notes-list`s, and -- worst -- two elements carrying
+              `id="case-notes-heading"` (`CaseNotes.tsx:91`), which both
+              sections' `aria-labelledby` then pointed at. A duplicate id is
+              invalid HTML and silently breaks the accessible name for one of
+              them; it also made `getByTestId('case-notes')` a strict-mode
+              violation in the e2e suite.
 
+              Notes now live on exactly one surface, reached identically at
+              every width -- the same shape `Findings`, `References`,
+              `Your priorities` and `Filters` already use. Nothing is lost at
+              narrow: this component renders `null` on a case with no notes
+              anyway, so the inline copy was invisible until a note existed,
+              and the sheet shows the full list plus the add form together. */}
+
+            {/* "Add a note" and "Add a question" used to be two more
+              disclosure rows here, at the very end of the column. Both are
+              app-bar create-menu items now, opening the sheets declared
+              below -- the owner's own instruction ("Add a note and add a
+              question should be in either the header or footer toolbars --
+              not at the bottom of the stack") and the reason this column is
+              two full rows shorter at rest. `CaseNotes` above is unaffected:
+              it is the read half, and it still renders nothing at all on a
+              case with no notes. */}
             <DisclosureSection
               testId="still-checking"
               title="Decision readiness"
@@ -2525,34 +2566,6 @@ export function App() {
             >
               <ReadinessPanel readiness={readiness} loading={snapshot === null} />
             </DisclosureSection>
-
-            <div ref={addConcernSectionRef}>
-              <DisclosureSection
-                testId="add-concern"
-                title="Add a question"
-                meta={addConcernMeta}
-                defaultOpen={pendingExtension !== null}
-              >
-                <CustomConcernForm
-                  caseId={activeCaseId}
-                  expectedSequence={snapshot?.eventSequence ?? 0}
-                  applicableKinds={applicableKinds}
-                />
-
-                {/* ADR 0004 item 2 / audit §2: an empty conceptual region must be
-                  absent, not a card announcing its own emptiness. Mounted only
-                  once a real agent-proposed extension is actually pending review
-                  -- fixed here, at the orchestration level, rather than editing
-                  `CaseExtensionReviewCard`'s own internals. */}
-                {pendingExtension !== null ? (
-                  <CaseExtensionReviewCard
-                    caseId={activeCaseId}
-                    expectedSequence={snapshot?.eventSequence ?? 0}
-                    extension={pendingExtension}
-                  />
-                ) : null}
-              </DisclosureSection>
-            </div>
           </>
         )}
 
@@ -2678,6 +2691,22 @@ export function App() {
         </SheetContent>
       </Sheet>
 
+      {/*
+        The single notes surface, and the create menu's "Add a note" target.
+
+        There were briefly two: this one, and a write-only `Add a note` sheet
+        mounting `AddNoteForm` alone. That split left a real hole. The
+        `workspace-expanded-open-notes` button below renders only inside
+        `layout === 'expanded'`, and the create-menu change had already
+        removed the narrow layout's `disclosure-add-note` row -- so between
+        390px and 640px, which is the canonical pane and ChatGPT's real side
+        pane, a person could add a note and had no way left to read the ones
+        already there. ADR 0008 requires every capability to be reachable in
+        both modes.
+
+        One surface fixes it: existing notes and the add form together, opened
+        identically at every width from the app bar, which is global chrome.
+      */}
       <Sheet open={notesSheetOpen} onOpenChange={setNotesSheetOpen}>
         <SheetContent data-testid="workspace-notes-sheet">
           <SheetHeader>

@@ -181,6 +181,25 @@ async function openFindingsSheet(user: ReturnType<typeof userEvent.setup>) {
   });
 }
 
+// The three create actions ("Add option", "Add a note", "Add a question")
+// are one app-bar menu now, in BOTH layouts -- and "Add a note"/"Add a
+// question" are no longer bottom-of-stack `DisclosureSection` rows at all
+// (the project owner: "Add a note and add a question should be in either the
+// header or footer toolbars -- not at the bottom of the stack"). Every test
+// that needs one of those surfaces reaches it the way a person does: open
+// the menu, pick the item, wait for the sheet it opens.
+async function openCreateMenuItem(
+  user: ReturnType<typeof userEvent.setup>,
+  itemTestId: string,
+  sheetTestId: string,
+) {
+  await user.click(screen.getByTestId('workspace-app-bar-create-menu'));
+  await user.click(await screen.findByTestId(itemTestId));
+  await waitFor(() => {
+    expect(screen.getByTestId(sheetTestId)).toBeInTheDocument();
+  });
+}
+
 // ADR 0008: `layout === 'expanded'` (web app / "shopping site" mode) is
 // only reachable in jsdom by stubbing `matchMedia`, since jsdom has no real
 // implementation and `useWidthMode()` falls back to `'narrow'` otherwise
@@ -616,7 +635,23 @@ describe('App', () => {
         expect(screen.getByTestId('workspace-app-bar-title')).toHaveTextContent('First case');
       });
 
-      await user.click(screen.getByTestId('disclosure-add-concern-summary'));
+      // "Add a question" is an app-bar create-menu item opening a Sheet now,
+      // not a bottom-of-stack disclosure row. That changes what this test can
+      // observe: a closed Sheet unmounts its children outright, so a stale
+      // success banner inside one would disappear on close regardless of the
+      // `key={activeCaseId}` fix this test exists to guard. So the remount is
+      // ALSO asserted through a case-scoped child that stays mounted the
+      // whole time -- `DisclosureSection`'s DOM-owned `open` state, which
+      // only returns to its `defaultOpen` if the element is genuinely
+      // recreated. Both halves of the original finding are still covered.
+      await user.click(screen.getByTestId('disclosure-still-checking-summary'));
+      expect(screen.getByTestId<HTMLDetailsElement>('disclosure-still-checking').open).toBe(true);
+
+      await openCreateMenuItem(
+        user,
+        'workspace-app-bar-add-concern',
+        'workspace-add-concern-sheet',
+      );
       await user.type(screen.getByLabelText('Concern id'), 'trunk_space');
       await user.type(screen.getByLabelText('Label'), 'Trunk space');
       await user.type(screen.getByLabelText('Why this matters to you'), 'Need cargo room');
@@ -624,14 +659,32 @@ describe('App', () => {
       await waitFor(() => {
         expect(screen.getByTestId('custom-concern-form-success')).toBeInTheDocument();
       });
+      await user.click(screen.getByTestId('sheet-close'));
+      await waitFor(() => {
+        expect(screen.queryByTestId('workspace-add-concern-sheet')).not.toBeInTheDocument();
+      });
 
       await user.click(screen.getByTestId('workspace-app-bar-reset-demo'));
       await waitFor(() => {
         expect(screen.getByTestId('workspace-app-bar-title')).toHaveTextContent('Second case');
       });
 
+      expect(screen.getByTestId<HTMLDetailsElement>('disclosure-still-checking').open).toBe(false);
+      await openCreateMenuItem(
+        user,
+        'workspace-app-bar-add-concern',
+        'workspace-add-concern-sheet',
+      );
+      expect(screen.getByTestId('custom-concern-form')).toBeInTheDocument();
       expect(screen.queryByTestId('custom-concern-form-success')).not.toBeInTheDocument();
-    });
+      // An explicit timeout, not a global one: this is the longest single
+      // user journey in the file (open a disclosure, open a menu, open a
+      // sheet, type three fields character-by-character through
+      // `user-event`, submit, close, reset the demo, reopen the menu and
+      // sheet) and it measured ~10s of real work after the create-menu move
+      // added two more overlay transitions to it. Nothing here waits on a
+      // timer; the default 5s simply no longer covers the keystrokes.
+    }, 25_000);
 
     it('the "Request investigation" control calls requestInvestigation and LiveRunStatus reflects the correlated run', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
@@ -939,8 +992,17 @@ describe('App', () => {
         ],
       });
       renderLiveWorkspace(snapshot);
-      await startDemoAndWait();
+      const user = await startDemoAndWait();
 
+      // `CaseExtensionReviewCard` lives in the "Add a question" sheet now,
+      // which the app bar's create menu opens -- it used to be inside a
+      // self-opening bottom-of-stack disclosure row (see this file's
+      // `openCreateMenuItem` helper for why that row is gone).
+      await openCreateMenuItem(
+        user,
+        'workspace-app-bar-add-concern',
+        'workspace-add-concern-sheet',
+      );
       await waitFor(() => {
         expect(screen.getByTestId('case-extension-review-card-label')).toHaveTextContent(
           'Pet sensory fit',
@@ -969,9 +1031,9 @@ describe('App', () => {
       // pack were not correctly resolved (e.g. matched on the wrong field),
       // this would silently fall back to the generic `'option'` label.
       // `OptionEditor` now only mounts inside the app bar's "Add option"
-      // sheet (ADR 0008) -- open it first.
-      expect(screen.getByTestId('workspace-app-bar-add-option')).toHaveAccessibleName('Add option');
-      await user.click(screen.getByTestId('workspace-app-bar-add-option'));
+      // sheet (ADR 0008), and "Add option" is an item in the app bar's
+      // create menu -- open both first.
+      await openCreateMenuItem(user, 'workspace-app-bar-add-option', 'workspace-add-option-sheet');
       await waitFor(() => {
         expect(screen.getByTestId('option-editor-new')).toHaveTextContent('Add car');
       });
@@ -1574,7 +1636,7 @@ describe('App', () => {
         expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument();
       });
       // Falls back to the generic 'option' label rather than blocking.
-      await user.click(screen.getByTestId('workspace-app-bar-add-option'));
+      await openCreateMenuItem(user, 'workspace-app-bar-add-option', 'workspace-add-option-sheet');
       await waitFor(() => {
         expect(screen.getByTestId('option-editor-new')).toHaveTextContent('Add option');
       });
@@ -1836,22 +1898,36 @@ describe('App', () => {
   describe('workspace layout (ADR 0004/0008, answer-first hero + disclosure rows)', () => {
     it('renders the recommendation hero before every remaining disclosure row, in real DOM order', async () => {
       // "Manage options" and "What Sift found" are no longer disclosure rows
-      // at all (ADR 0008 -- both promoted into `WorkspaceAppBar`), so they
-      // are not in this list any more; the remaining narrow-mode rows must
-      // still all follow the hero.
+      // at all (ADR 0008 -- both promoted into `WorkspaceAppBar`), and
+      // neither are "Add a note"/"Add a question" any more (the owner: they
+      // "should be in either the header or footer toolbars -- not at the
+      // bottom of the stack" -- both are app-bar create-menu items opening
+      // Sheets now). Only the genuinely read-only investigative rows are
+      // left, and they must still all follow the hero.
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
       const hero = screen.getByTestId('recommendation-hero');
-      for (const testId of [
-        'disclosure-still-checking',
-        'disclosure-add-note',
-        'disclosure-add-concern',
-      ]) {
+      for (const testId of ['disclosure-still-checking']) {
         const position = hero.compareDocumentPosition(screen.getByTestId(testId));
         expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       }
+    });
+
+    it('has removed the "Add a note" and "Add a question" bottom-of-stack disclosure rows entirely', async () => {
+      // The owner's complaint, as a standing assertion: neither create
+      // surface may reappear as a row at the end of the narrow content
+      // column. `case-notes` (read-only, and absent while there are no
+      // notes) is unaffected -- only the two WRITE surfaces moved.
+      const snapshot = buildFixtureCaseState({ id: CASE_ID });
+      renderLiveWorkspace(snapshot);
+      await startDemoAndWait();
+
+      expect(screen.queryByTestId('disclosure-add-note')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('disclosure-add-concern')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('add-note-form')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('custom-concern-form')).not.toBeInTheDocument();
     });
 
     it('starts every investigative disclosure row closed by default', async () => {
@@ -1859,16 +1935,24 @@ describe('App', () => {
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
-      for (const testId of ['disclosure-still-checking', 'disclosure-add-note']) {
+      for (const testId of ['disclosure-still-checking']) {
         expect(screen.getByTestId<HTMLDetailsElement>(testId).open).toBe(false);
       }
       // "What Sift found" is the app bar's "Findings" control now (ADR
       // 0008), not a disclosure at all -- "closed by default" for this
       // region means the sheet is not open yet.
       expect(screen.queryByTestId('findings-sheet')).not.toBeInTheDocument();
-      // "Manage options" likewise has no disclosure row any more -- it is
-      // the app bar's "Add option" sheet, also closed by default.
+      // "Manage options", "Add a note" and "Add a question" likewise have no
+      // disclosure row any more -- all three are app-bar create-menu items,
+      // and every sheet they open is closed by default. The menu itself is
+      // closed too, so none of the three even exists in the DOM yet.
       expect(screen.queryByTestId('workspace-add-option-sheet')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('workspace-notes-sheet')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('workspace-add-concern-sheet')).not.toBeInTheDocument();
+      expect(screen.getByTestId('workspace-app-bar-create-menu')).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
     });
 
     it('shows a live option count on the app bar (ADR 0008: "Manage options" is no longer a disclosure row)', async () => {
@@ -2052,7 +2136,7 @@ describe('App', () => {
       expect(screen.getByTestId('workspace-view-content-compare')).toBeVisible();
     });
 
-    it('auto-opens "Add something Sift should check" when an agent-proposed extension is pending', async () => {
+    it('surfaces a pending agent-proposed extension through the alert banner, which opens the "Add a question" sheet in one click', async () => {
       const snapshot = buildFixtureCaseState({
         id: CASE_ID,
         caseExtensions: [
@@ -2079,25 +2163,46 @@ describe('App', () => {
         ],
       });
       renderLiveWorkspace(snapshot);
-      await startDemoAndWait();
+      const user = await startDemoAndWait();
+
+      // The "Add a question" region is a Sheet now, not a self-opening
+      // disclosure row, so `defaultOpen`/`meta` are gone with it. The
+      // signal they carried ("1 needs your review", visible without
+      // scrolling) is not lost: it was always ALSO carried by the alert
+      // banner at the top of the stack, which is strictly more visible than
+      // a `<summary>` at the bottom of it -- and its action now reveals the
+      // review card itself in one click, in BOTH layouts.
+      const alertAction = await screen.findByTestId(
+        'workspace-alert-banner-action-pending-extension',
+      );
+      await user.click(alertAction);
 
       await waitFor(() => {
-        expect(screen.getByTestId<HTMLDetailsElement>('disclosure-add-concern').open).toBe(true);
+        expect(screen.getByTestId('workspace-add-concern-sheet')).toBeInTheDocument();
       });
-      expect(screen.getByTestId('disclosure-add-concern-meta')).toHaveTextContent(
-        '1 needs your review',
+      expect(screen.getByTestId('case-extension-review-card-label')).toHaveTextContent(
+        'Pet sensory fit',
       );
     });
 
-    it('leaves "Add something Sift should check" closed with no meta when nothing is pending', async () => {
+    it('raises no pending-extension alert, and no review card anywhere, when nothing is pending', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
-      await startDemoAndWait();
+      const user = await startDemoAndWait();
 
-      await waitFor(() => {
-        expect(screen.getByTestId<HTMLDetailsElement>('disclosure-add-concern').open).toBe(false);
-      });
-      expect(screen.queryByTestId('disclosure-add-concern-meta')).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('workspace-alert-banner-item-pending-extension'),
+      ).not.toBeInTheDocument();
+
+      // ...and the create-menu route to the same region opens a form with no
+      // review card attached to it.
+      await openCreateMenuItem(
+        user,
+        'workspace-app-bar-add-concern',
+        'workspace-add-concern-sheet',
+      );
+      expect(screen.getByTestId('custom-concern-form')).toBeInTheDocument();
+      expect(screen.queryByTestId('case-extension-review-card')).not.toBeInTheDocument();
     });
 
     // Task A2 audit finding: `CaseExtensionReviewCard` is already correctly
@@ -2207,6 +2312,18 @@ describe('App', () => {
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
+      // Notes live on one sheet at every width now. They used to also be
+      // mounted inline in the narrow column, which meant that opening this
+      // sheet below 800px put two `case-notes` sections -- and two elements
+      // carrying the same `id="case-notes-heading"` -- in the document at
+      // once. Opening the sheet is the only way to read a note now, so this
+      // test opens it.
+      await openCreateMenuItem(
+        userEvent.setup(),
+        'workspace-app-bar-add-note',
+        'workspace-notes-sheet',
+      );
+
       await waitFor(() => {
         expect(screen.getByTestId('case-notes')).toBeInTheDocument();
       });
@@ -2224,6 +2341,14 @@ describe('App', () => {
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
+      // `CaseNotes` returns `null` on a case with no notes, so the region is
+      // absent even with its sheet open -- empty, not merely hidden.
+      await openCreateMenuItem(
+        userEvent.setup(),
+        'workspace-app-bar-add-note',
+        'workspace-notes-sheet',
+      );
+
       expect(screen.queryByTestId('case-notes')).not.toBeInTheDocument();
     });
   });
@@ -2231,28 +2356,37 @@ describe('App', () => {
   // A human-facing "add note" affordance -- `CaseNote`/`note.added`/
   // `addNote` were already fully built and reachable only through the
   // `sift_add_note` WebMCP tool; this closes the gap for a person at the
-  // keyboard. `AddNoteForm` lives in its own closed-by-default
-  // `DisclosureSection` (mirroring "Manage options"/"Still checking"/"Add
-  // something Sift should check") rather than inside `CaseNotes`, so the
-  // affordance stays reachable even when `CaseNotes` itself renders nothing
-  // (global constraint 4) and an empty case does not grow a large permanent
-  // empty region -- the closed row is the only permanent element.
+  // keyboard. `AddNoteForm` used to live in its own closed-by-default
+  // bottom-of-stack `DisclosureSection`; it is now an app-bar create-menu
+  // item opening a Sheet, in BOTH layouts (the owner: "Add a note and add a
+  // question should be in either the header or footer toolbars -- not at the
+  // bottom of the stack"). The property that mattered about the old
+  // placement still holds and is still asserted below: the affordance is
+  // reachable even when `CaseNotes` itself renders nothing (global
+  // constraint 4), and an empty case grows no permanent empty region -- now
+  // it grows no permanent row at all, only a menu item.
   describe('Add a note (AddNoteForm)', () => {
-    it('renders the "Add a note" disclosure row even when the case has no notes yet', async () => {
+    it('stays reachable from the app bar even when the case has no notes yet', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
-      await startDemoAndWait();
+      const user = await startDemoAndWait();
 
-      expect(screen.getByTestId('disclosure-add-note')).toBeInTheDocument();
       expect(screen.queryByTestId('case-notes')).not.toBeInTheDocument();
+
+      await openCreateMenuItem(user, 'workspace-app-bar-add-note', 'workspace-notes-sheet');
+      expect(screen.getByTestId('add-note-form')).toBeInTheDocument();
     });
 
-    it('starts closed by default', async () => {
+    it('costs the resting page no vertical space at all until it is asked for', async () => {
       const snapshot = buildFixtureCaseState({ id: CASE_ID });
       renderLiveWorkspace(snapshot);
       await startDemoAndWait();
 
-      expect(screen.getByTestId<HTMLDetailsElement>('disclosure-add-note').open).toBe(false);
+      // The whole point of the move: nothing about "add a note" is in the
+      // scrolling column at rest -- no row, no summary, no form.
+      expect(screen.queryByTestId('disclosure-add-note')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('add-note-form')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('workspace-notes-sheet')).not.toBeInTheDocument();
     });
 
     it('submits a human-entered note through commands.addNote with no origin field, and shows success', async () => {
@@ -2266,7 +2400,7 @@ describe('App', () => {
       renderLiveWorkspace(snapshot);
       const user = await startDemoAndWait();
 
-      await user.click(screen.getByTestId('disclosure-add-note-summary'));
+      await openCreateMenuItem(user, 'workspace-app-bar-add-note', 'workspace-notes-sheet');
       await user.type(
         screen.getByLabelText('Note'),
         'The seat position felt wrong on the test drive.',
@@ -3097,14 +3231,18 @@ describe('App', () => {
         );
       });
 
-      it('in narrow (pane) mode, the pending-extension alert action scrolls the already-auto-open disclosure into view instead of opening a second, duplicate sheet', async () => {
-        // The disclosure below already auto-opens via
-        // `defaultOpen={pendingExtension !== null}` -- the alert's action
-        // must NOT also open `addConcernSheetOpen` here, which would mount
-        // a second `CaseExtensionReviewCard` over the same extension and
-        // double-register `case-extension-review-card-label` in the DOM.
-        const scrollIntoView = vi.fn();
-        Element.prototype.scrollIntoView = scrollIntoView;
+      it('opens the very same "Add a question" sheet from the alert in narrow (pane) mode, with exactly one review card mounted', async () => {
+        // This used to be layout-aware: in narrow mode the alert's action
+        // only SCROLLED an already-auto-open disclosure into view, because
+        // opening the sheet as well would have mounted a second
+        // `CaseExtensionReviewCard` over the same extension and
+        // double-registered `case-extension-review-card-label` in the DOM.
+        // That disclosure is gone (the owner: "Add a note and add a question
+        // should be in either the header or footer toolbars -- not at the
+        // bottom of the stack"), so the sheet is now the ONLY home for this
+        // region and both layouts take the identical, simpler path. The
+        // duplicate-mount hazard the old branch existed to avoid is asserted
+        // below rather than dropped.
         const snapshot = buildFixtureCaseState({
           id: CASE_ID,
           caseExtensions: [
@@ -3133,16 +3271,21 @@ describe('App', () => {
         renderLiveWorkspace(snapshot);
         const user = await startDemoAndWait();
 
+        // Nothing about the proposal is in the resting scroll column any
+        // more -- the review card exists only inside the sheet.
+        expect(screen.queryByTestId('case-extension-review-card-label')).not.toBeInTheDocument();
+
+        await user.click(
+          await screen.findByTestId('workspace-alert-banner-action-pending-extension'),
+        );
+
         await waitFor(() => {
-          expect(screen.getByTestId<HTMLDetailsElement>('disclosure-add-concern').open).toBe(true);
+          expect(screen.getByTestId('workspace-add-concern-sheet')).toBeInTheDocument();
         });
         expect(screen.getAllByTestId('case-extension-review-card-label')).toHaveLength(1);
-
-        await user.click(screen.getByTestId('workspace-alert-banner-action-pending-extension'));
-
-        expect(scrollIntoView).toHaveBeenCalled();
-        expect(screen.queryByTestId('workspace-add-concern-sheet')).not.toBeInTheDocument();
-        expect(screen.getAllByTestId('case-extension-review-card-label')).toHaveLength(1);
+        expect(screen.getByTestId('case-extension-review-card-label')).toHaveTextContent(
+          'Pet sensory fit',
+        );
       });
 
       it('shows a connection-offline alert when the live event stream cannot be reached at all, and clears once it recovers', async () => {
@@ -3708,7 +3851,7 @@ describe('App', () => {
     });
 
     describe('expanded-mode reachability for regions with no sidebar slot (Notes, full Decision Profile, Add a concern)', () => {
-      it('reaches Notes, the FULL Decision Profile (including fields the sidebar excludes), and "Add something Sift should check" via the main-column toolbar', async () => {
+      it('reaches Notes and the FULL Decision Profile (including fields the sidebar excludes) via the main-column toolbar, and "Add a question" via the app-bar create menu', async () => {
         stubExpandedLayout();
         const snapshot = buildFixtureCaseState({
           id: CASE_ID,
@@ -3764,11 +3907,28 @@ describe('App', () => {
           expect(screen.queryByTestId('workspace-decision-profile-sheet')).not.toBeInTheDocument();
         });
 
-        await user.click(screen.getByTestId('workspace-expanded-open-add-concern'));
-        await waitFor(() => {
-          expect(screen.getByTestId('workspace-add-concern-sheet')).toBeInTheDocument();
-        });
+        // "Add a question" left this toolbar entirely: it is one of the app
+        // bar's three create-menu items now, identical in both layouts, so a
+        // second expanded-only button over the same sheet would be pure
+        // duplication. The capability is asserted through its real, single
+        // entry point instead.
+        expect(screen.queryByTestId('workspace-expanded-open-add-concern')).not.toBeInTheDocument();
+        await openCreateMenuItem(
+          user,
+          'workspace-app-bar-add-concern',
+          'workspace-add-concern-sheet',
+        );
         expect(screen.getByTestId('custom-concern-form')).toBeInTheDocument();
+      });
+
+      it('reaches "Add a note" from the app-bar create menu in expanded mode too (ADR 0008: every capability reachable in both modes)', async () => {
+        stubExpandedLayout();
+        const snapshot = buildFixtureCaseState({ id: CASE_ID });
+        renderLiveWorkspace(snapshot);
+        const user = await startDemoAndWait();
+
+        await openCreateMenuItem(user, 'workspace-app-bar-add-note', 'workspace-notes-sheet');
+        expect(screen.getByTestId('add-note-form')).toBeInTheDocument();
       });
 
       it('omits the "What you\'re looking for" toolbar button entirely (not merely a disabled one) when the derived DecisionProfile is empty', async () => {
@@ -3791,10 +3951,11 @@ describe('App', () => {
         const user = await startDemoAndWait();
 
         expect(screen.queryByTestId('disclosure-options')).not.toBeInTheDocument();
-        await user.click(screen.getByTestId('workspace-app-bar-add-option'));
-        await waitFor(() => {
-          expect(screen.getByTestId('workspace-add-option-sheet')).toBeInTheDocument();
-        });
+        await openCreateMenuItem(
+          user,
+          'workspace-app-bar-add-option',
+          'workspace-add-option-sheet',
+        );
         expect(screen.getByTestId('option-editor')).toBeInTheDocument();
       });
     });
@@ -3866,7 +4027,7 @@ describe('App', () => {
 
       // Falls back to the generic 'option' label -- the malformed payload
       // never made it past `InstalledPacksResponseSchema.safeParse`.
-      await user.click(screen.getByTestId('workspace-app-bar-add-option'));
+      await openCreateMenuItem(user, 'workspace-app-bar-add-option', 'workspace-add-option-sheet');
       await waitFor(() => {
         expect(screen.getByTestId('option-editor-new')).toHaveTextContent('Add option');
       });

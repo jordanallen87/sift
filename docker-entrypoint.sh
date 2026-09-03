@@ -24,7 +24,15 @@
 # process, and every file it subsequently creates, is genuinely non-root.
 set -e
 
-DATA_DIR="${PAX_DATA_DIR:-.pax-data}"
+# `SIFT_DATA_DIR`, matching `apps/agent/src/config.ts` (which defaults it to
+# `.sift-data` and, on Railway, is set to `/data`). This read `PAX_DATA_DIR`
+# with a `.pax-data` default -- a name the application has never used and the
+# last surviving `PAX_` reference in tracked source. The consequence was not
+# cosmetic: the entrypoint created and chowned an empty `.pax-data` beside the
+# app and left the real volume at `/data` owned by root, so the first boot on a
+# FRESH volume died in `mkdir` with `EACCES` before it could open the database.
+# The current volume only works because it was already chowned by hand once.
+DATA_DIR="${SIFT_DATA_DIR:-.sift-data}"
 mkdir -p "$DATA_DIR"
 chown -R node:node "$DATA_DIR"
 

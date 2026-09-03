@@ -375,22 +375,24 @@ export class SiftPage {
   /**
    * Opens a closed-by-default `DisclosureSection` row (ADR 0002, round-2
    * design review: "answer-first, everything else one tap away") by its
-   * `testId` suffix, e.g. `openDisclosure('add-note')` for `disclosure-add-note`.
-   * A no-op if the row is already open (native `<details>` state, checked
-   * directly rather than assumed).
+   * `testId` suffix, e.g. `openDisclosure('decision-profile')` for
+   * `disclosure-decision-profile`. A no-op if the row is already open
+   * (native `<details>` state, checked directly rather than assumed).
    *
    * ADR 0008 (`docs/decisions/0008-two-mode-product-architecture.md`)
    * dismantled the bottom-of-page disclosure stack into differentiated
    * top-of-page chrome: "Manage options" (`disclosure-options`) no longer
    * exists in EITHER layout -- see `openManageOptionsSheet` below -- and
    * "What Sift found" (`disclosure-findings`) no longer exists either -- see
-   * `openFindingsSheet` below. `disclosure-decision-profile`,
-   * `disclosure-add-note`, and `disclosure-add-concern` survive, but ONLY in
-   * pane/narrow mode (<=480px); at expanded (>480px) width the equivalent
-   * content moved into a main-column toolbar Sheet with no disclosure
-   * counterpart at all. Callers that must work in both layouts use the
-   * layout-aware `openDecisionProfile`/`openNotes`/`openAddConcern` helpers
-   * below rather than calling this method directly.
+   * `openFindingsSheet` below. `disclosure-add-note` and
+   * `disclosure-add-concern` are gone too: both are app-bar create-menu
+   * items now, in both layouts (see `openViaCreateMenu`). What survives is
+   * `disclosure-decision-profile`, and only in pane/narrow mode; at expanded
+   * width the same content moved into a main-column toolbar Sheet with no
+   * disclosure counterpart at all, which is why `openDecisionProfile` below
+   * is the one helper here that still needs a layout branch. Callers that
+   * must work in both layouts use it rather than calling this method
+   * directly.
    */
   async openDisclosure(testId: string): Promise<void> {
     const details = this.page.getByTestId(`disclosure-${testId}`);
@@ -460,6 +462,61 @@ export class SiftPage {
   }
 
   /**
+   * Opens a Sheet reached through `WorkspaceAppBar`'s create menu.
+   *
+   * "Add option", "Add a note" and "Add a question" used to be three separate
+   * surfaces: a direct app-bar button for the first, and for the other two a
+   * `disclosure-add-note`/`disclosure-add-concern` row in pane mode with a
+   * main-column toolbar button (`workspace-expanded-open-*`) in web-app mode.
+   * The project owner asked for the two create actions to leave the bottom of
+   * the content stack ("Add a note and add a question should be in either the
+   * header or footer toolbars - not at the bottom of the stack") and for the
+   * header to collapse into one row using menus. All three now live in one
+   * `DropdownMenu` on the app bar.
+   *
+   * That removes the layout branch these helpers used to carry: the app bar
+   * is global chrome mounted once, above the narrow/expanded split, so this
+   * is identical at every viewport -- the same reason `openFindingsSheet`
+   * never needed one.
+   *
+   * The menu is dismissed by its own item activation, but the resulting Sheet
+   * is a focus-trapped modal whose overlay then covers the trigger, so the
+   * already-open check `openSheetVia` documents applies here too.
+   *
+   * Opening is a confirmed toggle, not a fire-and-forget click, and that is
+   * the one thing this helper does that `openSheetVia` does not need to.
+   * Observed once, at `right-pane-430`, as a 120-second hang: the previous
+   * step had just closed the Findings Sheet, and the trigger press that
+   * followed never opened the menu at all (the failure screenshot shows the
+   * normal workspace -- no menu, no sheet, nothing mid-transition). A Radix
+   * `Dialog` returns focus to its own trigger and lifts the
+   * `pointer-events: none` guard it puts on `document.body` in a cleanup
+   * effect that runs after `not.toBeVisible()` is already satisfiable, so a
+   * press landing inside that window can be swallowed. The old code then
+   * waited out the entire test budget for a menu item whose menu had never
+   * opened.
+   *
+   * `toPass` presses again if the menu did not appear, which is exactly what
+   * a person does with a button that did not take. It cannot mask a genuinely
+   * missing control: a trigger or menu that never renders still fails, and
+   * the item click and Sheet assertion below are unchanged.
+   */
+  private async openViaCreateMenu(itemTestId: string, sheetTestId: string): Promise<void> {
+    const sheet = this.page.getByTestId(sheetTestId);
+    if (await sheet.isVisible().catch(() => false)) return;
+    const trigger = this.page.getByTestId('workspace-app-bar-create-menu');
+    const menu = this.page.getByTestId('workspace-app-bar-create-menu-content');
+    await expect(async () => {
+      if (!(await menu.isVisible().catch(() => false))) {
+        await trigger.click();
+      }
+      await expect(menu).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await this.page.getByTestId(itemTestId).click();
+    await expect(sheet).toBeVisible();
+  }
+
+  /**
    * Opens the "Add option" Sheet (ADR 0008; supersedes the retired "Manage
    * options" disclosure) via `WorkspaceAppBar`'s always-present "Add option"
    * control. Identical in both layouts -- the app bar is global chrome
@@ -474,7 +531,7 @@ export class SiftPage {
    * and close it again with `closeManageOptionsSheet` before continuing.
    */
   async openManageOptionsSheet(): Promise<void> {
-    await this.openSheetVia('workspace-app-bar-add-option', 'workspace-add-option-sheet');
+    await this.openViaCreateMenu('workspace-app-bar-add-option', 'workspace-add-option-sheet');
   }
 
   /** The `openManageOptionsSheet` counterpart -- closes the Sheet via its own close control. */
@@ -559,58 +616,43 @@ export class SiftPage {
   }
 
   /**
-   * Opens the notes region (`CaseNotes` + `AddNoteForm`), layout-aware like
-   * `openDecisionProfile` above: the pre-existing `disclosure-add-note` row
-   * in pane mode, or the main-column toolbar's "Notes" Sheet
-   * (`workspace-notes-sheet`) in web-app mode. `AddNoteForm`'s own
-   * `#add-note-form-body`/`add-note-form-submit`/`add-note-form-success` and
-   * `CaseNotes`' own `case-notes` are real DOM ids/testids either way (never
-   * duplicated -- each layout mounts exactly one copy), so callers can query
-   * them globally via `page.getByTestId(...)` once this has opened the
-   * region that contains them.
+   * Opens the notes region (`CaseNotes` + `AddNoteForm`) -- the create
+   * menu's "Add a note" item, so identical at every viewport, unlike
+   * `openDecisionProfile` above.
+   *
+   * `AddNoteForm` is mounted in exactly one place, so its own
+   * `#add-note-form-body`/`add-note-form-submit`/`add-note-form-success` are
+   * safe global lookups once this has opened the Sheet that contains them.
+   * `CaseNotes`' `case-notes` is NOT: at narrow widths the pane's content
+   * stack renders one inline and this Sheet renders a second, so while it is
+   * open the document genuinely holds two. Callers reading notes back scope
+   * to `workspace-notes-sheet` (see `generic-decision-workspace-journey.spec.ts`).
    */
   async openNotes(): Promise<void> {
-    if (isNarrowLayout(this.page)) {
-      await this.openDisclosure('add-note');
-      return;
-    }
-    await this.openSheetVia('workspace-expanded-open-notes', 'workspace-notes-sheet');
+    await this.openViaCreateMenu('workspace-app-bar-add-note', 'workspace-notes-sheet');
   }
 
-  /** The `openNotes` counterpart -- see `closeDecisionProfile`'s comment for why this is a no-op (rather than an error) in pane mode. */
+  /** The `openNotes` counterpart -- closes the Sheet via its own close control, and a no-op if it is already closed. Required before any click elsewhere on the page: this is a real modal at every viewport now, not a disclosure that was harmless to leave open in pane mode. */
   async closeNotes(): Promise<void> {
-    if (isNarrowLayout(this.page)) {
-      await this.closeDisclosure('add-note');
-      return;
-    }
     await this.closeSheet('workspace-notes-sheet');
   }
 
   /**
-   * Opens the "Add a question" / custom-concern region, layout-aware like
-   * `openDecisionProfile`/`openNotes` above: the pre-existing
-   * `disclosure-add-concern` row in pane mode (a no-op once an
-   * agent-proposed extension is already pending, since that row opens
-   * itself in that case -- see `openDisclosure`), or the main-column
-   * toolbar's "Add a question" Sheet (`workspace-add-concern-sheet`) in
-   * web-app mode, which has no such self-opening behavior of its own (there
-   * is no narrow-style disclosure to auto-open in that layout at all) but is
-   * always safe to open explicitly regardless of pending-extension state.
+   * Opens the "Add a question" / custom-concern region
+   * (`workspace-add-concern-sheet`, holding `CustomConcernForm` plus any
+   * pending `CaseExtensionReviewCard`) -- the create menu's third item, so
+   * again identical at every viewport.
+   *
+   * Always safe to call regardless of pending-extension state, and safe to
+   * call twice: `openViaCreateMenu` returns early when the Sheet is already
+   * open, which `error-recovery.spec.ts`'s retry path depends on.
    */
   async openAddConcern(): Promise<void> {
-    if (isNarrowLayout(this.page)) {
-      await this.openDisclosure('add-concern');
-      return;
-    }
-    await this.openSheetVia('workspace-expanded-open-add-concern', 'workspace-add-concern-sheet');
+    await this.openViaCreateMenu('workspace-app-bar-add-concern', 'workspace-add-concern-sheet');
   }
 
-  /** The `openAddConcern` counterpart -- see `closeDecisionProfile`'s comment for why this is a no-op (rather than an error) in pane mode. */
+  /** The `openAddConcern` counterpart -- see `closeNotes` above for why closing is no longer optional in pane mode. */
   async closeAddConcern(): Promise<void> {
-    if (isNarrowLayout(this.page)) {
-      await this.closeDisclosure('add-concern');
-      return;
-    }
     await this.closeSheet('workspace-add-concern-sheet');
   }
 

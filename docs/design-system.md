@@ -79,7 +79,17 @@ Design choices behind this set:
   "Signature element" below). The three concrete outcomes in the
   Recommendation region — approved, rejected, revision requested — reuse
   `satisfied`, `error`, and `accepted-uncertainty` respectively rather than
-  adding three more tokens.
+  adding three more tokens. That is `ApprovalCard`'s settled stamp, which
+  says *what the human did*. The status chip on `RecommendationCard`
+  directly above it answers a different question — *where is this case* —
+  and so the one outcome that actually closes the case, approval, carries
+  `decided` there ("Decided"), while rejection and a revision request keep
+  the case open and keep their own two tones ("Not chosen", "Revision
+  requested"). Before this distinction existed the chip was derived from
+  `Recommendation.status`, which stays `ready` forever after a decision, so
+  a closed case rendered a green "READY FOR REVIEW" chip beneath its own
+  "Decided." headline (release baseline
+  `decided-chatgpt-pane-640-darwin.png`).
 - **Never color-only.** Every status token is paired with the state's text
   label (see `docs/specs/product.md`'s terminology table — "Your approval
   needed," "Action blocked," etc.) and, at the component level, an icon.

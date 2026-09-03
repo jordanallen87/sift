@@ -59,7 +59,7 @@ Deadline: September 14, 2026 at 5:00 p.m. PT / 8:00 p.m. ET (`2026-09-15T00:00:0
 - [ ] The diagram distinguishes the compiled Decision Pack and mutable case/run plan.
 - [ ] The diagram shows Strands AgentSkills, Graph or Swarm, interventions, Context Injector, GoalLoop, sessions, and hooks.
 - [ ] The diagram distinguishes local and AgentCore execution targets only if both exist.
-- [ ] The diagram shows OpenTelemetry correlation to Runtime Inspector and CloudWatch only where implemented.
+- [ ] The diagram shows OpenTelemetry correlation to Runtime Inspector and CloudWatch only where implemented — none is, so the diagram must show no OTEL/OTLP path at all. It shows the Sift-minted trace/correlation ids that genuinely link hook events to the inspector instead (`docs/submissions/webmcp/claim-evidence-matrix.md` E8/E9).
 - [ ] The diagram makes the human-only approval boundary visually explicit.
 - [ ] The diagram matches the deployed system and final README architecture.
 
@@ -113,7 +113,7 @@ Deadline: September 14, 2026 at 5:00 p.m. PT / 8:00 p.m. ET (`2026-09-15T00:00:0
 - [ ] GoalLoop rejects the unsupported early recommendation and provides bounded corrective feedback.
 - [ ] Sessions and snapshots restore the run after service reconstruction without duplicate effects or lost events.
 - [ ] Hooks publish safe lifecycle events to the activity UI and telemetry pipeline.
-- [ ] OpenTelemetry correlates the visible activity, model/tool work, and Runtime Inspector detail.
+- [ ] A Sift-minted trace id plus `debugEventId` correlates the visible activity, model/tool work, and Runtime Inspector detail. **OpenTelemetry does not, and is not implemented** — `setupTracer()` is never called, so no span exists; this remains an unmet `PAX-P20` / `docs/specs/debugging-and-observability.md` requirement rather than a discharged one (`docs/submissions/webmcp/claim-evidence-matrix.md` E8/E9).
 - [ ] The system exposes safe execution metadata and state diffs without exposing hidden reasoning.
 - [ ] Steering policies are testable, bounded, budget-aware, and not dependent on unconstrained model self-report.
 - [ ] The recommendation changes because evidence and criteria changed, not because a scripted final string was swapped.

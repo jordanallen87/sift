@@ -163,7 +163,7 @@ The normal workspace consumes the smaller `PublicActivityEvent` projection in `a
 - `SIFT_DEBUG_ENABLED=false` disables debug routes and UI in non-demo deployments.
 - `SIFT_DEBUG_PAYLOAD_MODE=fixture-full|metadata-only` defaults to `metadata-only`; the Railway hackathon fixture can use `fixture-full` only because its seeded cases contain no private data.
 - `SIFT_DEBUG_RETENTION_DAYS` defaults to `7` and cannot exceed `30` in this build.
-- Standard `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` enable an external exporter without changing Sift event persistence.
+- Standard `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` enable an external exporter without changing Sift event persistence. **Not yet implemented** — neither variable is read by any Sift code and setting them has no effect today; see "OpenTelemetry and AgentCore" below.
 - Public hackathon deployment enables the inspector only for fictional fixture cases. User-entered cases expose metadata and hashes but not raw listing notes or model content.
 - Environment variables, authorization headers, cookies, credentials, account identifiers, and configured secret patterns are always removed before persistence.
 - Private model reasoning is never requested or stored. If a provider returns reasoning metadata, Sift records only availability, token count, and a hash unless policy explicitly permits more.
@@ -181,6 +181,8 @@ The normal workspace consumes the smaller `PublicActivityEvent` projection in `a
 ## OpenTelemetry and AgentCore
 
 Local and Railway execution configure Strands `setupTracer()` with a Sift SQLite span processor for the inspector and an optional OTLP exporter configured through standard OTEL environment variables.
+
+**Not yet implemented — the requirement above stands, and it is unmet (verified 2026-09-03).** No Sift code calls `setupTracer()` or `setupMeter()` (`grep -rn "setupTracer" apps packages` returns only a comment), no `@opentelemetry` package is a direct dependency of any workspace, and no Sift span processor or OTLP exporter exists. The Strands SDK is explicit that its telemetry module "is only loaded when the user explicitly imports and calls setupTracer or setupMeter" (`@strands-agents/sdk/dist/src/telemetry/config.d.ts`), so no OTEL span is produced anywhere in Sift. What ships instead, and what the README and both submission packets now claim: real Strands TypeScript lifecycle hooks (`BeforeToolCallEvent`/`AfterToolCallEvent`/`BeforeModelCallEvent`/`AfterModelCallEvent`, plus `BeforeNodeCallEvent`/`NodeResultEvent` on the Graph and Swarm and `MultiAgentHandoffEvent` on the Swarm) normalized by `apps/agent/src/runtime/event-normalizer.ts` into one ordered run sequence keyed by a Sift-minted `traceId` (`deps.idGenerator.next('trace')`). `RuntimeCorrelation.spanId`/`parentSpanId` remain in the contract and are deliberately left unpopulated rather than filled with a fabricated id. Tracked as an unmet requirement in `docs/completion-report.md` "Known limitations", `docs/submissions/webmcp/claim-evidence-matrix.md` rows E8/E9, and `docs/superpowers/plans/2026-08-26-pax-hackathon-build.md` Task 11.
 
 AgentCore execution propagates trace headers and records returned trace/session/request IDs. When AWS credentials and permissions allow, deployed verification confirms that the invocation appears in AgentCore/CloudWatch observability. CloudWatch is the production infrastructure view; the Sift inspector remains the domain-correlated product/debug view.
 

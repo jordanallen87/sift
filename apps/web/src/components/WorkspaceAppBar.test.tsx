@@ -12,6 +12,8 @@ function buildProps(overrides: Partial<WorkspaceAppBarProps> = {}): WorkspaceApp
     findingsCount: 0,
     optionCount: 4,
     onAddOption: vi.fn(),
+    onAddNote: vi.fn(),
+    onAddConcern: vi.fn(),
     onReviewFindings: vi.fn(),
     onOpenDeveloperView: vi.fn(),
     layout: 'expanded',
@@ -47,27 +49,110 @@ describe('WorkspaceAppBar', () => {
     expect(screen.getByTestId('workspace-app-bar-option-count')).not.toHaveTextContent('1 options');
   });
 
-  describe('Add option', () => {
-    it('calls onAddOption when activated', async () => {
-      const user = userEvent.setup();
-      const onAddOption = vi.fn();
-      render(<WorkspaceAppBar {...buildProps({ onAddOption })} />);
+  /**
+   * The three create actions this row owns are one menu, not three buttons.
+   * "Add a note" and "Add a question" used to be `DisclosureSection` rows at
+   * the very bottom of the narrow content stack -- the same defect this
+   * component was originally built to fix for "Add option"/"Findings," and
+   * the project owner's own follow-up: "Add a note and add a question should
+   * be in either the header or footer toolbars, not at the bottom of the
+   * stack," plus "the header is consuming more space than it needs to... I
+   * think it's possible by using things like menus."
+   *
+   * The load-bearing property is ADR 0008's "every capability must be
+   * reachable in both [modes]": the menu is the SAME menu with the SAME three
+   * items at narrow and expanded, so nothing became wide-only, and every item
+   * is reachable with the keyboard alone.
+   */
+  describe('create menu', () => {
+    it('renders one create control that announces itself as a menu button', () => {
+      render(<WorkspaceAppBar {...buildProps()} />);
 
-      await user.click(screen.getByTestId('workspace-app-bar-add-option'));
-
-      expect(onAddOption).toHaveBeenCalledTimes(1);
+      const trigger = screen.getByTestId('workspace-app-bar-create-menu');
+      expect(trigger).toHaveAccessibleName('Add to this case');
+      expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
     });
 
-    it('renders a visible "Add option" label at expanded layout', () => {
+    it.each(['narrow', 'expanded'] as const)(
+      'offers all three create actions at %s layout (ADR 0008: reachable in both modes)',
+      async (layout) => {
+        const user = userEvent.setup();
+        render(<WorkspaceAppBar {...buildProps({ layout })} />);
+
+        await user.click(screen.getByTestId('workspace-app-bar-create-menu'));
+
+        expect(await screen.findByRole('menu')).toBeInTheDocument();
+        expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+          'Add option',
+          'Add a note',
+          'Add a question',
+        ]);
+      },
+    );
+
+    it.each([
+      ['workspace-app-bar-add-option', 'onAddOption'],
+      ['workspace-app-bar-add-note', 'onAddNote'],
+      ['workspace-app-bar-add-concern', 'onAddConcern'],
+    ] as const)('calls exactly %s -> %s and nothing else', async (testId, expectedCallback) => {
+      const user = userEvent.setup();
+      const callbacks = {
+        onAddOption: vi.fn(),
+        onAddNote: vi.fn(),
+        onAddConcern: vi.fn(),
+      };
+      render(<WorkspaceAppBar {...buildProps(callbacks)} />);
+
+      await user.click(screen.getByTestId('workspace-app-bar-create-menu'));
+      await user.click(await screen.findByTestId(testId));
+
+      for (const [name, callback] of Object.entries(callbacks)) {
+        expect(callback, name).toHaveBeenCalledTimes(name === expectedCallback ? 1 : 0);
+      }
+    });
+
+    it('renders a visible "Add" label at expanded layout', () => {
       render(<WorkspaceAppBar {...buildProps({ layout: 'expanded' })} />);
-      expect(screen.getByTestId('workspace-app-bar-add-option')).toHaveTextContent('Add option');
+      expect(screen.getByTestId('workspace-app-bar-create-menu')).toHaveTextContent('Add');
     });
 
     it('collapses to an icon-only control at narrow layout, keeping the accessible name', () => {
       render(<WorkspaceAppBar {...buildProps({ layout: 'narrow' })} />);
-      const control = screen.getByTestId('workspace-app-bar-add-option');
-      expect(control).not.toHaveTextContent('Add option');
-      expect(control).toHaveAccessibleName('Add option');
+      const control = screen.getByTestId('workspace-app-bar-create-menu');
+      expect(control).not.toHaveTextContent('Add');
+      expect(control).toHaveAccessibleName('Add to this case');
+    });
+
+    it('is fully operable with the keyboard alone, arrow keys included', async () => {
+      const user = userEvent.setup();
+      const onAddConcern = vi.fn();
+      render(<WorkspaceAppBar {...buildProps({ layout: 'narrow', onAddConcern })} />);
+
+      await user.tab();
+      expect(screen.getByTestId('workspace-app-bar-create-menu')).toHaveFocus();
+
+      await user.keyboard('{Enter}');
+      await screen.findByRole('menu');
+      // Radix focuses the first item on open; two ArrowDowns reach the third.
+      await user.keyboard('{ArrowDown}{ArrowDown}');
+      expect(screen.getByTestId('workspace-app-bar-add-concern')).toHaveFocus();
+
+      await user.keyboard('{Enter}');
+      expect(onAddConcern).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns focus to its trigger on Escape, so the toolbar is never lost', async () => {
+      const user = userEvent.setup();
+      render(<WorkspaceAppBar {...buildProps()} />);
+      const trigger = screen.getByTestId('workspace-app-bar-create-menu');
+
+      await user.click(trigger);
+      await screen.findByRole('menu');
+      await user.keyboard('{Escape}');
+
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(trigger).toHaveFocus();
     });
   });
 
@@ -212,7 +297,7 @@ describe('WorkspaceAppBar', () => {
    */
   describe('tooltips on the collapsed icon controls', () => {
     it.each([
-      ['workspace-app-bar-add-option', 'Add option'],
+      ['workspace-app-bar-create-menu', 'Add to this case'],
       ['workspace-app-bar-findings', 'Findings, 0'],
       ['workspace-app-bar-references', 'References, 0'],
       ['workspace-app-bar-reset-demo', 'Reset demo'],
@@ -248,7 +333,7 @@ describe('WorkspaceAppBar', () => {
 
       // The control carries its own visible text here, so a tooltip saying
       // the same word twice is noise rather than help.
-      await user.hover(screen.getByTestId('workspace-app-bar-add-option'));
+      await user.hover(screen.getByTestId('workspace-app-bar-create-menu'));
 
       expect(screen.queryByTestId('tooltip-content')).not.toBeInTheDocument();
     });
@@ -265,7 +350,11 @@ describe('WorkspaceAppBar', () => {
         <WorkspaceAppBar {...buildProps({ layout: 'narrow', onAddOption, onOpenDeveloperView })} />,
       );
 
-      await user.click(screen.getByRole('button', { name: 'Add option' }));
+      // The create control is now a menu button, so its own name opens the
+      // menu and the item inside it carries the action's name -- both still
+      // found by accessible name, with no tooltip involved.
+      await user.click(screen.getByRole('button', { name: 'Add to this case' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'Add option' }));
       await user.click(screen.getByRole('button', { name: 'Developer view' }));
 
       expect(onAddOption).toHaveBeenCalledTimes(1);

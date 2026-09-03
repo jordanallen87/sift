@@ -143,9 +143,11 @@ satisfied, reopens with a status change visible in the Readiness region.
 **Must genuinely be happening:**
 - `sift_update_criteria` is called with an `{ op: 'reweight', criterionId, weight }`
   operation (`webmcp.md` § `sift_update_criteria`).
-- The update durably invalidates the comparison and recommendation and the
-  engine is asked to recompute (`webmcp.md` "Effect: durable update plus
-  deterministic invalidation").
+- The update durably invalidates the comparison and recommendation and revises
+  the run plan (`webmcp.md` "Effect: durable update plus deterministic
+  invalidation"). Invalidation alone starts no engine run — the recommendation
+  chip reads "Stale — needs investigation" until a human or a tool calls
+  `sift_request_investigation`, and the script must not claim otherwise.
 - The `car.household_fit` obligation (required obligation in
   `packs-and-routing.md`) visibly reopens rather than silently updating a
   score.

@@ -137,7 +137,21 @@ Effect: durable update via `append()`. The demo packs permit at most five option
 
 ### `sift_update_criteria` — WRITE
 
-Adds, removes, reweights, or relabels decision criteria. Removing a criterion referenced by a decided case is rejected. A successful update invalidates the comparison and recommendation, then asks the engine to recompute.
+Adds, removes, reweights, or relabels decision criteria. Removing a criterion referenced by a decided case is rejected. A successful update invalidates the comparison and recommendation and revises the run plan; nothing is recomputed until sift_request_investigation is called.
+
+<!--
+  This sentence used to end "then asks the engine to recompute", which was not
+  true and mattered twice over. `CommandService.updateCriteria`
+  (`apps/agent/src/services/command-service.ts`) appends
+  `recommendation.invalidated` and calls `RunPlanService.revisePlan`, which
+  re-derives and persists a plan and emits `plan.revised` -- it starts no
+  engine run. So the description over-claimed to the one reader who acts on
+  it: a model told the engine is already recomputing has no reason to call
+  `sift_request_investigation`, which is exactly the call the reweight beat
+  of the WebMCP demo depends on. The UI carried the same false claim in its
+  status chip ("Stale -- recomputing") and now reads "Stale -- needs
+  investigation".
+-->
 
 Input:
 

@@ -82,14 +82,16 @@ import {
  * "Manage options"/"What Sift found" disclosures entirely (both layouts now
  * reach `OptionEditor`/`FindingsSheet` only through `WorkspaceAppBar`'s
  * "Add option"/"Findings" Sheets, via `sift.openManageOptionsSheet()`/
- * `openFindingsSheet()`), and moved "your priorities"/"Add a note"/"Add a
- * question" into a main-column toolbar Sheet in web-app mode (>480px) while
- * leaving pane mode's (<=480px) disclosures untouched. This spec runs at
- * all four projects, including `desktop-1440`, so it drives those three
- * layout-dependent regions through `sift.openDecisionProfile()`/
- * `openNotes()`/`openAddConcern()` (and their `close*` counterparts) rather
- * than `openDisclosure(...)` directly, so each step reaches the control the
- * way a real user would in whichever layout is under test.
+ * `openFindingsSheet()`), and moved "your priorities" into a main-column
+ * toolbar Sheet in web-app mode while leaving pane mode's disclosure
+ * untouched. "Add a note" and "Add a question" have since left both of
+ * those shapes: they are two of the three items in the app bar's create
+ * menu, identical at every viewport. This spec runs at all six projects,
+ * including `desktop-1440`, so it drives every one of those regions through
+ * `sift.openDecisionProfile()`/`openNotes()`/`openAddConcern()` (and their
+ * `close*` counterparts) rather than `openDisclosure(...)` directly, so each
+ * step reaches the control the way a real user would in whichever layout is
+ * under test.
  */
 
 /** Presses Tab (bounded) until `target` is focused -- mirrors `keyboard-accessibility.spec.ts`'s own local helper; not shared since each spec's target/context differs. */
@@ -436,6 +438,18 @@ test.describe('generic decision workspace -- §61 journey', () => {
     expect(unpopulatedEntity.attributes['custom.roof_rails']).toBeUndefined();
 
     // --- §61 step 16: "Add note." Real visible `AddNoteForm`. ---
+    //
+    // `AddNoteForm` is mounted in exactly one place (the Notes Sheet), so
+    // `#add-note-form-body`/`add-note-form-submit`/`add-note-form-success`
+    // stay safe as global lookups. `CaseNotes` -- the READ half -- is NOT:
+    // at narrow widths the pane's own content stack renders one inline
+    // (`App.tsx`) and the Sheet renders a second, so while this Sheet is
+    // open there are genuinely two `case-notes` sections in the document.
+    // The note is therefore read back from the Sheet this step just opened,
+    // which is the one surface that carries it at every viewport (expanded
+    // mode has no inline copy at all). See this run's report for the
+    // duplicate-mount defect itself -- scoping here is the honest
+    // assertion, not a way of accepting the duplication.
     await sift.openNotes();
     const noteBody = 'Grandma insists on a sunroof, but nobody else in the household cares.';
     await page.locator('#add-note-form-body').fill(noteBody);
@@ -446,11 +460,14 @@ test.describe('generic decision workspace -- §61 journey', () => {
     const addNoteResponse = await addNoteResponsePromise;
     expect(addNoteResponse.ok(), await addNoteResponse.text()).toBe(true);
     await expect(page.getByTestId('add-note-form-success')).toBeVisible();
-    await expect(page.getByTestId('case-notes')).toContainText(noteBody);
+    await expect(page.getByTestId('workspace-notes-sheet').getByTestId('case-notes')).toContainText(
+      noteBody,
+    );
     await assertNoHorizontalOverflow(page);
-    // Closed before the Developer view entry point (step 19) below: in
-    // web-app mode the Notes Sheet is a real modal that would otherwise
-    // intercept that click.
+    // Closed before the Developer view entry point (step 19) below: the
+    // Notes Sheet is a real modal at every viewport now that it is reached
+    // from the app bar's create menu, and it would otherwise intercept that
+    // click.
     await sift.closeNotes();
 
     // --- §61 step 17: "Update criterion." Same real, no-dedicated-UI route

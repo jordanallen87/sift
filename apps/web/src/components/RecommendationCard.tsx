@@ -44,6 +44,7 @@
 import type { Recommendation, Source } from '@sift/contracts';
 import { Badge } from '@/components/ui/badge';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
+import type { SettledDecision } from './workspace-status.js';
 
 export interface RecommendationWithheld {
   /** Count of required questions still unresolved -- substituted into the exact required copy. */
@@ -58,6 +59,14 @@ export interface RecommendationCardProps {
   loading?: boolean;
   /** Optional joined `Source` records for `recommendation.sourceIds`, keyed by id, for a richer citation link. Falls back to a plain reference chip when a source is not supplied. */
   sources?: Record<string, Source>;
+  /**
+   * The verdict a human has already rendered on this recommendation's
+   * proposal, or `null` while none has been (`WorkspaceStatus.settledDecision`,
+   * supplied by `RecommendationHero`). Drives the status chip -- see
+   * `SETTLED_STATUS_META` below for why the chip cannot be read off
+   * `recommendation.status` alone.
+   */
+  settledDecision?: SettledDecision | null;
 }
 
 const RECOMMENDATION_STATUS_META: Record<
@@ -65,7 +74,53 @@ const RECOMMENDATION_STATUS_META: Record<
   { label: string; tone: StatusTone }
 > = {
   ready: { label: 'Ready for review', tone: 'ready' },
-  stale: { label: 'Stale — recomputing', tone: 'stale' },
+  // NOT "Stale — recomputing". Invalidation starts no work: `updateCriteria`
+  // (apps/agent/src/services/command-service.ts) appends
+  // `recommendation.invalidated` and calls `notifyRunPlan` ->
+  // `RunPlanService.revisePlan` (apps/agent/src/services/run-plan-service.ts),
+  // which re-derives and persists a plan and emits `plan.revised` -- it
+  // launches no engine run. Nothing is recomputed until a human or a tool
+  // calls `requestInvestigation`. The chip says what is true and what is
+  // owed: the answer is stale, and a fresh investigation is what would
+  // refresh it. "Investigation" is the product's own word for that work
+  // ("Request investigation", "Sift is investigating.", workspace-status.ts).
+  stale: { label: 'Stale — needs investigation', tone: 'stale' },
+};
+
+/**
+ * What the status chip says once a human has answered, which outranks
+ * `RECOMMENDATION_STATUS_META` above.
+ *
+ * `Recommendation.status` is a fact about the recommendation object and
+ * stays `'ready'` after the decision is made, so a chip derived from it
+ * alone went on announcing "READY FOR REVIEW" -- a claim that a person
+ * still has to act -- underneath a "Decided." headline on a closed case
+ * (release baseline `decided-chatgpt-pane-640-darwin.png`). Same class of
+ * defect as the action dock offering "Confirm what moves forward" on a
+ * decided case (`deriveNextMoves`, packages/core/src/discovery.ts): state
+ * the case has left, still rendered as if current.
+ *
+ * The labels are deliberately pack-neutral. This card is the one
+ * recommendation surface both hero Decision Packs mount through
+ * `RecommendationHero` (Choose Our Next Car and Home Energy Guardian), and
+ * it is handed no option label, so every word here has to be true of a car
+ * and of an HVAC response option alike.
+ *
+ * Tones follow docs/design-system.md's own reading of the tokens.
+ * `approved` is the only outcome that closes the case
+ * (`reviewProposal`/`reducer` move `CaseState.status` to `'decided'` on
+ * approval and on nothing else), and `decided` is precisely "the case is
+ * closed"; `rejected` and `revision_requested` leave the case open, and
+ * reuse the two tones that design-system.md already assigns them in this
+ * region. The chip is not a second copy of `ApprovalCard`'s settled stamp
+ * ("Approved" / "Rejected" / "Revision requested"): it answers "where is
+ * this case", the stamp answers "what did the human do", and "Decided"
+ * against "Approved" is the one place that distinction is visible.
+ */
+const SETTLED_STATUS_META: Record<SettledDecision, { label: string; tone: StatusTone }> = {
+  approved: { label: 'Decided', tone: 'decided' },
+  rejected: { label: 'Not chosen', tone: 'error' },
+  revision_requested: { label: 'Revision requested', tone: 'accepted-uncertainty' },
 };
 
 function pluralQuestion(count: number): string {
@@ -81,6 +136,7 @@ export function RecommendationCard({
   withheld = null,
   loading = false,
   sources = {},
+  settledDecision = null,
 }: RecommendationCardProps) {
   return (
     <section
@@ -128,13 +184,24 @@ export function RecommendationCard({
       ) : (
         <div className="flex flex-col gap-[var(--space-3)]">
           {(() => {
-            const statusMeta = RECOMMENDATION_STATUS_META[recommendation.status];
+            // A rendered verdict outranks the recommendation's own status,
+            // including `stale`: once the human has answered, the chip's
+            // job is to say so. A stale recommendation on a settled case
+            // still renders its own explanatory note below, which is about
+            // the content of the answer rather than about who owes whom an
+            // action.
+            const statusMeta =
+              settledDecision === null
+                ? RECOMMENDATION_STATUS_META[recommendation.status]
+                : SETTLED_STATUS_META[settledDecision];
             return (
               <Badge
                 // Remounts (replaying `.status-change-enter`) whenever the
-                // recommendation's own status flips between `ready` and
-                // `stale` -- a moment worth a beat of visible emphasis.
-                key={recommendation.status}
+                // chip's meaning changes -- the recommendation's own status
+                // flipping between `ready` and `stale`, or the human
+                // rendering a verdict -- a moment worth a beat of visible
+                // emphasis.
+                key={settledDecision ?? recommendation.status}
                 data-testid="recommendation-card-status"
                 className="status-change-enter label-caps w-fit gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
                 style={{
@@ -154,8 +221,9 @@ export function RecommendationCard({
               className="list-item-enter text-[length:var(--font-size-sm)]"
               style={{ color: STATUS_TONE_META.stale.ink }}
             >
-              New evidence or a criteria change has invalidated this recommendation. Sift is
-              recomputing it -- the content below may no longer reflect the current case.
+              New evidence or a criteria change has invalidated this recommendation. Sift has not
+              looked into the change yet, so the content below may no longer reflect the current
+              case.
             </p>
           ) : null}
 

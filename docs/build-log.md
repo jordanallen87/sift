@@ -6271,3 +6271,212 @@ files), `typecheck`, `test:unit` (4027), `test:coverage`, `test:pack` (304),
 `test:integration` (453), `test:contract`, `test:scenario` all PASS.
 `test:e2e` passes 144/144 standalone on an unloaded machine and degrades under
 external load as tabulated above; see the note in `playwright.config.ts`.
+
+## 2026-09-03 — "READY FOR REVIEW" on a case that had already been decided
+
+The same defect class as the dock offering "Confirm what moves forward" on a
+closed case, one region lower and found the same way: by reading
+`decided-chatgpt-pane-640-darwin.png`. The orientation row read "Decided", the
+hero headline read "Decided.", and between them the recommendation card
+rendered a green **READY FOR REVIEW** chip — a claim that a person still owes
+the case an answer, on a case they had already answered.
+
+The cause was the same shape too: the chip was derived from
+`Recommendation.status`, a fact about the recommendation object, which stays
+`'ready'` forever after the decision. Nothing in the card knew where the case
+was. `WorkspaceStatus` — the hero's one state machine, which already computes
+the `decided` phase — now carries the verdict as `settledDecision`, and
+`RecommendationHero` hands it to `RecommendationCard`, so the headline and the
+chip are two renderings of one decision rather than two derivations that can
+disagree (ADR 0004). The chip reads **Decided** (tone `decided`, the token
+whose documented meaning is "the case is closed"), **Not chosen** on a
+rejection, and **Revision requested** on a revision request — the two outcomes
+that leave the case open keep their own tones. Pending approval is untouched
+and still reads "Ready for review", which is true exactly there. The labels
+are pack-neutral: this card is the one recommendation surface both hero packs
+mount and it is handed no option label.
+
+Not a duplicate of `ApprovalCard`'s settled stamp below it: the chip answers
+"where is this case", the stamp answers "what did the human do", which is why
+approval reads "Decided" against the stamp's "Approved".
+
+Left alone, deliberately: on a decided case whose recommendation is later
+invalidated, the chip now says "Decided" while the stale note still says Sift
+is recomputing. The note warns that the rationale beneath it may be out of
+date, which stays true after a decision, and its copy is quoted verbatim in
+the WebMCP demo script.
+
+Commands: `npx vitest run apps/web/src` — 1748 passed, 6 pre-existing failures
+in `App.test.tsx` from a concurrent app-bar refactor in the same tree (all
+`workspace-app-bar-add-option` / `case-extension-review-card-label`, none in
+the changed files). `apps/web/src/components` alone: 1294 passed, 55 files.
+`npx tsc --noEmit -p apps/web`, `eslint --max-warnings=0`, `prettier --check`
+all clean.
+
+Baselines: the 12 `decided` screenshots (6 viewports × 2 hero journeys) need
+regenerating; the chip is the only changed pixel region. No e2e text assertion
+changes — both `decided.png` guards key off `approval-card-stamp`/"Approved",
+and the "Ready for review" assertions at
+`car-purchase-journey.spec.ts:387` and
+`home-energy-guardian-journey.spec.ts:365` are pending-approval states.
+
+## 2026-09-03 — e2e gate green again after the create-menu move (144/144)
+
+"Add option", "Add a note" and "Add a question" became one `DropdownMenu` on
+the app bar, which broke the gate in four distinct ways. The full run before
+any repair was **15 failed / 129 passed**; every failure was classified before
+anything was touched.
+
+**1. `keyboard-accessibility.spec.ts` — a modal that stopped being closed
+(4 viewports: 390/430/480/640).** The Escape that dismisses the "Add a
+question" Sheet was guarded by `if (!isNarrowLayout(page))`, correct while
+pane mode reached the same form through a non-modal disclosure row. Once that
+row became a create-menu item the Sheet exists at every width, so at narrow
+widths it stayed open and swallowed round 2's "Request investigation" click
+for the whole 120s budget. The guard is gone; the surface is unconditional, so
+the Escape is too.
+
+**2. `keyboard-accessibility.spec.ts` — a missing wait, not a slow machine
+(820/1440).** `approval-card-approve` was "not found" after round 2. Neither
+preceding line actually waits for round 2's result to reach the browser: this
+journey never reweights a criterion, so round 1's recommendation is never
+invalidated and `waitForRecommendationReady` passes instantly against stale
+state, while `waitForInvestigationCompleted` reads a run status that is
+"completed" before the revised snapshot arrives over SSE. The only remaining
+wait was `toBeVisible`'s default 5s. Now bounded and explicit on
+`approval-card-pending`.
+
+**3. `generic-decision-workspace-journey.spec.ts` — a real duplicate mount
+(4 narrow viewports).** `getByTestId('case-notes')` hit a strict-mode
+violation: `App.tsx:2532` renders `CaseNotes` inline in the pane's content
+stack *and* `App.tsx:2697` renders a second copy inside the Notes Sheet, so
+while that Sheet is open at ≤800px the document holds two `case-notes`
+sections and two elements carrying `id="case-notes-heading"`
+(`CaseNotes.tsx:91`), which both `aria-labelledby` point at. The spec now
+reads the note back from the Sheet it just opened — the one surface that
+carries it at every viewport. **The duplication itself is a product defect and
+is not fixed here**; `App.tsx:516-518` also asserts the opposite of what the
+code does ("the only inline `CaseNotes` sits inside `layout === 'expanded'`" —
+it is in the narrow branch).
+
+**4. `pages/sift-page.ts` — an unconfirmed toggle.** Seen once at 430 as a
+120-second hang: after the Findings Sheet closed, the create-menu trigger
+press never opened the menu (the failure screenshot shows the plain
+workspace), and the helper then waited out the test budget for a menu item
+whose menu did not exist. A Radix `Dialog` returns focus and lifts its
+`pointer-events: none` body guard in a cleanup that runs after
+`not.toBeVisible()` is satisfiable, so a press inside that window is
+swallowed. `openViaCreateMenu` now confirms the menu opened and presses again
+if it did not (`toPass`); a control that never renders still fails.
+
+**Baselines.** 28 regenerated, all inspected against their predecessors: the
+12 `decided` screenshots (the `settledDecision` chip replacing the stale
+"READY FOR REVIEW", plus the suppressed coverage counter — both changes are
+recorded in the entries above this one), and 16 expanded-mode screenshots at
+820/1440 (the app bar's "Add option" button becoming the narrower "Add" menu
+trigger, which collapses the 820 header from two rows to one, and the removal
+of the duplicate "Add a question" button from the main-column toolbar).
+
+A first pass with `--update-snapshots=all` also rewrote 19 files that had not
+visibly changed. Each was measured per channel against its committed version
+(uncompressed BMP compare, row padding excluded): every one differed only by
+antialiasing at ≤16/255 with zero pixels past a perceptual threshold, i.e.
+nothing Playwright's own comparison counts as a difference. All 19 were
+restored — CLAUDE.md, "Never update a screenshot merely because it differs."
+
+**Load.** Two full runs were discarded as machine-load artifacts, both pure
+`ECONNRESET`/`apiRequestContext` timeouts with no assertion involved, at load
+averages of 180-230 on a 16-core box shared with other work. Each affected
+spec passed alone immediately afterward (13.2s and 12.6s). This is the exact
+behaviour `playwright.config.ts`'s worker-policy comment tabulates.
+
+Commands: `npx playwright test --workers=4` — **144 passed (2.8m)**, twice
+consecutively, with no `--update-snapshots`, at load ~30-50.
+`npx tsc --noEmit -p tsconfig.json`, `npx eslint tests/e2e --max-warnings=0`
+and `npx prettier --check tests/e2e` all clean.
+
+## 2026-09-03 — the card claimed work that was not running, and a control led somewhere else
+
+Two UI-truthfulness defects, both verified against the code before anything
+changed. Sift's whole claim is that it does not assert what it has not earned,
+so a false statement in its own UI is the worst bug it can carry.
+
+### "Sift is recomputing it" — nothing was
+
+`RecommendationCard.tsx` rendered the chip **"Stale — recomputing"** and the
+note **"...Sift is recomputing it -- the content below may no longer reflect
+the current case."**
+
+Traced end to end: `CommandService.updateCriteria`
+(`apps/agent/src/services/command-service.ts`) appends
+`recommendation.invalidated` and calls `notifyRunPlan` ->
+`RunPlanService.revisePlan` (`apps/agent/src/services/run-plan-service.ts`),
+which re-derives a plan, persists it, and emits `plan.revised`. It launches no
+engine run. Nothing is recomputed until a human or a tool calls
+`requestInvestigation`. The product was narrating work it had not started.
+
+Only the copy was wrong, so only the copy changed — no new mechanism, no
+automatic run:
+
+- chip: `Stale — recomputing` -> **`Stale — needs investigation`**
+- note: `...Sift is recomputing it -- the content below may no longer reflect
+  the current case.` -> **`...Sift has not looked into the change yet, so the
+  content below may no longer reflect the current case.`**
+
+"Investigation" over "recompute" is the product's own word for this work
+("Request investigation", "Sift is investigating.", `workspace-status.ts`), and
+the chip now names what is owed instead of pretending it is under way. The
+leading token stays "Stale", which is what the three e2e journeys assert on
+(`toContainText('Stale')`), so no e2e text assertion moves.
+
+This supersedes the "left alone, deliberately" paragraph in the
+2026-09-03 "READY FOR REVIEW" entry above, which reasoned the note's copy was
+safe because it was quoted verbatim in the demo script. The script was quoting
+a false sentence; `docs/submissions/webmcp/demo-script.md` had already noticed
+and told the presenter *not* to say it out loud. Fixing the sentence is the
+smaller change.
+
+`docs/demo/webmcp-script.md`'s "must genuinely be happening" list asserted "the
+engine is asked to recompute" for the same beat; corrected to say the run plan
+is revised and that nothing runs until `sift_request_investigation`.
+
+### A control named "Findings" that opened a sheet titled "Research"
+
+`WorkspaceAppBar`'s control carries the accessible name `Findings, {N}` and
+opens `FindingsSheet`, whose `SheetTitle` read **"Research"** after a
+shopping-UX terminology pass renamed only the title. A keyboard or
+screen-reader user activated one name and was announced into another; a
+voice-control user could not say what they saw (WCAG 2.5.3, "Label in Name").
+
+Resolved toward **"Findings"**, which is what every other route into the sheet
+already said — the app-bar control and its label, `deriveWorkspaceStatus`'s
+"Review findings" action, `RecommendationHero`'s button, App.tsx's "N findings
+need your attention" banner, the sheet's own kanban region label, and every
+`findings-sheet-*` test id. "Research" is separately taken in this product for
+*source material* rather than evaluated evidence (`OptionProfileSheet`'s claims
+heading, a `CaseNotes` note kind, `ReferenceLibrary`'s "Research papers,
+articles..." empty state), so keeping it here named two things with one word.
+One character of production code changed; no third name was introduced.
+
+### Tests
+
+Both fixes were driven by tests written first and confirmed failing:
+
+- `RecommendationCard.test.tsx` — *"never claims work is under way on a stale
+  recommendation, because invalidation starts no run"*. Failed with
+  `Expected element not to have text content /recomputing/i; Received:
+  ⏳Stale — recomputing`.
+- `FindingsSheet.test.tsx` — *"is titled with the same word as the app-bar
+  control that opens it (WCAG 2.5.3)"*, rendering `WorkspaceAppBar` and
+  `FindingsSheet` together and asserting both accessible names. Failed with
+  `Expected element to have accessible name: Findings; Received: Research`.
+  The existing *"renders its content, titled Research"* assertion was updated
+  to the corrected contract, not removed.
+
+Commands: `npx vitest run apps/web/src` — **1762 passed, 76 files**;
+`npx tsc --noEmit -p apps/web`, `npx eslint --max-warnings=0` and
+`npx prettier --check` on the four changed files all clean.
+
+**Visual baselines.** Not regenerated here. `recommendation-stale.png` at every
+viewport now differs by the chip and note text and must be regenerated centrally
+alongside the other in-flight e2e work.

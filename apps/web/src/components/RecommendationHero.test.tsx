@@ -180,6 +180,45 @@ describe('RecommendationHero', () => {
     expect(screen.getByTestId('approval-card-stamp')).toHaveTextContent('Approved');
   });
 
+  // Regression for the stale "READY FOR REVIEW" chip, found in the release
+  // baseline screenshot `decided-chatgpt-pane-640-darwin.png`: the
+  // orientation row read "Decided", the hero headline read "Decided.", and
+  // the recommendation card directly beneath them still rendered a green
+  // "READY FOR REVIEW" chip. "Ready for review" is a claim that a human has
+  // not yet answered; on a case whose human has already answered it is
+  // stale, and it is the same class of defect as the dock offering "Confirm
+  // what moves forward" on a closed case (`deriveNextMoves`,
+  // packages/core/src/discovery.ts). The chip was derived from
+  // `recommendation.status`, which stays `'ready'` forever after the
+  // decision -- so this asserts at the region level, where the verdict and
+  // the chip are rendered in the same glance, that they cannot disagree.
+  it.each([
+    ['approved', 'Decided'],
+    ['rejected', 'Not chosen'],
+    ['revision_requested', 'Revision requested'],
+  ] as const)(
+    'never presents a settled (%s) recommendation as still awaiting review',
+    (proposalStatus, expectedChipLabel) => {
+      const recommendation = buildRecommendation({ status: 'ready' });
+      const proposal = buildProposal({ status: proposalStatus });
+      const status = deriveWorkspaceStatus(buildStatusInput({ recommendation, proposal }));
+      render(<RecommendationHero {...buildProps({ status, recommendation, proposal })} />);
+
+      const chip = screen.getByTestId('recommendation-card-status');
+      expect(chip).not.toHaveTextContent(/ready for review/i);
+      expect(chip).toHaveTextContent(expectedChipLabel);
+    },
+  );
+
+  it('still says "Ready for review" while the decision genuinely is awaiting a human', () => {
+    const recommendation = buildRecommendation({ status: 'ready' });
+    const proposal = buildProposal({ status: 'pending' });
+    const status = deriveWorkspaceStatus(buildStatusInput({ recommendation, proposal }));
+    render(<RecommendationHero {...buildProps({ status, recommendation, proposal })} />);
+
+    expect(screen.getByTestId('recommendation-card-status')).toHaveTextContent(/ready for review/i);
+  });
+
   it('renders LiveRunStatus only once a receipt exists, and the Inspect run control only once a runId exists', () => {
     const { rerender } = render(<RecommendationHero {...buildProps()} />);
     expect(screen.queryByTestId('live-run-status')).not.toBeInTheDocument();

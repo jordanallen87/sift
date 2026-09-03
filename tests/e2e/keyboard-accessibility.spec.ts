@@ -8,7 +8,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
 import { installConsoleGuard } from './helpers/console-guard.js';
 import { disableAnimations } from './helpers/layout-assertions.js';
-import { isNarrowLayout, SiftPage } from './pages/sift-page.js';
+import { SiftPage } from './pages/sift-page.js';
 
 /** Presses Tab (bounded) until `target` is focused, or fails with a clear message -- avoids a magic single-Tab assumption about exactly how many focusable ancestors precede the target. */
 async function tabUntilFocused(page: Page, target: Locator, maxPresses = 15): Promise<void> {
@@ -64,11 +64,13 @@ test.describe('keyboard operation and accessibility', () => {
     await sift.waitForInvestigationCompleted(round1.runId);
     await sift.waitForRecommendationReady();
 
-    // "Add a question" is reached differently per layout (ADR 0008): a
-    // closed-by-default disclosure row in pane mode (ADR 0002), or a
-    // main-column toolbar Sheet in web-app mode -- `openAddConcern` picks
-    // the right one for the current viewport before the form fields below
-    // become reachable at all.
+    // "Add a question" is now one item of the app bar's create menu, and
+    // the app bar is global chrome mounted once above the narrow/expanded
+    // split -- so this is the same two keystroke-reachable controls (menu
+    // trigger, then menu item) at every viewport, opening the same modal
+    // Sheet. It used to be a closed-by-default disclosure row in pane mode
+    // and a main-column toolbar Sheet in web-app mode, which is why the
+    // Escape below used to be conditional.
     await sift.openAddConcern();
 
     // --- Fill CustomConcernForm using real keystrokes, not `.fill()` ---
@@ -89,20 +91,45 @@ test.describe('keyboard operation and accessibility', () => {
     await page.keyboard.press('Enter');
     await expect(form.getByTestId('custom-concern-form-success')).toBeVisible();
 
-    // Web-app mode's "Add a question" region is a real modal Sheet (ADR
-    // 0008): closed here via Escape, not a click -- keeps this journey
-    // fully keyboard-operable end to end, and a still-open modal would
-    // otherwise intercept the "Request investigation" click below. Pane
-    // mode's disclosure has no modal to close.
-    if (!isNarrowLayout(page)) {
-      await page.keyboard.press('Escape');
-      await expect(page.getByTestId('workspace-add-concern-sheet')).not.toBeVisible();
-    }
+    // The "Add a question" region is a real modal Sheet at EVERY viewport
+    // now that it is a create-menu item, so it is closed here via Escape,
+    // not a click -- keeps this journey fully keyboard-operable end to end,
+    // and a still-open modal would otherwise intercept the "Request
+    // investigation" click below.
+    //
+    // This was guarded by `if (!isNarrowLayout(page))` while pane mode
+    // reached the same form through a non-modal disclosure row. When that
+    // row became a create-menu item the guard silently stopped closing a
+    // modal that now exists at 390/430/480/640 too, and round 2's click
+    // spent the whole 120s test budget being swallowed by the Sheet's
+    // overlay. Unconditional, because the surface is unconditional.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('workspace-add-concern-sheet')).not.toBeVisible();
 
     // --- Round 2, then keyboard-activated approval ---
     const round2 = await sift.requestInvestigation();
     await sift.waitForInvestigationCompleted(round2.runId);
     await sift.waitForRecommendationReady();
+
+    // A real, bounded wait on the exact thing the rest of this test is
+    // about, and not a redundant one: neither line above actually waits for
+    // round 2's *result* to reach this browser.
+    //
+    // `waitForRecommendationReady` cannot, here. Unlike
+    // `car-purchase-journey.spec.ts`, this journey never reweights a
+    // criterion, so round 1's recommendation is never invalidated and the
+    // card still reads "Ready for review" when round 2 is requested -- the
+    // assertion passes instantly, against round-1 state.
+    // `waitForInvestigationCompleted` cannot either: it reads the run's own
+    // status and `live-run-status-phase`, both of which say "completed"
+    // while the revised snapshot is still in flight.
+    // `foldRound2` (`car-purchase-engine.ts`) appends `proposal.proposed`
+    // before the run's completion activity, so the proposal is genuinely
+    // real by then -- the browser simply learns about it over a separate
+    // SSE case-snapshot delivery. On a loaded machine that lands after
+    // `toBeVisible`'s default 5s, and the test then reported "no approval
+    // card" for a proposal that existed and was merely still arriving.
+    await expect(page.getByTestId('approval-card-pending')).toBeVisible({ timeout: 30_000 });
 
     const approveButton = page.getByTestId('approval-card-approve');
     await expect(approveButton).toBeVisible();

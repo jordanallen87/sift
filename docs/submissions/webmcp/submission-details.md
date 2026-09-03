@@ -139,13 +139,19 @@ Replace this draft with the exact deployed URL, browser versions, and observed r
 - WebMCP / `document.modelContext`
 - TypeScript
 - React
+- Vite
+- Tailwind CSS
+- Express
+- Zod
 - Strands Agents SDK for TypeScript
 - Amazon Bedrock
-- SQLite / Drizzle
-- OpenTelemetry
+- SQLite / better-sqlite3 / Drizzle
 - Playwright
+- Docker
 - Railway
 - Amazon Bedrock AgentCore, only if actually deployed
+
+**OpenTelemetry is deliberately absent from this list.** Sift never calls the Strands SDK's `setupTracer()`, no `@opentelemetry` package is a direct dependency, and no OTEL span is ever produced. The Runtime Inspector's correlation is real, but it comes from the Strands TypeScript lifecycle hooks — `BeforeToolCallEvent`, `AfterToolCallEvent`, `BeforeModelCallEvent`, `AfterModelCallEvent` on every agent, plus `BeforeNodeCallEvent`/`NodeResultEvent` on the Graph and Swarm and `MultiAgentHandoffEvent` on the Swarm — normalized in `apps/agent/src/runtime/event-normalizer.ts` and keyed by a Sift-minted `traceId`, not by a tracing backend. See `claim-evidence-matrix.md` row E8.
 
 ## Final checklist
 

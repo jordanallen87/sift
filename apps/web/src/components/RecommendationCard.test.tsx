@@ -130,6 +130,53 @@ describe('RecommendationCard', () => {
     expect(chip).toHaveTextContent('[source-1]');
   });
 
+  // See `RecommendationHero.test.tsx`'s companion regression for the
+  // baseline screenshot this came from. `recommendation.status` describes
+  // the recommendation object and stays `'ready'` after the human answers;
+  // the chip is a claim about where the *case* is, so once a verdict exists
+  // the verdict is what it must state.
+  it.each([
+    ['approved', 'Decided'],
+    ['rejected', 'Not chosen'],
+    ['revision_requested', 'Revision requested'],
+  ] as const)(
+    'states the human verdict (%s) instead of "Ready for review" once the proposal is settled',
+    (settledDecision, expectedLabel) => {
+      render(
+        <RecommendationCard
+          recommendation={buildRecommendation()}
+          settledDecision={settledDecision}
+        />,
+      );
+
+      const chip = screen.getByTestId('recommendation-card-status');
+      expect(chip).toHaveTextContent(expectedLabel);
+      expect(chip).not.toHaveTextContent(/ready for review/i);
+    },
+  );
+
+  it('keeps saying "Ready for review" while no verdict has been rendered yet', () => {
+    const { rerender } = render(<RecommendationCard recommendation={buildRecommendation()} />);
+    expect(screen.getByTestId('recommendation-card-status')).toHaveTextContent(/ready for review/i);
+
+    rerender(<RecommendationCard recommendation={buildRecommendation()} settledDecision={null} />);
+    expect(screen.getByTestId('recommendation-card-status')).toHaveTextContent(/ready for review/i);
+  });
+
+  it("lets the human verdict win over the recommendation's own stale status", () => {
+    // A settled case is not waiting on anything the chip could report about
+    // the recommendation object; the most consequential true thing about
+    // this card is that the person already answered.
+    render(
+      <RecommendationCard
+        recommendation={buildRecommendation({ status: 'stale' })}
+        settledDecision="approved"
+      />,
+    );
+
+    expect(screen.getByTestId('recommendation-card-status')).toHaveTextContent('Decided');
+  });
+
   it('renders a stale recommendation with a distinct textual note, not just a color change', () => {
     render(<RecommendationCard recommendation={buildRecommendation({ status: 'stale' })} />);
 
@@ -139,7 +186,32 @@ describe('RecommendationCard', () => {
     );
   });
 
-  it('has no axe violations across empty, loading, withheld, ready, and stale states', async () => {
+  it('never claims work is under way on a stale recommendation, because invalidation starts no run', () => {
+    // Traced, not assumed. `CommandService.updateCriteria`
+    // (apps/agent/src/services/command-service.ts) appends
+    // `recommendation.invalidated` and calls `notifyRunPlan` ->
+    // `RunPlanService.revisePlan` (apps/agent/src/services/
+    // run-plan-service.ts), which re-derives the plan, persists it, and
+    // emits `plan.revised`. It launches no engine run. Nothing is
+    // recomputed until a human or a tool calls `requestInvestigation`, so
+    // neither the chip nor the note may say Sift is recomputing anything --
+    // this product's whole claim is that it does not assert what it has not
+    // earned, and the one place that must hold is its own UI.
+    render(<RecommendationCard recommendation={buildRecommendation({ status: 'stale' })} />);
+
+    const status = screen.getByTestId('recommendation-card-status');
+    const note = screen.getByTestId('recommendation-card-stale-note');
+
+    expect(status).not.toHaveTextContent(/recomputing/i);
+    expect(note).not.toHaveTextContent(/recomputing/i);
+
+    expect(status).toHaveTextContent('Stale — needs investigation');
+    expect(note).toHaveTextContent(
+      'Sift has not looked into the change yet, so the content below may no longer reflect the current case.',
+    );
+  });
+
+  it('has no axe violations across empty, loading, withheld, ready, stale, and settled states', async () => {
     const { container: empty } = render(<RecommendationCard recommendation={null} />);
     expect(await axe(empty)).toHaveNoViolations();
 
@@ -160,6 +232,11 @@ describe('RecommendationCard', () => {
       <RecommendationCard recommendation={buildRecommendation({ status: 'stale' })} />,
     );
     expect(await axe(stale)).toHaveNoViolations();
+
+    const { container: settled } = render(
+      <RecommendationCard recommendation={buildRecommendation()} settledDecision="approved" />,
+    );
+    expect(await axe(settled)).toHaveNoViolations();
   });
 
   it('renders at 390px width with no fixed-width overflow risk', () => {

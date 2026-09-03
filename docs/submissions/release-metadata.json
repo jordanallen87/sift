@@ -22,7 +22,28 @@
     "deployed": false,
     "reason": "No AWS credentials were available in the build environment this session. The Railway deployment runs SIFT_EXECUTION_TARGET=local; the real /ping and /invocations routes (apps/agent/src/routes/agentcore.ts) are live and verified against that local-target deployment, but no AgentCore runtime/CloudWatch correlation evidence exists yet."
   },
-  "webmcpTestClients": [],
+  "webmcpTestClients": [
+    {
+      "client": "Google Chrome 152.0.7977.75 (desktop, macOS)",
+      "webmcpEnablement": "--enable-features=WebMCP,WebMCPTesting,DevToolsWebMCPSupport",
+      "surface": "Chrome's native document.modelContext, driven over the CDP WebMCP domain",
+      "targetUrl": "https://pax-hackathon-production.up.railway.app",
+      "testedAt": "2026-09-02T18:26:35Z",
+      "automatedBy": "pnpm test:host (scripts/test-host.ts)",
+      "result": "14 of 14 checks passed",
+      "toolsDiscovered": 26,
+      "evidencePath": "artifacts/host-acceptance/2026-09-02T18-26-35-407Z/",
+      "proves": [
+        "a real browser discovered, schema-read, invoked, and received results from the deployed page",
+        "registration, re-registration after reload, and re-announcement after host reconnect",
+        "state control in both directions between the pane and the host"
+      ],
+      "doesNotProve": [
+        "anything about ChatGPT specifically -- this is Chrome, not that product",
+        "that a model finds, sequences, or understands these tools; the script chose every call"
+      ]
+    }
+  ],
   "screenshotInventory": [
     "tests/e2e/car-purchase-journey.spec.ts-snapshots/ (24 PNGs: 6 named states x 4 viewport projects)",
     "tests/e2e/home-energy-guardian-journey.spec.ts-snapshots/ (24 PNGs: 6 named states x 4 viewport projects)",

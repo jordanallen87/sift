@@ -25,6 +25,7 @@ import type {
 import {
   applyDiscoveryResponse,
   compileDiscoveryTopics,
+  deriveDisplayedCoverage,
   deriveDiscoveryReadiness,
   deriveNextMoves,
   planDiscoveryResponse,
@@ -1037,5 +1038,66 @@ describe('deriveNextMoves: the pane always has a next action', () => {
   it('returns identical moves for identical state', () => {
     const state = answeredCase();
     expect(deriveNextMoves(state, pack())).toEqual(deriveNextMoves(state, pack()));
+  });
+});
+
+/**
+ * The counts a pane is entitled to print, which are not always the counts the
+ * readiness derivation holds.
+ *
+ * Both suppressions below are the same rule at two ends of the journey: a
+ * live progress claim is only honest while the progress it describes can
+ * still be made. Before discovery has begun nobody has been offered a way to
+ * move the denominator; after the decision is closed there is no longer one.
+ */
+describe('deriveDisplayedCoverage: the coverage a pane may honestly display', () => {
+  it('reports the real counts while discovery can still move', () => {
+    const coverage = deriveDisplayedCoverage(caseWith([topic()]), pack());
+
+    expect(coverage.requiredTotal).toBe(3);
+    expect(coverage.requiredResolved).toBe(1);
+  });
+
+  it('makes no coverage claim for a case that never started discovery', () => {
+    const seeded: CaseState = { ...caseWith([]), discovery: undefined };
+    const coverage = deriveDisplayedCoverage(seeded, pack());
+
+    expect(coverage.requiredTotal).toBe(0);
+    expect(coverage.requiredResolved).toBe(0);
+  });
+
+  it('makes no live progress claim once the case is decided', () => {
+    // The `decided` release baseline read "Decided · 0 of 5 covered · Next:
+    // Review what was decided". Every number in it was arithmetically true --
+    // this case was decided from catalog data and evidence, and the discovery
+    // topics were never answered -- but a progress counter beside a closed
+    // decision describes an activity that can no longer progress, and reads
+    // as though the decision was made having covered nothing.
+    const decided: CaseState = { ...caseWith([topic()]), status: 'decided' };
+    const coverage = deriveDisplayedCoverage(decided, pack());
+
+    expect(coverage.requiredTotal).toBe(0);
+    expect(coverage.requiredResolved).toBe(0);
+  });
+
+  it('suppresses the claim on a decided case that answered everything too', () => {
+    // Not a rule about unflattering numbers. "3 of 3 covered" beside a
+    // closed decision is the same live progress claim about the same
+    // finished activity, and keeping only the flattering half of the rule
+    // would make the counter's presence a signal of its own.
+    const answered = caseWith([
+      topic(),
+      topic({ topicId: 'vehicle.occupants', valueSummary: 'Two adults, two children' }),
+      topic({ topicId: 'vehicle.budget', valueSummary: 'Under 40,000' }),
+    ]);
+    const decided: CaseState = { ...answered, status: 'decided' };
+
+    expect(deriveDiscoveryReadiness(answered, pack()).coverage.requiredResolved).toBe(3);
+    expect(deriveDisplayedCoverage(decided, pack()).requiredTotal).toBe(0);
+  });
+
+  it('returns identical coverage for identical state', () => {
+    const state = caseWith([topic()]);
+    expect(deriveDisplayedCoverage(state, pack())).toEqual(deriveDisplayedCoverage(state, pack()));
   });
 });

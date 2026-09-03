@@ -714,6 +714,23 @@ export function deriveDecisionPhase(
  * So: no discovery, no coverage claim. The counts are real the moment the
  * person answers anything.
  *
+ * A decided case is the same rule at the other end of the journey. The
+ * `decided` baseline read "Decided · 0 of 5 covered · Next: Review what was
+ * decided" — arithmetically true, because that case was decided from catalog
+ * data and evidence and the five topics were never asked, and still a
+ * progress counter for an activity that can no longer progress. Beside the
+ * word "Decided" it reads as "decided having covered nothing". The
+ * suppression is unconditional rather than limited to incomplete coverage:
+ * "5 of 5 covered" on a closed case makes the same live claim, and hiding
+ * only the unflattering half would turn the counter's presence into a signal
+ * of its own. Nothing is lost that the person still needs — what a decision
+ * rested on is the recommendation's account to give, not a discovery
+ * denominator's.
+ *
+ * `provisionalityOf` in the web shell already exempts `decided` from the
+ * phases that qualify a result as reached without asking everything, so this
+ * completes a pair rather than starting a rule.
+ *
  * Lives in core rather than in the shell because the persona harness checks
  * the same claim the shell renders, and two copies of this rule would mean
  * the gate was testing its own copy rather than the product's.
@@ -722,8 +739,11 @@ export function deriveDisplayedCoverage(
   caseState: CaseState,
   pack: CompiledDecisionPack,
 ): DiscoveryCoverage {
-  const started = caseState.discovery !== undefined;
-  if (!started) {
+  // A live progress claim is honest only while the progress it describes can
+  // still be made: not before discovery has begun, and not after the decision
+  // has closed.
+  const canStillProgress = caseState.discovery !== undefined && caseState.status !== 'decided';
+  if (!canStillProgress) {
     return {
       requiredTotal: 0,
       requiredResolved: 0,

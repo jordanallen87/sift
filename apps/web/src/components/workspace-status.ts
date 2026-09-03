@@ -58,6 +58,12 @@ export type HeroPhase = (typeof HERO_PHASES)[number];
 
 export type HeroActionKind = 'request_investigation' | 'review_findings';
 
+/**
+ * A verdict a human has actually rendered on a `DecisionProposal` -- the
+ * three settled outcomes, never `'pending'`.
+ */
+export type SettledDecision = Exclude<DecisionProposal['status'], 'pending'>;
+
 export interface HeroAction {
   label: string;
   kind: HeroActionKind;
@@ -116,6 +122,30 @@ export interface WorkspaceStatus {
    * hero to show a second, redundant button next to a real control.
    */
   action?: HeroAction;
+  /**
+   * The verdict the human rendered, present exactly in the `decided` phase
+   * and absent everywhere else.
+   *
+   * It travels with the phase because a settled case must not keep
+   * describing itself as awaiting one, and only this module knows when that
+   * is true. The release baseline screenshot
+   * (`decided-chatgpt-pane-640-darwin.png`) caught the alternative: the
+   * orientation row read "Decided", this module's own headline read
+   * "Decided.", and the status chip inside the same region still read
+   * "READY FOR REVIEW" -- because that chip was derived from
+   * `Recommendation.status`, which is a fact about the recommendation
+   * object and stays `'ready'` forever after the human answers. "Ready for
+   * review" is a claim that a person still has to act; on a case they have
+   * already acted on it is stale, exactly as the dock offering "Confirm
+   * what moves forward" on a closed case was (`deriveNextMoves`,
+   * packages/core/src/discovery.ts).
+   *
+   * Deriving it here rather than letting the chip read the proposal
+   * directly keeps the ADR 0004 guarantee intact: one region, one state
+   * machine, so the headline and the chip cannot disagree about whether a
+   * decision has been made.
+   */
+  settledDecision?: SettledDecision;
 }
 
 function pluralFinding(count: number): string {
@@ -146,7 +176,11 @@ export function deriveWorkspaceStatus(input: WorkspaceStatusInput): WorkspaceSta
   // of both being folded into a single "decided" tracker stage the way the
   // retired four-stage tracker did.
   if (proposal !== null && proposal.status !== 'pending') {
-    return { phase: 'decided', headline: DECIDED_HEADLINE[proposal.status] };
+    return {
+      phase: 'decided',
+      headline: DECIDED_HEADLINE[proposal.status],
+      settledDecision: proposal.status,
+    };
   }
 
   if (proposal !== null && proposal.status === 'pending') {

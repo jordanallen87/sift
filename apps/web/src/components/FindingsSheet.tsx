@@ -1,9 +1,24 @@
 /**
- * The "Research" review surface (docs/specs/product.md "Workspace
- * layout" region 4, evidence half) -- labeled "What Sift found" prior to a shopping-UX
- * terminology pass that renamed it to "Research," Edmunds/KBB's own nav term for this same
- * content (shopping-ux-research.md row 4) -- reached from the closed-by-default
- * `DisclosureSection` row. Unlike `EvidenceList`'s always-inline rendering,
+ * The "Findings" review surface (docs/specs/product.md "Workspace
+ * layout" region 4, evidence half), reached from `WorkspaceAppBar`'s
+ * always-present "Findings" control (ADR 0008; it superseded both the
+ * original "What Sift found" disclosure row and a shopping-UX terminology
+ * pass that briefly titled this sheet "Research").
+ *
+ * The title is "Findings" and must stay the same word the control that
+ * opens it uses. A shopping-UX terminology pass had titled the sheet
+ * "Research" while every route into it stayed "Findings" -- the app-bar
+ * control's `Findings, {N}` accessible name, `deriveWorkspaceStatus`'s
+ * "Review findings" action, App.tsx's "N findings need your attention"
+ * banner, this file's own kanban region label -- so a person activated one
+ * name and arrived at another (WCAG 2.5.3 "Label in Name": a voice-control
+ * user cannot say what they see, and a screen-reader user is announced into
+ * a dialog they did not ask for). "Research" is also separately taken in
+ * this product for source material rather than for evaluated evidence:
+ * `OptionProfileSheet`'s claims heading, one of `CaseNotes`' note kinds,
+ * and `ReferenceLibrary`'s "Research papers, articles..." empty state.
+ *
+ * Unlike `EvidenceList`'s always-inline rendering,
  * this is a controlled `Sheet` with three tab views over the same
  * `EvidenceItemData[]` -- List, Table, and Kanban -- so a case with many
  * findings can be scanned densely (Table/Kanban) or reviewed one at a time
@@ -137,7 +152,7 @@ export function FindingsSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent data-testid="findings-sheet">
         <SheetHeader>
-          <SheetTitle>Research</SheetTitle>
+          <SheetTitle>Findings</SheetTitle>
           <SheetDescription className="visually-hidden">
             Review the evidence Sift has gathered for this case.
           </SheetDescription>

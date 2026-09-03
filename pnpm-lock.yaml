@@ -219,6 +219,12 @@ importers:
         specifier: ^4.9.0
         version: 4.9.0
 
+  packages/demo-studio:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
   packages/packs:
     dependencies:
       '@sift/contracts':

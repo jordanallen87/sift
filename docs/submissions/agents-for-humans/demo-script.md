@@ -101,7 +101,7 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 **Say to ChatGPT (matches the "WebMCP demo moments — energy moment" line in `docs/specs/webmcp.md`-adjacent spec, exact):**
 > "Long-term waste matters more than the cheapest immediate option."
 
-This calls `sift_update_criteria`. Point out: the Recommendation card's status flips to **"Stale — recomputing."**
+This calls `sift_update_criteria`. Point out: the Recommendation card's status flips to **"Stale — needs investigation."** Nothing is running yet — `updateCriteria` appends `recommendation.invalidated` and revises the run plan (`apps/agent/src/services/run-plan-service.ts`), it does not start an engine run — which is exactly why the next line on camera is you asking for one.
 
 **Say next, to target the re-investigation correctly (see gap #2 rehearsal note):**
 > "Ask Sift to reconsider the response options now that long-term waste matters more."

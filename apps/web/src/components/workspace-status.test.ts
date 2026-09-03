@@ -171,6 +171,30 @@ describe('deriveWorkspaceStatus', () => {
       expect(status.phase).toBe('decided');
       expect(status.headline).toBe(expectedHeadline);
       expect(status.action).toBeUndefined();
+      // The verdict travels with the phase so the region's own status chip
+      // can state it rather than re-deriving "is this case still awaiting a
+      // human" from `recommendation.status`, which stays `'ready'` forever
+      // after the decision (the stale "READY FOR REVIEW" chip on a decided
+      // case, `RecommendationHero.test.tsx`).
+      expect(status.settledDecision).toBe(settledStatus);
+    },
+  );
+
+  it.each(['not_started', 'investigating', 'ready_blocked', 'pending_approval'] as const)(
+    'carries no verdict in the %s phase, where none has been rendered',
+    (phase) => {
+      const inputs: Record<typeof phase, WorkspaceStatusInput> = {
+        not_started: buildInput(),
+        investigating: buildInput({ isRunActive: true }),
+        ready_blocked: buildInput({ recommendation: buildRecommendation({ status: 'ready' }) }),
+        pending_approval: buildInput({
+          recommendation: buildRecommendation({ status: 'ready' }),
+          proposal: buildProposal({ status: 'pending' }),
+        }),
+      };
+      const status = deriveWorkspaceStatus(inputs[phase]);
+      expect(status.phase).toBe(phase);
+      expect(status.settledDecision).toBeUndefined();
     },
   );
 

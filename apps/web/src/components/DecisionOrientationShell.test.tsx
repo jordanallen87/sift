@@ -20,9 +20,12 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
+import type { CaseState, CompiledDecisionPack } from '@sift/contracts';
 import { DecisionOrientationShell } from './DecisionOrientationShell.js';
 import type { DecisionOrientation } from './DecisionOrientationShell.js';
+import { buildDecisionOrientation } from './decision-orientation.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
+import { buildFixtureCaseState, buildFixtureCompiledPack } from '../test/fixtures.js';
 
 function orientation(overrides: Partial<DecisionOrientation> = {}): DecisionOrientation {
   return {
@@ -423,5 +426,102 @@ describe('DecisionOrientationShell: one row, detail behind an expander', () => {
     await user.click(screen.getByTestId('orientation-details-toggle'));
 
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+/**
+ * The one state where the shell renders the whole pipeline rather than a
+ * hand-written `DecisionOrientation`.
+ *
+ * The defect this describes was invisible to every test in this file and to
+ * every test beside `decision-orientation.ts`, because neither half was
+ * wrong on its own: the derivation returned true counts, and the shell
+ * printed the counts it was given. It was only visible where they met, in a
+ * release screenshot -- "Decided · 0 of 5 covered · Next: Review what was
+ * decided". So this builds the orientation from real case state.
+ */
+describe('DecisionOrientationShell: a decided case is settled, not in progress', () => {
+  const PACK: CompiledDecisionPack = buildFixtureCompiledPack({
+    discovery: {
+      topics: [
+        {
+          id: 'vehicle.budget',
+          label: 'Budget',
+          question: 'What is your budget?',
+          necessity: 'required',
+          priority: 90,
+          allowedInteractions: ['free_text'],
+          optionSeeds: [],
+          escapeHatches: {
+            allowCustom: true,
+            allowNone: false,
+            allowUnsure: true,
+            allowDefer: false,
+          },
+          mapsToAttributeIds: [],
+          mapsToCriterionIds: [],
+          confirmationRequired: true,
+        },
+      ],
+      blindSpots: [],
+    },
+  });
+
+  /** Discovery genuinely under way, and then closed with it unfinished. */
+  function decidedCase(): CaseState {
+    return {
+      ...buildFixtureCaseState(),
+      status: 'decided',
+      discovery: {
+        mode: 'companion',
+        topics: [],
+        blindSpotReview: { status: 'pending', offeredPromptIds: [], selectedPromptIds: [] },
+        dispositions: [],
+        pendingInteraction: null,
+        updatedAt: '2026-09-02T00:00:00.000Z',
+      },
+    };
+  }
+
+  it('renders no discovery progress counter beside a closed decision', () => {
+    render(
+      <DecisionOrientationShell
+        orientation={buildDecisionOrientation(decidedCase(), PACK)}
+        layout="narrow"
+      />,
+    );
+
+    expect(screen.getByTestId('orientation-phase')).toHaveTextContent('Decided');
+    expect(screen.queryByTestId('orientation-coverage')).toBeNull();
+  });
+
+  it('renders no progress bar either, for the same reason', () => {
+    // The bar is the counter in graphical form. Leaving it would keep a
+    // control that reads as "part of the way through" on a finished case,
+    // and would keep it in the accessibility tree as a live `progressbar`.
+    render(
+      <DecisionOrientationShell
+        orientation={buildDecisionOrientation(decidedCase(), PACK)}
+        layout="narrow"
+      />,
+    );
+
+    expect(screen.queryByTestId('orientation-progress')).toBeNull();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+  });
+
+  it('still answers where the person is and what is left to do', () => {
+    // Suppression may not turn the shell into a dead end: the row keeps two
+    // of its three clauses, and both still say something true.
+    render(
+      <DecisionOrientationShell
+        orientation={buildDecisionOrientation(decidedCase(), PACK)}
+        layout="narrow"
+      />,
+    );
+
+    expect(screen.getByTestId('orientation-phase')).toBeVisible();
+    expect(screen.getByTestId('orientation-next-step')).toBeVisible();
+    expect(screen.getByTestId('orientation-next-step')).not.toBeEmptyDOMElement();
   });
 });

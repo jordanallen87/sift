@@ -461,7 +461,7 @@ function buildUpdateCriteriaTool(
   return buildCaseScopedCommandTool<UpdateCriteriaInput, CommandReceipt>({
     name: 'sift_update_criteria',
     description:
-      'Adds, removes, reweights, or relabels decision criteria. Removing a criterion referenced by a decided case is rejected. A successful update invalidates the comparison and recommendation, then asks the engine to recompute.',
+      'Adds, removes, reweights, or relabels decision criteria. Removing a criterion referenced by a decided case is rejected. A successful update invalidates the comparison and recommendation and revises the run plan; nothing is recomputed until sift_request_investigation is called.',
     inputSchema: UpdateCriteriaInputSchema,
     activeCaseId,
     call: (input, options) => commands.updateCriteria(input, options),

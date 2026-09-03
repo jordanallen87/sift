@@ -1,0 +1,16 @@
+{
+  "name": "@sift/demo-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable, narration-led demo manifest validation and timing utilities.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

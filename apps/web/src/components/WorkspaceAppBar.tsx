@@ -169,10 +169,70 @@
  *    reporting the truth -- `App.tsx`'s own `mapAppBarConnectionState` is
  *    not a bug, so this fix is entirely a rendering-prominence change
  *    inside this file, not a prop or caller change.
+ *
+ * ---
+ *
+ * **Second post-ship repair: "Add option" becomes a create MENU.**
+ *
+ * The project owner's follow-up review made two related complaints. First,
+ * about the two remaining create surfaces: "Add a note and add a question
+ * should be in either the header or footer toolbars -- not at the bottom of
+ * the stack." Both were still `DisclosureSection` rows at the very end of the
+ * narrow content column, which is the exact defect this component was built
+ * to fix for "Add option" and "What Sift found"; they were simply not in the
+ * original fix's scope. Second, about this row itself: "The header is
+ * consuming more space than it needs to. Need to see if we can figure out
+ * how to get all of this into one row. I think it's possible by using things
+ * like menus."
+ *
+ * Those two pull in opposite directions -- three create actions cannot each
+ * take a slot in a row that is already tight at 390px -- and a menu is what
+ * resolves them, which is also what was asked for by name. The single "Add
+ * option" button is now a `DropdownMenu` trigger ("Add to this case") over
+ * three items: **Add option**, **Add a note**, and **Add a question**. Each
+ * item calls a plain callback prop, exactly as the button did; this component
+ * still owns no state and still fetches nothing. The pane gets *shorter*
+ * (two bottom-of-stack disclosure rows deleted) while the header grows by
+ * nothing at all -- the trigger occupies the same slot the old button did.
+ *
+ * This is not a reversal of fix 2's decision above ("Grouping (not hiding) is
+ * the chosen fix... a real overflow menu would need a new interactive
+ * disclosure primitive this task's file-ownership boundary does not
+ * include"). That decision was about *secondary* controls whose problem was
+ * purely visual differentiation, and it stands -- Help, Developer view and
+ * Reset demo are still flat, always-mounted, single-click targets. This menu
+ * groups the three *create* actions, which is a different problem (there is
+ * genuinely no room for three), and the primitive it needs now exists:
+ * `ui/dropdown-menu.tsx`, whose own header comment carries the accessibility
+ * contract in full.
+ *
+ * ADR 0008's "every capability must be reachable in both [modes]" is met by
+ * construction rather than by a layout branch: the trigger renders in both
+ * layouts (labelled "Add" at expanded, icon-only with a tooltip at narrow,
+ * exactly like the button it replaces) and holds the same three items at
+ * every width. Nothing became wide-only, nothing became pointer-only --
+ * Radix supplies arrow keys, typeahead, Enter/Space and Escape-restores-
+ * focus, all asserted behaviourally in the sibling test file rather than
+ * assumed.
  */
-import { LibraryIcon, PlusIcon, RotateCcwIcon, SearchCheckIcon, TerminalIcon } from 'lucide-react';
+import {
+  ChevronDownIcon,
+  CircleQuestionMarkIcon,
+  LibraryIcon,
+  NotebookPenIcon,
+  PlusIcon,
+  RotateCcwIcon,
+  SearchCheckIcon,
+  TerminalIcon,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HelpButton } from './HelpButton.js';
@@ -191,7 +251,12 @@ export interface WorkspaceAppBarProps {
   referenceCount?: number | undefined;
   /** Real, current option count, rendered as the compact secondary status line beside the connection badge. */
   optionCount: number;
+  /** The create menu's first item. Same contract as the button it replaces: open the caller's "add an option" surface. */
   onAddOption: () => void;
+  /** The create menu's second item -- opens the caller's "add a note" surface (formerly a bottom-of-stack disclosure row). */
+  onAddNote: () => void;
+  /** The create menu's third item -- opens the caller's "add a question" surface (formerly a bottom-of-stack disclosure row). */
+  onAddConcern: () => void;
   onReviewFindings: () => void;
   onOpenDeveloperView: () => void;
   /** Omitted entirely (not merely disabled) when the caller has no reset affordance to offer -- matches `docs/specs/product.md`'s "Empty regions" rule against rendering a control with nothing behind it. */
@@ -226,6 +291,16 @@ const CONNECTION_META: Record<
 /** Shared >=44px CSS-pixel hit area (`docs/design-system.md`'s touch-target section, backed by `--size-touch-target-min`) -- applied to every actionable control below regardless of its visual size. */
 const TOUCH_TARGET = 'min-h-[var(--size-touch-target-min)]';
 const TOUCH_TARGET_ICON = `${TOUCH_TARGET} min-w-[var(--size-touch-target-min)]`;
+
+/**
+ * The create menu trigger's accessible name, and (at narrow width) its
+ * tooltip. Deliberately longer than its visible "Add" label: an icon-only
+ * `+` announced as just "Add" tells a screen-reader or voice-control user
+ * nothing about what gets added, and WCAG 2.5.3 ("Label in Name") only
+ * requires the visible text to be CONTAINED in the accessible name, which
+ * "Add" is.
+ */
+const CREATE_MENU_LABEL = 'Add to this case';
 
 /**
  * A pointer-only label for a control that is currently rendering as a bare
@@ -278,6 +353,8 @@ export function WorkspaceAppBar({
   referenceCount = 0,
   optionCount,
   onAddOption,
+  onAddNote,
+  onAddConcern,
   onReviewFindings,
   onOpenDeveloperView,
   onResetDemo,
@@ -348,20 +425,74 @@ export function WorkspaceAppBar({
             Add option, tinted-on-active for Findings) -- unchanged by this
             repair (see fix 2 in the header comment). */}
         <div className="flex shrink-0 items-center gap-[var(--space-1-5)]">
-          <GlyphTooltip label="Add option" enabled={!isExpanded}>
-            <Button
-              type="button"
-              data-testid="workspace-app-bar-add-option"
-              aria-label="Add option"
-              onClick={onAddOption}
-              variant="default"
-              size={isExpanded ? 'sm' : 'icon'}
-              className={isExpanded ? TOUCH_TARGET : TOUCH_TARGET_ICON}
+          {/* One trigger, three create actions -- see this file's header
+              comment (second post-ship repair) for why this is a menu now
+              and why that does not contradict fix 2's grouping decision.
+              `GlyphTooltip` sits OUTSIDE `DropdownMenuTrigger` so both Radix
+              layers anchor to the one real `Button` element underneath;
+              the tooltip only fires at narrow width, where the trigger has
+              no visible text of its own. */}
+          <DropdownMenu
+            // `modal={false}` on purpose. Every item here opens a `Sheet`
+            // (a Radix Dialog), and a modal menu closing in the same tick a
+            // modal dialog opens makes two `react-remove-scroll` locks fight
+            // over `document.body` -- the documented failure mode being a
+            // body left at `pointer-events: none` with nothing on the page
+            // clickable. A non-modal menu keeps arrow keys, typeahead,
+            // Escape, outside-click dismissal and focus restoration (all
+            // asserted in this file's sibling test); it only drops the
+            // scroll lock and the `aria-hidden` blanket over the rest of the
+            // page, neither of which a three-item create menu needs.
+            modal={false}
+          >
+            <GlyphTooltip label={CREATE_MENU_LABEL} enabled={!isExpanded}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  data-testid="workspace-app-bar-create-menu"
+                  // Radix supplies `aria-haspopup="menu"`/`aria-expanded`; it
+                  // does not supply a name, so this stays explicit.
+                  aria-label={CREATE_MENU_LABEL}
+                  variant="default"
+                  size={isExpanded ? 'sm' : 'icon'}
+                  className={isExpanded ? TOUCH_TARGET : TOUCH_TARGET_ICON}
+                >
+                  <PlusIcon aria-hidden="true" className="size-4" />
+                  {isExpanded ? 'Add' : null}
+                  {isExpanded ? (
+                    <ChevronDownIcon aria-hidden="true" className="size-3.5 opacity-70" />
+                  ) : null}
+                </Button>
+              </DropdownMenuTrigger>
+            </GlyphTooltip>
+            {/* `align="end"`: this trigger sits at the right edge of the row
+                in both layouts, so an end-aligned panel opens inward instead
+                of being shifted back in by collision handling. */}
+            <DropdownMenuContent
+              align="end"
+              data-testid="workspace-app-bar-create-menu-content"
+              aria-label={CREATE_MENU_LABEL}
             >
-              <PlusIcon aria-hidden="true" className="size-4" />
-              {isExpanded ? 'Add option' : null}
-            </Button>
-          </GlyphTooltip>
+              <DropdownMenuItem
+                data-testid="workspace-app-bar-add-option"
+                // `onSelect`, not `onClick`: Radix fires it for pointer AND
+                // keyboard activation, so an Enter/Space user is not a
+                // second code path that can silently rot.
+                onSelect={onAddOption}
+              >
+                <PlusIcon aria-hidden="true" />
+                Add option
+              </DropdownMenuItem>
+              <DropdownMenuItem data-testid="workspace-app-bar-add-note" onSelect={onAddNote}>
+                <NotebookPenIcon aria-hidden="true" />
+                Add a note
+              </DropdownMenuItem>
+              <DropdownMenuItem data-testid="workspace-app-bar-add-concern" onSelect={onAddConcern}>
+                <CircleQuestionMarkIcon aria-hidden="true" />
+                Add a question
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <GlyphTooltip label={`Findings, ${String(findingsCount)}`} enabled={!isExpanded}>
             <Button

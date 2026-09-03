@@ -138,6 +138,11 @@ export function buildDecisionOrientation(
    * covered", which is two contradictory statements about the same case.
    * Neither number was wrong on its own; the pairing was.
    *
+   * A `decided` case gets none for the same reason at the other end: the
+   * `decided` baseline read "Decided · 0 of 5 covered", a progress counter
+   * for an activity that can no longer progress. See
+   * `deriveDisplayedCoverage`.
+   *
    * The rule lives in `@sift/core` rather than here because the persona
    * harness checks this exact claim, and a second copy would mean the gate
    * was testing its own copy of the rule instead of the product's.
@@ -150,7 +155,16 @@ export function buildDecisionOrientation(
       : readiness.topics.find((topic) => topic.topicId === readiness.nextTopicId);
 
   const nextStepLabel = moves[0]?.label ?? FALLBACK_NEXT_STEP;
-  const focusLabel = focusTopic?.label ?? null;
+  /**
+   * Nothing is in focus on a closed decision.
+   *
+   * `deriveDiscoveryReadiness` names the highest-priority unanswered topic
+   * from the topics alone -- it never reads `status` -- so a decided case
+   * still has a `nextTopicId`, and the expander read "In focus: Budget"
+   * beneath the word "Decided". Same stale-progress defect as the coverage
+   * counter above, one line down.
+   */
+  const focusLabel = phase === 'decided' ? null : (focusTopic?.label ?? null);
 
   return {
     decisionTitle: caseState.title,

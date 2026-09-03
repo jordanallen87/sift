@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import type { Claim, EvidenceDisposition, EvidenceLink, Source } from '@sift/contracts';
 import { FindingsSheet } from './FindingsSheet.js';
+import { WorkspaceAppBar } from './WorkspaceAppBar.js';
 import type { EvidenceItemData } from './EvidenceCard.js';
 
 // FindingsSheet's own responsibility is the sheet chrome, the summary
@@ -139,13 +140,53 @@ describe('FindingsSheet', () => {
   it('does not render its content when closed', () => {
     render(<FindingsSheet open={false} onOpenChange={vi.fn()} items={buildMixedItems()} />);
     expect(screen.queryByTestId('findings-sheet')).not.toBeInTheDocument();
-    expect(screen.queryByText('Research')).not.toBeInTheDocument();
+    expect(screen.queryByText('Findings')).not.toBeInTheDocument();
   });
 
-  it('renders its content, titled "Research", when open', () => {
+  it('renders its content, titled "Findings", when open', () => {
     render(<FindingsSheet open onOpenChange={vi.fn()} items={buildMixedItems()} />);
     expect(screen.getByTestId('findings-sheet')).toBeInTheDocument();
-    expect(screen.getByText('Research')).toBeInTheDocument();
+    expect(screen.getByText('Findings')).toBeInTheDocument();
+  });
+
+  // WCAG 2.5.3 "Label in Name". The only route into this sheet is
+  // `WorkspaceAppBar`'s control, whose accessible name is `Findings, {N}`
+  // (App.tsx wires `onReviewFindings` to open exactly this sheet). A person
+  // who activates "Findings" and lands in a dialog announced as "Research"
+  // is told they arrived somewhere they did not ask for, and a
+  // voice-control user cannot say what they see.
+  //
+  // "Findings" is the word, not "Research": it is what the app-bar control,
+  // `deriveWorkspaceStatus`'s "Review findings" action, `RecommendationHero`'s
+  // button, App.tsx's "N findings need your attention" banner and this
+  // sheet's own kanban region label all already say. "Research" is
+  // separately taken elsewhere in the product for source material --
+  // `OptionProfileSheet`'s claims heading, `CaseNotes`' note kind, and
+  // `ReferenceLibrary`'s "Research papers, articles..." empty state -- so
+  // reusing it here names two different things with one word.
+  it('is titled with the same word as the app-bar control that opens it (WCAG 2.5.3)', () => {
+    render(
+      <>
+        <WorkspaceAppBar
+          title="Choose Our Next Car"
+          connectionState="live"
+          findingsCount={3}
+          optionCount={4}
+          onAddOption={vi.fn()}
+          onAddNote={vi.fn()}
+          onAddConcern={vi.fn()}
+          onReviewFindings={vi.fn()}
+          onOpenDeveloperView={vi.fn()}
+          layout="expanded"
+        />
+        <FindingsSheet open onOpenChange={vi.fn()} items={buildMixedItems()} />
+      </>,
+    );
+
+    const control = screen.getByTestId('workspace-app-bar-findings');
+    expect(control).toHaveAccessibleName('Findings, 3');
+    expect(control).toHaveTextContent('Findings');
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Findings');
   });
 
   it('renders the empty state instead of chips/tabs when there is no evidence yet', () => {

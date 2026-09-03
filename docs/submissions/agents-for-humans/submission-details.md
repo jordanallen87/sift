@@ -69,7 +69,7 @@ Global Devpost project fields also require a title, tagline, description, built-
 
 | Criterion | Official description | Sift proof to foreground |
 | --- | --- | --- |
-| Technological Implementation | How thoroughly and skillfully does the project use Strands Agents? Does the code reflect genuine effort and a working, non-trivial implementation? A live demo and/or Amazon Bedrock AgentCore deployment will strengthen this score. | Real AgentSkills, bounded Swarm handoffs, interventions, Context Injector, GoalLoop, sessions/snapshots, OpenTelemetry, scripted deterministic tests, and AgentCore when available. |
+| Technological Implementation | How thoroughly and skillfully does the project use Strands Agents? Does the code reflect genuine effort and a working, non-trivial implementation? A live demo and/or Amazon Bedrock AgentCore deployment will strengthen this score. | Real AgentSkills, bounded Swarm handoffs, interventions, Context Injector, GoalLoop, sessions/snapshots, Strands TypeScript lifecycle hooks normalized into the Runtime Inspector, scripted deterministic tests, and AgentCore when available. |
 | Design | Does the project deliver a complete, coherent product experience and not just a technical proof of concept? | Calm right-pane UI, truthful real-time activity, reviewable evidence, explicit waiting/blocked states, and human confirmation rather than a terminal trace. |
 | Potential Impact | Does the project make a credible, specific case for solving a real problem for a real audience, and does the solution actually address that problem based on what's demonstrated? | Home Energy Guardian reduces continuous household vigilance and investigates abnormal bills before interrupting the user. |
 | Creativity & Originality | Is this a creative, non-obvious use of Strands Agents and does the team demonstrate genuine understanding of the problem space they're working in? | A supervised adaptive system measures evidence progress, rejects plausible premature answers, and changes agent/skill/tool trajectory under deterministic governance. |
@@ -118,8 +118,8 @@ The distinguishing claim below is implemented literally rather than asserted. Ev
 - Context Injector supplies current evidence, criteria, case extensions, and remaining budgets on each turn.
 - GoalLoop rejects an unsupported early recommendation and provides bounded corrective feedback.
 - Sessions and snapshots preserve the execution across a human confirmation and service reconstruction.
-- Hooks and OpenTelemetry feed the user activity stream and detailed Runtime Inspector without exposing chain-of-thought.
-- AgentCore provides the AWS execution and observability target when deployed.
+- Strands TypeScript lifecycle hooks — `BeforeToolCallEvent`/`AfterToolCallEvent`/`BeforeModelCallEvent`/`AfterModelCallEvent` on every agent, `BeforeNodeCallEvent`/`NodeResultEvent` on the Swarm, and `MultiAgentHandoffEvent` on each real handoff — feed the user activity stream and the detailed Runtime Inspector without exposing chain-of-thought, correlated by a Sift-minted trace id that ties an activity event to its runtime event and state diff. (No OpenTelemetry; see the note under Built-with draft.)
+- AgentCore provides the AWS execution target when deployed.
 
 ### Distinguishing claim
 
@@ -149,7 +149,7 @@ The maximum-five-minute video should follow one legible causal chain:
 5. Verify the thermostat evidence is source-linked and the recommendation changes after criteria reweighting.
 6. At confirmation, verify the session snapshot exists, restart/reconstruct the runtime, and verify restoration without lost case events.
 7. Confirm the agent cannot approve or schedule the inspection.
-8. Open Runtime Inspector and correlate the visible activity with the Strands/OTEL event.
+8. Open Runtime Inspector and correlate the visible activity with its exact Strands lifecycle-hook event, via the activity item's own "Inspect event" control (the Sift-minted trace id plus `debugEventId`).
 9. Review `artifacts/verification/latest/report.json` from `pnpm verify:release`.
 
 Replace this draft with the exact public URL, scenario control labels, AgentCore endpoint/correlation instructions, and observed results after deployment.
@@ -159,13 +159,19 @@ Replace this draft with the exact public URL, scenario control labels, AgentCore
 - Strands Agents SDK for TypeScript
 - Amazon Bedrock
 - Amazon Bedrock AgentCore, only if actually deployed
-- OpenTelemetry / AgentCore observability
 - TypeScript
 - React
+- Vite
+- Tailwind CSS
+- Express
+- Zod
 - WebMCP
-- SQLite / Drizzle
+- SQLite / better-sqlite3 / Drizzle
 - Playwright
+- Docker
 - Railway
+
+**OpenTelemetry is deliberately absent from this list.** Sift never calls the Strands SDK's `setupTracer()` — the SDK is explicit that its telemetry module "is only loaded when the user explicitly imports and calls setupTracer or setupMeter" — no `@opentelemetry` package is a direct dependency, and no OTEL span is ever produced. The Runtime Inspector's correlation is real but Sift's own: lifecycle-hook events normalized in `apps/agent/src/runtime/event-normalizer.ts` under a Sift-minted `traceId`. See `docs/submissions/webmcp/claim-evidence-matrix.md` rows E8/E9.
 
 ## Architecture diagram requirements
 
@@ -177,7 +183,7 @@ The submitted export must visibly distinguish:
 - compiled Decision Pack and case/run plan;
 - Strands AgentSkills, Graph/Swarm, interventions, Context Injector, GoalLoop, sessions, and hooks;
 - local versus AgentCore execution target;
-- OpenTelemetry correlation to Runtime Inspector and optional CloudWatch;
+- Sift-minted trace/correlation ids linking hook events to the Runtime Inspector, and **no** OpenTelemetry or OTLP path, because none is implemented (see the note under Built-with draft);
 - human-only approval boundary.
 
 ## Bonus Builder post

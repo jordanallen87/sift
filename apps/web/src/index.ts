@@ -47,6 +47,7 @@ export type {
   HeroPhase,
   HeroAction,
   HeroActionKind,
+  SettledDecision,
   WorkspaceStatus,
   WorkspaceStatusInput,
 } from './components/workspace-status.js';

@@ -435,6 +435,51 @@ describe('buildDecisionOrientation: it must never contradict itself on screen', 
     expect(buildDecisionOrientation(startedDiscovery(), PACK).provisionalReason).toBeNull();
   });
 
+  it('makes no live progress claim once the decision is closed', () => {
+    // The `decided` release baseline read "Decided · 0 of 5 covered · Next:
+    // Review what was decided" -- a discovery progress counter one interpunct
+    // from the word "Decided". The count was arithmetically true (the case was
+    // decided from catalog data and evidence, and the topics were never
+    // asked), but it describes an activity that can no longer progress, and
+    // beside "Decided" it reads as "decided having covered nothing".
+    //
+    // This is the same rule as the seeded-case suppression above, one phase
+    // later: no progress to make, no progress claim.
+    const decided: CaseState = { ...startedDiscovery(), status: 'decided' };
+    const orientation = buildDecisionOrientation(decided, PACK);
+
+    expect(orientation.phase).toBe('decided');
+    expect(orientation.coverage.requiredTotal).toBe(0);
+    expect(orientation.coverage.requiredResolved).toBe(0);
+    // The answers a closed case still owes a person are untouched.
+    expect(orientation.nextStepLabel.length).toBeGreaterThan(0);
+    expect(orientation.routeToOutcome).toMatch(/complete/i);
+  });
+
+  it('puts nothing in focus on a closed decision', () => {
+    // The same stale-progress defect as the counter, one line down and
+    // behind the disclosure. `deriveDiscoveryReadiness` names the
+    // highest-priority unanswered topic from the topics alone -- it never
+    // reads `status` -- so the expander on the decided baseline case would
+    // read "In focus: Budget" beneath the word "Decided".
+    const decided: CaseState = { ...startedDiscovery(), status: 'decided' };
+
+    expect(buildDecisionOrientation(decided, PACK).currentFocus).toBeNull();
+  });
+
+  it('does not qualify a closed decision as provisional for questions it never asked', () => {
+    // The counterpart to suppressing the counter: the qualification that
+    // names unanswered required topics belongs to a case someone can still
+    // answer them on. On a decided case it would be the same in-progress
+    // reading in sentence form.
+    const decided: CaseState = { ...startedDiscovery(), status: 'decided' };
+    const orientation = buildDecisionOrientation(decided, PACK);
+
+    // `?? ''` because "no qualification at all" is the passing case here,
+    // and `toMatch` throws rather than passing on a null.
+    expect(orientation.provisionalReason ?? '').not.toMatch(/has not asked you everything/i);
+  });
+
   it('does not put the same thing in focus and in the next step', () => {
     const orientation = buildDecisionOrientation(caseWith(), PACK);
     expect(orientation.currentFocus).not.toBe(orientation.nextStepLabel);

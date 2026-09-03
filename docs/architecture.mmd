@@ -14,12 +14,16 @@
 %%   5. Strands AgentSkills, Graph/Swarm, interventions, Context Injector,
 %%      GoalLoop, sessions, hooks
 %%   6. Local vs. AgentCore execution targets
-%%   7. OpenTelemetry correlation to the Runtime Inspector and CloudWatch
+%%   7. Sift-minted trace/correlation ids linking lifecycle-hook events to the
+%%      Runtime Inspector. Deliberately NO OpenTelemetry/OTLP path: none is
+%%      implemented (setupTracer() is never called), and the checklist item
+%%      is "only where implemented" -- see
+%%      docs/submissions/webmcp/claim-evidence-matrix.md rows E8/E9.
 %%   8. The human-only approval boundary (styled distinctly, not just another
 %%      box in the flow)
 %% Also folds in the instrumentation pipeline from
-%% docs/specs/debugging-and-observability.md (hooks/OTEL/domain events ->
-%% TelemetryNormalizer -> Redactor -> runtime_events -> Inspector/bundle/OTLP).
+%% docs/specs/debugging-and-observability.md (hooks/domain events ->
+%% TelemetryNormalizer -> Redactor -> runtime_events -> Inspector/bundle).
 %% ---------------------------------------------------------------------------
 %% Subgraphs are declared in roughly the order data flows top to bottom so
 %% the automatic layout keeps related pieces close together; edges that
@@ -109,15 +113,13 @@ flowchart TD
 
   subgraph OBS["Observability Pipeline"]
     direction TB
-    NORM["TelemetryNormalizer"]
+    NORM["TelemetryNormalizer<br/>Sift-minted traceId per run"]
     REDACT["Redactor<br/>strips secrets, headers, raw reasoning"]
     INSPECTOR["Runtime Inspector SSE<br/>SIFT_DEBUG_ENABLED"]
     BUNDLE["Sanitized JSON run bundle export"]
-    OTLP["Optional OTLP exporter"]
     NORM --> REDACT --> RUNTIME
     RUNTIME --> INSPECTOR
     RUNTIME --> BUNDLE
-    RUNTIME --> OTLP
   end
 
   subgraph AWS["AWS (optional, credential-gated)"]
@@ -150,13 +152,12 @@ flowchart TD
   HOOKS --> ACTIVITY
   STRANDS --> RUNS
 
-  HOOKS -.->|"Strands hooks"| NORM
-  GRAPHSWARM -.->|"Strands OTEL spans +<br/>Graph/Swarm events"| NORM
+  HOOKS -.->|"Strands tool/model<br/>hook events"| NORM
+  GRAPHSWARM -.->|"Graph/Swarm node +<br/>handoff hook events"| NORM
   CMDHANDLER -.->|"Sift domain events"| NORM
   HTTP -.->|"HTTP/SSE/storage events"| NORM
   INTERVENE -.->|"intervention/plugin events"| NORM
   SESS -.->|"session/snapshot events"| NORM
-  OTLP -.->|"OTEL correlation"| CW
 
   classDef browser fill:#e0f2fe,stroke:#0369a1,color:#0c4a6e;
   classDef railway fill:#ede9fe,stroke:#6d28d9,color:#3b0764;

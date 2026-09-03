@@ -213,7 +213,19 @@ export function RecommendationHero({
       ) : null}
 
       {showRecommendation ? (
-        <RecommendationCard recommendation={recommendation} withheld={withheld} sources={sources} />
+        <RecommendationCard
+          recommendation={recommendation}
+          withheld={withheld}
+          sources={sources}
+          // From this region's own state machine, never re-derived from the
+          // proposal here: the headline above and the status chip inside
+          // the card are then two renderings of one decision, which is the
+          // ADR 0004 guarantee. Without it the card kept announcing "READY
+          // FOR REVIEW" directly beneath a "Decided." headline (release
+          // baseline `decided-chatgpt-pane-640-darwin.png`), because
+          // `Recommendation.status` stays `'ready'` once a human answers.
+          settledDecision={status.settledDecision ?? null}
+        />
       ) : null}
 
       {proposal !== null ? (
