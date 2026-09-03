@@ -2530,6 +2530,15 @@ export function App() {
                 boardPlacement={boardPlacement}
                 onMoveOption={handleMoveOption}
               />
+
+              {/* The same read surface the pane keeps in its own column
+                below. Both branches mount it because the two are mutually
+                exclusive -- only one is ever in the document -- so this is one
+                `CaseNotes` at runtime, not two. Expanded needs it for the
+                same reason narrow does: `sift_add_note` is a real WebMCP
+                tool, and a note an assistant writes has to be visible without
+                a person opening anything. */}
+              <CaseNotes notes={snapshot?.notes ?? []} options={snapshot?.entities ?? []} />
             </div>
           </div>
         ) : (
@@ -2590,27 +2599,29 @@ export function App() {
               </DisclosureSection>
             ) : null}
 
-            {/* `CaseNotes` used to be mounted inline here, in the narrow
-              column's read stack. It is not any more, and the reason is a
-              real defect rather than a layout preference.
+            {/* The one `CaseNotes` mount in the product, and the reason it is
+              here rather than inside the Notes sheet.
 
-              The app bar's create menu opens the Notes sheet at every width,
-              and that sheet mounts its own `CaseNotes`. With an inline copy
-              here as well, opening that sheet at <=800px put TWO
-              `data-testid="case-notes"` sections in the document, two
-              `case-notes-list`s, and -- worst -- two elements carrying
-              `id="case-notes-heading"` (`CaseNotes.tsx:91`), which both
-              sections' `aria-labelledby` then pointed at. A duplicate id is
-              invalid HTML and silently breaks the accessible name for one of
-              them; it also made `getByTestId('case-notes')` a strict-mode
-              violation in the e2e suite.
+              It is the READ surface, and it has to be visible without opening
+              anything, because a note is not only something a person writes.
+              A WebMCP host can call `sift_add_note`, and "the agent wrote
+              something and you can see it" is a shared-state proof this
+              product actually makes. `pnpm test:host`'s "host action visible
+              in pane" check asserts exactly that against a real Chrome
+              WebMCP host.
 
-              Notes now live on exactly one surface, reached identically at
-              every width -- the same shape `Findings`, `References`,
-              `Your priorities` and `Filters` already use. Nothing is lost at
-              narrow: this component renders `null` on a case with no notes
-              anyway, so the inline copy was invisible until a note existed,
-              and the sheet shows the full list plus the add form together. */}
+              I briefly moved it into the sheet, on a mistaken reading that
+              narrow had no way to read notes. Narrow always had this inline
+              copy; what it lacked was an ADD path once the create menu
+              replaced the old disclosure row. Moving the read surface behind
+              a sheet fixed nothing and broke the host check, which failed
+              with `occurrences in pane=0` -- the tool succeeded and a person
+              would have seen nothing.
+
+              So: this renders the notes, the create menu's sheet writes them,
+              and there is exactly one of each. `CaseNotes` returns `null`
+              with no notes, so this costs nothing on an empty case. */}
+            <CaseNotes notes={snapshot?.notes ?? []} options={snapshot?.entities ?? []} />
 
             {/* "Add a note" and "Add a question" used to be two more
               disclosure rows here, at the very end of the column. Both are
@@ -2775,7 +2786,10 @@ export function App() {
             <SheetTitle>Notes</SheetTitle>
           </SheetHeader>
           <SheetBody className="flex flex-col gap-[var(--space-4)]">
-            <CaseNotes notes={snapshot?.notes ?? []} options={snapshot?.entities ?? []} />
+            {/* Write-only. The list lives in the content column above, where
+              it is visible without opening anything -- rendering it here too
+              would put two `case-notes` sections and two identical
+              `id="case-notes-heading"` values in the document at once. */}
             <AddNoteForm caseId={activeCaseId} expectedSequence={snapshot?.eventSequence ?? 0} />
           </SheetBody>
         </SheetContent>

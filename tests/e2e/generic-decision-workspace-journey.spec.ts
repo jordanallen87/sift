@@ -460,9 +460,15 @@ test.describe('generic decision workspace -- §61 journey', () => {
     const addNoteResponse = await addNoteResponsePromise;
     expect(addNoteResponse.ok(), await addNoteResponse.text()).toBe(true);
     await expect(page.getByTestId('add-note-form-success')).toBeVisible();
-    await expect(page.getByTestId('workspace-notes-sheet').getByTestId('case-notes')).toContainText(
-      noteBody,
-    );
+    // Page-level, not scoped to the sheet. The sheet is the WRITE surface --
+    // it mounts `AddNoteForm` alone -- and the note itself renders in the
+    // content column behind it, which is the only `case-notes` in the
+    // document. That split is deliberate: `sift_add_note` is a real WebMCP
+    // tool, so a note has to be visible without a person opening a sheet, and
+    // `pnpm test:host`'s "host action visible in pane" check asserts exactly
+    // that. This assertion was scoped to the sheet while the sheet still
+    // rendered its own copy of the list.
+    await expect(page.getByTestId('case-notes')).toContainText(noteBody);
     await assertNoHorizontalOverflow(page);
     // Closed before the Developer view entry point (step 19) below: the
     // Notes Sheet is a real modal at every viewport now that it is reached
