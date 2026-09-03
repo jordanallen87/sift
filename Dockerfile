@@ -41,6 +41,7 @@ COPY packages/core/package.json packages/core/package.json
 COPY packages/demo-studio/package.json packages/demo-studio/package.json
 COPY packages/packs/package.json packages/packs/package.json
 COPY packages/scenarios/package.json packages/scenarios/package.json
+COPY packages/trace-map/package.json packages/trace-map/package.json
 
 RUN pnpm install --frozen-lockfile
 
