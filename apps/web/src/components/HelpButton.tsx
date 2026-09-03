@@ -1,21 +1,36 @@
 /**
  * A persistent "?" help affordance, rendered once at the top of every
- * top-level screen (`DemoLauncher`, `VehicleCatalogFlow`, `CaseHeader`) so
- * a first-time visitor -- or a judge who lands on the deployed URL cold --
- * always has an immediate, in-app answer to "what is this and how do I use
- * it," without needing the README. Fully self-contained (uncontrolled
- * `Sheet` -- Radix's own `Root`/`Trigger` own the open state, matching this
- * file's single static-content use case) so every caller can drop it in
- * with no props and no lifted state, unlike `FindingsSheet`/the Runtime
- * Inspector sheet, which are controlled because they render live case data
- * `App.tsx` itself owns.
+ * top-level screen (`DemoLauncher`, `VehicleCatalogFlow`, `CaseHeader`,
+ * `WorkspaceAppBar`) so a first-time visitor -- or a judge who lands on the
+ * deployed URL cold -- always has an immediate, in-app answer to "what is
+ * this and how do I use it," without needing the README. Fully
+ * self-contained (uncontrolled `Sheet` -- Radix's own `Root`/`Trigger` own
+ * the open state, matching this file's single static-content use case) so
+ * every caller can drop it in with no props and no lifted state, unlike
+ * `FindingsSheet`/the Runtime Inspector sheet, which are controlled because
+ * they render live case data `App.tsx` itself owns.
  *
- * Copy here is grounded in `README.md`'s own pitch/usage sections and
- * `docs/specs/webmcp.md` -- never invented ad hoc -- kept short enough to
- * scan at the 390px canonical pane width without turning into a second
- * README inside the app.
+ * ## This is the "show me again" path, not the only one
+ *
+ * `FirstRunGuide` shows the identical content, unprompted, on a person's
+ * first case in this browser. A "?" is only clicked by someone who already
+ * knows they are lost; the first-run guide reaches the person who does not
+ * yet know what they do not know. Both render `HowSiftWorks.tsx`, which is
+ * where every word of the explanation now lives.
+ *
+ * That factoring is a repair, not tidiness. The copy that used to be
+ * inlined here had gone stale in the one place a lost person looks: it told
+ * people to click "Request investigation," a control renamed to "Ask Sift
+ * to look into this" (`RecommendationHero.tsx`); it described "Compare
+ * vehicles" as browsing an "offline" catalog, a word that appears nowhere
+ * in the product; and its WebMCP paragraph promised that "every control
+ * here also works from a WebMCP-enabled agent host" in every browser,
+ * including the overwhelming majority that have no WebMCP host at all. One
+ * shared content module means a rename can only be wrong once, and the
+ * shared module reads the real `adapter.supported()` signal rather than
+ * asserting a capability.
  */
-import type { ReactNode } from 'react';
+import type { Ref } from 'react';
 import { CircleQuestionMarkIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,17 +43,27 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  HOW_SIFT_WORKS_SUMMARY,
+  HOW_SIFT_WORKS_TITLE,
+  HowSiftWorksContent,
+} from './HowSiftWorks.js';
 
-function HelpSection({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-[var(--space-1)]">
-      <p className="label-caps text-[length:var(--font-size-xs)] text-muted-foreground">{label}</p>
-      {children}
-    </div>
-  );
+export interface HelpButtonProps {
+  /**
+   * Optional handle on the underlying trigger button.
+   *
+   * `App.tsx` uses it as `FirstRunGuide`'s focus-return target: that dialog
+   * opens on its own, so Radix has no trigger to hand focus back to and
+   * (measured in a real browser) left it on `<body>`. This control is the
+   * right destination -- it is always mounted while a case is open, and it
+   * reopens the very content that was just dismissed. Every other caller
+   * still drops `<HelpButton />` in with no props at all.
+   */
+  readonly ref?: Ref<HTMLButtonElement>;
 }
 
-export function HelpButton() {
+export function HelpButton({ ref }: HelpButtonProps = {}) {
   return (
     <Sheet>
       {/*
@@ -54,6 +79,7 @@ export function HelpButton() {
         <TooltipTrigger asChild>
           <SheetTrigger asChild>
             <Button
+              ref={ref}
               type="button"
               data-testid="help-button"
               aria-label="Help and instructions"
@@ -69,44 +95,26 @@ export function HelpButton() {
       </Tooltip>
       <SheetContent data-testid="help-sheet" side="bottom">
         <SheetHeader>
-          <SheetTitle>How Sift works</SheetTitle>
-          <SheetDescription>
-            A real-time, source-linked decision workspace. You and a bounded agent work in the same
-            case together -- it investigates open questions, but only you can approve a
-            recommendation.
-          </SheetDescription>
+          <SheetTitle>{HOW_SIFT_WORKS_TITLE}</SheetTitle>
+          <SheetDescription>{HOW_SIFT_WORKS_SUMMARY}</SheetDescription>
         </SheetHeader>
-        <SheetBody className="flex flex-col gap-[var(--space-4)]">
-          <HelpSection label="Two ways to start">
-            <p className="text-[length:var(--font-size-sm)] text-foreground">
-              <strong className="font-[var(--font-weight-semibold)]">Compare vehicles</strong>{' '}
-              browses a real, offline vehicle catalog so you can build your own shortlist and start
-              a real case. Or try a finished example -- two ready-made cases under &quot;Or try a
-              finished example.&quot;
-            </p>
-          </HelpSection>
-
-          <HelpSection label="While a case is open">
-            <ul className="flex flex-col gap-[var(--space-1)] text-[length:var(--font-size-sm)] text-foreground">
-              <li>Request investigation to let the agent gather evidence on its own.</li>
-              <li>Review findings, adjust criteria or candidates, and add your own concerns.</li>
-              <li>Nothing is decided without you -- every recommendation waits for your say.</li>
-            </ul>
-          </HelpSection>
-
-          <HelpSection label="Inspect a run">
-            <p className="text-[length:var(--font-size-sm)] text-foreground">
-              Click &quot;Inspect run&quot; next to the live status, or on any activity item, to see
-              the agent&apos;s real steps, tool calls, and state changes as they happened.
-            </p>
-          </HelpSection>
-
-          <HelpSection label="WebMCP">
-            <p className="text-[length:var(--font-size-sm)] text-foreground">
-              Every control here also works from a WebMCP-enabled agent host through the exact same
-              commands as this page -- there is no separate, hidden path.
-            </p>
-          </HelpSection>
+        <SheetBody
+          /*
+           * `tabIndex`/`role`/`aria-label` on the scrolling body, not
+           * decoration: this panel's content is entirely static prose with
+           * no focusable element inside it, so without a tab stop of its
+           * own a keyboard-only user could not scroll it at all. Caught by
+           * the real axe scan in `tests/e2e/first-run-guide.spec.ts`
+           * (`scrollable-region-focusable`, WCAG 2.1.1/2.1.3, serious), not
+           * by inspection. The name comes from the shared title constant so
+           * the region announces itself with the same words the sheet's own
+           * heading uses.
+           */
+          tabIndex={0}
+          role="region"
+          aria-label={HOW_SIFT_WORKS_TITLE}
+        >
+          <HowSiftWorksContent />
         </SheetBody>
       </SheetContent>
     </Sheet>

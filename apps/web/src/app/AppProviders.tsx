@@ -90,3 +90,23 @@ export function useWebMcpAdapter(): ModelContextAdapter {
   }
   return adapter;
 }
+
+/**
+ * Whether a WebMCP host is actually present, for copy that must not promise
+ * assistant interaction a browser cannot deliver (`HowSiftWorks`, and
+ * through it the first-run guide and the Help sheet).
+ *
+ * Deliberately NON-throwing outside `<AppProviders>`, unlike
+ * `useWebMcpAdapter()` above: this is read by presentational content that
+ * several component tests render bare, and "no provider" is
+ * indistinguishable, for copy purposes, from "no WebMCP host" -- both mean
+ * an assistant cannot reach this page, which is exactly what the
+ * unsupported copy says. It calls the SAME real `adapter.supported()` check
+ * `WebMcpStatus` does (`model-context/adapter.ts`), never a second
+ * re-implemented feature detect, so the guide and the footer status strip
+ * can never disagree about the host.
+ */
+export function useWebMcpSupported(): boolean {
+  const adapter = useContext(WebMcpAdapterContext);
+  return adapter?.supported() ?? false;
+}

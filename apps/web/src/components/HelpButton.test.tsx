@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { HelpButton } from './HelpButton.js';
+import { ASSISTANT_PHRASES, HOW_SIFT_WORKS_TITLE } from './HowSiftWorks.js';
 
 describe('HelpButton', () => {
   it('renders a labeled help trigger and no sheet content until opened', () => {
@@ -18,11 +19,38 @@ describe('HelpButton', () => {
     await user.click(screen.getByTestId('help-button'));
 
     const sheet = await screen.findByTestId('help-sheet');
-    expect(within(sheet).getByText('How Sift works')).toBeInTheDocument();
-    expect(within(sheet).getByText(/Compare vehicles/)).toBeInTheDocument();
-    expect(within(sheet).getByText(/Request investigation/)).toBeInTheDocument();
-    expect(within(sheet).getByText(/Inspect run/)).toBeInTheDocument();
-    expect(within(sheet).getByText('WebMCP')).toBeInTheDocument();
+    expect(within(sheet).getByText(HOW_SIFT_WORKS_TITLE)).toBeInTheDocument();
+    expect(within(sheet).getByText('Compare vehicles')).toBeInTheDocument();
+    // The real current label (`RecommendationHero.tsx`). This assertion read
+    // "Request investigation" for as long as that button had been renamed --
+    // the exact drift the shared `HowSiftWorks` module exists to prevent.
+    expect(within(sheet).getByText('Ask Sift to look into this')).toBeInTheDocument();
+    expect(within(sheet).getByText('Inspect run')).toBeInTheDocument();
+    expect(within(sheet).getByTestId('how-sift-works-phrases-lead')).toHaveTextContent(/WebMCP/);
+  });
+
+  it('renders the same assistant phrases the first-run guide does, from the one shared source', async () => {
+    const user = userEvent.setup();
+    render(<HelpButton />);
+
+    await user.click(screen.getByTestId('help-button'));
+    const sheet = await screen.findByTestId('help-sheet');
+
+    for (const entry of ASSISTANT_PHRASES) {
+      expect(within(sheet).getByText(`“${entry.phrase}”`)).toBeInTheDocument();
+    }
+  });
+
+  it('states the human-only authority boundary', async () => {
+    const user = userEvent.setup();
+    render(<HelpButton />);
+
+    await user.click(screen.getByTestId('help-button'));
+    const sheet = await screen.findByTestId('help-sheet');
+
+    expect(within(sheet).getByTestId('how-sift-works-authority')).toHaveTextContent(
+      /cannot approve/i,
+    );
   });
 
   it('closes the help sheet when its close control is used', async () => {

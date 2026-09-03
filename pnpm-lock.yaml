@@ -254,6 +254,8 @@ importers:
         specifier: workspace:*
         version: link:../packs
 
+  packages/trace-map: {}
+
 packages:
 
   '@adobe/css-tools@4.5.0':

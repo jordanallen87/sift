@@ -215,6 +215,7 @@
  * focus, all asserted behaviourally in the sibling test file rather than
  * assumed.
  */
+import type { Ref } from 'react';
 import {
   ChevronDownIcon,
   CircleQuestionMarkIcon,
@@ -263,6 +264,15 @@ export interface WorkspaceAppBarProps {
   onResetDemo?: () => void;
   /** True while a reset-demo command is in flight; disables and relabels the reset control. Meaningless (ignored) when `onResetDemo` is not supplied. */
   resetPending?: boolean;
+  /**
+   * Optional handle on the Help control's own button, forwarded straight to
+   * `HelpButton`. `App.tsx` passes it so `FirstRunGuide` -- a dialog that
+   * opens on its own, with no trigger for Radix to restore focus to -- can
+   * hand focus back to the one control that reopens the same content. Every
+   * other prop here is behaviour this bar owns; this one is a pass-through,
+   * so the bar neither reads nor reacts to it.
+   */
+  helpButtonRef?: Ref<HTMLButtonElement>;
   layout: 'narrow' | 'expanded';
 }
 
@@ -359,6 +369,7 @@ export function WorkspaceAppBar({
   onOpenDeveloperView,
   onResetDemo,
   resetPending = false,
+  helpButtonRef,
   layout,
 }: WorkspaceAppBarProps) {
   const connection = CONNECTION_META[connectionState];
@@ -587,7 +598,7 @@ export function WorkspaceAppBar({
             layouts, per ADR 0008's "every capability must be reachable in
             both [modes]." */}
         <div className="flex shrink-0 items-center gap-[var(--space-1)]">
-          <HelpButton />
+          <HelpButton {...(helpButtonRef !== undefined ? { ref: helpButtonRef } : {})} />
 
           {/* Icon-only at every width, so unlike its neighbours this one is
               always wrapped. */}

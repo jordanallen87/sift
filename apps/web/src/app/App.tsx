@@ -231,6 +231,7 @@ import {
 import { deriveDiscoveryReadiness, deriveNextMoves, evaluateReadiness } from '@sift/core';
 import { SiftClientError } from '../api/sift-client.js';
 import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active-case-storage.js';
+import { hasSeenFirstRunGuide, markFirstRunGuideSeen } from './first-run-storage.js';
 import { DemoLauncher } from '../components/DemoLauncher.js';
 import { VehicleCatalogFlow } from '../components/VehicleCatalogFlow.js';
 import { DisclosureSection } from '../components/DisclosureSection.js';
@@ -263,6 +264,7 @@ import type { LiveRunStatusReceipt } from '../components/LiveRunStatus.js';
 import { WebMcpStatus } from '../components/WebMcpStatus.js';
 import { ErrorState } from '../components/ErrorState.js';
 import { RuntimeInspector } from '../components/RuntimeInspector.js';
+import { FirstRunGuide } from '../components/FirstRunGuide.js';
 import {
   WorkspaceAppBar,
   type WorkspaceAppBarConnectionState,
@@ -496,6 +498,29 @@ export function App() {
   const [inspectingDebugEventId, setInspectingDebugEventId] = useState<string | undefined>(
     undefined,
   );
+  /**
+   * The first-run guide (`components/FirstRunGuide.tsx`): the same "How
+   * Sift works" content the Help control gives, shown without being asked
+   * for, on the first case this browser ever opens.
+   *
+   * Owned here rather than inside the component for the same reason every
+   * other overlay's `open` flag is: the *decision* to show it depends on
+   * `activeCaseId`, which lives here. The component itself is a pure
+   * controlled `Sheet`.
+   */
+  const [firstRunGuideOpen, setFirstRunGuideOpen] = useState(false);
+  /**
+   * Where focus goes when the guide closes: the app bar's Help control.
+   *
+   * `FirstRunGuide` opens on its own, so Radix has no trigger to restore
+   * focus to -- it restores to whatever was focused when the dialog opened,
+   * which is the launcher button that this very case unmounted. Measured in
+   * a real browser, that left focus on `<body>`, making a keyboard user Tab
+   * from the top of the document after dismissing. Help is the honest
+   * destination: always mounted while a case is open, and the control that
+   * reopens exactly the content just dismissed.
+   */
+  const helpButtonRef = useRef<HTMLButtonElement>(null);
   const [findingsSheetOpen, setFindingsSheetOpen] = useState(false);
   // ADR 0008 sheet-based entry points -- each replaces (expanded mode) or
   // supplements (narrow mode, via the app bar's now-uniform "Add option")
@@ -1372,6 +1397,42 @@ export function App() {
     setInspectingDebugEventId(undefined);
   }, [activeCaseId]);
 
+  /**
+   * Shows the first-run guide once, ever, per browser.
+   *
+   * Keyed on `activeCaseId` and not on mount, because the guide explains a
+   * workspace -- naming controls that do not exist yet on the launcher
+   * screen would be worse than saying nothing, and the project owner asked
+   * for it "when the user starts a new case."
+   *
+   * `markFirstRunGuideSeen()` runs HERE, at the moment it opens, rather
+   * than in the dismiss handler. Dismissal is not the only way out of a
+   * modal: a reload, a "Reset demo", or a closed tab all leave it
+   * un-dismissed, and marking on dismissal would let every one of those
+   * re-nag. A judge who resets five times must see this once. Nothing is
+   * lost by the stricter rule, because the identical content stays
+   * permanently reachable from the Help control in the app bar (see
+   * `HelpButton.tsx`).
+   *
+   * `hasSeenFirstRunGuide()` swallows a throwing `localStorage` and reports
+   * `false`, so a private window shows the guide and simply cannot remember
+   * that it did -- the harmless direction to fail in.
+   */
+  useEffect(() => {
+    if (activeCaseId === null) return;
+    if (hasSeenFirstRunGuide()) return;
+    markFirstRunGuideSeen();
+    setFirstRunGuideOpen(true);
+  }, [activeCaseId]);
+
+  const handleDismissFirstRunGuide = useCallback(() => {
+    // Idempotent with the effect above -- kept so a storage write that
+    // failed at open time (a transient quota error) gets one more chance
+    // before this browser is nagged again.
+    markFirstRunGuideSeen();
+    setFirstRunGuideOpen(false);
+  }, []);
+
   // Runtime Inspector open/close/navigate handlers (Task A5 / I2b). Every
   // entry point funnels through these three so `runtimeInspectorOpen`/
   // `inspectingRunId`/`inspectingDebugEventId` never drift out of sync with
@@ -2219,6 +2280,7 @@ export function App() {
             onOpenDeveloperView={handleOpenDeveloperView}
             onResetDemo={handleResetDemo}
             resetPending={resetPending}
+            helpButtonRef={helpButtonRef}
             layout={layout}
           />
         ) : (
@@ -2740,6 +2802,20 @@ export function App() {
           </SheetBody>
         </SheetContent>
       </Sheet>
+
+      {/*
+        The first-run guide. Mounted alongside the other overlays and
+        portalled to `<body>` by Radix like all of them, so it sits above
+        the whole pane rather than inside the scrolling column, and cannot
+        be scrolled past. `App.tsx` decides once per browser that it should
+        open (see the effect above); every exit path funnels back through
+        `handleDismissFirstRunGuide`.
+      */}
+      <FirstRunGuide
+        open={firstRunGuideOpen}
+        onDismiss={handleDismissFirstRunGuide}
+        returnFocusTo={helpButtonRef}
+      />
 
       {runtimeInspectorOpen ? (
         <RuntimeInspector

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
@@ -9,6 +9,11 @@ import type { CaseState, CommandReceipt, PublicActivityEvent } from '@sift/contr
 import { buildVehicleCatalogRecord } from '@sift/catalog/test-support';
 import { App } from './App.js';
 import { AppProviders } from './AppProviders.js';
+import {
+  FIRST_RUN_GUIDE_STORAGE_KEY,
+  hasSeenFirstRunGuide,
+  markFirstRunGuideSeen,
+} from './first-run-storage.js';
 import { createFakeSiftCommands, buildFakeCommandReceipt } from '../test/fake-sift-commands.js';
 import { buildFixtureCaseState, buildFixtureCompiledPack } from '../test/fixtures.js';
 import { FakeEventSource, createFakeEventSource } from '../test/fake-event-source.js';
@@ -43,6 +48,18 @@ beforeEach(() => {
   // caseId into every later test in this file, making `App` render the
   // "Restoring your case…" state instead of the plain launcher it expects.
   localStorage.clear();
+  // `App` shows `FirstRunGuide` -- a modal Radix Dialog -- on the FIRST case
+  // ever opened in a browser (`first-run-storage.ts`), which is what a
+  // freshly-cleared `localStorage` above describes. Left unset, that
+  // overlay would open over every case-workspace test in this file and
+  // `aria-hidden` the workspace underneath it, so every `getByRole` query
+  // here would start failing for a reason that has nothing to do with what
+  // it is testing. This is exactly the seam Playwright's `SiftPage.open()`
+  // uses for the same reason: seed the real production storage key that a
+  // returning visitor would already have, never a test-only code path.
+  // 'first-run guide' below deliberately clears it again to test the
+  // unseeded, genuine first-visit behaviour.
+  markFirstRunGuideSeen();
 });
 
 function pollHandler(snapshot: CaseState, events: PublicActivityEvent[] = []) {
@@ -4452,5 +4469,156 @@ describe('App scoreboard', () => {
     expect(
       screen.getByTestId('option-rank-criterion-candidate-crv-pref.ownership_cost'),
     ).toHaveAttribute('data-status', 'disputed');
+  });
+});
+
+/**
+ * The first-run guide (`components/FirstRunGuide.tsx`).
+ *
+ * Every test here clears the flag the file-level `beforeEach` seeds, so
+ * these -- and only these -- render the genuine first-visit path.
+ */
+describe('App first-run guide', () => {
+  beforeEach(() => {
+    localStorage.removeItem(FIRST_RUN_GUIDE_STORAGE_KEY);
+  });
+
+  // The locked-down-storage test below spies on `Storage.prototype`. Undone
+  // here rather than only at the end of that test, so a failure mid-test
+  // cannot leak a throwing `localStorage` into every later test in the file.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('opens itself on the first case this browser ever starts', async () => {
+    renderLiveWorkspace(buildFixtureCaseState({ id: CASE_ID }));
+    await startDemoAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('first-run-guide')).toBeInTheDocument();
+    });
+    // The half of the content that is the point of the surface.
+    expect(screen.getByTestId('how-sift-works-phrases')).toBeInTheDocument();
+    expect(screen.getByTestId('how-sift-works-authority')).toBeInTheDocument();
+  });
+
+  it('does not open on the launcher, before any case exists', async () => {
+    render(
+      <AppProviders commandsClient={createFakeSiftCommands()}>
+        <App />
+      </AppProviders>,
+    );
+
+    await screen.findByTestId('demo-launcher');
+    expect(screen.queryByTestId('first-run-guide')).not.toBeInTheDocument();
+    expect(hasSeenFirstRunGuide()).toBe(false);
+  });
+
+  it('records the dismissal so a second case never re-nags', async () => {
+    renderLiveWorkspace(buildFixtureCaseState({ id: CASE_ID }));
+    const user = await startDemoAndWait();
+    await screen.findByTestId('first-run-guide');
+
+    await user.click(screen.getByTestId('first-run-guide-dismiss'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('first-run-guide')).not.toBeInTheDocument();
+    });
+    expect(hasSeenFirstRunGuide()).toBe(true);
+  });
+
+  it('stays dismissed across a fresh mount -- a reset demo does not show it again', async () => {
+    const snapshot = buildFixtureCaseState({ id: CASE_ID });
+    const first = renderLiveWorkspace(snapshot);
+    const user = await startDemoAndWait();
+    await screen.findByTestId('first-run-guide');
+    await user.click(screen.getByTestId('first-run-guide-dismiss'));
+    first.unmount();
+    // A reset demo returns to the launcher, so the active-case POINTER is
+    // gone (`active-case-storage.ts`) -- but the first-run flag, which is a
+    // fact about the person and not about any case, must survive it.
+    localStorage.removeItem('sift:activeCaseId');
+
+    renderLiveWorkspace(snapshot);
+    await startDemoAndWait();
+
+    // Given a full render cycle to appear, and it must not.
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-app-bar')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('first-run-guide')).not.toBeInTheDocument();
+  });
+
+  it('is remembered even when a case is abandoned without dismissing the guide', async () => {
+    const first = renderLiveWorkspace(buildFixtureCaseState({ id: CASE_ID }));
+    await startDemoAndWait();
+    await screen.findByTestId('first-run-guide');
+
+    // Never dismissed -- the tab is simply closed (or reloaded, or reset).
+    first.unmount();
+    expect(hasSeenFirstRunGuide()).toBe(true);
+    localStorage.removeItem('sift:activeCaseId');
+
+    renderLiveWorkspace(buildFixtureCaseState({ id: CASE_ID }));
+    await startDemoAndWait();
+    expect(screen.queryByTestId('first-run-guide')).not.toBeInTheDocument();
+  });
+
+  it('stays reachable from the Help control after it has been dismissed', async () => {
+    renderLiveWorkspace(buildFixtureCaseState({ id: CASE_ID }));
+    const user = await startDemoAndWait();
+    await screen.findByTestId('first-run-guide');
+    await user.click(screen.getByTestId('first-run-guide-dismiss'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('first-run-guide')).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('help-button'));
+
+    const sheet = await screen.findByTestId('help-sheet');
+    expect(within(sheet).getByTestId('how-sift-works-phrases')).toBeInTheDocument();
+  });
+
+  it('never crashes when localStorage is unavailable, and simply shows the guide', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key: string) => {
+      if (key === FIRST_RUN_GUIDE_STORAGE_KEY) {
+        throw new Error('SecurityError: storage is disabled in this context');
+      }
+      return null;
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('SecurityError: storage is disabled in this context');
+    });
+
+    renderLiveWorkspace(buildFixtureCaseState({ id: CASE_ID }));
+    await startDemoAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('first-run-guide')).toBeInTheDocument();
+    });
+  });
+
+  it('hands focus back to the Help control on dismissal, not to the document body', async () => {
+    renderLiveWorkspace(buildFixtureCaseState({ id: CASE_ID }));
+    const user = await startDemoAndWait();
+    await screen.findByTestId('first-run-guide');
+
+    await user.click(screen.getByTestId('first-run-guide-dismiss'));
+
+    // The launcher button that opened this case is unmounted by now, so
+    // Radix's own focus restore has nothing to return to -- without the
+    // explicit target, focus lands on `<body>` and a keyboard user has to
+    // Tab from the top of the document.
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('help-button'));
+    });
+  });
+
+  it('has no axe violations while the guide is open over a live case', async () => {
+    const { baseElement } = renderLiveWorkspace(buildFixtureCaseState({ id: CASE_ID }));
+    await startDemoAndWait();
+    await screen.findByTestId('first-run-guide');
+
+    expect(await axe(baseElement)).toHaveNoViolations();
   });
 });

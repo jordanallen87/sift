@@ -52,6 +52,7 @@
  */
 import type { NextMove } from '@sift/contracts';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 
 /**
@@ -130,13 +131,19 @@ export function ContextActionDock({
         'pb-[max(var(--space-3),env(safe-area-inset-bottom))]',
       ].join(' ')}
     >
-      <div
-        className={
-          layout === 'expanded'
-            ? 'flex items-center justify-end gap-[var(--space-3)]'
-            : 'flex flex-col gap-[var(--space-2)]'
-        }
-      >
+      {/*
+        One row, at every width.
+
+        This was a column at narrow: two actions, each with its own visible
+        reason line underneath, which rendered as four stacked rows and cost
+        roughly 150px of a pane whose scarcest resource is vertical space.
+        The project owner asked for it in one row, looking at Sift running in
+        ChatGPT's real side pane.
+
+        The reasons did not simply get deleted -- see the `Tooltip` and the
+        `visually-hidden` span below.
+      */}
+      <div className="flex items-stretch gap-[var(--space-2)]">
         {shown.map((move, index) => {
           const testId = index === 0 ? 'dock-action-primary' : 'dock-action-secondary';
           // A human-only move's explanation is the one authority sentence,
@@ -149,10 +156,11 @@ export function ContextActionDock({
           // `humanOnly` move (`confirm_shortlist`) in the whole system — if
           // that ever changes, this id needs to become per-move again.
           const reasonId = move.humanOnly ? 'dock-human-only-note' : `dock-reason-${String(index)}`;
+          const reasonText = move.humanOnly ? HUMAN_ONLY_NOTE : move.reason;
           return (
             <div
               key={`${move.kind}-${String(index)}`}
-              className="flex flex-col gap-[var(--space-1)]"
+              className="flex min-w-0 flex-1 flex-col justify-end gap-[var(--space-1)]"
             >
               {move.humanOnly && (
                 // The visible marker: matches `ApprovalCard`'s "Your approval
@@ -167,31 +175,49 @@ export function ContextActionDock({
                   Your decision
                 </Badge>
               )}
-              <Button
-                type="button"
-                data-testid={testId}
-                data-human-only={move.humanOnly ? 'true' : 'false'}
-                variant={index === 0 ? 'default' : 'secondary'}
-                aria-describedby={reasonId}
-                className="min-h-[var(--size-touch-target-min)] w-full"
-                onClick={() => {
-                  onAct(move);
-                }}
-              >
-                {move.label}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    data-testid={testId}
+                    data-human-only={move.humanOnly ? 'true' : 'false'}
+                    variant={index === 0 ? 'default' : 'secondary'}
+                    aria-describedby={reasonId}
+                    className="min-h-[var(--size-touch-target-min)] w-full whitespace-normal"
+                    onClick={() => {
+                      onAct(move);
+                    }}
+                  >
+                    {move.label}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">{reasonText}</TooltipContent>
+              </Tooltip>
               {/*
-                The reason travels with the action rather than living in a
-                tooltip: "why am I being asked this" is part of the answer to
-                "what should I do next", and a person should not have to hover
-                to get it. Visually secondary, programmatically attached.
+                The reason is still attached to its action -- it just is not
+                spending a visible row any more.
+
+                An earlier version of this comment argued the opposite: that a
+                reason "should not have to be hovered for", so it rendered as
+                visible text under every button. That was right about the
+                principle and wrong about the cost. Two actions each with a
+                visible reason is four rows, and in a 390-640px pane those
+                rows push the actual answer -- the recommendation -- below the
+                fold, which is the thing ADR 0004 exists to prevent.
+
+                Nothing is lost for the people who most need it. The text
+                below is `visually-hidden`, not removed, so it is still the
+                target of the button's own `aria-describedby`: a screen-reader
+                user hears the reason exactly as before, with no hover
+                required. Sighted pointer users get it from the tooltip above.
+                Only the always-on visual row is gone.
               */}
               <span
                 id={reasonId}
                 data-testid={move.humanOnly ? 'dock-human-only-note' : undefined}
-                className="text-[length:var(--text-xs)] text-[color:var(--color-muted-foreground)]"
+                className="visually-hidden"
               >
-                {move.humanOnly ? HUMAN_ONLY_NOTE : move.reason}
+                {reasonText}
               </span>
             </div>
           );

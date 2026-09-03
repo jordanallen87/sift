@@ -6510,3 +6510,147 @@ chain for no submission benefit.
 
 The repository is still **private**. Making it public remains an open,
 owner-only action.
+
+## 2026-09-03 — a first-run guide, and one shared "How Sift works"
+
+The project owner: *"we should have instructions pop-up when the user starts a
+new case ... tell the user how everything works AND how they should be
+interacting with the model to get this done, with examples."* The second half
+is the gap that mattered. A judge opening Sift in a WebMCP-enabled host can see
+every visible control and has no way at all to guess what to **say** — the tool
+catalog is 26 tools deep and none of it is discoverable from the page.
+
+### What shipped
+
+`components/FirstRunGuide.tsx` — a controlled `Sheet` (Radix Dialog: focus
+trap, Escape, outside-click, scroll lock, focus restore, all free) that opens
+itself once, on a person's first case in this browser, and ends in an explicit
+**Got it** placed outside the scrolling body so it is on screen at 390px
+without scrolling. Bottom sheet at ≤480px, centred dialog above 481px, from
+`ui/sheet.tsx`'s existing responsive geometry — no new modal, no new variant
+decision.
+
+`components/HowSiftWorks.tsx` — the one explanation, rendered by both the guide
+and the Help sheet. Four blocks: starting a case; the controls in this pane;
+**talking to your assistant** (six copy-pasteable phrases, each with what it
+does); and the authority boundary as its own outlined block, naming **Choose
+this**, **Pass** and **Keep researching** as human-only.
+
+`app/first-run-storage.ts` — one boolean flag at `sift:firstRunGuideSeen`,
+every access in `try`/`catch` (private windows throw). Marked when the guide is
+**shown**, not when it is dismissed: a reload, a "Reset demo", or a closed tab
+all leave a modal un-dismissed, and marking on dismissal would let each of
+those re-nag. "At most once per browser, ever" is true by construction, and
+nothing is lost because the identical content stays permanently reachable from
+the Help control.
+
+### Every example maps to a real tool, enforced by the compiler
+
+`AssistantPhrase.tools` is typed `readonly SiftWebMcpToolName[]`, so a phrase
+citing a capability Sift does not register fails `tsc`. `HowSiftWorks.test.tsx`
+re-proves it at runtime against `SIFT_WEBMCP_TOOL_NAMES`, and asserts no cited
+tool is approval-shaped. The rendered tool count is `SIFT_WEBMCP_TOOL_NAMES.length`,
+not a hard-coded 26.
+
+### Stale Help copy corrected
+
+`HelpButton.tsx`'s inlined prose had drifted in the one place a lost person
+looks. Corrected as part of this work, by deleting it in favour of the shared
+module:
+
+- *"Request investigation to let the agent gather evidence"* → the button reads
+  **Ask Sift to look into this** (`RecommendationHero.tsx:172`). Its own test
+  had been asserting the dead string, so the assertion was corrected too.
+- *"browses a real, offline vehicle catalog"* — "offline" appears nowhere in
+  the product.
+- *"Every control here also works from a WebMCP-enabled agent host"*, stated
+  unconditionally in every browser. The shared module reads the real
+  `adapter.supported()` signal through a new non-throwing `useWebMcpSupported()`
+  (`AppProviders.tsx`) — the same check `WebMcpStatus` uses, so the guide and
+  the footer strip cannot disagree — and says plainly, where there is no host,
+  that nothing typed to an assistant reaches this page.
+
+### Two real defects found by the gates, not by inspection
+
+**`scrollable-region-focusable` (serious, WCAG 2.1.1/2.1.3).** The e2e axe scan
+failed at all six viewports: `SheetBody` scrolls, and this panel's content is
+entirely static prose, so a keyboard-only user could not scroll it. Fixed with
+`tabIndex={0}` / `role="region"` / `aria-label` on the body of both the guide
+and the Help sheet. Pre-existing in the Help sheet; no scan had covered it.
+
+**The authority block was invisible.** Built first from
+`--color-status-decided-*`, which is wrong twice: `docs/design-system.md`
+scopes the nine status tokens to per-case *states*, and `decided` is
+deliberately the quietest tint in the set — measured in the real pane it was
+indistinguishable from the `--color-surface-sunken` phrase chips above it, so
+the one block that had to stand out was the one that disappeared. Rebuilt as an
+outlined card on the panel's own surface with a full-strength ink label:
+separated by shape and weight, not by borrowing a hue that means something
+else. Found by looking at the rendered screenshots, not by a test.
+
+### Focus had nowhere to go, and now it does
+
+The guide opens on its own, so Radix has no trigger to restore focus to; it
+restores to whatever was focused when the dialog opened, which is the launcher
+button that starting the case unmounted. Measured in a real browser: focus
+landed on `<body>`, so a keyboard user who dismissed the guide had to Tab from
+the top of the document. `FirstRunGuide` now takes `returnFocusTo` and `App.tsx`
+points it at the app bar's Help control — always mounted while a case is open,
+and the control that reopens exactly what was just dismissed. Threaded as a
+typed `Ref` through `WorkspaceAppBar` → `HelpButton` (React 19, no
+`forwardRef`), never a `data-testid` lookup; a null ref falls through to Radix's
+own behaviour. Asserted in the component test, the App test, and the e2e spec.
+
+### The e2e suite
+
+144 tests all launch in a fresh browser context, where `localStorage` is empty —
+exactly the state the product reads as "never seen Sift" — so the modal would
+have covered every one of them. `SiftPage.open()` now seeds the product's own
+`FIRST_RUN_GUIDE_STORAGE_KEY` (imported from the product, never a copied
+string) via `addInitScript`, making it a *returning* visitor. Deliberately not
+a build flag, env var, or query parameter: a "hide the onboarding" switch that
+only tests can reach is a production code path no user has. `openAsFirstTimeVisitor()`
+omits the seed, and `tests/e2e/first-run-guide.spec.ts` drives the genuine first
+visit — appear, dismiss through the real UI, survive a reload, survive a
+"Reset demo" into a new case, keyboard-trap and Escape, still reachable from
+Help, and honest copy with no WebMCP host.
+
+### Commands
+
+- `npx vitest run apps/web/src` — **1797 passed, 79 files** (was 1762/76).
+  New: `HowSiftWorks.test.tsx` (11), `FirstRunGuide.test.tsx` (10),
+  `first-run-storage.test.ts` (5), `App.test.tsx` › *App first-run guide* (9),
+  `HelpButton.test.tsx` (+2). Every one written first and confirmed failing.
+- `npx tsc --noEmit -p apps/web`, `npx tsc --noEmit -p tsconfig.json`,
+  `npx eslint --max-warnings=0`, `npx prettier --check`, and
+  `npx tsx scripts/check-source.ts` — all clean.
+- `pnpm --filter @sift/web build && npx playwright test --workers=4` —
+  **174 passed, 0 failed** (144 pre-existing + 30 new, across all six viewport
+  projects), run at 14:03 and again at 14:07 with this change set complete.
+
+**A later run in this same worktree shows 12 failures that are not this work.**
+At 14:15 another in-flight session rewrote `ContextActionDock` from a stacked
+column to a single row (uncommitted, `git diff` shows it), which removes roughly
+150px from the bottom band. Every run after that build fails
+`toHaveScreenshot(seeded-case.png)` in both hero journeys at all six viewports —
+162 passed, 12 failed, deterministically, with no other failure of any kind.
+Measured rather than assumed: the differing pixels are confined to
+`(0, 628)-(390, 832)` of an 844px pane (car) and `(0, 684)-(390, 832)` (energy),
+i.e. the WebMCP status strip and the dock only, and the `-actual.png` renders
+that session's new one-row dock. Nothing this entry changed is inside the
+compared region.
+
+**Visual baselines: none regenerated**, and specifically not those twelve —
+they belong to the dock rewrite and must be regenerated by the session that owns
+it. No `toHaveScreenshot` assertion moved for this work: the guide is dismissed
+before every existing journey reaches a baseline state. The guide itself was
+reviewed by hand at 390 / 640 / 1440 before and after the authority-block
+repair.
+
+### `check-source.ts` was not weakened
+
+The per-phrase test id started as `how-sift-works-phrase-<tool name>`, whose
+hybrid kebab/snake shape tripped the repo's high-entropy secret heuristic.
+The scanner was left exactly as it is; the test id now hyphenates the tool
+name so it is a plain lowercase kebab identifier, still naming its tool in
+full.

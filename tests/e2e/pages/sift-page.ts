@@ -32,6 +32,7 @@ import {
 } from '@playwright/test';
 
 import { isNarrowWidth } from '../../../apps/web/src/hooks/width-mode-constants.js';
+import { FIRST_RUN_GUIDE_STORAGE_KEY } from '../../../apps/web/src/app/first-run-storage.js';
 
 /**
  * Real, stable car-purchase fixture candidate ids (`packages/scenarios/src/seeds.ts`), in the same
@@ -106,9 +107,36 @@ export const HOME_ENERGY_RESPONSE_OPTIONS_OBLIGATION_ID = 'energy.response_optio
  */
 export { NARROW_MAX_WIDTH_PX } from '../../../apps/web/src/hooks/width-mode-constants.js';
 
+/** The product's real first-run-guide storage key, imported rather than duplicated -- see `seedFirstRunGuideDismissed` below. */
+export { FIRST_RUN_GUIDE_STORAGE_KEY };
+
 /** `true` at the narrow/pane-mode viewports (390/430/480/640), `false` at `expanded-820` and `desktop-1440`. */
 export function isNarrowLayout(page: Page): boolean {
   return isNarrowWidth(page.viewportSize()?.width ?? 0);
+}
+
+/**
+ * Marks this browsing context as one that has already been shown the
+ * first-run guide, using the product's OWN storage key
+ * (`apps/web/src/app/first-run-storage.ts`) rather than a copy of the
+ * string -- if the key ever moves, this breaks at compile time instead of
+ * silently letting a modal reopen across 144 tests.
+ *
+ * `addInitScript` runs before any page script on every navigation in this
+ * context, including reloads, so a spec that reloads mid-journey
+ * (`reload-persistence.spec.ts`) stays seeded too. The `try`/`catch`
+ * mirrors the product's own handling: a context with storage disabled must
+ * not throw here either.
+ */
+export async function seedFirstRunGuideDismissed(page: Page): Promise<void> {
+  await page.addInitScript((key: string) => {
+    try {
+      localStorage.setItem(key, 'seen');
+    } catch {
+      // Storage unavailable in this context -- the guide will show, which
+      // is the product's own documented behaviour there.
+    }
+  }, FIRST_RUN_GUIDE_STORAGE_KEY);
 }
 
 export interface LaunchedCase {
@@ -191,9 +219,45 @@ export async function getCaseState(
 export class SiftPage {
   constructor(readonly page: Page) {}
 
+  /**
+   * The standard launch path: a returning visitor, arriving at the
+   * launcher.
+   *
+   * `seedFirstRunGuideDismissed` is what makes it a *returning* visitor.
+   * Every spec here runs in a fresh browser context with empty
+   * `localStorage`, which is precisely the state `App.tsx` reads as "this
+   * person has never seen Sift" -- so without this, `FirstRunGuide` (a
+   * modal Radix Dialog) would open over the workspace in every one of this
+   * suite's journeys and `aria-hidden` the pane underneath it.
+   *
+   * Deliberately a seeded storage key and not a build flag, an env var, or
+   * a query parameter: the product must have exactly one code path, and a
+   * "hide the onboarding" switch that exists only for tests is a behaviour
+   * no real user can reach. Writing the same key a real returning visitor
+   * already has in their browser exercises the real production branch.
+   * `first-run-guide.spec.ts` omits it and drives the genuine first visit,
+   * including dismissing the guide through the real UI.
+   */
   async open(): Promise<void> {
+    await seedFirstRunGuideDismissed(this.page);
     await this.page.goto('/');
     await expect(this.page.getByTestId('demo-launcher')).toBeVisible();
+  }
+
+  /**
+   * The genuine first visit: no seeded dismissal, so `FirstRunGuide` opens
+   * on the first case this context starts. Used only by
+   * `first-run-guide.spec.ts`.
+   */
+  async openAsFirstTimeVisitor(): Promise<void> {
+    await this.page.goto('/');
+    await expect(this.page.getByTestId('demo-launcher')).toBeVisible();
+  }
+
+  /** Dismisses the first-run guide the way a person does -- its own "Got it" button -- and waits for it to actually go. */
+  async dismissFirstRunGuide(): Promise<void> {
+    await this.page.getByTestId('first-run-guide-dismiss').click();
+    await expect(this.page.getByTestId('first-run-guide')).toBeHidden();
   }
 
   /** Clicks "Choose our next car" and waits for the real `POST /api/cases/demo` response, returning its `caseId`. */
