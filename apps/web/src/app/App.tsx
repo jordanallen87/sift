@@ -199,7 +199,7 @@ import {
   type WorkspaceViewMode,
   type WorkspaceViewState,
 } from '@sift/contracts';
-import { deriveNextMoves, evaluateReadiness } from '@sift/core';
+import { deriveDiscoveryReadiness, deriveNextMoves, evaluateReadiness } from '@sift/core';
 import { SiftClientError } from '../api/sift-client.js';
 import { readStoredCaseId, writeStoredCaseId, clearStoredCaseId } from './active-case-storage.js';
 import { DemoLauncher } from '../components/DemoLauncher.js';
@@ -211,6 +211,7 @@ import type { ApprovalCardReview } from '../components/ApprovalCard.js';
 import { deriveWorkspaceStatus } from '../components/workspace-status.js';
 import { ReadinessPanel } from '../components/ReadinessPanel.js';
 import { FindingsSheet } from '../components/FindingsSheet.js';
+import { BlindSpotReviewSheet } from '../components/BlindSpotReviewSheet.js';
 import { OptionEditor } from '../components/OptionEditor.js';
 import { WorkspaceViewSwitcher } from '../components/WorkspaceViewSwitcher.js';
 import { DecisionProfileView } from '../components/DecisionProfileView.js';
@@ -510,6 +511,20 @@ export function App() {
    * said nothing, and the only symptom was a question that never appeared.
    */
   const [interactionError, setInteractionError] = useState<string | null>(null);
+  /**
+   * The contextual blind-spot review (`BlindSpotReviewSheet`), reached from
+   * the dock's `review_blind_spots` move.
+   *
+   * Sheet-mounted rather than always-inline for the same reason
+   * `FindingsSheet` is: the review is a bounded pass a person is invited
+   * into and returned from, not a permanent region. `blindSpotReviewError`
+   * exists for the same reason `interactionError` does -- a rejected command
+   * here must say so on screen rather than leaving a control that appears to
+   * work and does not.
+   */
+  const [blindSpotSheetOpen, setBlindSpotSheetOpen] = useState(false);
+  const [blindSpotReviewPending, setBlindSpotReviewPending] = useState(false);
+  const [blindSpotReviewError, setBlindSpotReviewError] = useState<string | null>(null);
   const {
     snapshot,
     events,
@@ -1197,6 +1212,26 @@ export function App() {
     [snapshot, activePack],
   );
 
+  /**
+   * The blind-spot prompts this case is actually being offered, in pack
+   * order, resolved from the same `deriveDiscoveryReadiness` the dock's
+   * `review_blind_spots` move and the WebMCP interaction context already
+   * use (`applicableBlindSpotIds`). Derived in the browser from `@sift/core`
+   * for the reason `case-scoreboard.ts` documents for the scoreboard: the
+   * rule lives in core, so the pane cannot apply a second, drifting version
+   * of "which checks apply to this case".
+   *
+   * These become `offeredPromptIds` verbatim when the review is completed --
+   * a recorded review has to name what the person was genuinely shown.
+   */
+  const applicableBlindSpotPrompts = useMemo(() => {
+    if (snapshot === null || activePack === null) return [];
+    const applicable = new Set(
+      deriveDiscoveryReadiness(snapshot, activePack).applicableBlindSpotIds,
+    );
+    return (activePack.discovery?.blindSpots ?? []).filter((prompt) => applicable.has(prompt.id));
+  }, [snapshot, activePack]);
+
   // The human counterpart to `sift_get_option_details`, the WebMCP tool that
   // has been handing ChatGPT a complete per-option profile this whole time
   // while no screen showed one. Re-derived from the live snapshot on every
@@ -1622,6 +1657,131 @@ export function App() {
     [commands],
   );
 
+  // Scroll/focus target for the `review_question` dock action -- see
+  // `handleReviewDecidedCase` immediately below. `RecommendationHero`'s own
+  // outer region (`data-testid="recommendation-hero"`) is the target, via
+  // the `containerRef` prop it accepts for exactly this. Declared here,
+  // ahead of `handleDockAction`, because `handleReviewDecidedCase` must
+  // exist before `handleDockAction`'s dependency array below references it.
+  const recommendationHeroRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * The `review_question` dock move: `deriveNextMoves`'s one review-only
+   * move, and the ONLY move it offers on a decided case -- so this is the
+   * dock's primary (and only) button on the final screen of both hero
+   * journeys. There is nothing new to build for it: `RecommendationHero`
+   * directly below already renders the decided headline plus
+   * `RecommendationCard`/`ApprovalCard` for the settled decision, so the
+   * honest action is bringing the person to it rather than inventing a new
+   * view or a modal. `scrollIntoView` makes it visible; `.focus()` (onto a
+   * `tabIndex={-1}` target `RecommendationHero` exposes for exactly this)
+   * makes the same action work for a keyboard/screen-reader user, who would
+   * otherwise have no way to tell the click did anything at all.
+   */
+  const handleReviewDecidedCase = useCallback(() => {
+    const target = recommendationHeroRef.current;
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target?.focus();
+  }, []);
+
+  /**
+   * Scroll/focus target for the `confirm_shortlist` dock action -- the same
+   * mechanism `recommendationHeroRef` above uses, aimed one region deeper.
+   * `ApprovalCard` (inside `RecommendationHero`) exposes a `containerRef`
+   * and a `tabIndex={-1}` outer `<section>` for exactly this; its
+   * `aria-labelledby` heading is "Your decision", so a screen reader
+   * announces the right thing the moment focus lands.
+   */
+  const approvalCardRef = useRef<HTMLElement>(null);
+
+  /**
+   * The `confirm_shortlist` dock move: the only `humanOnly` move
+   * `deriveNextMoves` derives, rendered with the dock's "Your decision"
+   * badge, and previously the single most important dead button in the
+   * product -- its `requiredView` is `'confirmation'`, which is not a
+   * `WorkspaceViewMode` at all, so no view switch could ever have served it.
+   *
+   * It navigates. It does not act. The controls this move points at
+   * (`ApprovalCard`'s Approve / Reject / Request revision) are already on
+   * the page whenever this move exists, and CLAUDE.md is explicit that no
+   * automatic path may approve a consequential decision: "The model may
+   * propose candidate events and recommendations. It may never approve a
+   * consequential decision." A dock button that pressed Approve on the
+   * person's behalf would defeat the exact claim the "Your decision" badge
+   * beside it makes. So this brings the person to the control and stops.
+   *
+   * The hero is the fallback because `confirm_shortlist` is derived from
+   * `recommendation.status === 'ready'` alone -- it can be offered before a
+   * `DecisionProposal` exists, and `RecommendationHero` renders no
+   * `ApprovalCard` at all in that state. Landing on the region that does
+   * carry the recommendation is still an answer to "where is this?";
+   * silently doing nothing is not.
+   */
+  const handleConfirmShortlist = useCallback(() => {
+    const target: HTMLElement | null = approvalCardRef.current ?? recommendationHeroRef.current;
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target?.focus();
+  }, []);
+
+  /**
+   * The `review_blind_spots` dock move: the last gate before discovery
+   * (`deriveDiscoveryReadiness` blocks on `blind_spot_review_incomplete`
+   * until it is done), and the dock's PRIMARY button once every required
+   * topic is answered.
+   *
+   * Every layer of this already existed except the screen -- the
+   * `completeBlindSpotReview` command, its event, its reducer branch, and
+   * the readiness blocker -- so the honest fix is to render the pack's own
+   * prompts and call that command, not to invent a second notion of what a
+   * blind-spot review is. See `BlindSpotReviewSheet`'s own header.
+   */
+  const handleReviewBlindSpots = useCallback(() => {
+    setBlindSpotReviewError(null);
+    setBlindSpotSheetOpen(true);
+  }, []);
+
+  const handleCompleteBlindSpotReview = useCallback(
+    (selectedPromptIds: string[]) => {
+      const current = snapshotRef.current;
+      if (current === null) return;
+      const offeredPromptIds = applicableBlindSpotPrompts.map((prompt) => prompt.id);
+      if (offeredPromptIds.length === 0) return;
+      setBlindSpotReviewError(null);
+      setBlindSpotReviewPending(true);
+      commands
+        .completeBlindSpotReview({
+          caseId: current.id,
+          expectedSequence: Math.max(current.eventSequence, lastAcceptedSequenceRef.current),
+          // The literal, never a variable: `CompleteBlindSpotReviewInput`
+          // refuses any other actor, and nobody but the person can say what
+          // they did not think of.
+          actor: 'human',
+          offeredPromptIds,
+          selectedPromptIds,
+        })
+        .then((receipt) => {
+          lastAcceptedSequenceRef.current = Math.max(
+            lastAcceptedSequenceRef.current,
+            receipt.acceptedSequence,
+          );
+          setBlindSpotSheetOpen(false);
+        })
+        .catch((error: unknown) => {
+          // Surfaced in the sheet, not swallowed -- the same rule
+          // `interactionError` exists for.
+          setBlindSpotReviewError(
+            error instanceof Error
+              ? `Sift could not record that review: ${error.message}`
+              : 'Sift could not record that review.',
+          );
+        })
+        .finally(() => {
+          setBlindSpotReviewPending(false);
+        });
+    },
+    [applicableBlindSpotPrompts, commands],
+  );
+
   const handleDockAction = useCallback(
     (move: NextMove) => {
       // A question is answered in place, not by navigating somewhere.
@@ -1630,6 +1790,28 @@ export function App() {
         move.topicId !== undefined
       ) {
         handleAskTopic(move.topicId);
+        return;
+      }
+
+      // The one review-only move (see `handleReviewDecidedCase`'s own
+      // comment): brings the person to the region that already carries the
+      // answer instead of navigating to a view at all.
+      if (move.kind === 'review_question') {
+        handleReviewDecidedCase();
+        return;
+      }
+
+      // The one human-only move: brings the person to the approval control
+      // and never touches it. See `handleConfirmShortlist`.
+      if (move.kind === 'confirm_shortlist') {
+        handleConfirmShortlist();
+        return;
+      }
+
+      // The last gate before discovery, and the only move whose surface is
+      // a sheet rather than a region already on the page.
+      if (move.kind === 'review_blind_spots') {
+        handleReviewBlindSpots();
         return;
       }
 
@@ -1647,7 +1829,14 @@ export function App() {
         handleRequestInvestigation();
       }
     },
-    [handleViewModeChange, handleRequestInvestigation, handleAskTopic],
+    [
+      handleViewModeChange,
+      handleRequestInvestigation,
+      handleAskTopic,
+      handleReviewDecidedCase,
+      handleConfirmShortlist,
+      handleReviewBlindSpots,
+    ],
   );
 
   const handleQuickPickKeep = useCallback(
@@ -1872,17 +2061,26 @@ export function App() {
   // DERIVED from real, already-canonical state -- never fabricated. Each
   // condition below is the exact same signal an existing region already
   // renders from (flaggedFindingsCount drives the app bar's findings badge
-  // and used to drive the "What Sift found" disclosure meta;
-  // `workspaceStatus.phase` is the hero's own single source of truth for
-  // "a decision is pending human approval," reusing its `headline` text
-  // verbatim rather than composing new copy that could drift from the
-  // hero's; `pendingExtension` already gates `CaseExtensionReviewCard`
-  // below; `connectionState` is the hook's own raw five-state union, not
-  // the app bar's collapsed three-state version, so this only fires on a
-  // genuine `offline`, not a transient `connecting`/`reconnecting` blip the
-  // app bar's own pulsing badge already communicates). An empty array here
-  // renders nothing at all -- `WorkspaceAlertBanner` returns `null` outright
-  // for `items: []`.
+  // and used to drive the "What Sift found" disclosure meta; `pendingExtension`
+  // already gates `CaseExtensionReviewCard` below; `connectionState` is the
+  // hook's own raw five-state union, not the app bar's collapsed three-state
+  // version, so this only fires on a genuine `offline`, not a transient
+  // `connecting`/`reconnecting` blip the app bar's own pulsing badge already
+  // communicates). An empty array here renders nothing at all --
+  // `WorkspaceAlertBanner` returns `null` outright for `items: []`.
+  //
+  // Deliberately NOT included: a `workspaceStatus.phase === 'pending_approval'`
+  // item. One used to live here, with `tone: 'ready'` and `message:
+  // workspaceStatus.headline` reused verbatim from the hero. It was removed
+  // because that message duplicated `RecommendationHero`'s own headline
+  // word-for-word -- the exact same sentence rendered twice, once as a
+  // ~48px banner chip and again as the hero's headline in the very next
+  // region, with the hero also carrying the actual Approve/Reject/Revise
+  // `ApprovalCard` controls the banner never had. Beyond the redundancy, the
+  // banner pushed `RecommendationHero` down by that ~48px, working against
+  // ADR 0004's requirement that the recommendation region's top edge fall
+  // within the first viewport height at narrow widths. Removing it costs
+  // nothing the hero doesn't already say.
   const alertItems: WorkspaceAlertBannerItem[] = [];
   if (flaggedFindingsCount > 0) {
     alertItems.push({
@@ -1891,16 +2089,6 @@ export function App() {
       message: `${flaggedFindingsCount} finding${flaggedFindingsCount === 1 ? '' : 's'} need${flaggedFindingsCount === 1 ? 's' : ''} your attention.`,
       actionLabel: 'Review findings',
       onAction: () => setFindingsSheetOpen(true),
-    });
-  }
-  if (workspaceStatus.phase === 'pending_approval') {
-    alertItems.push({
-      id: 'recommendation-ready',
-      tone: 'ready',
-      // Reuses the hero's own headline text verbatim (see comment above) --
-      // no action, since `RecommendationHero` (with its live `ApprovalCard`
-      // Approve/Reject/Revise controls) is the very next region rendered.
-      message: workspaceStatus.headline,
     });
   }
   if (pendingExtension !== null) {
@@ -2095,7 +2283,16 @@ export function App() {
 
         <WorkspaceAlertBanner items={alertItems} layout={layout} />
 
-        <WebMcpStatus adapter={webMcpAdapter} />
+        {/*
+          `WebMcpStatus` used to render here, third in the content column,
+          directly above the answer. It is a persistent statement about the
+          host -- true before the case starts and still true after it ends --
+          and it never changes in response to anything the person does, so it
+          was spending prime vertical space, every scroll, on a sentence that
+          is read once. It now sits in the footer strip beside the action
+          dock, which is where the project owner asked for it. Nothing else
+          moved.
+        */}
 
         {streamError ? <ErrorState message={streamError} /> : null}
 
@@ -2116,6 +2313,8 @@ export function App() {
           liveRunReceipt={liveRunStatusReceipt}
           liveEvents={events}
           onInspectRun={handleInspectRun}
+          containerRef={recommendationHeroRef}
+          approvalRef={approvalCardRef}
         />
 
         {/* What the deterministic scoreboard found -- rendered once, outside
@@ -2321,7 +2520,7 @@ export function App() {
 
             <DisclosureSection
               testId="still-checking"
-              title="Researching…"
+              title="Decision readiness"
               meta={stillCheckingMeta}
             >
               <ReadinessPanel readiness={readiness} loading={snapshot === null} />
@@ -2376,6 +2575,20 @@ export function App() {
         items={evidenceItems ?? []}
         onSetDisposition={handleSetDisposition}
         dispositionPendingId={dispositionPendingId}
+      />
+
+      {/* The contextual blind-spot review, reached from the dock's
+          `review_blind_spots` move (`handleReviewBlindSpots`). Mounted here
+          with the other sheets, and controlled the same way -- Radix renders
+          nothing into the DOM while `open` is false, so a case that never
+          reaches the review is completely unaffected by it. */}
+      <BlindSpotReviewSheet
+        open={blindSpotSheetOpen}
+        onOpenChange={setBlindSpotSheetOpen}
+        prompts={applicableBlindSpotPrompts}
+        onComplete={handleCompleteBlindSpotReview}
+        pending={blindSpotReviewPending}
+        error={blindSpotReviewError}
       />
 
       {/* Sheet-based entry points for ADR 0008's dismantled create/detail
@@ -2529,6 +2742,40 @@ export function App() {
         scrolling container has nothing left to be held against. See this
         component's own header comment and the shell root above.
       */}
+      {/*
+        The footer status strip, directly above the action dock.
+
+        Above and not below, for two reasons. The dock carries
+        `pb-[max(var(--space-3),env(safe-area-inset-bottom))]` on the
+        assumption that it is the last thing in the shell; putting anything
+        under it strands that padding as a gap and makes the strip, not the
+        action, the element clearing the home indicator. And the primary
+        action belongs at the bottom edge where a thumb reaches it -- pushing
+        it up to make room for a line of status text inverts the priority of
+        the two.
+
+        Rendered OUTSIDE the dock's `snapshot?.discovery !== undefined`
+        conditional, because "is WebMCP available in this browser" is a
+        required visible state (docs/specs/webmcp.md, "Browser adapter") that
+        does not depend on a case having discovery yet -- it has to hold on a
+        freshly created case too, which nesting it would have quietly broken.
+
+        `shrink-0` for the same reason the dock carries it: this is a flex
+        child of the `100dvh` shell, and without it the scrolling region
+        above would compress the strip to nothing instead of letting it hold
+        its own line.
+      */}
+      <div
+        className={[
+          'shrink-0 border-t border-[color:var(--color-border)] bg-[color:var(--color-background)]',
+          layout === 'expanded'
+            ? 'px-[var(--space-6)] py-[var(--space-2)]'
+            : 'px-[var(--space-4)] py-[var(--space-2)]',
+        ].join(' ')}
+      >
+        <WebMcpStatus adapter={webMcpAdapter} />
+      </div>
+
       {snapshot?.discovery !== undefined && (
         <ContextActionDock moves={nextMoves} onAct={handleDockAction} layout={layout} />
       )}

@@ -6169,3 +6169,105 @@ PASSED, run `2026-09-03T01-31-11-833Z-a927d0d2`, all 10 stages — `test:e2e`
 4001 passed across 196 files. Verify passed at a machine load average of 75,
 so the three earlier timeout failures were contention from an unrelated
 project, not this change; no test timeout was raised.
+
+## 2026-09-03 — stale controls, duplicated claims, and two buttons that did nothing
+
+A UI/UX pass driven by reading the release baselines as a person rather than
+as a diff. Every defect below was found by looking at a rendered screenshot;
+none was reachable by an existing assertion.
+
+**Stale controls on a closed case.** `deriveNextMoves` had no
+`caseState.status === 'decided'` branch, so a decided case still offered
+"Confirm what moves forward" and "What this vehicle is for" — the two moves
+that only make sense while the decision is open. It now returns early with a
+single honest move ("Review what was decided"). Seen first in the `decided`
+baseline, where the dock invited a person to confirm a case that was already
+closed.
+
+**Two buttons that did nothing at all.** Fixing the above promoted
+`review_question` to the primary dock action on the final screen of both hero
+demos — and `handleDockAction` had no branch for it, so it fell through and
+silently did nothing. `grep -rn "review_question" apps/web/src` returned zero
+production hits. Auditing the rest of the vocabulary found two more reachable
+dead buttons: **`confirm_shortlist`** ("Confirm what moves forward" — the only
+`humanOnly` move Sift derives, the product's central claim, present in three
+states of both journeys) and **`review_blind_spots`** ("Check for anything
+missed" — the *primary* button in Home Energy Guardian). All three now act.
+
+`review_blind_spots` was the worst of them: `CommandService.completeBlindSpotReview`,
+its schema, its event, its reducer branch and its web-client method all
+existed, with **zero callers in `apps/web/src`**. The `blind_spot_review_incomplete`
+blocker gates `readyToDiscover`, so a person could not clear it from the pane
+at all. A new `BlindSpotReviewSheet` renders the pack's applicable prompts and
+calls the command that was already there. None of the three fixes approves
+anything — they navigate and focus; `reviewProposal` remains absent.
+
+**The same claim, twice, in two places.** The dock rendered a human-only
+move's own `reason` ("Only you can decide which options go ahead") directly
+above a global note saying the same thing in different words. It now marks the
+action with a "Your decision" badge and states the boundary once, attached to
+the button it governs. Separately, a `recommendation-ready` alert banner
+rendered `workspaceStatus.headline` verbatim — the exact sentence
+`RecommendationHero` renders immediately below it — costing ~48px and pushing
+the hero down against ADR 0004's above-the-fold requirement. Removed.
+
+**"Researching…" was neither true nor descriptive.** It titled the readiness
+panel at every state, including the one whose body reads "No case is open
+yet." And the panel is not about research: it renders "Ready for decision", an
+"N of M questions resolved" count, and a "Why this case isn't ready yet"
+blocker list. Now "Decision readiness". The in-progress signal it was carrying
+already had an honest home in the adjacent `readiness-panel-updating` badge.
+
+**WebMCP status moved to the footer**, as the project owner asked. It was
+third in the content column, wrapping to two lines above the answer, spending
+prime vertical space every scroll on a sentence about the host that never
+changes. It is now a one-line strip (17px at 640/820) directly above the dock
+— above and not below, because the dock's `pb-[max(...,safe-area-inset-bottom)]`
+assumes it is last, and because the primary action belongs at the thumb.
+
+**Tooltips on the collapsed app-bar glyphs.** `ui/tooltip.tsx` existed and
+`WorkspaceAppBar` had never adopted it, leaving six unlabelled icons at 640px.
+Applied per that primitive's own rule — tooltip text is the control's
+`aria-label` verbatim, only where the control renders icon-only, and every
+control stays fully usable with the tooltip deleted.
+
+**Two WCAG AA failures in the design tokens.** Axe caught
+`--color-status-open-ink` at **4.49:1** against its own background once the
+layout shift made those nodes visible; the defect was always in the token, not
+the layout. Auditing every ink/bg pair in the block then found
+`--color-status-stale-ink` at **4.30:1** — worse, and caught by nothing,
+because no required state happened to render stale text where axe could see
+it. Now 5.23:1 and 5.33:1.
+
+**A flaky gate, diagnosed and fixed.** Two `pnpm verify` runs failed on
+`expected 404 to be 200` and `expected 401 to be 200`. `fixtures/http-harness.ts`
+already documented the cause: supertest given a bare `app` starts a *fresh
+ephemeral-port server per request*, and "on a busy machine a socket
+occasionally reaches a port that has already been recycled: tests here have
+received a `401` and a `403`, statuses this application does not produce on
+those routes at all." 153 call sites had adopted the one-listener fix; 19 had
+not. They do now. (`grep -rn "401" apps/agent/src` finds only that comment —
+the application cannot produce a 401.)
+
+**An explicit Playwright worker cap.** The suite had no worker policy, so
+Playwright spawned `cpus / 2` = eight Chromium instances. Same commit, same
+144 tests, varying only the machine's load: 144/144 at load ~25, 136/144 at
+~55, 132/144 at ~57-80 — every failure a connection reset or a timeout, not
+one an assertion. A gate whose result tracks the load average of the machine
+it runs on is not measuring the product. Capped at 4, overridable via
+`PLAYWRIGHT_WORKERS`. No timeout was changed: each test still has exactly the
+budget it always had.
+
+**Baselines.** All 60 `case-workspace` baselines re-captured (5 states × 6
+viewports × 2 journeys); the 12 launcher and 6 catalog baselines are
+untouched, as neither renders the dock or the status strip. The
+actual/expected/diff triplet was opened and compared before any update — the
+diff showed exactly the removed paragraph, the ~56px upward shift, and the new
+footer strip, with header, orientation row and dock unchanged. Eight of the
+regenerated set were then inspected individually at 390, 640 and 820.
+
+Commands: `pnpm verify` — `format:check`, `lint` (incl. `check:source`, 474
+files), `typecheck`, `test:unit` (4027), `test:coverage`, `test:pack` (304),
+`test:integration` (453), `test:contract`, `test:scenario` all PASS.
+`test:e2e` passes 144/144 standalone on an unloaded machine and degrades under
+external load as tabulated above; see the note in `playwright.config.ts`.

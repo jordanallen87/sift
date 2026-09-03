@@ -79,6 +79,13 @@ describe('ContextActionDock', () => {
     expect(screen.getAllByTestId(/^dock-action-/)).toHaveLength(2);
     expect(screen.getByText('Confirm your test-drive shortlist')).toBeInTheDocument();
     expect(screen.getByTestId('dock-human-only-note')).toBeInTheDocument();
+
+    // The defect this also pins: the human-only note used to render a
+    // second time, near-identically, as that move's own `reason` ("Only
+    // you can decide which options go ahead" stacked on "Only you can take
+    // this step..."). The authority claim ("only you") now appears exactly
+    // once in the whole dock.
+    expect(screen.getAllByText(/only you/i)).toHaveLength(1);
   });
 
   it('keeps the derived order among the actions it does show', () => {
@@ -141,7 +148,14 @@ describe('ContextActionDock', () => {
 
     const action = screen.getByTestId('dock-action-primary');
     expect(action).toHaveAttribute('data-human-only', 'true');
+    // Visibly marked: a compact badge sits with the button, distinct from
+    // the one sentence of prose that explains why.
+    expect(screen.getByTestId('dock-human-only-badge')).toBeInTheDocument();
     expect(screen.getByTestId('dock-human-only-note')).toHaveTextContent(/only you/i);
+    // Programmatically identifiable: the action's accessible description
+    // *is* that one sentence, not a second copy of it.
+    expect(action).toHaveAccessibleDescription(/only you/i);
+    expect(screen.getAllByText(/only you/i)).toHaveLength(1);
   });
 
   it('does not label an ordinary action as human-only', () => {
@@ -149,6 +163,45 @@ describe('ContextActionDock', () => {
 
     expect(screen.getByTestId('dock-action-primary')).toHaveAttribute('data-human-only', 'false');
     expect(screen.queryByTestId('dock-human-only-note')).toBeNull();
+    expect(screen.queryByTestId('dock-human-only-badge')).toBeNull();
+  });
+
+  it('states the human-authority boundary exactly once, attached to the action it governs', () => {
+    // Regression pin for the copy-duplication defect: `move.reason` and the
+    // human-only note used to both render for `confirm_shortlist`, stacked
+    // directly on top of each other. Now the note replaces that move's own
+    // `reason` display rather than joining it, and it renders next to its
+    // own button rather than in a block shared by every shown action.
+    const moves = [
+      move({ label: 'One' }),
+      move({
+        kind: 'confirm_shortlist',
+        label: 'Confirm your test-drive shortlist',
+        reason: 'Only you can decide which options go ahead',
+        topicId: undefined,
+        toolName: undefined,
+        humanOnly: true,
+        requiredView: 'confirmation',
+      }),
+    ];
+
+    render(<ContextActionDock moves={moves} onAct={vi.fn()} layout="narrow" />);
+
+    // Exactly one element carries the note testid, and it is scoped inside
+    // the same wrapper as the human-only button, not a trailing sibling of
+    // the whole dock.
+    const note = screen.getByTestId('dock-human-only-note');
+    const humanOnlyAction = screen.getByTestId('dock-action-secondary');
+    expect(humanOnlyAction).toHaveAttribute('data-human-only', 'true');
+    expect(humanOnlyAction.parentElement).toContainElement(note);
+    expect(humanOnlyAction).toHaveAccessibleDescription(note.textContent ?? '');
+
+    // The move's own `reason` (the pack-authored duplicate of the claim)
+    // does not also render somewhere on screen.
+    expect(
+      screen.queryByText('Only you can decide which options go ahead'),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText(/only you/i)).toHaveLength(1);
   });
 
   it('exposes each action`s reason without making the person hunt for it', () => {

@@ -155,6 +155,23 @@ function BucketSection({
   );
 }
 
+/*
+ * Heading note: this panel was titled "Researching…" at every state, which
+ * was wrong twice over.
+ *
+ * It was not true — the heading claimed live activity while the body
+ * directly beneath it read "No case is open yet." A heading that asserts
+ * something is happening when nothing is is the same class of defect as a
+ * stale control.
+ *
+ * And it did not describe the panel. Nothing here is about research: the
+ * body renders "Ready for decision"/"Not ready for decision", an
+ * "N of M questions resolved" count, and a "Why this case isn't ready yet"
+ * blocker list. That is decision readiness, and the heading now says so.
+ * The in-progress signal this title was carrying already has its own
+ * dedicated, honest home — the `readiness-panel-updating` "Updating…" badge
+ * beside it, which renders only while `loading` is actually true.
+ */
 export function ReadinessPanel({ readiness, loading = false }: ReadinessPanelProps) {
   if (readiness === null) {
     return (
@@ -163,7 +180,7 @@ export function ReadinessPanel({ readiness, loading = false }: ReadinessPanelPro
         aria-labelledby="readiness-panel-heading"
         className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
       >
-        <h2 id="readiness-panel-heading">Researching…</h2>
+        <h2 id="readiness-panel-heading">Decision readiness</h2>
         {loading ? (
           <div
             data-testid="readiness-panel-loading"
@@ -198,7 +215,7 @@ export function ReadinessPanel({ readiness, loading = false }: ReadinessPanelPro
       className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
     >
       <div className="flex items-center justify-between gap-[var(--space-2)]">
-        <h2 id="readiness-panel-heading">Researching…</h2>
+        <h2 id="readiness-panel-heading">Decision readiness</h2>
         {loading ? (
           <span
             data-testid="readiness-panel-updating"

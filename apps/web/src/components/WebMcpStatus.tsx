@@ -29,29 +29,55 @@ export interface WebMcpStatusProps {
   adapter: ModelContextAdapter;
 }
 
+/**
+ * Shared row styling: one line, a status dot, muted small type.
+ *
+ * This used to be a bare paragraph of body copy sitting in the content
+ * column, where it wrapped to two full lines at every width the pane
+ * actually renders at and cost roughly 40px of the scarcest resource the
+ * product has. It reads as a strip of chrome now rather than as a sentence
+ * competing with the case, which is what it always was: a persistent
+ * statement about the host, not a thing to read once and act on.
+ *
+ * `items-start` rather than `items-center`, because the text can still wrap
+ * at 390px and a centred dot would drift to the middle of a two-line block.
+ */
+const ROW_CLASS =
+  'flex items-start gap-[var(--space-1-5)] text-[length:var(--font-size-xs)] leading-[var(--line-height-snug)] text-[var(--color-ink-muted)]';
+
+/** `mt-[0.35em]` optically centres the dot on the first line of text rather than on the box. */
+const DOT_CLASS = 'mt-[0.35em] size-[6px] shrink-0 rounded-full';
+
 export function WebMcpStatus({ adapter }: WebMcpStatusProps) {
   const supported = adapter.supported();
 
   if (!supported) {
     return (
-      <p
-        data-testid="webmcp-status-unsupported"
-        role="status"
-        className="text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]"
-      >
-        WebMCP unavailable in this browser. Every action here is still available through the visible
-        controls on this page.
+      <p data-testid="webmcp-status-unsupported" role="status" className={ROW_CLASS}>
+        <span
+          aria-hidden="true"
+          className={DOT_CLASS}
+          style={{ backgroundColor: 'var(--color-ink-muted)' }}
+        />
+        {/*
+          "WebMCP unavailable in this browser" is kept verbatim: it is the
+          exact notice docs/specs/webmcp.md's "Browser adapter" section
+          requires, and this component's own test asserts that substring. Only
+          the reassurance after it was tightened.
+        */}
+        <span>WebMCP unavailable in this browser — every action is still available here.</span>
       </p>
     );
   }
 
   return (
-    <p
-      data-testid="webmcp-status-supported"
-      role="status"
-      className="text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]"
-    >
-      WebMCP ready — a connected assistant can operate this page directly.
+    <p data-testid="webmcp-status-supported" role="status" className={ROW_CLASS}>
+      <span
+        aria-hidden="true"
+        className={DOT_CLASS}
+        style={{ backgroundColor: 'var(--color-status-active-ink)' }}
+      />
+      <span>WebMCP ready — a connected assistant can operate this page.</span>
     </p>
   );
 }

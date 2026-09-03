@@ -914,8 +914,18 @@ describe('deriveNextMoves: the pane always has a next action', () => {
     expect(moves.map((m) => m.kind)).toContain('compare_retained');
   });
 
-  it('never attaches a tool to the human-only shortlist move', () => {
-    const decided: CaseState = {
+  /**
+   * Everything answered, one candidate kept, a recommendation ready -- and
+   * the case still `draft`. This is the moment before the decision, not
+   * after it: the shortlist confirmation is genuinely outstanding here.
+   *
+   * A separate fixture rather than an inline literal because the *decided*
+   * case is this one plus `status: 'decided'`, and the whole point of the
+   * decided tests is that the same state must produce a different move list
+   * once the case is closed.
+   */
+  function readyToDecideCase(): CaseState {
+    return {
       ...answeredCase({
         dispositions: [
           {
@@ -951,8 +961,12 @@ describe('deriveNextMoves: the pane always has a next action', () => {
         generatedAt: LATER,
       },
     };
+  }
 
-    const shortlist = deriveNextMoves(decided, pack()).find(
+  const decidedCase = (): CaseState => ({ ...readyToDecideCase(), status: 'decided' });
+
+  it('never attaches a tool to the human-only shortlist move', () => {
+    const shortlist = deriveNextMoves(readyToDecideCase(), pack()).find(
       (move) => move.kind === 'confirm_shortlist',
     );
     expect(shortlist).toBeDefined();
@@ -967,9 +981,52 @@ describe('deriveNextMoves: the pane always has a next action', () => {
     );
   });
 
+  it('offers nothing that implies a decided case is still open', () => {
+    // The whole cascade reads state a decided case still carries: the
+    // recommendation is still `ready`, so `confirm_shortlist` fired, and the
+    // soft topic is still unanswered, so `answer_topic` fired. Both were
+    // visible in the `decided` baseline screenshot -- "Confirm what moves
+    // forward" and "What this vehicle is for", on a closed decision.
+    const kinds = deriveNextMoves(decidedCase(), pack()).map((move) => move.kind);
+
+    for (const stale of [
+      'confirm_shortlist',
+      'answer_topic',
+      'confirm_inference',
+      'review_blind_spots',
+      'confirm_brief',
+      'discover_candidates',
+      'quick_pick',
+      'decide',
+    ]) {
+      expect(kinds, `"${stale}" was offered on a decided case`).not.toContain(stale);
+    }
+  });
+
+  it('leads a decided case with reviewing where it landed', () => {
+    const moves = deriveNextMoves(decidedCase(), pack());
+
+    // Still not a dead end -- the pane owes a person somewhere to go on
+    // every case, closed ones included.
+    expect(moves.length).toBeGreaterThan(0);
+    expect(moves[0]?.kind).toBe('review_question');
+    expect(moves[0]?.requiredView).toBe('recommendations');
+    // Nothing left is a human authority gate: those were spent on the
+    // decision itself.
+    expect(moves.every((move) => !move.humanOnly)).toBe(true);
+  });
+
+  it('does not describe a decided case as having work outstanding', () => {
+    const prose = deriveNextMoves(decidedCase(), pack())
+      .map((move) => `${move.label} ${move.reason}`)
+      .join(' ');
+
+    expect(prose).not.toMatch(/confirm|outstanding|remain|still need|next step/i);
+  });
+
   it('every derived move satisfies the NextMove contract', async () => {
     const { NextMoveSchema } = await import('@sift/contracts');
-    for (const state of [caseWith([]), caseWith([topic()]), answeredCase()]) {
+    for (const state of [caseWith([]), caseWith([topic()]), answeredCase(), decidedCase()]) {
       for (const move of deriveNextMoves(state, pack())) {
         const parsed = NextMoveSchema.safeParse(move);
         expect(parsed.success, `${move.kind}: ${JSON.stringify(parsed)}`).toBe(true);

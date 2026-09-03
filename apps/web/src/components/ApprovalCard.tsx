@@ -37,6 +37,7 @@
  * `ApprovalCardProps` has no `actor` key at all.
  */
 import { useState } from 'react';
+import type { Ref } from 'react';
 import type { DecisionProposal, ReviewProposalDecision } from '@sift/contracts';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -60,6 +61,24 @@ export interface ApprovalCardProps {
   reviewPending?: boolean;
   /** A recoverable error from a failed review submission. The proposal and controls stay visible so the human can retry. */
   error?: string | null;
+  /**
+   * Optional DOM ref onto this component's own outer region, so a caller can
+   * scroll it into view and move real keyboard focus to it. The
+   * `confirm_shortlist` dock action -- the one `humanOnly` move Sift derives
+   * -- does exactly that in `App.tsx`'s `handleDockAction`: it brings the
+   * person to these controls and stops, because no automatic path may
+   * approve a consequential decision (CLAUDE.md). This ref grants no new
+   * power to do so; `ApprovalCardProps` still has no `actor` field, and
+   * `submit()` below is still the only place `actor: 'human'` is
+   * constructed.
+   *
+   * `tabIndex={-1}` on the `<section>` is what makes it a valid `.focus()`
+   * target without joining the page's normal Tab order; the existing
+   * `aria-labelledby` ("Your decision") gives it a real accessible name, so
+   * a screen reader announces something meaningful when focus lands here
+   * programmatically instead of silently doing nothing.
+   */
+  containerRef?: Ref<HTMLElement>;
 }
 
 const SETTLED_STATUS_META: Record<
@@ -81,6 +100,7 @@ export function ApprovalCard({
   onReview,
   reviewPending = false,
   error = null,
+  containerRef,
 }: ApprovalCardProps) {
   const [revisionForm, setRevisionForm] = useState<RevisionFormState>({
     open: false,
@@ -99,9 +119,11 @@ export function ApprovalCard({
 
   return (
     <section
+      ref={containerRef}
+      tabIndex={-1}
       data-testid="approval-card"
       aria-labelledby="approval-card-heading"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-md)] bg-card p-[var(--space-4)] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
       <h2 id="approval-card-heading">Your decision</h2>
 

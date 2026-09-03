@@ -36,6 +36,7 @@
  * enforces this same rule internally (see its own file header), so it is
  * always safe to mount unconditionally here.
  */
+import type { Ref } from 'react';
 import type {
   DecisionProposal,
   PublicActivityEvent,
@@ -65,6 +66,37 @@ export interface RecommendationHeroProps {
   liveRunReceipt: LiveRunStatusReceipt | null;
   liveEvents: PublicActivityEvent[];
   onInspectRun: (runId: string) => void;
+  /**
+   * Optional DOM ref onto this component's own outer region. Exists so a
+   * caller can scroll this exact region into view and move real keyboard
+   * focus to it -- the `review_question` dock action on a decided case does
+   * exactly that in `App.tsx`'s `handleDockAction` rather than inventing a
+   * new view or a modal, because this region already IS the answer to
+   * "review what was decided": it already renders the decided headline plus
+   * `RecommendationCard`/`ApprovalCard` for any case with a settled
+   * proposal. `tabIndex={-1}` below is what makes that a valid `.focus()`
+   * target without joining the page's normal Tab order, and the existing
+   * `aria-labelledby` gives it a real accessible name (this region's own
+   * headline) so a screen reader announces something meaningful the moment
+   * focus lands here programmatically, rather than silently doing nothing.
+   */
+  containerRef?: Ref<HTMLDivElement>;
+  /**
+   * Optional DOM ref onto the `ApprovalCard` region nested inside this one,
+   * forwarded to its own `containerRef`. Same mechanism as `containerRef`
+   * above, aimed one region deeper: the `confirm_shortlist` dock action --
+   * the one `humanOnly` move Sift derives -- brings the person to the
+   * Approve/Reject/Request-revision controls specifically, which can sit
+   * well below the fold of this region in a 390px pane. It moves focus
+   * there and does nothing else; no automatic path may approve a
+   * consequential decision (CLAUDE.md), and `ApprovalCard` has no `actor`
+   * prop through which one could try.
+   *
+   * `undefined` whenever `proposal` is `null`, since no `ApprovalCard`
+   * renders then -- `App.tsx`'s `handleConfirmShortlist` falls back to this
+   * region's own `containerRef` in that case.
+   */
+  approvalRef?: Ref<HTMLElement>;
 }
 
 export function RecommendationHero({
@@ -84,14 +116,18 @@ export function RecommendationHero({
   liveRunReceipt,
   liveEvents,
   onInspectRun,
+  containerRef,
+  approvalRef,
 }: RecommendationHeroProps) {
   const showRecommendation = recommendation !== null || withheld !== null;
 
   return (
     <div
+      ref={containerRef}
+      tabIndex={-1}
       data-testid="recommendation-hero"
       aria-labelledby="recommendation-hero-headline"
-      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
+      className="flex flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
       {/* Remounts (and replays `.status-change-enter`) whenever the phase
           itself changes -- the same "a real state transition deserves a
@@ -186,6 +222,7 @@ export function RecommendationHero({
           onReview={onReview}
           reviewPending={reviewPending}
           error={reviewError}
+          {...(approvalRef === undefined ? {} : { containerRef: approvalRef })}
         />
       ) : null}
     </div>

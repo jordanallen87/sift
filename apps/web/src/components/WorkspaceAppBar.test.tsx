@@ -203,4 +203,74 @@ describe('WorkspaceAppBar', () => {
     );
     expect(overflowRisks).toEqual([]);
   });
+
+  /**
+   * At narrow width this row collapses to bare glyphs, which is precisely the
+   * case `ui/tooltip.tsx` exists for. These assert the two halves of that
+   * primitive's own rule -- the tooltip appears where the label went, and
+   * nothing depends on it.
+   */
+  describe('tooltips on the collapsed icon controls', () => {
+    it.each([
+      ['workspace-app-bar-add-option', 'Add option'],
+      ['workspace-app-bar-findings', 'Findings, 0'],
+      ['workspace-app-bar-references', 'References, 0'],
+      ['workspace-app-bar-reset-demo', 'Reset demo'],
+    ])('labels %s on hover once it is icon-only at narrow width', async (testId, expected) => {
+      const user = userEvent.setup();
+      render(
+        <WorkspaceAppBar
+          {...buildProps({
+            layout: 'narrow',
+            onResetDemo: vi.fn(),
+            onOpenReferenceLibrary: vi.fn(),
+          })}
+        />,
+      );
+
+      await user.hover(screen.getByTestId(testId));
+
+      expect(await screen.findByTestId('tooltip-content')).toHaveTextContent(expected);
+    });
+
+    it('labels the developer view at expanded width too, because it is never given a text label', async () => {
+      const user = userEvent.setup();
+      render(<WorkspaceAppBar {...buildProps({ layout: 'expanded' })} />);
+
+      await user.hover(screen.getByTestId('workspace-app-bar-developer-view'));
+
+      expect(await screen.findByTestId('tooltip-content')).toHaveTextContent('Developer view');
+    });
+
+    it('does not repeat a label the expanded row already shows', async () => {
+      const user = userEvent.setup();
+      render(<WorkspaceAppBar {...buildProps({ layout: 'expanded', onResetDemo: vi.fn() })} />);
+
+      // The control carries its own visible text here, so a tooltip saying
+      // the same word twice is noise rather than help.
+      await user.hover(screen.getByTestId('workspace-app-bar-add-option'));
+
+      expect(screen.queryByTestId('tooltip-content')).not.toBeInTheDocument();
+    });
+
+    it('keeps every wrapped control usable with no pointer involved at all', async () => {
+      // The rule `ui/tooltip.tsx` is built around: a tooltip is a
+      // description, never an accessible name, so a touch or screen-reader
+      // user who never sees one must lose nothing. Each control is still
+      // findable by its own accessible name and still fires its callback.
+      const user = userEvent.setup();
+      const onAddOption = vi.fn();
+      const onOpenDeveloperView = vi.fn();
+      render(
+        <WorkspaceAppBar {...buildProps({ layout: 'narrow', onAddOption, onOpenDeveloperView })} />,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Add option' }));
+      await user.click(screen.getByRole('button', { name: 'Developer view' }));
+
+      expect(onAddOption).toHaveBeenCalledTimes(1);
+      expect(onOpenDeveloperView).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('tooltip-content')).not.toBeInTheDocument();
+    });
+  });
 });

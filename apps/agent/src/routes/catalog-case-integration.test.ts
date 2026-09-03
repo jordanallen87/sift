@@ -34,6 +34,8 @@
  * via `supertest` -- matching `cases.test.ts`'s own testing pattern, just
  * with the real pack and a real wired engine underneath it.
  */
+import { once } from 'node:events';
+import type { Server } from 'node:http';
 import request from 'supertest';
 import type { Application } from 'express';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -75,11 +77,26 @@ function requireSnapshot(receipt: CommandReceipt): CaseState {
 
 interface RealCarPurchaseHttpHarness {
   readonly app: Application;
-  cleanup(): void;
+  /**
+   * One already-listening server, and what every request here goes through.
+   *
+   * Passing the bare `app` to supertest starts a fresh ephemeral-port server
+   * per request, which `fixtures/http-harness.ts` documents as a real hazard:
+   * "on a busy machine a socket occasionally reaches a port that has already
+   * been recycled: tests here have received a `401` and a `403`, statuses
+   * this application does not produce on those routes at all." That harness
+   * fixed it by listening once; this file diverges from it (see the header
+   * comment) and so had never picked the fix up.
+   *
+   * Listening is awaited before the harness is returned because supertest
+   * reads `server.address()` synchronously when building a request.
+   */
+  readonly server: Server;
+  cleanup(): Promise<void>;
 }
 
 /** The real `car-purchase` pack, the real `CarPurchaseEngine`, and the real Express `app` -- see this file's header comment for why this diverges from `fixtures/http-harness.ts`. */
-function buildRealCarPurchaseHttpHarness(): RealCarPurchaseHttpHarness {
+async function buildRealCarPurchaseHttpHarness(): Promise<RealCarPurchaseHttpHarness> {
   const database: TestDatabase = createTestDatabase();
   applyMigrations(database.sqlite);
 
@@ -132,7 +149,21 @@ function buildRealCarPurchaseHttpHarness(): RealCarPurchaseHttpHarness {
     clock: FIXED_CLOCK,
   });
 
-  return { app, cleanup: () => database.cleanup() };
+  const server = app.listen(0);
+  await once(server, 'listening');
+
+  return {
+    app,
+    server,
+    cleanup: async () => {
+      await new Promise<void>((resolve) => {
+        server.close(() => {
+          resolve();
+        });
+      });
+      database.cleanup();
+    },
+  };
 }
 
 // --- Realistic catalog fixture records (docs/decisions/0003-...: "a bounded,
@@ -220,7 +251,7 @@ interface CatalogBuiltCase {
  * boundary -- exactly what `apps/web`'s catalog/shortlist UI does, just
  * driven over HTTP here instead of from a browser.
  */
-async function startCatalogBuiltCase(app: Application): Promise<CatalogBuiltCase> {
+async function startCatalogBuiltCase(app: Server): Promise<CatalogBuiltCase> {
   const startResponse = await request(app)
     .post('/api/cases')
     .set('Idempotency-Key', 'cmd-start')
@@ -277,17 +308,17 @@ async function waitForRunToSettle(
 describe('PAX-P28: a catalog-built car-purchase case works end to end through the real HTTP/store pipeline', () => {
   let harness: RealCarPurchaseHttpHarness | undefined;
 
-  afterEach(() => {
-    harness?.cleanup();
+  afterEach(async () => {
+    await harness?.cleanup();
     harness = undefined;
   });
 
   it('persists a catalog-built case: right entities/labels, exactly the catalog-supplied attributes present, everything else honestly absent, pack pinned, no recommendation/proposal yet, pack defaults seeded', async () => {
-    harness = buildRealCarPurchaseHttpHarness();
-    const { caseId, mapped, startReceipt } = await startCatalogBuiltCase(harness.app);
+    harness = await buildRealCarPurchaseHttpHarness();
+    const { caseId, mapped, startReceipt } = await startCatalogBuiltCase(harness.server);
     const startSnapshot = requireSnapshot(startReceipt);
 
-    const response = await request(harness.app).get(`/api/cases/${caseId}`);
+    const response = await request(harness.server).get(`/api/cases/${caseId}`);
     expect(response.status).toBe(200);
     const snapshot = asJson<CaseState>(response.body);
 
@@ -356,17 +387,19 @@ describe('PAX-P28: a catalog-built car-purchase case works end to end through th
   });
 
   it('a generic command (updateCriteria, reweighting a real pack default criterion) genuinely applies to a catalog-built case', async () => {
-    harness = buildRealCarPurchaseHttpHarness();
-    const { caseId, expectedSequence } = await startCatalogBuiltCase(harness.app);
+    harness = await buildRealCarPurchaseHttpHarness();
+    const { caseId, expectedSequence } = await startCatalogBuiltCase(harness.server);
 
-    const before = asJson<CaseState>((await request(harness.app).get(`/api/cases/${caseId}`)).body);
+    const before = asJson<CaseState>(
+      (await request(harness.server).get(`/api/cases/${caseId}`)).body,
+    );
     const original = before.criteria.find(
       (criterion) => criterion.id === 'pref.safety_reliability',
     );
     expect(original).toBeDefined();
     expect(original?.weight).toBe(30);
 
-    const updateResponse = await request(harness.app)
+    const updateResponse = await request(harness.server)
       .post(`/api/cases/${caseId}/commands/updateCriteria`)
       .set('Idempotency-Key', 'cmd-reweight')
       .send({
@@ -376,7 +409,9 @@ describe('PAX-P28: a catalog-built car-purchase case works end to end through th
       });
     expect(updateResponse.status).toBe(200);
 
-    const after = asJson<CaseState>((await request(harness.app).get(`/api/cases/${caseId}`)).body);
+    const after = asJson<CaseState>(
+      (await request(harness.server).get(`/api/cases/${caseId}`)).body,
+    );
     const reweighted = after.criteria.find(
       (criterion) => criterion.id === 'pref.safety_reliability',
     );
@@ -389,10 +424,10 @@ describe('PAX-P28: a catalog-built car-purchase case works end to end through th
   });
 
   it('POST .../run against a catalog-built case fails honestly through the demo-guard, reachable end-to-end via the real HTTP run-request path (ADR 0003 "Decision" §4)', async () => {
-    harness = buildRealCarPurchaseHttpHarness();
-    const { caseId, expectedSequence } = await startCatalogBuiltCase(harness.app);
+    harness = await buildRealCarPurchaseHttpHarness();
+    const { caseId, expectedSequence } = await startCatalogBuiltCase(harness.server);
 
-    const runResponse = await request(harness.app)
+    const runResponse = await request(harness.server)
       .post(`/api/cases/${caseId}/run`)
       .set('Idempotency-Key', 'cmd-run')
       .send({ caseId, obligationId: 'car.deal_normalization', expectedSequence });
@@ -408,7 +443,7 @@ describe('PAX-P28: a catalog-built car-purchase case works end to end through th
     // --- A real, human-readable explanation is visible through the normal
     // real-time activity path (the polling fallback of GET
     // /api/cases/:caseId/events), not a stack trace and not silence. ---
-    const pollResponse = await request(harness.app).get(`/api/cases/${caseId}/events?mode=poll`);
+    const pollResponse = await request(harness.server).get(`/api/cases/${caseId}/events?mode=poll`);
     expect(pollResponse.status).toBe(200);
     const poll = asJson<{ snapshot: CaseState; events: PublicActivityEvent[] }>(pollResponse.body);
 

@@ -424,8 +424,50 @@ export function applyDiscoveryResponse(
  * discovery, check blind spots, discover, triage, compare, decide -- because
  * each stage's output is the next stage's input. A person is never offered
  * "compare what you kept" before there is anything kept.
+ *
+ * A `decided` case short-circuits the cascade and is offered review moves
+ * only. See the branch below for why the cascade cannot be trusted to reach
+ * that conclusion on its own.
  */
 export function deriveNextMoves(caseState: CaseState, pack: CompiledDecisionPack): NextMove[] {
+  // A decided case leaves the cascade entirely.
+  //
+  // Every gate below reads state that a decided case still carries, and none
+  // of them read `status`. So a closed decision still had a `ready`
+  // recommendation and was still offered "Confirm what moves forward"; it
+  // still had an unanswered soft topic and was still offered that question.
+  // Both were visible together in the `decided` baseline screenshot -- the
+  // pane asking someone to confirm a decision they had already made, above
+  // an invitation to reopen discovery underneath it.
+  //
+  // `deriveDecisionPhase` already treats `decided` as terminal, so this is
+  // the same rule applied to the move list rather than a new one. What is
+  // left on a closed case is genuinely only looking at it: no discovery, no
+  // triage, and above all no authority gate -- those were spent on the
+  // decision itself, and re-offering one is the pane claiming a settled
+  // thing is still open.
+  //
+  // One move, not a menu. A second review move ("look at the evidence
+  // behind it") was drafted and dropped: `handleDockAction` in the web app
+  // dispatches on `move.kind` and has no `review_question` branch at all, so
+  // every move of this kind is currently an inert button. That is a
+  // pre-existing gap -- the fallback at the end of this function has always
+  // emitted `review_question` -- and it is the web app's to close, but there
+  // is no reason to double the inert surface from here while it is open.
+  if (caseState.status === 'decided') {
+    return [
+      {
+        kind: 'review_question',
+        label: 'Review what was decided',
+        reason: 'The decision is made; this is where it landed',
+        requiredView: 'recommendations',
+        toolName: 'sift_get_case_context',
+        humanOnly: false,
+        mayInterruptHumanNavigation: false,
+      },
+    ];
+  }
+
   const readiness = deriveDiscoveryReadiness(caseState, pack);
   const moves: NextMove[] = [];
 

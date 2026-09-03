@@ -128,13 +128,22 @@ const DEFAULT_PACK = buildFixtureCompiledPack({
   entities: [{ id: 'car', label: 'Car', attributeIds: [] }],
 });
 
-function renderLiveWorkspace(snapshot: CaseState, events: PublicActivityEvent[] = []) {
+// `packs` is a parameter rather than a fixed `[DEFAULT_PACK]` because
+// `App` resolves `activePack` from `/api/packs` synchronously inside its
+// own mount effect -- a `server.use(packsHandler(...))` call issued after
+// `render()` returns is already too late to be the pack the workspace runs
+// on. Every existing caller keeps the previous behaviour by omitting it.
+function renderLiveWorkspace(
+  snapshot: CaseState,
+  events: PublicActivityEvent[] = [],
+  packs: ReturnType<typeof buildFixtureCompiledPack>[] = [DEFAULT_PACK],
+) {
   server.use(
     http.post('/api/cases/demo', () =>
       HttpResponse.json(buildFakeCommandReceipt({ caseId: CASE_ID, commandId: 'cmd-start' })),
     ),
     pollHandler(snapshot, events),
-    packsHandler([DEFAULT_PACK]),
+    packsHandler(packs),
   );
 
   const adapter = new InMemoryModelContextAdapter();
@@ -3008,7 +3017,7 @@ describe('App', () => {
         });
       });
 
-      it("shows a recommendation-ready alert that reuses the hero's own headline verbatim (never a second, independently-composed copy of it)", async () => {
+      it('omits a recommendation-ready alert once a recommendation is pending approval -- the hero directly below already carries that exact headline plus the live Approve/Reject/Revise controls, so a banner repeating it verbatim would only duplicate the sentence and push the hero further down the pane', async () => {
         const snapshot = buildFixtureCaseState({
           id: CASE_ID,
           recommendation: {
@@ -3035,13 +3044,12 @@ describe('App', () => {
         renderLiveWorkspace(snapshot);
         await startDemoAndWait();
 
-        const item = await screen.findByTestId('workspace-alert-banner-item-recommendation-ready');
-        expect(item).toHaveTextContent('Sift has a recommendation ready for your decision.');
-        expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
+        expect(await screen.findByTestId('recommendation-hero-headline')).toHaveTextContent(
           'Sift has a recommendation ready for your decision.',
         );
-        // Purely informational: the hero directly below already carries the
-        // real Approve/Reject/Revise controls, so this item has no action.
+        expect(
+          screen.queryByTestId('workspace-alert-banner-item-recommendation-ready'),
+        ).not.toBeInTheDocument();
         expect(
           screen.queryByTestId('workspace-alert-banner-action-recommendation-ready'),
         ).not.toBeInTheDocument();
@@ -3158,6 +3166,296 @@ describe('App', () => {
           expect(
             screen.getByTestId('workspace-alert-banner-item-connection-offline'),
           ).toHaveTextContent('Connection lost. Sift will keep trying to reconnect.');
+        });
+      });
+    });
+
+    describe('ContextActionDock wiring (handleDockAction)', () => {
+      it('taking the "review_question" move -- the ONLY move `deriveNextMoves` offers on a decided case, and therefore the dock\'s primary button on the final screen of both hero journeys -- brings the person to the recommendation hero (which already carries the decision) instead of doing nothing', async () => {
+        // Regression test for a real dead-button defect: `handleDockAction`
+        // dispatched on `move.kind` through a `viewForMove` map that never
+        // had a `review_question` entry, so clicking this button did
+        // nothing at all. `packages/core/src/discovery.ts`'s own
+        // `deriveNextMoves` header comment documents the same gap directly
+        // ("every move of this kind is currently an inert button... it is
+        // the web app's to close").
+        const snapshot = buildFixtureCaseState({
+          id: CASE_ID,
+          status: 'decided',
+          // `ContextActionDock` only mounts once `snapshot.discovery !==
+          // undefined` (see `App.tsx`) -- a case that has never entered
+          // discovery renders no dock at all, decided or not. This is the
+          // minimal schema-valid `DiscoveryState`; its contents do not
+          // matter to `deriveNextMoves`, which short-circuits to the single
+          // `review_question` move for ANY `status: 'decided'` case before
+          // reading discovery fields at all.
+          discovery: {
+            mode: 'companion',
+            topics: [],
+            blindSpotReview: { status: 'pending', offeredPromptIds: [], selectedPromptIds: [] },
+            dispositions: [],
+            pendingInteraction: null,
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+          recommendation: {
+            id: 'rec-1',
+            status: 'ready',
+            favoredOptionId: null,
+            rationale: 'Best overall fit.',
+            facts: [],
+            hypotheses: [],
+            confidence: 0.8,
+            limitations: [],
+            sourceIds: [],
+            resolvedObligationIds: [],
+            acceptedUncertaintyObligationIds: [],
+            generatedAt: '2026-08-27T00:00:00.000Z',
+          },
+          proposal: {
+            id: 'prop-1',
+            recommendationId: 'rec-1',
+            status: 'approved',
+            createdAt: '2026-08-27T00:00:00.000Z',
+          },
+        });
+        const scrollIntoView = vi.fn();
+        Element.prototype.scrollIntoView = scrollIntoView;
+        renderLiveWorkspace(snapshot);
+        const user = await startDemoAndWait();
+
+        const action = await screen.findByTestId('dock-action-primary');
+        expect(action).toHaveTextContent('Review what was decided');
+
+        await user.click(action);
+
+        // Observable, not a no-op: the recommendation hero -- which already
+        // renders the decided headline and the `RecommendationCard` the
+        // decision landed on -- is scrolled into view and takes real
+        // keyboard focus, so a keyboard/screen-reader user actually lands
+        // somewhere instead of the click silently doing nothing.
+        expect(scrollIntoView).toHaveBeenCalled();
+        await waitFor(() => {
+          expect(screen.getByTestId('recommendation-hero')).toHaveFocus();
+        });
+      });
+
+      // --- `confirm_shortlist`: the one `humanOnly` move Sift derives ---
+
+      /**
+       * A case whose recommendation is `ready` and whose proposal is still
+       * `pending` -- the exact state in which `deriveNextMoves` derives
+       * `confirm_shortlist` and `RecommendationHero` renders `ApprovalCard`'s
+       * real Approve/Reject/Revise controls.
+       *
+       * The blind-spot review is marked complete so the move list stays
+       * short and deterministic: `[discover_candidates, confirm_shortlist]`.
+       * `ContextActionDock` never drops a `humanOnly` move
+       * (`selectDockActions`), so the confirm action is always rendered,
+       * second.
+       */
+      function buildConfirmShortlistSnapshot(proposalStatus: 'pending' | null) {
+        return buildFixtureCaseState({
+          id: CASE_ID,
+          discovery: {
+            mode: 'companion',
+            topics: [],
+            blindSpotReview: {
+              status: 'complete',
+              offeredPromptIds: ['blindspot.garage_clearance'],
+              selectedPromptIds: [],
+              acknowledgedAt: '2026-08-27T00:00:00.000Z',
+            },
+            dispositions: [],
+            pendingInteraction: null,
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+          recommendation: {
+            id: 'rec-1',
+            status: 'ready',
+            favoredOptionId: null,
+            rationale: 'Best overall fit.',
+            facts: [],
+            hypotheses: [],
+            confidence: 0.8,
+            limitations: [],
+            sourceIds: [],
+            resolvedObligationIds: [],
+            acceptedUncertaintyObligationIds: [],
+            generatedAt: '2026-08-27T00:00:00.000Z',
+          },
+          proposal:
+            proposalStatus === null
+              ? null
+              : {
+                  id: 'prop-1',
+                  recommendationId: 'rec-1',
+                  status: proposalStatus,
+                  createdAt: '2026-08-27T00:00:00.000Z',
+                },
+        });
+      }
+
+      it('taking the "confirm_shortlist" move -- the ONLY humanOnly move Sift derives, and the one the dock marks "Your decision" -- brings the person to the approval controls instead of doing nothing', async () => {
+        // Regression test for the second confirmed dead-button defect:
+        // `handleDockAction` had no `confirm_shortlist` branch and no entry
+        // for it in `viewForMove` (its `requiredView` is `'confirmation'`,
+        // which is not even a `WorkspaceViewMode`), so the single most
+        // important button in the product rendered, enabled, and did
+        // nothing at all when pressed.
+        let reviewCalls = 0;
+        renderLiveWorkspace(buildConfirmShortlistSnapshot('pending'));
+        server.use(
+          commandHandler('reviewProposal', buildFakeCommandReceipt({ caseId: CASE_ID }), () => {
+            reviewCalls += 1;
+          }),
+        );
+        const scrollIntoView = vi.fn();
+        Element.prototype.scrollIntoView = scrollIntoView;
+        const user = await startDemoAndWait();
+
+        const action = await screen.findByTestId('dock-action-secondary');
+        expect(action).toHaveTextContent('Confirm what moves forward');
+        expect(action).toHaveAttribute('data-human-only', 'true');
+
+        await user.click(action);
+
+        // Observable: the person is taken to `ApprovalCard` -- the real
+        // Approve/Reject/Revise controls, already on the page -- which is
+        // scrolled into view and given real keyboard focus, so this works
+        // for a keyboard/screen-reader user too.
+        expect(scrollIntoView).toHaveBeenCalled();
+        await waitFor(() => {
+          expect(screen.getByTestId('approval-card')).toHaveFocus();
+        });
+        expect(screen.getByTestId('approval-card-approve')).toBeInTheDocument();
+
+        // And it approves NOTHING. CLAUDE.md: "The model may propose
+        // candidate events and recommendations. It may never approve a
+        // consequential decision" -- a dock button that pressed Approve on
+        // the person's behalf would be a worse defect than the dead button
+        // it replaced.
+        expect(reviewCalls).toBe(0);
+      });
+
+      it('falls back to the recommendation hero when "confirm_shortlist" is offered before a proposal exists to approve', async () => {
+        // `confirm_shortlist` is derived from `recommendation.status ===
+        // 'ready'` alone, so it can be offered while `proposal` is still
+        // `null` -- in which case `ApprovalCard` is not rendered at all and
+        // there is nothing to focus. The hero (which does render the
+        // recommendation) is the honest destination; silently doing nothing
+        // is not.
+        renderLiveWorkspace(buildConfirmShortlistSnapshot(null));
+        const scrollIntoView = vi.fn();
+        Element.prototype.scrollIntoView = scrollIntoView;
+        const user = await startDemoAndWait();
+
+        const action = await screen.findByTestId('dock-action-secondary');
+        expect(action).toHaveTextContent('Confirm what moves forward');
+        await user.click(action);
+
+        expect(screen.queryByTestId('approval-card')).not.toBeInTheDocument();
+        expect(scrollIntoView).toHaveBeenCalled();
+        await waitFor(() => {
+          expect(screen.getByTestId('recommendation-hero')).toHaveFocus();
+        });
+      });
+
+      // --- `review_blind_spots`: the last gate before discovery ---
+
+      /**
+       * A pack that declares a real blind-spot review, and a case that has
+       * answered every required topic without doing it -- exactly the
+       * condition `deriveNextMoves` derives `review_blind_spots` from
+       * (`requiredComplete && !readiness.coverage.blindSpotReviewComplete`).
+       * With no topics declared, `requiredResolved === requiredTotal === 0`,
+       * so the review is genuinely the only thing outstanding and the move
+       * is the dock's primary button -- which is how it was seen in a real
+       * Home Energy Guardian baseline screenshot.
+       */
+      const BLIND_SPOT_PACK = buildFixtureCompiledPack({
+        entities: [{ id: 'car', label: 'Car', attributeIds: [] }],
+        discovery: {
+          topics: [],
+          blindSpots: [
+            {
+              id: 'blindspot.garage_clearance',
+              label: 'Where it has to park',
+              detail: 'Garage length and height, or a tight communal space.',
+            },
+            {
+              id: 'blindspot.long_term_cost',
+              label: 'The cost after the purchase',
+              detail: 'Insurance, servicing, tyres, and depreciation.',
+            },
+          ],
+        },
+      });
+
+      function buildBlindSpotSnapshot() {
+        return buildFixtureCaseState({
+          id: CASE_ID,
+          discovery: {
+            mode: 'companion',
+            topics: [],
+            blindSpotReview: { status: 'pending', offeredPromptIds: [], selectedPromptIds: [] },
+            dispositions: [],
+            pendingInteraction: null,
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        });
+      }
+
+      it('taking the "review_blind_spots" move opens the pack\'s own contextual checks instead of doing nothing', async () => {
+        // Regression test for the third confirmed dead-button defect. The
+        // blind-spot review had a command (`completeBlindSpotReview`), a
+        // case event, a reducer branch, and a readiness gate that blocks
+        // discovery until it is done -- and no surface at all in the web
+        // app, so the dock button that offers it was inert.
+        renderLiveWorkspace(buildBlindSpotSnapshot(), [], [BLIND_SPOT_PACK]);
+        const user = await startDemoAndWait();
+
+        const action = await screen.findByTestId('dock-action-primary');
+        expect(action).toHaveTextContent('Check for anything missed');
+
+        await user.click(action);
+
+        const sheet = await screen.findByTestId('blind-spot-review-sheet');
+        // The pack's own prompts, rendered verbatim. Nothing here is
+        // generated: every label and detail comes from the compiled pack.
+        expect(sheet).toHaveTextContent('Where it has to park');
+        expect(sheet).toHaveTextContent('Garage length and height, or a tight communal space.');
+        expect(sheet).toHaveTextContent('The cost after the purchase');
+      });
+
+      it('completing the blind-spot review calls completeBlindSpotReview with the pack\'s offered prompts and actor "human"', async () => {
+        let capturedBody: unknown;
+        renderLiveWorkspace(buildBlindSpotSnapshot(), [], [BLIND_SPOT_PACK]);
+        server.use(
+          commandHandler(
+            'completeBlindSpotReview',
+            buildFakeCommandReceipt({ caseId: CASE_ID }),
+            (body) => {
+              capturedBody = body;
+            },
+          ),
+        );
+        const user = await startDemoAndWait();
+
+        await user.click(await screen.findByTestId('dock-action-primary'));
+        await screen.findByTestId('blind-spot-review-sheet');
+
+        await user.click(screen.getByRole('checkbox', { name: /Where it has to park/ }));
+        await user.click(screen.getByTestId('blind-spot-review-submit'));
+
+        await waitFor(() => {
+          expect(capturedBody).toMatchObject({
+            caseId: CASE_ID,
+            // Only a person may complete this review --
+            // `CompleteBlindSpotReviewInputSchema` refuses any other actor.
+            actor: 'human',
+            offeredPromptIds: ['blindspot.garage_clearance', 'blindspot.long_term_cost'],
+            selectedPromptIds: ['blindspot.garage_clearance'],
+          });
         });
       });
     });

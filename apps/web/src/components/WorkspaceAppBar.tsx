@@ -174,6 +174,7 @@ import { LibraryIcon, PlusIcon, RotateCcwIcon, SearchCheckIcon, TerminalIcon } f
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { HelpButton } from './HelpButton.js';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 
@@ -225,6 +226,49 @@ const CONNECTION_META: Record<
 /** Shared >=44px CSS-pixel hit area (`docs/design-system.md`'s touch-target section, backed by `--size-touch-target-min`) -- applied to every actionable control below regardless of its visual size. */
 const TOUCH_TARGET = 'min-h-[var(--size-touch-target-min)]';
 const TOUCH_TARGET_ICON = `${TOUCH_TARGET} min-w-[var(--size-touch-target-min)]`;
+
+/**
+ * A pointer-only label for a control that is currently rendering as a bare
+ * glyph, following the precedent `HelpButton` already sets in this row.
+ *
+ * `enabled` rather than always-on, because this row's controls change shape
+ * with `layout`: at expanded width `Add option`, `Findings`, `References` and
+ * `Reset demo` render their own visible text, and a tooltip that repeats a
+ * label the user is already reading is noise. At narrow width the same
+ * controls collapse to icon-and-count, which is exactly the case
+ * `ui/tooltip.tsx` describes -- "a control whose meaning is otherwise carried
+ * by an icon alone". `Developer view` is icon-only at every width, so it is
+ * always wrapped.
+ *
+ * The label passed here is deliberately the control's `aria-label` verbatim,
+ * per that primitive's own convention: the two can then never drift, and a
+ * voice-control user can say the words they see (WCAG 2.5.3, "Label in
+ * Name"). Nothing depends on the tooltip -- every control below already
+ * carries a real accessible name and stays fully usable with the tooltip
+ * deleted, which is what keeps this honest for the touch and screen-reader
+ * users who never see one.
+ *
+ * `side="bottom"` for the same reason `HelpButton` uses it: this is the top
+ * row of the pane, so a top-side panel would only be flipped by collision
+ * handling anyway.
+ */
+function GlyphTooltip({
+  label,
+  enabled,
+  children,
+}: {
+  readonly label: string;
+  readonly enabled: boolean;
+  readonly children: React.ReactElement;
+}): React.JSX.Element {
+  if (!enabled) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function WorkspaceAppBar({
   title,
@@ -304,53 +348,57 @@ export function WorkspaceAppBar({
             Add option, tinted-on-active for Findings) -- unchanged by this
             repair (see fix 2 in the header comment). */}
         <div className="flex shrink-0 items-center gap-[var(--space-1-5)]">
-          <Button
-            type="button"
-            data-testid="workspace-app-bar-add-option"
-            aria-label="Add option"
-            onClick={onAddOption}
-            variant="default"
-            size={isExpanded ? 'sm' : 'icon'}
-            className={isExpanded ? TOUCH_TARGET : TOUCH_TARGET_ICON}
-          >
-            <PlusIcon aria-hidden="true" className="size-4" />
-            {isExpanded ? 'Add option' : null}
-          </Button>
-
-          <Button
-            type="button"
-            data-testid="workspace-app-bar-findings"
-            // A single accessible name carrying the count in both layouts --
-            // the visible `Badge` count below is always `aria-hidden` (see
-            // its own comment) so the number is never announced twice.
-            aria-label={`Findings, ${findingsCount}`}
-            onClick={onReviewFindings}
-            variant="ghost"
-            // `size="sm"` at every width, not `isExpanded ? 'sm' : 'icon'` --
-            // see fix 1 in the header comment. The control is sized by its
-            // own inline content (icon, optional label, count chip) instead
-            // of a fixed square, so the count chip is always laid out
-            // touching the icon by construction; `TOUCH_TARGET` supplies
-            // the height floor `sm`'s own `h-8` doesn't reach on its own.
-            size="sm"
-            className={`gap-[var(--space-1)] ${TOUCH_TARGET} ${isExpanded ? '' : 'px-[var(--space-2)]'}`}
-            style={
-              hasFindings
-                ? { color: findingsMeta.ink, backgroundColor: findingsMeta.bg }
-                : undefined
-            }
-          >
-            <SearchCheckIcon aria-hidden="true" className="size-4" />
-            {isExpanded ? 'Findings' : null}
-            <Badge
-              data-testid="workspace-app-bar-findings-count"
-              aria-hidden="true"
-              className="label-caps rounded-[var(--radius-pill)] px-[var(--space-1-5)] py-0"
-              style={{ color: findingsMeta.ink, backgroundColor: 'var(--color-surface)' }}
+          <GlyphTooltip label="Add option" enabled={!isExpanded}>
+            <Button
+              type="button"
+              data-testid="workspace-app-bar-add-option"
+              aria-label="Add option"
+              onClick={onAddOption}
+              variant="default"
+              size={isExpanded ? 'sm' : 'icon'}
+              className={isExpanded ? TOUCH_TARGET : TOUCH_TARGET_ICON}
             >
-              {findingsCount}
-            </Badge>
-          </Button>
+              <PlusIcon aria-hidden="true" className="size-4" />
+              {isExpanded ? 'Add option' : null}
+            </Button>
+          </GlyphTooltip>
+
+          <GlyphTooltip label={`Findings, ${String(findingsCount)}`} enabled={!isExpanded}>
+            <Button
+              type="button"
+              data-testid="workspace-app-bar-findings"
+              // A single accessible name carrying the count in both layouts --
+              // the visible `Badge` count below is always `aria-hidden` (see
+              // its own comment) so the number is never announced twice.
+              aria-label={`Findings, ${findingsCount}`}
+              onClick={onReviewFindings}
+              variant="ghost"
+              // `size="sm"` at every width, not `isExpanded ? 'sm' : 'icon'` --
+              // see fix 1 in the header comment. The control is sized by its
+              // own inline content (icon, optional label, count chip) instead
+              // of a fixed square, so the count chip is always laid out
+              // touching the icon by construction; `TOUCH_TARGET` supplies
+              // the height floor `sm`'s own `h-8` doesn't reach on its own.
+              size="sm"
+              className={`gap-[var(--space-1)] ${TOUCH_TARGET} ${isExpanded ? '' : 'px-[var(--space-2)]'}`}
+              style={
+                hasFindings
+                  ? { color: findingsMeta.ink, backgroundColor: findingsMeta.bg }
+                  : undefined
+              }
+            >
+              <SearchCheckIcon aria-hidden="true" className="size-4" />
+              {isExpanded ? 'Findings' : null}
+              <Badge
+                data-testid="workspace-app-bar-findings-count"
+                aria-hidden="true"
+                className="label-caps rounded-[var(--radius-pill)] px-[var(--space-1-5)] py-0"
+                style={{ color: findingsMeta.ink, backgroundColor: 'var(--color-surface)' }}
+              >
+                {findingsCount}
+              </Badge>
+            </Button>
+          </GlyphTooltip>
 
           {/* The reference library: the case's collected research, and the
               durable half of what the model remembers about this decision.
@@ -359,25 +407,27 @@ export function WorkspaceAppBar({
               are global chrome, reachable identically in both layouts.
               Absent, not disabled, when no caller wired it. */}
           {onOpenReferenceLibrary !== undefined ? (
-            <Button
-              type="button"
-              data-testid="workspace-app-bar-references"
-              onClick={onOpenReferenceLibrary}
-              aria-label={`References, ${referenceCount}`}
-              variant="ghost"
-              size="sm"
-              className={`gap-[var(--space-1)] ${TOUCH_TARGET} ${isExpanded ? '' : 'px-[var(--space-2)]'}`}
-            >
-              <LibraryIcon aria-hidden="true" className="size-4" />
-              {isExpanded ? 'References' : null}
-              <Badge
-                data-testid="workspace-app-bar-references-count"
-                aria-hidden="true"
-                className="label-caps rounded-[var(--radius-pill)] px-[var(--space-1-5)] py-0"
+            <GlyphTooltip label={`References, ${String(referenceCount)}`} enabled={!isExpanded}>
+              <Button
+                type="button"
+                data-testid="workspace-app-bar-references"
+                onClick={onOpenReferenceLibrary}
+                aria-label={`References, ${referenceCount}`}
+                variant="ghost"
+                size="sm"
+                className={`gap-[var(--space-1)] ${TOUCH_TARGET} ${isExpanded ? '' : 'px-[var(--space-2)]'}`}
               >
-                {referenceCount}
-              </Badge>
-            </Button>
+                <LibraryIcon aria-hidden="true" className="size-4" />
+                {isExpanded ? 'References' : null}
+                <Badge
+                  data-testid="workspace-app-bar-references-count"
+                  aria-hidden="true"
+                  className="label-caps rounded-[var(--radius-pill)] px-[var(--space-1-5)] py-0"
+                >
+                  {referenceCount}
+                </Badge>
+              </Button>
+            </GlyphTooltip>
           ) : null}
         </div>
 
@@ -408,49 +458,55 @@ export function WorkspaceAppBar({
         <div className="flex shrink-0 items-center gap-[var(--space-1)]">
           <HelpButton />
 
-          <Button
-            type="button"
-            data-testid="workspace-app-bar-developer-view"
-            aria-label="Developer view"
-            onClick={onOpenDeveloperView}
-            variant="ghost"
-            size="icon-sm"
-            className={`${TOUCH_TARGET_ICON} shrink-0 text-[var(--color-ink-secondary)] hover:text-foreground`}
-          >
-            <TerminalIcon aria-hidden="true" className="size-4" />
-          </Button>
-
-          {onResetDemo ? (
+          {/* Icon-only at every width, so unlike its neighbours this one is
+              always wrapped. */}
+          <GlyphTooltip label="Developer view" enabled>
             <Button
               type="button"
-              data-testid="workspace-app-bar-reset-demo"
-              aria-label="Reset demo"
-              aria-busy={resetPending}
-              disabled={resetPending}
-              onClick={onResetDemo}
-              // Expanded keeps the original labelled `secondary` (filled
-              // chip) treatment; collapsed-to-icon-only at narrow recedes to
-              // the same ghost/muted look as Help and Developer view, so the
-              // secondary cluster reads as one consistent group rather than
-              // one loud icon among two quiet ones.
-              variant={isExpanded ? 'secondary' : 'ghost'}
-              size={isExpanded ? 'sm' : 'icon-sm'}
-              className={
-                isExpanded
-                  ? TOUCH_TARGET
-                  : `${TOUCH_TARGET_ICON} text-[var(--color-ink-secondary)] hover:text-foreground`
-              }
+              data-testid="workspace-app-bar-developer-view"
+              aria-label="Developer view"
+              onClick={onOpenDeveloperView}
+              variant="ghost"
+              size="icon-sm"
+              className={`${TOUCH_TARGET_ICON} shrink-0 text-[var(--color-ink-secondary)] hover:text-foreground`}
             >
-              {isExpanded ? (
-                resetPending ? (
-                  'Resetting…'
-                ) : (
-                  'Reset demo'
-                )
-              ) : (
-                <RotateCcwIcon aria-hidden="true" className="size-4" />
-              )}
+              <TerminalIcon aria-hidden="true" className="size-4" />
             </Button>
+          </GlyphTooltip>
+
+          {onResetDemo ? (
+            <GlyphTooltip label="Reset demo" enabled={!isExpanded}>
+              <Button
+                type="button"
+                data-testid="workspace-app-bar-reset-demo"
+                aria-label="Reset demo"
+                aria-busy={resetPending}
+                disabled={resetPending}
+                onClick={onResetDemo}
+                // Expanded keeps the original labelled `secondary` (filled
+                // chip) treatment; collapsed-to-icon-only at narrow recedes to
+                // the same ghost/muted look as Help and Developer view, so the
+                // secondary cluster reads as one consistent group rather than
+                // one loud icon among two quiet ones.
+                variant={isExpanded ? 'secondary' : 'ghost'}
+                size={isExpanded ? 'sm' : 'icon-sm'}
+                className={
+                  isExpanded
+                    ? TOUCH_TARGET
+                    : `${TOUCH_TARGET_ICON} text-[var(--color-ink-secondary)] hover:text-foreground`
+                }
+              >
+                {isExpanded ? (
+                  resetPending ? (
+                    'Resetting…'
+                  ) : (
+                    'Reset demo'
+                  )
+                ) : (
+                  <RotateCcwIcon aria-hidden="true" className="size-4" />
+                )}
+              </Button>
+            </GlyphTooltip>
           ) : null}
         </div>
       </div>

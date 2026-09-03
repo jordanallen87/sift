@@ -22,6 +22,15 @@
  * product's central claim would be missing from the exact screen where it
  * matters most.
  *
+ * This used to say it twice: the move's own `reason` rendered under its
+ * button, and a second, near-identical sentence rendered again below both
+ * buttons ("Only you can decide which options go ahead" stacked directly on
+ * "Only you can take this step..."). In a 640px pane, two sentences making
+ * one claim cost real height and pushed the recommendation below the fold.
+ * A human-only move now gets one visible marker (a `Badge`, matching
+ * `ApprovalCard`'s "Your approval needed") and exactly one sentence,
+ * attached to the button it governs rather than floating after it.
+ *
  * ## In flow, and neither sticky nor fixed
  *
  * This used to be `sticky bottom-0`, justified by "`fixed` inside an iframe
@@ -43,6 +52,17 @@
  */
 import type { NextMove } from '@sift/contracts';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+
+/**
+ * The single sentence that states the human-authority boundary. It used to
+ * render twice per human-only move — once as that move's own `reason`, once
+ * more as a separate paragraph after every shown button. Both said the same
+ * thing. This is the one that survives, and it now renders attached to the
+ * specific button it governs instead of floating below the whole dock.
+ */
+const HUMAN_ONLY_NOTE =
+  'Only you can take this step — Sift and your assistant can explain it, but neither can do it for you.';
 
 /** The most actions the dock will ever show. See the module comment. */
 const MAX_DOCK_ACTIONS = 2;
@@ -97,8 +117,6 @@ export function ContextActionDock({
   const shown = selectDockActions(moves);
   if (shown.length === 0) return null;
 
-  const hasHumanOnly = shown.some((move) => move.humanOnly);
-
   return (
     <aside
       aria-label="What to do next"
@@ -121,12 +139,34 @@ export function ContextActionDock({
       >
         {shown.map((move, index) => {
           const testId = index === 0 ? 'dock-action-primary' : 'dock-action-secondary';
-          const reasonId = `dock-reason-${String(index)}`;
+          // A human-only move's explanation is the one authority sentence,
+          // not its own `reason` plus that sentence again — see `HUMAN_ONLY_NOTE`
+          // above and the module comment. Giving it a stable id lets both the
+          // journeys (`pnpm test:journey family-novice`/`aws-hero`) and this
+          // component's own tests keep finding it by the same `data-testid`
+          // the old, separate paragraph used. That id is not index-suffixed
+          // because `deriveNextMoves` currently derives at most one
+          // `humanOnly` move (`confirm_shortlist`) in the whole system — if
+          // that ever changes, this id needs to become per-move again.
+          const reasonId = move.humanOnly ? 'dock-human-only-note' : `dock-reason-${String(index)}`;
           return (
             <div
               key={`${move.kind}-${String(index)}`}
               className="flex flex-col gap-[var(--space-1)]"
             >
+              {move.humanOnly && (
+                // The visible marker: matches `ApprovalCard`'s "Your approval
+                // needed" `Badge` so the same product claim gets the same
+                // visual treatment wherever it appears. The one sentence of
+                // *why* lives in the `<span>` below, not here.
+                <Badge
+                  data-testid="dock-human-only-badge"
+                  variant="outline"
+                  className="label-caps w-fit"
+                >
+                  Your decision
+                </Badge>
+              )}
               <Button
                 type="button"
                 data-testid={testId}
@@ -148,24 +188,15 @@ export function ContextActionDock({
               */}
               <span
                 id={reasonId}
+                data-testid={move.humanOnly ? 'dock-human-only-note' : undefined}
                 className="text-[length:var(--text-xs)] text-[color:var(--color-muted-foreground)]"
               >
-                {move.reason}
+                {move.humanOnly ? HUMAN_ONLY_NOTE : move.reason}
               </span>
             </div>
           );
         })}
       </div>
-
-      {hasHumanOnly && (
-        <p
-          data-testid="dock-human-only-note"
-          className="text-[length:var(--text-xs)] text-[color:var(--color-muted-foreground)]"
-        >
-          Only you can take this step — Sift and your assistant can explain it, but neither can do
-          it for you.
-        </p>
-      )}
     </aside>
   );
 }

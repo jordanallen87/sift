@@ -136,12 +136,22 @@
   --color-status-accepted-uncertainty-border: #dcc79a;
 
   /* open — not yet started; deliberately hue-less/unclaimed */
-  --color-status-open-ink: #64665f;
+  /* Was #64665f, which rendered at 4.49:1 on its own `-bg` -- a WCAG 2 AA
+     failure by one hundredth. Axe caught it only once a layout change made
+     the `case-insight`/`quick-pick-still-unresolved` nodes visible to the
+     scan; the defect was always in the token. Now 5.23:1. See the sibling
+     note on `--color-status-stale-ink`. */
+  --color-status-open-ink: #5a5c54;
   --color-status-open-bg: #e8e9e5;
   --color-status-open-border: #cbccc5;
 
   /* stale — evidence has aged past its validity window */
-  --color-status-stale-ink: #75636c;
+  /* Was #75636c: 4.30:1 on its own `-bg`, a worse AA failure than `open`'s
+     and one no test had ever caught, because no required state happened to
+     render stale text where axe could see it. Found by auditing every
+     ink/bg pair in this block rather than only the one that failed. Now
+     5.33:1, keeping the mauve cast that distinguishes stale from open. */
+  --color-status-stale-ink: #655560;
   --color-status-stale-bg: #eee6e9;
   --color-status-stale-border: #d4c2c9;
 

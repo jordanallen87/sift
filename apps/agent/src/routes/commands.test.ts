@@ -655,11 +655,11 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
       const harnessA = await createHttpTestHarness();
       const harnessB = await createHttpTestHarness();
       try {
-        const startA = await request(harnessA.app)
+        const startA = await request(harnessA.server)
           .post('/api/cases/demo')
           .set('Idempotency-Key', 'cmd-start')
           .send({ demoId: 'car-purchase' });
-        const startB = await request(harnessB.app)
+        const startB = await request(harnessB.server)
           .post('/api/cases/demo')
           .set('Idempotency-Key', 'cmd-start')
           .send({ demoId: 'car-purchase' });
@@ -667,7 +667,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
         const receiptB = asJson<CommandReceipt>(startB.body);
         expect(receiptB.caseId).toBe(receiptA.caseId);
 
-        const responseA = await request(harnessA.app)
+        const responseA = await request(harnessA.server)
           .post(`/api/cases/${receiptA.caseId}/commands/selectPack`)
           .set('Idempotency-Key', 'cmd-select')
           .send({
@@ -675,7 +675,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
             packId: 'car-purchase',
             expectedSequence: receiptA.acceptedSequence,
           });
-        const responseB = await request(harnessB.app)
+        const responseB = await request(harnessB.server)
           .post(`/api/cases/${receiptB.caseId}/commands/selectPack`)
           .set('Idempotency-Key', 'cmd-select')
           .set('X-Sift-Command-Origin', 'webmcp')

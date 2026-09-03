@@ -1,6 +1,9 @@
+import { once } from 'node:events';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Application } from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HttpErrorBody } from '@sift/contracts';
@@ -50,8 +53,49 @@ function testDeps(database: TestDatabase): BuildAppDeps {
 
 describe('buildApp', () => {
   let test: TestDatabase | undefined;
+  const openServers: Server[] = [];
 
-  afterEach(() => {
+  /**
+   * One already-listening server per app, reused for every request in a test.
+   *
+   * Passing the bare `app` to supertest makes it start a *fresh*
+   * ephemeral-port server for each individual request.
+   * `fixtures/http-harness.ts` documents what that
+   * costs, having already been bitten by it: "on a busy machine a socket
+   * occasionally reaches a port that has already been recycled: tests here
+   * have received a `401` and a `403`, statuses this application does not
+   * produce on those routes at all."
+   *
+   * This file was the last one still doing that. It cost a real `pnpm verify`
+   * run, where `GET /api/packs` returned **401** — an unauthenticated status
+   * this application has no code to produce anywhere (`grep -rn "401"
+   * apps/agent/src` finds only the harness comment above). The request had
+   * landed on another process's recycled port. A sibling failure in
+   * `routes/commands.test.ts` returned a bogus 404 the same way.
+   *
+   * `await once(server, 'listening')` rather than returning immediately:
+   * `listen()` is asynchronous and supertest reads `server.address()`
+   * synchronously when it builds a request, so returning early hands it a
+   * server with a null address.
+   */
+  async function serve(app: Application): Promise<Server> {
+    const server = app.listen(0);
+    await once(server, 'listening');
+    openServers.push(server);
+    return server;
+  }
+
+  afterEach(async () => {
+    await Promise.all(
+      openServers.splice(0).map(
+        (server) =>
+          new Promise<void>((resolve) => {
+            server.close(() => {
+              resolve();
+            });
+          }),
+      ),
+    );
     test?.cleanup();
     test = undefined;
   });
@@ -73,7 +117,7 @@ describe('buildApp', () => {
     applyMigrations(test.sqlite);
     const app = buildApp(testDeps(test));
 
-    const response = await request(app).get('/health');
+    const response = await request(await serve(app)).get('/health');
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
@@ -88,7 +132,7 @@ describe('buildApp', () => {
     const app = buildApp(testDeps(test));
     test.sqlite.close();
 
-    const response = await request(app).get('/health');
+    const response = await request(await serve(app)).get('/health');
 
     expect(response.body).toMatchObject({ database: { connected: false } });
   });
@@ -104,7 +148,7 @@ describe('buildApp', () => {
       );
       const app = buildApp({ ...testDeps(test), webDistDir });
 
-      const response = await request(app).get('/');
+      const response = await request(await serve(app)).get('/');
 
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toContain('text/html');
@@ -119,7 +163,7 @@ describe('buildApp', () => {
     applyMigrations(test.sqlite);
     const app = buildApp(testDeps(test));
 
-    const response = await request(app).get('/does-not-exist');
+    const response = await request(await serve(app)).get('/does-not-exist');
 
     // Body included in the failure message: this assertion has flaked under
     // `pnpm verify`'s parallel workers with a bare `expected 400 to be 404`,
@@ -133,7 +177,7 @@ describe('buildApp', () => {
     applyMigrations(test.sqlite);
     const app = buildApp(testDeps(test));
 
-    const response = await request(app).get('/api/packs');
+    const response = await request(await serve(app)).get('/api/packs');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ packs: [] });
@@ -144,7 +188,7 @@ describe('buildApp', () => {
     applyMigrations(test.sqlite);
     const app = buildApp(testDeps(test));
 
-    const response = await request(app).get('/api/cases/does-not-exist');
+    const response = await request(await serve(app)).get('/api/cases/does-not-exist');
 
     expect(response.status).toBe(404);
     expect(asJson<HttpErrorBody>(response.body).error.code).toBe('NOT_FOUND');
@@ -155,7 +199,7 @@ describe('buildApp', () => {
     applyMigrations(test.sqlite);
     const app = buildApp(testDeps(test));
 
-    const response = await request(app)
+    const response = await request(await serve(app))
       .post('/api/cases/some-case/commands/selectPack')
       .send({ caseId: 'some-case', packId: 'car-purchase', expectedSequence: 0 });
 
@@ -167,7 +211,7 @@ describe('buildApp', () => {
     applyMigrations(test.sqlite);
     const app = buildApp(testDeps(test));
 
-    const response = await request(app)
+    const response = await request(await serve(app))
       .post('/api/cases/does-not-exist/run')
       .set('Idempotency-Key', 'cmd-1')
       .send({ caseId: 'does-not-exist', expectedSequence: 0 });
@@ -186,7 +230,7 @@ describe('buildApp', () => {
     };
     const app = buildApp(deps);
 
-    const response = await request(app)
+    const response = await request(await serve(app))
       .post('/api/cases/some-case/commands/selectPack')
       .set('Idempotency-Key', 'cmd-1')
       .send({ caseId: 'some-case', packId: 'car-purchase', expectedSequence: 0 });
