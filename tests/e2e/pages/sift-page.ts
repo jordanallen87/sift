@@ -31,6 +31,8 @@ import {
   type Page,
 } from '@playwright/test';
 
+import { isNarrowWidth } from '../../../apps/web/src/hooks/width-mode-constants.js';
+
 /**
  * Real, stable car-purchase fixture candidate ids (`packages/scenarios/src/seeds.ts`), in the same
  * order `CaseState.entities` is actually built in (`CAR_PURCHASE_CANDIDATE_IDS.map(...)` there,
@@ -91,19 +93,22 @@ export const HOME_ENERGY_CRITERION_IDS = {
 export const HOME_ENERGY_RESPONSE_OPTIONS_OBLIGATION_ID = 'energy.response_options';
 
 /**
- * `docs/decisions/0008-two-mode-product-architecture.md`'s narrow/expanded boundary, mirroring
- * `apps/web/src/hooks/use-width-mode.ts`'s `NARROW_MAX_WIDTH_PX` (and
- * `helpers/layout-assertions.ts`'s own local copy of the same constant): <=480px is pane/WebMCP
- * mode, >480px is the "shopping site" web-app mode. The four configured Playwright projects
- * (`playwright.config.ts`) land exactly on/either side of this boundary (390/430/480 narrow,
- * 1440 expanded), so a plain viewport-width check is a faithful, real-browser equivalent of the
- * app's own `matchMedia` query -- no stubbing needed the way a jsdom component test would.
+ * `docs/decisions/0008-two-mode-product-architecture.md`'s narrow/expanded boundary.
+ *
+ * This was a local `= 480` literal whose comment claimed it mirrored the app's own constant.
+ * It did not: when the product's boundary moved to 800, this copy stayed at 480 and six e2e
+ * tests started looking for `workspace-expanded-*` testids at the 640px viewport, where the
+ * app now correctly renders the narrow layout. The value is imported from the product now, so
+ * "mirrors" is enforced by the module graph rather than by a comment.
+ *
+ * A plain viewport-width check remains a faithful, real-browser equivalent of the app's own
+ * `matchMedia` query -- no stubbing needed the way a jsdom component test would.
  */
-export const NARROW_MAX_WIDTH_PX = 480;
+export { NARROW_MAX_WIDTH_PX } from '../../../apps/web/src/hooks/width-mode-constants.js';
 
-/** `true` at the three canonical narrow/pane-mode viewports, `false` at `desktop-1440`. See `NARROW_MAX_WIDTH_PX`. */
+/** `true` at the narrow/pane-mode viewports (390/430/480/640), `false` at `expanded-820` and `desktop-1440`. */
 export function isNarrowLayout(page: Page): boolean {
-  return (page.viewportSize()?.width ?? 0) <= NARROW_MAX_WIDTH_PX;
+  return isNarrowWidth(page.viewportSize()?.width ?? 0);
 }
 
 export interface LaunchedCase {

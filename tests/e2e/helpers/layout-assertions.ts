@@ -7,6 +7,8 @@
  */
 import { expect, type Locator, type Page } from '@playwright/test';
 
+import { isNarrowWidth } from '../../../apps/web/src/hooks/width-mode-constants.js';
+
 /** `document.documentElement.scrollWidth <= clientWidth` at the current viewport/state. */
 export async function assertNoHorizontalOverflow(page: Page): Promise<void> {
   const { scrollWidth, clientWidth } = await page.evaluate(() => ({
@@ -17,6 +19,82 @@ export async function assertNoHorizontalOverflow(page: Page): Promise<void> {
     scrollWidth,
     `document scrollWidth (${scrollWidth}) must not exceed clientWidth (${clientWidth}) -- the page must not scroll horizontally`,
   ).toBeLessThanOrEqual(clientWidth);
+}
+
+/**
+ * No element anywhere on the page holds content wider than its own box.
+ *
+ * `assertNoHorizontalOverflow` above measures the *document*, and this app
+ * deliberately sets `html, body { overflow-x: hidden }`
+ * (`apps/web/src/styles/global.css`), which pins the document's
+ * `scrollWidth` to `clientWidth` no matter how badly a descendant
+ * overflows. That backstop is correct -- a person should never be able to
+ * scroll the pane sideways -- but it makes the document-level check blind
+ * to the entire class of defect underneath it.
+ *
+ * `assertElementsWithinViewport` narrows the gap but only for testids a
+ * caller thought to name, which cannot catch an element nobody suspected.
+ * This sweeps every element instead.
+ *
+ * Written after the expanded layout was found rendering a 300px sidebar
+ * plus a ~360px card into a 284px main column at 640px -- **ChatGPT's own
+ * side-pane width** -- overflowing by 124px, with content torn across the
+ * right edge. Every existing gate passed: the document-level check was
+ * blinded by `overflow-x: hidden`, and 640 was not in the viewport matrix
+ * at all (390/430/480/1440 stepped straight over the band from 481 to
+ * ~765 where the layout could not fit).
+ *
+ * **Only `overflow-x: visible` is a defect**, and the distinction is the
+ * whole assertion:
+ *
+ * - `visible` (the default) means the content genuinely *escapes* its box
+ *   and is painted over whatever sits beside it. That is the tearing this
+ *   exists to catch, and it is what the 640px expanded layout was doing.
+ * - `auto`/`scroll` means the element *declared* its content is wider,
+ *   which is the documented way for a table or a trace to behave.
+ * - `hidden` means the element took responsibility for the clip. Nearly
+ *   always Tailwind's `truncate` (`overflow: hidden` + `text-overflow:
+ *   ellipsis`), where `scrollWidth > clientWidth` is the normal, intended
+ *   state of every truncated label on the page -- flagging it would have
+ *   made this assertion fire on correct code, which is how a check gets
+ *   loosened until it means nothing.
+ *
+ * Content clipped by `hidden` with no ellipsis is a real but *different*
+ * defect -- silently cut rather than torn -- and belongs to
+ * `assertElementsWithinViewport`, which measures specific elements'
+ * geometry directly.
+ */
+export async function assertNoElementOverflow(page: Page, label: string): Promise<void> {
+  const offenders = await page.evaluate(() => {
+    const found: { id: string; over: number; client: number; scroll: number }[] = [];
+    for (const element of document.querySelectorAll<HTMLElement>('*')) {
+      if (element.clientWidth === 0) continue;
+      const overflow = element.scrollWidth - element.clientWidth;
+      // 2px, not 0: sub-pixel layout rounding routinely reports a 1px
+      // difference on boxes that are visually exact.
+      if (overflow <= 2) continue;
+      if (getComputedStyle(element).overflowX !== 'visible') continue;
+      found.push({
+        id: element.getAttribute('data-testid') ?? `<${element.tagName.toLowerCase()}>`,
+        over: overflow,
+        client: element.clientWidth,
+        scroll: element.scrollWidth,
+      });
+    }
+    return found.sort((a, b) => b.over - a.over).slice(0, 5);
+  });
+
+  expect(
+    offenders,
+    `${label}: ${String(offenders.length)} element(s) hold content wider than their own box, which ` +
+      `\`html, body { overflow-x: hidden }\` hides rather than fixes -- ` +
+      offenders
+        .map(
+          (o) =>
+            `${o.id} overflows by ${String(o.over)}px (${String(o.client)} -> ${String(o.scroll)})`,
+        )
+        .join('; '),
+  ).toEqual([]);
 }
 
 /**
@@ -212,8 +290,16 @@ export async function disableAnimations(page: Page): Promise<void> {
 export async function assertRightPaneIntegrity(
   page: Page,
   primaryActionTestIds: readonly string[] = [],
+  label = 'right-pane integrity',
 ): Promise<void> {
   await assertNoHorizontalOverflow(page);
+  // The element-level sweep runs beside the document-level one rather than
+  // instead of it: they catch different things, and the document check is
+  // the one that would notice `overflow-x: hidden` being removed. Wiring
+  // it in here rather than at each call site means every state that
+  // already asserts pane integrity gets it -- twelve of them at the time
+  // of writing -- instead of only the states someone remembers to update.
+  await assertNoElementOverflow(page, label);
   await assertNoStickyOverlap(page, primaryActionTestIds);
   await assertPrimaryTouchTargets(page, primaryActionTestIds);
 }
@@ -241,10 +327,21 @@ export async function assertRightPaneIntegrity(
  * project (`testing.md`), and the invariant is not claimed there, so this
  * is a deliberate no-op at that width rather than a silently-skipped
  * assertion.
+ *
+ * The 480 below is therefore NOT the narrow/expanded layout boundary and must
+ * not be replaced with `isNarrowWidth`. It is ADR 0004's enumerated scope,
+ * quoted above. Those two numbers happened to coincide until the layout
+ * boundary moved to 800; they are separate claims and only one of them moved.
+ *
+ * Known gap, deliberately not closed here: 640px -- ChatGPT's actual side
+ * pane -- is narrow layout but outside ADR 0004's enumeration, so the
+ * above-the-fold invariant is not asserted at the width where it arguably
+ * matters most. Widening it is an ADR amendment, not a test edit.
  */
 export async function assertRecommendationHeroAboveTheFold(page: Page): Promise<void> {
   const viewport = page.viewportSize();
-  if (!viewport || viewport.width > 480) return;
+  const ADR_0004_CANONICAL_NARROW_MAX_PX = 480;
+  if (!viewport || viewport.width > ADR_0004_CANONICAL_NARROW_MAX_PX) return;
 
   const hero = page.getByTestId('recommendation-hero');
   await expect(
@@ -478,10 +575,7 @@ export async function assertExpandedLayoutUsesWidth(
   containerTestId: string,
 ): Promise<void> {
   const viewportWidth = page.viewportSize()?.width ?? 0;
-  // CLAUDE.md's canonical narrow-pane ceiling, matching
-  // `apps/web/src/hooks/use-width-mode.ts`'s NARROW_MAX_WIDTH_PX.
-  const NARROW_MAX_WIDTH_PX = 480;
-  if (viewportWidth <= NARROW_MAX_WIDTH_PX) return;
+  if (isNarrowWidth(viewportWidth)) return;
 
   const container = page.getByTestId(containerTestId);
   await expect(container).toBeVisible();
@@ -491,14 +585,27 @@ export async function assertExpandedLayoutUsesWidth(
     `"${containerTestId}" must have a measurable box at ${viewportWidth}px`,
   ).not.toBeNull();
 
-  // The bar: wider than the narrow pane could ever be. A capped shell
-  // measures ~448px here (480px minus padding) regardless of viewport, which
-  // is exactly the shape this rejects. Anything genuinely responsive clears
-  // it comfortably at 1440.
+  // The bar is a fraction of the viewport, not a fixed pixel count.
+  //
+  // It used to be `NARROW_MAX_WIDTH_PX + 100`, tuned when that constant was
+  // 480. That is unusable now for two separate reasons. It is *absolute*, so
+  // it silently got 320px stricter when the boundary moved to 800 -- and at
+  // the `expanded-820` viewport it became unsatisfiable, demanding a >900px
+  // box inside an 820px window: a test that cannot pass regardless of what
+  // the product renders. It also measured the wrong thing: what this asserts
+  // is "the expanded layout spends the width it was given", which is
+  // inherently relative to the width it was given.
+  //
+  // 70% of the viewport rejects the shape this exists to catch -- a shell
+  // capped at the pane width and centred in dead space, which measures ~31%
+  // at 1440 and ~55% at 820 -- while holding at both expanded viewports. At
+  // 1440 it is a materially stricter bar than the 580px it replaces (40%).
+  const minimumWidth = viewportWidth * 0.7;
   expect(
     box!.width,
     `at a ${viewportWidth}px viewport, "${containerTestId}" is ${Math.round(box!.width)}px wide -- ` +
-      `the expanded layout must use the available width, not render the ${NARROW_MAX_WIDTH_PX}px ` +
-      `pane centred in dead space (change-set §7, docs/specs/product.md §69, ADR 0007)`,
-  ).toBeGreaterThan(NARROW_MAX_WIDTH_PX + 100);
+      `the expanded layout must use the available width (at least ${Math.round(minimumWidth)}px here), ` +
+      `not render a capped pane centred in dead space ` +
+      `(change-set §7, docs/specs/product.md §69, ADR 0007)`,
+  ).toBeGreaterThan(minimumWidth);
 }

@@ -865,12 +865,23 @@ export function QuickPickView({
             // column of text past a readable measure, which is what makes
             // it safe to omit a hard max-width here, unlike narrow below.
             'flex w-full flex-col gap-[var(--space-4)] rounded-[var(--radius-lg)] bg-card p-[var(--space-6)]'
-          : // Narrow: byte-for-byte the original cap and spacing. Still
-            // needed at this literal `layout` value even though the
-            // ancestor shell now legitimately widens past 480px (ADR 0007)
-            // -- narrow's own contract has not changed, only expanded now
-            // exists alongside it (see file header).
-            'flex max-w-[var(--pane-width-max)] flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]'
+          : // Narrow: fills its container, like every sibling region.
+            //
+            // This used to carry `max-w-[var(--pane-width-max)]` (480px),
+            // which was a no-op for the whole life of the narrow layout --
+            // its container was never wider than 480 either, so the cap
+            // never bound anything. Once `NARROW_MAX_WIDTH_PX` rose to 800
+            // (see `use-width-mode.ts` for why), it started binding, and
+            // this card became the one region stopping at 480px while
+            // `recommendation-hero`, `case-insights` and the view switcher
+            // beside it all ran to 608 -- a ragged right edge nobody chose.
+            //
+            // Removing it rather than widening it: those siblings already
+            // hold prose at this width, so the product has already decided
+            // what a readable measure is here, and a second, narrower
+            // answer in one card is just an inconsistency. Nothing changes
+            // at 390-480, where the cap never applied.
+            'flex w-full flex-col gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]'
       }
     >
       <div className="flex items-center justify-between gap-[var(--space-2)]">

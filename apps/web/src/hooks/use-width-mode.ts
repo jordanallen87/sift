@@ -25,10 +25,15 @@
  */
 import { useEffect, useState } from 'react';
 
+import { NARROW_MAX_WIDTH_PX } from './width-mode-constants.js';
+
 export type WidthMode = 'narrow' | 'expanded';
 
-/** CLAUDE.md's canonical narrow-pane ceiling -- 390-480px is "the" viewport; anything wider is `expanded`. */
-export const NARROW_MAX_WIDTH_PX = 480;
+// Re-exported so existing consumers keep importing the boundary from the
+// hook they already use. `./width-mode-constants.ts` holds the definition
+// and the measurements behind it, and is the module the Playwright suite
+// imports so the tests cannot drift from the product again.
+export { NARROW_MAX_WIDTH_PX } from './width-mode-constants.js';
 
 function buildMediaQuery(narrowMaxWidthPx: number): string {
   return `(max-width: ${narrowMaxWidthPx}px)`;
@@ -43,7 +48,7 @@ function readWidthMode(narrowMaxWidthPx: number): WidthMode {
 }
 
 export interface UseWidthModeOptions {
-  /** Overridable narrow/expanded boundary, in px. Defaults to `NARROW_MAX_WIDTH_PX` (480). */
+  /** Overridable narrow/expanded boundary, in px. Defaults to `NARROW_MAX_WIDTH_PX` (800). */
   narrowMaxWidthPx?: number;
 }
 

@@ -225,8 +225,10 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
     // width detection instead of a hardcoded narrow layout, so head-to-head
     // is the canonical right-pane behavior and multi-column is what §27 asks
     // for when there is room.
-    const viewportWidth = page.viewportSize()?.width ?? 0;
-    if (viewportWidth <= 480) {
+    // Uses the product's own boundary via `isNarrowLayout`, not a hardcoded
+    // literal -- see the equivalent note in `car-purchase-journey.spec.ts`
+    // for the drift that cost.
+    if (isNarrowLayout(page)) {
       await expect(page.getByTestId('option-compare-view-narrow-note')).toContainText(
         `2 of ${HOME_ENERGY_RESPONSE_OPTION_IDS.length}`,
       );

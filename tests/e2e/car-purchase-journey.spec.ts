@@ -235,12 +235,18 @@ test.describe('Choose our next car -- full demo journey', () => {
 
     // Narrowing is now genuinely width-dependent, so this assertion is too.
     // Task B3 replaced `OptionCompareView`'s hardcoded `layout="narrow"`
-    // with real width detection (`useWidthMode`, boundary 480px), which is
-    // what change-set §27 asks for: head-to-head in the canonical right
-    // pane, multi-column when there is room. Asserting the narrow note at
-    // every viewport would now be asserting the old hardcoded defect.
-    const viewportWidth = page.viewportSize()?.width ?? 0;
-    if (viewportWidth <= 480) {
+    // with real width detection (`useWidthMode`), which is what change-set
+    // §27 asks for: head-to-head in the canonical right pane, multi-column
+    // when there is room. Asserting the narrow note at every viewport would
+    // now be asserting the old hardcoded defect.
+    //
+    // This branched on a hardcoded `<= 480` while the rest of this same file
+    // already called `isNarrowLayout`. When the product boundary moved to
+    // 800, the literal stayed behind and this took the expanded branch at the
+    // 640px ChatGPT pane -- demanding zero narrow notes from a layout that is
+    // correctly narrow there. `isNarrowLayout` reads the product's own
+    // constant, so the two cannot disagree again.
+    if (isNarrowLayout(page)) {
       await expect(page.getByTestId('option-compare-view-narrow-note')).toContainText(
         `2 of ${CAR_PURCHASE_CANDIDATE_IDS.length}`,
       );

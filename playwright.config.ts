@@ -62,6 +62,33 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], viewport: { width: 480, height: 900 } },
     },
     {
+      /**
+       * ChatGPT's own side pane, and the reason this project exists.
+       *
+       * The matrix used to run 390/430/480/1440 and step straight over the
+       * band from 481 to ~765, where the expanded layout rendered a 300px
+       * sidebar plus a ~360px card into a 284px main column and tore its
+       * content across the right edge. The single most important viewport
+       * this product has was in that gap the whole time, and no gate could
+       * see it: `html, body { overflow-x: hidden }` hides the symptom from
+       * any document-level check.
+       *
+       * Testing the widths a product is designed for is not the same as
+       * testing the widths it is used at.
+       */
+      name: 'chatgpt-pane-640',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 640, height: 900 } },
+    },
+    {
+      /**
+       * Just above `NARROW_MAX_WIDTH_PX` (800), so the expanded layout is
+       * exercised at the narrowest width it is ever allowed to render at --
+       * the width where it is most likely to break first.
+       */
+      name: 'expanded-820',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 820, height: 900 } },
+    },
+    {
       name: 'desktop-1440',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } },
     },

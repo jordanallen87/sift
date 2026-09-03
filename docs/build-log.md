@@ -6084,3 +6084,88 @@ both journeys. The launcher and vehicle-catalog baselines are untouched.
 
 Commands: `pnpm --filter @sift/web build`; `pnpm exec playwright test`
 (96 passed, `--workers=2`); `pnpm exec vitest run --project web`.
+
+## 2026-09-02 — the layout boundary moved to 800, and three copies of it did not
+
+**The defect, as the user saw it.** At ChatGPT's real side-pane width the
+workspace tore: "Reset demo" clipped past the right edge, "Deal value
+(normalized out-the-door price vs. market)" cut off mid-word, and the
+priorities column colliding with a floating stack of buttons. The build log
+entry above this one had already recorded the measurement ("At 640px the
+expanded layout overflows its own column by 84px") and then *left it*, filed
+against a pending decision. That was the error. The number was in the log and
+the product was broken in the one viewport that matters most.
+
+**Root cause.** `NARROW_MAX_WIDTH_PX` was 480 — the width Sift is *designed
+for*, not the width the *expanded* layout can actually render in. Walking every
+element and comparing `scrollWidth` to `clientWidth` puts the real floor near
+770 (560 overflows by 204px, 640 by 124px, 760 by 4px). Everything from 481 to
+~765 rendered a 300px sidebar plus a ~360px card into a column that cannot hold
+one. 640 sat inside that band; the 390/430/480/1440 matrix stepped over it.
+
+**The boundary is now defined once.** It was written in three places — the hook,
+`tests/e2e/pages/sift-page.ts`, and inline in
+`tests/e2e/helpers/layout-assertions.ts` — each with a comment claiming it
+"mirrors" the others. A comment is not a mechanism. Moving the product to 800
+left both test copies at 480, and six e2e tests began hunting for
+`workspace-expanded-*` testids inside a layout that had correctly become
+narrow. `apps/web/src/hooks/width-mode-constants.ts` (React-free, so Playwright
+can import it over a relative path the way `test-server.ts` imports the real
+`startServer`) now holds the only definition. Both hero specs also branched on
+their own hardcoded `<= 480` while already importing `isNarrowLayout` in the
+same file; those now call it.
+
+**Two guards repaired, both strictly stronger.**
+`assertNoElementOverflow` walks every element and compares `scrollWidth` to
+`clientWidth`, scoped to `overflow-x: visible` so Tailwind's `truncate` is not a
+false positive. It exists because `html, body { overflow-x: hidden }` swallows
+the symptom at the page level, so `assertNoHorizontalOverflow` — which measures
+`documentElement` — kept passing while the pane was visibly torn. It was proven
+by reverting the constant to 480 and confirming it fails.
+`assertExpandedLayoutUsesWidth` asserted `width > NARROW_MAX_WIDTH_PX + 100`,
+tuned when that constant was 480. Absolute, so it silently got 320px stricter
+when the boundary moved — and at the new `expanded-820` project it became
+*unsatisfiable*, demanding a >900px box inside an 820px window. It is now 70% of
+the viewport, which rejects the shape it exists to catch (a capped pane centred
+in dead space measures ~31% at 1440, ~55% at 820) and is materially stricter at
+1440 than the 580px it replaces.
+
+**Deliberate 480s that must stay.** `assertRecommendationHeroAboveTheFold` is
+scoped to ADR 0004's enumerated widths (390/430/480), which is a different claim
+from the layout boundary; the two numbers merely coincided until now. Its literal
+is named `ADR_0004_CANONICAL_NARROW_MAX_PX` so it is not "fixed" into drift later.
+Known gap, deliberately not closed here: 640 is narrow layout but outside that
+enumeration, so the above-the-fold invariant is not asserted at the width where it
+arguably matters most. Widening it is an ADR amendment, not a test edit.
+
+**Baselines.** All 26 baselines for the two new projects were deleted and
+regenerated. Every one of them had been born either during a run where the layout
+was still broken, or auto-written by a failing run ("snapshot doesn't exist,
+writing actual") without review — the `seeded-case-chatgpt-pane-640` baseline
+provably captured the torn rendering, with the clipped "Reset demo" and the
+mid-word "market)" visible in it. Actual/expected/diff were opened and compared
+before any of them was replaced. Eight of the regenerated set were then inspected
+individually — car-purchase at 640 (`seeded-case`, `recommendation-ready`,
+`awaiting-approval`, `decided`), car-purchase at 820 (`seeded-case`,
+`recommendation-ready`), home-energy at 640 (`awaiting-approval`), and the
+vehicle catalog at 640 — and all render one clean header row, a one-line
+orientation row, full-width cards, and no clipping. The 390/430/480/1440
+baselines are untouched.
+
+**Product findings surfaced by that inspection, not fixed here.** The dock
+carries two near-duplicate human-authority lines ("Only you can decide which
+options go ahead" / "Only you can take this step — Sift and your assistant can
+explain it, but neither can do it for you"), which together with two full-width
+buttons costs ~200px at 640 and pushes the recommendation text under the fold.
+The recommendation headline is repeated verbatim by the status chip directly
+above it. In the `decided` state the dock still offers "Confirm what moves
+forward" and the banner still reads "4 findings need your attention" /
+"READY FOR REVIEW" — stale controls for a closed case.
+
+Commands: `pnpm --filter @sift/web build`; `pnpm exec playwright test
+--project=chatgpt-pane-640 --project=expanded-820` (48 passed); `pnpm verify`
+PASSED, run `2026-09-03T01-31-11-833Z-a927d0d2`, all 10 stages — `test:e2e`
+144 passed (96 + 48 from the two new projects), `test:unit` and `test:coverage`
+4001 passed across 196 files. Verify passed at a machine load average of 75,
+so the three earlier timeout failures were contention from an unrelated
+project, not this change; no test timeout was raised.
