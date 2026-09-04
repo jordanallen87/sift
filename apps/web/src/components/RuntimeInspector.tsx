@@ -1,9 +1,9 @@
 /**
  * Region 7, "Runtime Inspector" (docs/specs/product.md "Workspace layout";
  * docs/specs/debugging-and-observability.md "Runtime Inspector UI") --
- * the minimum-viable slice for this task: **Overview** and **Timeline**
- * only, not the full six-view spec (Execution/State/Context/Errors are
- * later Tier-2 work). Backed by the real `GET /api/debug/runs/:runId` route
+ * **Overview**, **Timeline**, **Execution** and **Activity** -- four of the
+ * six views the spec names (State and Context remain unbuilt). Backed by the
+ * real `GET /api/debug/runs/:runId` route
  * (`apps/agent/src/routes/debug.ts`) via `useRuntimeInspector`, which reads
  * genuinely persisted `runtime_events` rows -- never mocked or fabricated.
  *
@@ -21,12 +21,48 @@
  * Overview/Timeline toggle below is exactly that one selector, and every
  * region stacks vertically at any width.
  *
- * Out of scope for this pass (see this task's brief): Graph/Swarm
- * visualization, the State/Context/Errors views, `pause/resume live event
- * following`, export, copy-to-clipboard, and the full filter set --
- * Timeline supports only the required "category, agent, level" filters
- * minus `agent` (deferred; category+level already exercise the real
- * server-side filter end-to-end) plus free-text is deferred too.
+ * Still unbuilt: the State/Context/Errors views, `pause/resume live event
+ * following`, and copy-to-clipboard. Graph/Swarm structure is no longer
+ * among them -- it has its own Execution tab, rendered by `RunGraphView`,
+ * which derives node stages and parallelism from the same events the
+ * Timeline lists.
+ *
+ * --- The complete Timeline filter set, and why the DOM stays small ---
+ *
+ * Timeline now offers all four filters the spec names -- "category, agent,
+ * level, and free-text" -- plus the WebMCP origin filter/badge that section
+ * requires "once the WebMCP origin marker ... is implemented". Every one of
+ * them is a query parameter on the real `GET /api/debug/runs/:runId` route
+ * and re-fetches; none is a client-side `.filter()` over an already-loaded
+ * array, which would disagree with the whole-run `overview` beside it.
+ *
+ * The agent and origin controls are rendered only when the *run itself*
+ * offers values (`overview.agentIds`, `overview.countsByOrigin`). Origin
+ * propagation onto runtime events is arriving separately from this UI, so
+ * this surface must degrade honestly: no marker on any event means no
+ * badge, no control, and no invented "user" origin -- an absent marker
+ * means "the caller stated no origin", which is deliberately not the same
+ * fact as a human click (`debug.ts`, ADR 0006 decision 8).
+ *
+ * A single real car run is ~245 runtime events, and the spec caps a run at
+ * 10,000. Rendering that into a 390 px pane is unreadable and unbounded, so
+ * the Timeline renders a fixed-size WINDOW of the ordered events
+ * (`TIMELINE_WINDOW_SIZE`) with explicit earlier/later paging, keeping the
+ * DOM node count constant no matter how large the run is -- the property
+ * the spec's "virtualized chronological events" is actually asking for.
+ * Deliberately paging rather than scroll-position-driven windowing: item
+ * heights here are genuinely variable (a redaction manifest and a stateDiff
+ * disclosure both grow an item), measured heights are the one thing jsdom
+ * cannot provide, and a scroll-driven implementation would therefore ship
+ * with only pixel-blind tests behind it. Paging is keyboard-reachable,
+ * announceable, and honestly testable.
+ *
+ * The window follows `focusEventId` rather than fighting it: jumping from
+ * an activity item to its exact debug event moves the window to the page
+ * containing that event, so the `data-focused="true"` item is always
+ * genuinely in the DOM. And when a filter would hide the focused event
+ * entirely, the Timeline says so and offers to clear the filters instead of
+ * silently showing an unrelated list.
  *
  * Two later gap-closing additions (plan task I2/I3, see this task's own
  * `docs/build-log.md` entry and report):
@@ -78,15 +114,18 @@
  *   controlled-prop round trip for no requirement this pass names) --
  *   omitted from scope rather than half-built.
  */
-import { useEffect, useRef, useState, type Ref } from 'react';
-import type {
-  JsonPatchOperation,
-  PublicActivityEvent,
-  Redaction,
-  RuntimeDebugCategory,
-  RuntimeDebugLevel,
+import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
+import {
+  CommandOriginSchema,
+  type CommandOrigin,
+  type JsonPatchOperation,
+  type PublicActivityEvent,
+  type Redaction,
+  type RuntimeDebugCategory,
+  type RuntimeDebugLevel,
 } from '@sift/contracts';
 import {
+  COMMAND_ORIGINS,
   RUNTIME_DEBUG_CATEGORIES,
   RUNTIME_DEBUG_LEVELS,
   useRuntimeInspector,
@@ -95,10 +134,12 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ActivityTimeline } from './ActivityTimeline.js';
 import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
+import { RunGraphView } from './RunGraphView.js';
 
 export interface RuntimeInspectorApiConfig {
   baseUrl?: string;
@@ -119,7 +160,7 @@ export interface RuntimeInspectorProps {
   onInspectEvent?: (runId: string, debugEventId: string) => void;
 }
 
-type InspectorView = 'overview' | 'timeline' | 'activity';
+type InspectorView = 'overview' | 'timeline' | 'execution' | 'activity';
 
 const LEVEL_TONE: Record<RuntimeDebugLevel, StatusTone> = {
   debug: 'neutral',
@@ -127,6 +168,34 @@ const LEVEL_TONE: Record<RuntimeDebugLevel, StatusTone> = {
   warn: 'accepted-uncertainty',
   error: 'error',
 };
+
+/** How many Timeline items exist in the DOM at once, regardless of run size. See this module's header comment. */
+const TIMELINE_WINDOW_SIZE = 50;
+
+/** Waits out a burst of typing before asking the server again -- one request per phrase, not one per keystroke. */
+const SEARCH_DEBOUNCE_MS = 250;
+
+/** The start of the window containing `index`, page-aligned so paging by hand and jumping to a focused event always land on the same boundaries. */
+function windowStartFor(index: number): number {
+  return Math.max(0, Math.floor(index / TIMELINE_WINDOW_SIZE) * TIMELINE_WINDOW_SIZE);
+}
+
+/** Consumer-legible names for the closed `COMMAND_ORIGINS` vocabulary. Exhaustive by type, so a future origin cannot be rendered as a raw token. */
+const ORIGIN_LABELS: Record<CommandOrigin, string> = {
+  webmcp: 'WebMCP',
+};
+
+/**
+ * The WebMCP provenance marker, read the same way `debug.ts` reads it:
+ * `attributes.origin`, validated against the closed vocabulary. Returns
+ * `undefined` both when no marker is present and when the value is not a
+ * recognized origin -- this surface never invents provenance, and an event
+ * that states nothing renders no badge at all.
+ */
+function readEventOrigin(event: RuntimeInspectorEvent): CommandOrigin | undefined {
+  const parsed = CommandOriginSchema.safeParse(event.attributes['origin']);
+  return parsed.success ? parsed.data : undefined;
+}
 
 function formatDuration(ms: number | null): string {
   if (ms === null) return 'In progress';
@@ -233,11 +302,13 @@ function TimelineItem({
   itemRef?: Ref<HTMLLIElement>;
 }) {
   const tone = STATUS_TONE_META[LEVEL_TONE[event.level]];
+  const origin = readEventOrigin(event);
   return (
     <li
       ref={itemRef}
       data-testid={`runtime-inspector-timeline-item-${event.id}`}
       data-run-id={event.runId}
+      {...(origin !== undefined ? { 'data-origin': origin } : {})}
       {...(focused ? { 'data-focused': 'true' } : {})}
       className="flex flex-col gap-[var(--space-1)] rounded-[var(--radius-md)] p-[var(--space-3)]"
       style={{
@@ -253,8 +324,30 @@ function TimelineItem({
           <span aria-hidden="true">{tone.icon}</span>
           {event.category} · {event.level}
         </span>
-        <span className="font-[family-name:var(--font-mono)] text-[length:var(--font-size-2xs)] text-[var(--color-ink-muted)]">
-          #{event.sequence}
+        <span className="flex items-center gap-[var(--space-2)]">
+          {/* Rendered only for an event that genuinely carries the marker:
+              "a command issued through a registered WebMCP tool is visibly
+              distinguishable from an identical command issued through its
+              matching UI control" (debugging-and-observability.md
+              "Acceptance requirements"). A direct UI click states no
+              origin and correctly gets no badge -- absence of a badge is
+              not a claim that a human clicked, only that nothing was
+              stated. */}
+          {origin !== undefined ? (
+            <Badge
+              data-testid={`runtime-inspector-timeline-item-${event.id}-origin`}
+              className="label-caps rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
+              style={{
+                color: 'var(--color-status-active-ink)',
+                backgroundColor: 'var(--color-status-active-bg)',
+              }}
+            >
+              {ORIGIN_LABELS[origin]}
+            </Badge>
+          ) : null}
+          <span className="font-[family-name:var(--font-mono)] text-[length:var(--font-size-2xs)] text-[var(--color-ink-muted)]">
+            #{event.sequence}
+          </span>
         </span>
       </div>
       <p className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]">{event.summary}</p>
@@ -269,6 +362,34 @@ function TimelineItem({
       ) : null}
     </li>
   );
+}
+
+/**
+ * Hands an already-downloaded bundle to the browser as a saved file.
+ *
+ * The save step is deliberately the LAST thing that happens and is
+ * feature-detected: the fetch, the contract check, the redaction the server
+ * already applied, and the reported event count are the parts that carry
+ * the behavior, and they must not depend on an environment that can write
+ * files. jsdom does implement `createObjectURL`, but has no download
+ * support, so a component test clicking Export logs one harmless
+ * "Not implemented: navigation to another Document" from jsdom's virtual
+ * console -- that is jsdom declining to save the file, not a defect here,
+ * and the assertions above it are unaffected.
+ */
+function saveExportedBundle(filename: string, body: string): void {
+  if (typeof URL.createObjectURL !== 'function') return;
+  const objectUrl = URL.createObjectURL(new Blob([body], { type: 'application/json' }));
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 export function RuntimeInspector({
@@ -290,15 +411,90 @@ export function RuntimeInspector({
   );
   const [category, setCategory] = useState<RuntimeDebugCategory | ''>('');
   const [level, setLevel] = useState<RuntimeDebugLevel | ''>('');
+  const [agent, setAgent] = useState('');
+  const [origin, setOrigin] = useState<CommandOrigin | ''>('');
+  // Two pieces of state on purpose: `searchInput` is what the field shows
+  // (immediate, so typing never feels laggy), `search` is what the server
+  // has been asked for. They converge after SEARCH_DEBOUNCE_MS.
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [windowStart, setWindowStart] = useState(0);
+  const [exportStatus, setExportStatus] = useState<
+    { state: 'idle' } | { state: 'working' } | { state: 'done'; message: string }
+  >({ state: 'idle' });
+  const [exportError, setExportError] = useState<string | null>(null);
   const focusedItemRef = useRef<HTMLLIElement | null>(null);
 
-  const { overview, events, loading, error, refresh } = useRuntimeInspector({
+  useEffect(() => {
+    if (searchInput === search) return;
+    const timer = setTimeout(() => setSearch(searchInput), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput, search]);
+
+  const { overview, events, loading, error, refresh, exportRun } = useRuntimeInspector({
     runId,
     ...(category !== '' ? { category } : {}),
     ...(level !== '' ? { level } : {}),
+    ...(agent !== '' ? { agent } : {}),
+    ...(origin !== '' ? { origin } : {}),
+    ...(search !== '' ? { search } : {}),
     ...(apiConfig.baseUrl !== undefined ? { baseUrl: apiConfig.baseUrl } : {}),
     ...(apiConfig.fetchImpl !== undefined ? { fetchImpl: apiConfig.fetchImpl } : {}),
   });
+
+  const filtersActive =
+    category !== '' || level !== '' || agent !== '' || origin !== '' || search !== '';
+
+  function clearFilters(): void {
+    setCategory('');
+    setLevel('');
+    setAgent('');
+    setOrigin('');
+    setSearchInput('');
+    setSearch('');
+  }
+
+  // One ordering for the whole Timeline, computed once per fetch rather than
+  // per render: `sequence` is monotonic within a run, so this is the run's
+  // true chronology even when the server returned rows in another order.
+  const orderedEvents = useMemo(
+    () => [...events].sort((a, b) => a.sequence - b.sequence),
+    [events],
+  );
+  const focusIndex =
+    focusEventId === undefined ? -1 : orderedEvents.findIndex((event) => event.id === focusEventId);
+  // The focused event exists, but the active filters excluded it from the
+  // list -- the one case where staying silent would be a lie, because the
+  // Inspector was opened specifically to show that event.
+  const focusHiddenByFilter = focusEventId !== undefined && focusIndex === -1 && filtersActive;
+
+  // Every new result set re-anchors the window: to the page holding the
+  // focused event when there is one, otherwise back to the start of the run.
+  // Paging within an unchanged result set does not re-run this, so "Later
+  // events" is not undone on the next render.
+  useEffect(() => {
+    setWindowStart(focusIndex >= 0 ? windowStartFor(focusIndex) : 0);
+  }, [orderedEvents, focusIndex]);
+
+  const windowedEvents = orderedEvents.slice(windowStart, windowStart + TIMELINE_WINDOW_SIZE);
+  const hasEarlier = windowStart > 0;
+  const hasLater = windowStart + TIMELINE_WINDOW_SIZE < orderedEvents.length;
+
+  async function handleExport(): Promise<void> {
+    setExportStatus({ state: 'working' });
+    setExportError(null);
+    try {
+      const result = await exportRun();
+      saveExportedBundle(result.filename, result.body);
+      setExportStatus({
+        state: 'done',
+        message: `Exported ${result.exportedEventCount} events to ${result.filename}.`,
+      });
+    } catch (caught: unknown) {
+      setExportStatus({ state: 'idle' });
+      setExportError(caught instanceof Error ? caught.message : 'The export failed.');
+    }
+  }
 
   // Reacts to a LATER `focusEventId` change too, not just the initial
   // mount -- Task I2b's "Inspect event" trigger inside the embedded
@@ -337,7 +533,11 @@ export function RuntimeInspector({
           </span>
         </SheetHeader>
         <SheetBody className="flex flex-col gap-[var(--space-3)]">
-          <div className="flex items-center gap-[var(--space-2)]">
+          {/* Wraps rather than compressing: at 390 px the view selector plus
+              the two global actions do not fit on one line, and a second
+              row is preferable to shrinking controls below the 44 px touch
+              target. */}
+          <div className="flex flex-wrap items-center gap-[var(--space-2)]">
             <div
               role="tablist"
               aria-label="Runtime Inspector view"
@@ -373,6 +573,27 @@ export function RuntimeInspector({
               >
                 Timeline
               </Button>
+              {/*
+                The Timeline answers "what happened, in order". This answers
+                "what shape did the run have" -- which nodes ran at once, and
+                what followed them. That structure is present in the same
+                events and invisible in a flat list.
+              */}
+              <Button
+                type="button"
+                role="tab"
+                aria-selected={view === 'execution'}
+                data-testid="runtime-inspector-tab-execution"
+                onClick={() => setView('execution')}
+                variant="ghost"
+                size="sm"
+                className="min-h-[var(--size-touch-target-min)]"
+                style={
+                  view === 'execution' ? { backgroundColor: 'var(--color-brand-tint)' } : undefined
+                }
+              >
+                Execution
+              </Button>
               <Button
                 type="button"
                 role="tab"
@@ -400,12 +621,46 @@ export function RuntimeInspector({
             >
               {loading ? 'Refreshing…' : 'Refresh'}
             </Button>
+            {/* "Download a sanitized sift-run-<runId>.json bundle"
+                (debugging-and-observability.md "Global inspector actions").
+                Only offered when there is a run to export -- the developer
+                entry point can open with none at all. */}
+            {runId !== null ? (
+              <Button
+                type="button"
+                data-testid="runtime-inspector-export"
+                onClick={() => void handleExport()}
+                disabled={exportStatus.state === 'working'}
+                aria-busy={exportStatus.state === 'working'}
+                variant="ghost"
+                size="sm"
+                className="min-h-[var(--size-touch-target-min)]"
+              >
+                {exportStatus.state === 'working' ? 'Exporting…' : 'Export'}
+              </Button>
+            ) : null}
           </div>
 
           {error ? (
             <Alert role="alert" data-testid="runtime-inspector-error" variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
+          ) : null}
+
+          {exportError !== null ? (
+            <Alert role="alert" data-testid="runtime-inspector-export-error" variant="destructive">
+              <AlertDescription>{exportError}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {exportStatus.state === 'done' ? (
+            <p
+              data-testid="runtime-inspector-export-status"
+              role="status"
+              className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]"
+            >
+              {exportStatus.message}
+            </p>
           ) : null}
 
           {view === 'activity' ? (
@@ -434,6 +689,10 @@ export function RuntimeInspector({
                 No run data yet.
               </p>
             ) : null
+          ) : view === 'execution' ? (
+            <div data-testid="runtime-inspector-execution">
+              <RunGraphView events={events} />
+            </div>
           ) : view === 'overview' ? (
             <div
               data-testid="runtime-inspector-overview"
@@ -526,6 +785,22 @@ export function RuntimeInspector({
                   counts={overview.countsByLevel}
                 />
               </div>
+              {/* Shown only for a run that genuinely carries origin markers.
+                  A run whose events state no origin gets no section at all,
+                  rather than a misleading "0 WebMCP" that would read as a
+                  claim about how the run was driven. */}
+              {Object.keys(overview.countsByOrigin).length > 0 ? (
+                <>
+                  <Separator />
+                  <div className="flex flex-col gap-[var(--space-1)]">
+                    <h3 className="label-caps text-[var(--color-ink-secondary)]">By origin</h3>
+                    <CountsList
+                      testId="runtime-inspector-origin-counts"
+                      counts={overview.countsByOrigin}
+                    />
+                  </div>
+                </>
+              ) : null}
             </div>
           ) : (
             <div
@@ -567,9 +842,89 @@ export function RuntimeInspector({
                     ))}
                   </select>
                 </label>
+                {/* Offered only over the agents this run's events actually
+                    name, from the whole-run `overview` -- a free-text agent
+                    box would invite ids that match nothing, and a list
+                    built from the *filtered* events would collapse to the
+                    one agent already chosen. */}
+                {overview !== null && overview.agentIds.length > 0 ? (
+                  <label className="flex flex-col gap-[var(--space-0-5)] text-[length:var(--font-size-xs)]">
+                    Agent
+                    <select
+                      data-testid="runtime-inspector-filter-agent"
+                      value={agent}
+                      onChange={(event) => setAgent(event.target.value)}
+                      className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] text-[length:var(--font-size-sm)]"
+                    >
+                      <option value="">All</option>
+                      {overview.agentIds.map((entry) => (
+                        <option key={entry} value={entry}>
+                          {entry}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                {/* Same rule for provenance: no marker anywhere in the run
+                    means no control, because every value it could offer
+                    would return nothing. See the header comment. */}
+                {overview !== null && Object.keys(overview.countsByOrigin).length > 0 ? (
+                  <label className="flex flex-col gap-[var(--space-0-5)] text-[length:var(--font-size-xs)]">
+                    Origin
+                    <select
+                      data-testid="runtime-inspector-filter-origin"
+                      value={origin}
+                      onChange={(event) => setOrigin(event.target.value as CommandOrigin | '')}
+                      className="min-h-[var(--size-touch-target-min)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] text-[length:var(--font-size-sm)]"
+                    >
+                      <option value="">All</option>
+                      {COMMAND_ORIGINS.filter(
+                        (entry) => overview.countsByOrigin[entry] !== undefined,
+                      ).map((entry) => (
+                        <option key={entry} value={entry}>
+                          {ORIGIN_LABELS[entry]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label className="flex min-w-0 flex-1 flex-col gap-[var(--space-0-5)] text-[length:var(--font-size-xs)]">
+                  Find
+                  <Input
+                    data-testid="runtime-inspector-filter-search"
+                    type="search"
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    placeholder="Search events"
+                    className="min-h-[var(--size-touch-target-min)] text-[length:var(--font-size-sm)]"
+                  />
+                </label>
+                {filtersActive ? (
+                  <Button
+                    type="button"
+                    data-testid="runtime-inspector-clear-filters"
+                    onClick={clearFilters}
+                    variant="ghost"
+                    size="sm"
+                    className="min-h-[var(--size-touch-target-min)] self-end"
+                  >
+                    Clear filters
+                  </Button>
+                ) : null}
               </div>
 
-              {events.length === 0 ? (
+              {/* The Inspector was opened to show one specific event and the
+                  active filters exclude it. Saying nothing would look like
+                  the jump simply failed. */}
+              {focusHiddenByFilter ? (
+                <Alert role="alert" data-testid="runtime-inspector-focus-hidden">
+                  <AlertDescription>
+                    The event you jumped to is hidden by the current filters.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {orderedEvents.length === 0 ? (
                 <p
                   data-testid="runtime-inspector-timeline-empty"
                   className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
@@ -577,13 +932,12 @@ export function RuntimeInspector({
                   No events match this filter.
                 </p>
               ) : (
-                <ol
-                  data-testid="runtime-inspector-timeline-list"
-                  className="flex flex-col gap-[var(--space-2)]"
-                >
-                  {[...events]
-                    .sort((a, b) => a.sequence - b.sequence)
-                    .map((event) => (
+                <>
+                  <ol
+                    data-testid="runtime-inspector-timeline-list"
+                    className="flex flex-col gap-[var(--space-2)]"
+                  >
+                    {windowedEvents.map((event) => (
                       <TimelineItem
                         key={event.id}
                         event={event}
@@ -591,7 +945,55 @@ export function RuntimeInspector({
                         {...(event.id === focusEventId ? { itemRef: focusedItemRef } : {})}
                       />
                     ))}
-                </ol>
+                  </ol>
+
+                  {/* Only worth showing once a run outgrows one window --
+                      most runs do, and the count is the honest answer to
+                      "am I looking at all of it?". */}
+                  {orderedEvents.length > TIMELINE_WINDOW_SIZE ? (
+                    <div className="flex flex-wrap items-center gap-[var(--space-2)]">
+                      <Button
+                        type="button"
+                        data-testid="runtime-inspector-timeline-earlier"
+                        onClick={() =>
+                          setWindowStart((start) => Math.max(0, start - TIMELINE_WINDOW_SIZE))
+                        }
+                        disabled={!hasEarlier}
+                        variant="ghost"
+                        size="sm"
+                        className="min-h-[var(--size-touch-target-min)]"
+                      >
+                        Earlier
+                      </Button>
+                      <Button
+                        type="button"
+                        data-testid="runtime-inspector-timeline-later"
+                        onClick={() =>
+                          setWindowStart((start) =>
+                            Math.min(
+                              start + TIMELINE_WINDOW_SIZE,
+                              windowStartFor(orderedEvents.length - 1),
+                            ),
+                          )
+                        }
+                        disabled={!hasLater}
+                        variant="ghost"
+                        size="sm"
+                        className="min-h-[var(--size-touch-target-min)]"
+                      >
+                        Later
+                      </Button>
+                      <span
+                        data-testid="runtime-inspector-timeline-window"
+                        aria-live="polite"
+                        className="text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]"
+                      >
+                        Showing {windowStart + 1}–{windowStart + windowedEvents.length} of{' '}
+                        {orderedEvents.length} events
+                      </span>
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
           )}

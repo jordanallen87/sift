@@ -238,7 +238,7 @@ import { DisclosureSection } from '../components/DisclosureSection.js';
 import { RecommendationHero } from '../components/RecommendationHero.js';
 import type { CandidateDisposition, InteractionResponse, NextMove } from '@sift/contracts';
 import type { ApprovalCardReview } from '../components/ApprovalCard.js';
-import { deriveWorkspaceStatus } from '../components/workspace-status.js';
+import { deriveActiveRunId, deriveWorkspaceStatus } from '../components/workspace-status.js';
 import { ReadinessPanel } from '../components/ReadinessPanel.js';
 import { FindingsSheet } from '../components/FindingsSheet.js';
 import { BlindSpotReviewSheet } from '../components/BlindSpotReviewSheet.js';
@@ -2112,9 +2112,16 @@ export function App() {
       : readiness.ready
         ? 'All checked'
         : `${remainingObligationCount} still open`;
-  const isRunActive =
-    lastEvent !== null &&
-    (lastEvent.phase === 'active' || lastEvent.phase === 'queued' || lastEvent.phase === 'waiting');
+  // Derived from the newest run's own lifecycle (`deriveActiveRunId`), not
+  // from whatever phase the single most recent event happens to carry: a
+  // real run's `tool.completed`/`skill.activated`/`specialist.completed`
+  // events all report `phase: 'completed'` mid-run, so the old
+  // last-event-phase test flickered false roughly every other event and the
+  // hero reverted to "Nothing's been looked into yet." in the middle of an
+  // investigation. Case-scoped for the same reason `derivedRunReceipt` is
+  // (a case switch can leave the outgoing case's events in `events` for one
+  // frame).
+  const isRunActive = deriveActiveRunId(caseScopedActivityEvents) !== null;
 
   // "What Sift found" urgency signal (round-2 design review): a real count
   // of findings that are not fully verified or have aged past their

@@ -465,6 +465,90 @@ describe('FocusOptionInputSchema / FocusEvidenceInputSchema', () => {
 });
 
 describe('DefineCaseAttributeInputSchema', () => {
+  /**
+   * A model-defined enum column is only worth having if it can be scored,
+   * and `scoring.ts` rule 3 refuses to rank enum grades until something
+   * declares their order -- deliberately not reading one out of
+   * `allowedValues`, which is a membership set. These cover the ordering
+   * channel that makes "fits two crates beats fits one" a fact the engine
+   * may act on rather than one it has to guess.
+   */
+  describe('orderedValues', () => {
+    const enumDraft = (overrides: Record<string, unknown> = {}) => ({
+      caseId: 'case-1',
+      expectedSequence: 4,
+      definition: {
+        id: 'custom.dog_crate_fit',
+        label: 'Dog crate fit',
+        valueType: 'enum',
+        appliesTo: ['car'],
+        allowedValues: ['none', 'one crate', 'two crates'],
+        orderedValues: ['none', 'one crate', 'two crates'],
+        evidenceExpectation: 'assertion',
+        comparison: 'higher_better',
+        reason: 'Two dog crates must fit behind the second row.',
+        ...overrides,
+      },
+    });
+    const reason = (result: ReturnType<typeof DefineCaseAttributeInputSchema.safeParse>) =>
+      result.success ? '' : result.error.issues.map((issue) => issue.message).join(' | ');
+
+    it('accepts a scoreable enum: every allowed grade placed worst to best', () => {
+      const result = DefineCaseAttributeInputSchema.safeParse(enumDraft());
+      expect(result.success, reason(result)).toBe(true);
+    });
+
+    it('stays optional, so a field that never needs ranking is unaffected', () => {
+      const result = DefineCaseAttributeInputSchema.safeParse(
+        enumDraft({ orderedValues: undefined }),
+      );
+      expect(result.success, reason(result)).toBe(true);
+    });
+
+    it('rejects an ordering on a type that already ranks itself', () => {
+      const result = DefineCaseAttributeInputSchema.safeParse(
+        enumDraft({ valueType: 'number', allowedValues: undefined }),
+      );
+      expect(result.success).toBe(false);
+      expect(reason(result)).toContain('only applies to an enum');
+    });
+
+    it('rejects an ordering over grades that cannot be selected', () => {
+      const result = DefineCaseAttributeInputSchema.safeParse(
+        enumDraft({ allowedValues: undefined }),
+      );
+      expect(result.success).toBe(false);
+      expect(reason(result)).toContain('requires allowedValues');
+    });
+
+    it('rejects a grade given two positions on the scale', () => {
+      const result = DefineCaseAttributeInputSchema.safeParse(
+        enumDraft({ orderedValues: ['none', 'one crate', 'none'] }),
+      );
+      expect(result.success).toBe(false);
+      expect(reason(result)).toContain('must not repeat a grade');
+    });
+
+    it('rejects a partial ordering, which would silently refuse to score some options', () => {
+      // "two crates" stays selectable but unrankable, so any vehicle graded
+      // that way scores as an unlisted grade -- a column that works for some
+      // rows and not others, which is worse than one that plainly does not.
+      const result = DefineCaseAttributeInputSchema.safeParse(
+        enumDraft({ orderedValues: ['none', 'one crate'] }),
+      );
+      expect(result.success).toBe(false);
+      expect(reason(result)).toContain('two crates');
+    });
+
+    it('rejects ranking a grade nobody can choose', () => {
+      const result = DefineCaseAttributeInputSchema.safeParse(
+        enumDraft({ orderedValues: ['none', 'one crate', 'two crates', 'three crates'] }),
+      );
+      expect(result.success).toBe(false);
+      expect(reason(result)).toContain('not selectable');
+    });
+  });
+
   it('parses a valid case-attribute draft matching sift_define_case_attribute', () => {
     const result = DefineCaseAttributeInputSchema.safeParse({
       caseId: 'case-1',

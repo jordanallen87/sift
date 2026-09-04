@@ -1,11 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
-import type { DecisionProposal, Recommendation } from '@sift/contracts';
+import type { DecisionProposal, PublicActivityEvent, Recommendation } from '@sift/contracts';
 import { RecommendationHero, type RecommendationHeroProps } from './RecommendationHero.js';
 import { deriveWorkspaceStatus, type WorkspaceStatusInput } from './workspace-status.js';
 import { renderAtNarrowWidth } from '../test/narrow-viewport.js';
+
+/** Mirrors `LiveRunStatus.test.tsx`'s builder so both suites feed the hero the same real shape. */
+function activityEvent(overrides: Partial<PublicActivityEvent> = {}): PublicActivityEvent {
+  return {
+    schemaVersion: '1.0',
+    eventId: 'evt-1',
+    sequence: 1,
+    timestamp: '2026-08-27T00:00:00.000Z',
+    caseId: 'case-1',
+    runId: 'run-1',
+    type: 'run.queued',
+    phase: 'queued',
+    summary: 'Investigation queued.',
+    ...overrides,
+  };
+}
 
 function buildRecommendation(overrides: Partial<Recommendation> = {}): Recommendation {
   return {
@@ -288,5 +304,42 @@ describe('RecommendationHero', () => {
       <RecommendationHero {...buildProps({ status, recommendation, proposal })} />,
     );
     expect(overflowRisks).toEqual([]);
+  });
+
+  it('names the specialists who did the work, beneath the run status', async () => {
+    // The multi-agent story is the submission's core claim and it used to be
+    // invisible: `LiveRunStatus` shows one line carrying only the newest
+    // event, so each of the six specialists was on screen for about a
+    // millisecond. This asserts the consumer pane now names them and keeps
+    // them named.
+    render(
+      <RecommendationHero
+        {...buildProps({
+          liveRunReceipt: { commandId: 'cmd-1', runId: 'run-1' },
+        })}
+        liveEvents={[
+          activityEvent({
+            eventId: 'ev-1',
+            type: 'specialist.started',
+            phase: 'active',
+            runId: 'run-1',
+            agentId: 'safety-reliability-analyst',
+            summary: 'Graph node "safety-reliability-analyst" started.',
+          }),
+          activityEvent({
+            eventId: 'ev-2',
+            sequence: 2,
+            type: 'specialist.completed',
+            phase: 'completed',
+            runId: 'run-1',
+            agentId: 'safety-reliability-analyst',
+            summary: 'Graph node "safety-reliability-analyst" completed with status "COMPLETED".',
+          }),
+        ]}
+      />,
+    );
+
+    const panel = await screen.findByTestId('specialist-activity-panel');
+    expect(within(panel).getByText('Safety and reliability')).toBeInTheDocument();
   });
 });

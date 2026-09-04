@@ -40,6 +40,7 @@ import type {
   Redaction,
   RuntimeCorrelation,
   RuntimeDebugEvent,
+  TokenUsage,
 } from '@sift/contracts';
 import type { InterventionEvent } from './interventions.js';
 
@@ -166,6 +167,10 @@ interface BuildEventInput {
   attributes: Record<string, unknown>;
   payload?: unknown;
   redactions?: Redaction[];
+  /** Real measured/reported duration of the call this event closes. Omitted -- never `0` -- when nothing genuinely measured it (see `createRuntimeMetricsTracker`). */
+  durationMs?: number;
+  /** Real provider-reported token usage for the call this event closes. Omitted -- never zeros -- when the provider reported none (see `createRuntimeMetricsTracker`). */
+  tokenUsage?: TokenUsage;
 }
 
 function buildEvent(
@@ -182,10 +187,183 @@ function buildEvent(
     name: input.name,
     phase: input.phase,
     level: input.level,
+    ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
+    ...(input.tokenUsage !== undefined ? { tokenUsage: input.tokenUsage } : {}),
     summary: input.summary,
     attributes: input.attributes,
     ...(input.payload !== undefined ? { payload: input.payload } : {}),
     redactions: input.redactions ?? [],
+  };
+}
+
+/**
+ * `RuntimeDebugEvent.estimatedCostUsd` is deliberately never populated by any
+ * normalizer in this module, and deliberately has no producer anywhere in
+ * Sift.
+ *
+ * A cost figure needs a price per input/output token for the exact model
+ * that served the call. `@strands-agents/sdk@1.14.0` publishes no price
+ * table (`Usage` in `models/streaming.d.ts` counts tokens only; `Meter`
+ * accumulates those counts and model latency, and nothing else), Sift
+ * carries no pricing configuration, and Bedrock's own per-model rates are
+ * neither installed nor reachable from a fixture-mode run. Multiplying a
+ * real token count by a remembered rate would produce a number that *looks*
+ * sourced and is not, which CLAUDE.md's "Never fabricate telemetry" rule
+ * forbids more strongly than it minds a blank field.
+ *
+ * `routes/debug.ts` already treats the field as genuinely optional -- its
+ * run overview reports `estimatedCostUsd: null` unless at least one event
+ * carried one -- so the Inspector renders a token line with no cost line,
+ * which is the honest state. If a sourced price table is ever added to Sift
+ * config, the one place to compute this is here, from the `tokenUsage`
+ * delta below plus `event.model.modelId`.
+ */
+
+// --- Per-call duration and token usage (RuntimeDebugEvent.durationMs / .tokenUsage producers) ---
+
+/**
+ * Real, per-call measurements stamped onto a `tool.<name>`/`model.call`
+ * finish event. Every field is optional and is *omitted* rather than
+ * defaulted: an absent `tokenUsage` means "this model provider reported no
+ * usage", which is a different and more honest statement than a zeroed one.
+ *
+ * These deliberately do not pass through `redactValue`. Both are closed
+ * numeric shapes derived from counters and clock readings -- three integer
+ * token counts and one elapsed millisecond figure -- with no string leaf a
+ * credential, header, cookie, note, or model reasoning could ever reach.
+ * `payload`/`attributes`, which do carry provider- and user-shaped content,
+ * remain redacted exactly as before.
+ */
+export interface CallMetrics {
+  durationMs?: number;
+  tokenUsage?: TokenUsage;
+}
+
+/**
+ * Turns what the real Strands SDK actually exposes into the per-call
+ * `durationMs`/`tokenUsage` `RuntimeDebugEvent` declares. One tracker
+ * instance belongs to one `Agent` (Graph/Swarm nodes are separate `Agent`s
+ * with separate `Meter`s, so a shared tracker would mix their totals).
+ *
+ * What the SDK gives us, verified against the installed
+ * `@strands-agents/sdk@1.14.0` sources rather than remembered:
+ *
+ * - **Token usage.** `AfterModelCallEvent` itself carries only `agent`,
+ *   `model`, `stopData` (message + stop reason + guardrail redaction),
+ *   `error`, `attemptCount` and `invocationState` -- no usage field at all
+ *   (`hooks/events.d.ts`). Usage lives on the agent's `Meter`, fed from the
+ *   provider's own `ModelMetadataEvent`: `agent/agent.js` calls
+ *   `this._meter.updateCycle(result.metadata)` immediately *before* it
+ *   yields `AfterModelCallEvent`, so by the time this tracker runs,
+ *   `event.agent.metrics.accumulatedUsage` already includes the call that
+ *   just finished. That figure is cumulative for the whole agent, and
+ *   `routes/debug.ts` *sums* `tokenUsage` across events for its run
+ *   overview, so what is stamped on each event is the delta since the
+ *   previous model call on the same agent -- the real cost of that one
+ *   call, summing back to the real run total.
+ *
+ * - **Nothing, when the provider reports nothing.** A provider that emits
+ *   no `ModelMetadataEvent.usage` leaves `accumulatedUsage` at its zeroed
+ *   initial value, so every delta is `0/0/0`. A zero-token model call does
+ *   not exist, so an all-zero delta is read as "not reported" and
+ *   `tokenUsage` is left off the event entirely.
+ *
+ * - **Duration.** Neither hook event carries a timestamp or an elapsed
+ *   time. The SDK does measure both model latency
+ *   (`Metrics.latencyMs`, only when the provider supplies it in metadata)
+ *   and tool execution time (`Meter.endToolCall`, keyed by tool *name*),
+ *   but the tool figure cannot be attributed to one call when the
+ *   concurrent tool executor runs two calls to the same tool at once. So
+ *   duration here is a genuinely measured wall-clock interval between the
+ *   real `Before*` and `After*` hook firings, keyed by `toolUseId` for
+ *   tools, and omitted entirely when no matching start was observed. It is
+ *   measured, never assumed, and never a constant.
+ *
+ * `now` is injectable purely so tests can assert an exact interval; it
+ * defaults to real wall-clock time.
+ */
+export interface RuntimeMetricsTracker {
+  noteModelCallStart(event: BeforeModelCallEvent): void;
+  measureModelCall(event: AfterModelCallEvent): CallMetrics;
+  noteToolCallStart(event: BeforeToolCallEvent): void;
+  measureToolCall(event: AfterToolCallEvent): CallMetrics;
+}
+
+/** Strands's cumulative `Usage` shape (`models/streaming.d.ts`), read off `agent.metrics.accumulatedUsage`. */
+interface CumulativeUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+const ZERO_USAGE: CumulativeUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+
+/**
+ * The delta between two cumulative `Usage` readings, or `undefined` when
+ * there is nothing real to report: an all-zero delta (the provider sent no
+ * usage metadata) or a negative one (a reading that cannot be trusted).
+ * Counts are rounded because `TokenUsage` is integral by contract; a real
+ * provider never reports fractional tokens.
+ */
+function usageDelta(previous: CumulativeUsage, current: CumulativeUsage): TokenUsage | undefined {
+  const input = Math.round(current.inputTokens - previous.inputTokens);
+  const output = Math.round(current.outputTokens - previous.outputTokens);
+  const total = Math.round(current.totalTokens - previous.totalTokens);
+  if (input < 0 || output < 0 || total < 0) return undefined;
+  if (input === 0 && output === 0 && total === 0) return undefined;
+  return { input, output, total };
+}
+
+function readAccumulatedUsage(agent: {
+  metrics?: { accumulatedUsage?: CumulativeUsage };
+}): CumulativeUsage {
+  const usage = agent.metrics?.accumulatedUsage;
+  if (usage === undefined) return ZERO_USAGE;
+  return {
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    totalTokens: usage.totalTokens,
+  };
+}
+
+/** Builds a per-`Agent` duration/token tracker. See `RuntimeMetricsTracker`. */
+export function createRuntimeMetricsTracker(
+  now: () => number = () => Date.now(),
+): RuntimeMetricsTracker {
+  let modelCallStartedAt: number | undefined;
+  let lastAccumulatedUsage: CumulativeUsage = ZERO_USAGE;
+  const toolCallStartedAt = new Map<string, number>();
+
+  const elapsedSince = (startedAt: number | undefined): number | undefined =>
+    startedAt === undefined ? undefined : Math.max(0, Math.round(now() - startedAt));
+
+  return {
+    noteModelCallStart(): void {
+      modelCallStartedAt = now();
+    },
+    measureModelCall(event: AfterModelCallEvent): CallMetrics {
+      const durationMs = elapsedSince(modelCallStartedAt);
+      modelCallStartedAt = undefined;
+      const current = readAccumulatedUsage(event.agent);
+      const tokenUsage = usageDelta(lastAccumulatedUsage, current);
+      lastAccumulatedUsage = current;
+      return {
+        ...(durationMs !== undefined ? { durationMs } : {}),
+        ...(tokenUsage !== undefined ? { tokenUsage } : {}),
+      };
+    },
+    noteToolCallStart(event: BeforeToolCallEvent): void {
+      // Keyed by the model-issued tool-use id, so two concurrent calls to
+      // the same tool (the SDK's ConcurrentToolExecutor genuinely does
+      // this) never take each other's start time.
+      toolCallStartedAt.set(event.toolUse.toolUseId, now());
+    },
+    measureToolCall(event: AfterToolCallEvent): CallMetrics {
+      const startedAt = toolCallStartedAt.get(event.toolUse.toolUseId);
+      toolCallStartedAt.delete(event.toolUse.toolUseId);
+      const durationMs = elapsedSince(startedAt);
+      return durationMs !== undefined ? { durationMs } : {};
+    },
   };
 }
 
@@ -225,11 +403,12 @@ export function normalizeBeforeToolCall(
   });
 }
 
-/** Normalizes a real `AfterToolCallEvent` into a `tool.<name>` finish/error event. */
+/** Normalizes a real `AfterToolCallEvent` into a `tool.<name>` finish/error event. `metrics` carries the real measured call duration when a `createRuntimeMetricsTracker` observed this call's start; omitting it leaves `durationMs` off the event rather than defaulting it. */
 export function normalizeAfterToolCall(
   event: AfterToolCallEvent,
   ctx: NormalizerContext,
   sequence: number,
+  metrics: CallMetrics = {},
 ): RuntimeDebugEvent {
   const failed = event.error !== undefined || event.result.status === 'error';
   const { value: safeResult, redactions } = redactValue({
@@ -251,6 +430,7 @@ export function normalizeAfterToolCall(
     },
     payload: safeResult,
     redactions,
+    ...(metrics.durationMs !== undefined ? { durationMs: metrics.durationMs } : {}),
   });
 }
 
@@ -275,11 +455,24 @@ export function normalizeBeforeModelCall(
   });
 }
 
-/** Normalizes a real `AfterModelCallEvent` into a `model.call` finish/error event. Never persists model reasoning or message text -- only stop reason, attempt count, and token usage when the provider returned it (debugging-and-observability.md: "Private model reasoning is never requested or stored"). */
+/**
+ * Normalizes a real `AfterModelCallEvent` into a `model.call` finish/error
+ * event. Never persists model reasoning or message text -- only stop
+ * reason, attempt count, and the real per-call duration/token usage
+ * `metrics` supplies (debugging-and-observability.md: "Private model
+ * reasoning is never requested or stored").
+ *
+ * `metrics` comes from a `createRuntimeMetricsTracker` bound to the same
+ * `Agent`; see that function for exactly what the installed SDK does and
+ * does not report. Passing nothing leaves both fields off the event, which
+ * is the correct representation of "not measured" -- they are never
+ * defaulted to zero.
+ */
 export function normalizeAfterModelCall(
   event: AfterModelCallEvent,
   ctx: NormalizerContext,
   sequence: number,
+  metrics: CallMetrics = {},
 ): RuntimeDebugEvent {
   const failed = event.error !== undefined;
   return buildEvent(ctx, sequence, {
@@ -292,6 +485,8 @@ export function normalizeAfterModelCall(
       attemptCount: event.attemptCount,
       ...(event.stopData !== undefined ? { stopReason: event.stopData.stopReason } : {}),
     },
+    ...(metrics.durationMs !== undefined ? { durationMs: metrics.durationMs } : {}),
+    ...(metrics.tokenUsage !== undefined ? { tokenUsage: metrics.tokenUsage } : {}),
   });
 }
 
@@ -340,13 +535,44 @@ const INTERVENTION_NAME: Record<InterventionEvent['type'], string> = {
   'intervention.transform': 'intervention.transform',
 };
 
+/**
+ * The `RuntimeDebugEvent.level` each intervention outcome is recorded at.
+ *
+ * `intervention.proceed` is the "a policy handler evaluated this and had no
+ * objection" outcome. Six handlers run on every single tool call, and most
+ * of them proceed, so proceed events genuinely dominate the stream: one
+ * real car run recorded 122 `BudgetGuard: tool is excluded from the run
+ * tool-call budget` proceeds out of 245 total events, which buries the
+ * handoffs, steering, and denials a judge or an operator is actually
+ * reading for.
+ *
+ * They are still recorded, in full, with handler/stage/subject attributes:
+ * they are the audit trail proving each guard genuinely ran on each call,
+ * and `debugging-and-observability.md` asks for intervention decisions --
+ * not only the ones that changed something. Deleting them would destroy
+ * real evidence to make a list shorter. Recording them at `debug` instead
+ * demotes them below the `info` stream the Inspector's existing
+ * `?level=` filter (routes/debug.ts) and `countsByLevel` breakdown act on,
+ * exactly as `context.injected` above is already recorded at `debug` for
+ * the same reason -- nothing is lost, and the outcomes that changed the
+ * run's course (`guide`/`confirm`/`transform` at `info`, `deny` at `warn`)
+ * are no longer outnumbered four to one by decisions to do nothing.
+ */
+const INTERVENTION_LEVEL: Record<InterventionEvent['type'], RuntimeDebugEvent['level']> = {
+  'intervention.proceed': 'debug',
+  'intervention.guide': 'info',
+  'intervention.confirm': 'info',
+  'intervention.transform': 'info',
+  'intervention.deny': 'warn',
+};
+
 /** Normalizes one `InterventionEvent` (strands-runtime.md "Interventions and steering") into a `RuntimeDebugEvent`. */
 export function normalizeIntervention(
   event: InterventionEvent,
   ctx: NormalizerContext,
   sequence: number,
 ): RuntimeDebugEvent {
-  const level = event.type === 'intervention.deny' ? 'warn' : 'info';
+  const level = INTERVENTION_LEVEL[event.type];
   return buildEvent(ctx, sequence, {
     category: 'intervention',
     name: INTERVENTION_NAME[event.type],

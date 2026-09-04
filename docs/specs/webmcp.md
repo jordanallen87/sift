@@ -51,7 +51,7 @@ Every tool belongs to exactly one of four authority classes (ADR 0006 decision 3
 
 ## Tool catalog — implemented today
 
-The following twenty-three tools exist in the repository today (`SIFT_WEBMCP_TOOL_NAMES`, `register-sift-tools.ts`; the exact count and name list are asserted by `webmcp-contract.test.ts`). Each is labeled with its authority class.
+`SIFT_WEBMCP_TOOL_NAMES` (`register-sift-tools.ts`) registers **twenty-six** tools today; the exact count and name list are asserted by `webmcp-contract.test.ts`. The following twenty-three are documented in this section; the remaining three are the adaptive discovery tools documented under ["Adaptive discovery tools"](#adaptive-discovery-tools) below, added by ADR 0009. Each is labeled with its authority class.
 
 ### `sift_get_case_context` — READ
 
@@ -186,7 +186,7 @@ Effect: durable update via `append()` plus deterministic invalidation. Weights m
 
 ### `sift_define_case_attribute` — WRITE
 
-Defines a typed case-specific concern that the installed pack did not anticipate. A WebMCP call made in response to the user's explicit request records origin `user`; an extension autonomously proposed by a runtime agent uses an internal proposal event and remains pending until the user confirms it through the visible UI.
+Defines a typed case-specific concern that the installed pack did not anticipate. A WebMCP call made in response to the user's explicit request records origin `user`; pass origin `agent_proposed` when you are proposing the field yourself, which records that provenance permanently. Whether such a proposal is usable immediately or waits for the person is the pack author's decision (`extensionPolicy.allowCaseAttributes`), never yours, and a pack that forbids case attributes rejects the call outright rather than quietly degrading it. Pass `values` to answer the new field for every option you can see, each with its own status and confidence -- an option you could not establish must say `status: 'unknown'` with a reason, never a blank and never a guess, and only a value the USER supplied may claim `status: 'verified'`. For a rating whose grades are words rather than numbers (`valueType: 'enum'`), also pass `orderedValues`: the same grades as `allowedValues`, listed WORST TO BEST. Without it the column renders but can never be scored, because Sift will not infer that "fits two crates" beats "fits one" from the order you happened to list them in -- so a criterion pointing at this attribute would have nothing to rank. With it, `sift_update_criteria` can add a criterion whose `appliesToAttribute` is this id and the ranking will move on a dimension the pack never had.
 
 Input:
 
@@ -194,6 +194,7 @@ Input:
 {
   caseId: string
   expectedSequence: number
+  origin?: 'user' | 'agent_proposed'
   definition: {
     id: `custom.${string}`
     label: string
@@ -201,14 +202,31 @@ Input:
     appliesTo: string[]
     unit?: string
     allowedValues?: string[]
+    orderedValues?: string[]
     evidenceExpectation: 'assertion' | 'source' | 'corroborated' | 'verification'
     comparison: 'none' | 'lower_better' | 'higher_better' | 'target' | 'constraint'
     reason: string
   }
+  values?: Array<{
+    optionId: string
+    value?: AttributeValue
+    status: 'asserted' | 'supported' | 'verified' | 'conflicted' | 'unknown'
+    confidence?: number
+    sourceIds?: string[]
+    reason?: string
+  }>
 }
 ```
 
-Effect: durable case extension via `append()` when the pack permits it. It never changes or republishes the installed pack.
+Effect: durable case extension via `append()` when the pack permits it — `extensionPolicy.allowCaseAttributes` is the dial the pack author set, and a pack that forbids case-defined attributes rejects the command outright rather than degrading it. It never changes or republishes the installed pack. The definition, every value it carries, and every reasoned unknown are appended in one transaction, so a case can never hold a column that half exists. When values were actually written and an active criterion's `appliesToAttribute` depends on the new id, a `ready` recommendation is invalidated; a new concern also revises the run plan (`notifyRunPlan`, reason `new_concern`).
+
+**`values` — defining a comparison column and filling it in are one operation.** Each entry (`CaseAttributeValueDraftSchema`, `packages/contracts/src/commands.ts`) answers the new field for exactly one option (at most 50 entries per call) and carries the provenance any attribute record carries: `status`, an optional `confidence` from 0 through 1, and optional `sourceIds`. An entry is either a real `value` or an explicit `status: 'unknown'`, which **requires** a `reason` and forbids a `value`. There is no third form, and that is the point: a caller must account for every option it can see, and neither a blank cell nor a value invented to avoid one is expressible. "I could not establish this for the Outback" stays a first-class, visible answer — `status: 'unknown'` renders as *this case records that nobody knows*, distinct from an absent attribute's *nobody asked* — and the unknown's `reason` is persisted alongside it as a linked `CaseNote` (`kind: 'question'`) in the same append, because `AttributeRecord` carries no per-record reason field. Two entries for one option, an option id that is not on the case, and an option whose kind is not in `definition.appliesTo` are each rejected as a named validation error.
+
+**Coverage is asymmetric by origin, deliberately.** A definition whose body declares `origin: 'agent_proposed'` must account for every option the attribute applies to: the schema checks that an answer was offered at all, and `CommandService.defineCaseAttribute` (`resolveCaseAttributeValueCoverage`) checks the coverage and names each option left unaccounted for, since it is the only layer that can see the case's entities. A definition from a person (`origin: 'user'`, the default when the field is absent) may omit `values` entirely: a person adding "dog crate fit" is saying *this matters, go find out*, and the obligation system drives the research from there — demanding they fill every cell first would turn asking a question into answering it and make the visible custom-concern form unusable. A model adding a column has, by construction, just finished looking, so an empty column from it reads as a real dimension the comparison failed to resolve when in fact nobody ever tried.
+
+**`orderedValues` — an enum is not ordinal until something declares it so.** `scoring.ts` rule 3 (`packages/core/src/scoring.ts`): `allowedValues` is a membership set whose order carries no declared meaning, and the engine deliberately refuses to consult it, reporting instead that "this rating has no declared worst-to-best ordering, so its grades cannot be ranked without guessing". `orderedValues` is the declaration — the same grades, listed worst to best — and a value's position in it is its score. Without it a model-defined enum column renders but can never be scored, so a criterion whose `appliesToAttribute` points at it would have nothing to rank; with it, the column moves the ranking on a dimension the pack never had. Validated in `CaseAttributeDraftSchema`: it applies only to `valueType: 'enum'` (every other type already ranks itself), it requires `allowedValues` (a grade must be selectable before it can be ranked), it may not repeat a grade (which would give it two positions on the scale), and it must be the same **set** as `allowedValues`, not merely a subset. A partial ordering is rejected rather than accepted, because a selectable-but-unordered grade scores as "not one of the declared grades" — shipping a column that silently refuses to score some options, the half-blank column this command exists to prevent.
+
+**`status: 'verified'` is reachable only for `origin: 'user'`.** Every value written here goes through the real `@sift/core` `createAttributeRecord`, never a hand-assembled `AttributeRecord`, so `attributeStatusOriginError` (`packages/core/src/attributes.ts`) applies unchanged: a definition sent with `origin: 'agent_proposed'` cannot claim `verified` for any option, and the rejection reaches the caller as an honest `VALIDATION` error naming what was rejected and what would have been accepted — never silently downgraded to a weaker status or retried. A model that defines a column may fill it in; it may not promote its own inference to a human attestation. The same path also runs `normalizeAttributeValue`, which applies the definition's `allowedValues` and default `unit` and rejects a value whose variant does not match the declared `valueType`.
 
 ### `sift_submit_source` — WRITE
 
@@ -565,6 +583,8 @@ Any implementation of this capability that allows pack metadata to carry instruc
 ## Observability: WebMCP-originated commands
 
 ADR 0006 decision 8 specifies that the command envelope gain an explicit origin marker. **Status: implemented.** Every command-backed tool in this catalog (all WRITE/EXECUTION/PRESENTATION tools) tags its call with `{ origin: 'webmcp' }` in exactly one shared place (`buildCaseScopedCommandTool`'s `execute`, `register-sift-tools.ts`), so no individual tool's call site can forget it. `SiftCommands` sends this as an `X-Sift-Command-Origin` request header — a sibling to the existing `X-Sift-Command-Id`/`Idempotency-Key` headers — and the server records it onto the activity trail's `safeDetails.origin` for every emitted activity event tied to that command.
+
+**`sift_request_investigation` records it on the run as well.** That tool is the one that starts a run, and it posts to `POST /api/cases/:caseId/run` rather than the generic command route. That route reads the same header with the same `readCommandOrigin` reader and the same closed `COMMAND_ORIGINS` vocabulary, and `RunService` writes it both to the durable `runs.origin` column and to the run's `run.queued` activity event's `safeDetails.origin` — so the catalog's central causal claim, "this assistant's tool call caused this entire run," is durably recorded against the run itself and not merely inferable. A request with no header records no origin at all (NULL, absent), never a default of `user`; see `debugging-and-observability.md` "WebMCP tool calls".
 
 **This is observability only, and never authorization.** Nothing in the command service, the policy layer, or any route reads `X-Sift-Command-Origin`/`commandOrigin` to make a permission decision — a command with and without the header produces byte-identical case state and an identical `eventSequence` advance. A visible page control that calls the identical `SiftCommands` method directly (outside this module) simply omits the origin option, byte-identical to the pre-marker behavior. Human-only verbs (`reviewProposal`) remain unreachable from WebMCP because the tool catalog never exposes them, independent of this field — sending `X-Sift-Command-Origin: webmcp` grants a caller no capability it did not already have. This does not create a second command path: every case-scoped tool still calls the identical `SiftCommands` method its matching UI control calls, preserving CLAUDE.md's shared-command-implementation rule; it only tags the existing path so the server-side activity/runtime event stores and the Runtime Inspector's developer view can distinguish and display WebMCP-originated commands (change-set §34, `debugging-and-observability.md`).
 

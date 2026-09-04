@@ -1,9 +1,9 @@
 # Sift Reuse Attribution
 
-This file records every fragment adapted from a source-project reference
-per `docs/reuse-source-map.md` and `CLAUDE.md`'s "Source-project reuse"
-rules: what was inspected, what was adapted, what was deliberately left
-out, and the license/ownership conclusion. Both source repositories
+This file records every fragment adapted from another source, per
+`docs/reuse-source-map.md` and this project's source-reuse rules: what was
+inspected, what was adapted, what was deliberately left out, and the
+license/ownership conclusion. Two of the sources below
 (`/Users/jordanallen/IdeaProjects/praetor` and
 `/Users/jordanallen/IdeaProjects/think-os`) are private sibling projects on
 this machine's filesystem, not published open-source packages. Sift does
@@ -441,3 +441,50 @@ error-path coverage) and `packages/catalog/src/query.test.ts`/
 `map-to-option.test.ts` (query correctness and the catalog-to-pack-
 attribute mapping, including the "never fabricate an out-of-enum value"
 rule) — all written alongside this entry.
+
+## 2026-09-04 — shadcn/ui primitive components and the `cn` helper
+
+**Source:** the [shadcn/ui](https://ui.shadcn.com) component registry
+(`https://github.com/shadcn-ui/ui`), **MIT licensed**. shadcn/ui is not a
+runtime dependency: its stated distribution model is that the registry's
+source is copied into the consuming repository and owned there. This entry
+records that copy, which earlier revisions of this file omitted.
+
+**Destinations:** the nineteen primitives under
+`apps/web/src/components/ui/` — `alert.tsx`, `badge.tsx`, `button.tsx`,
+`card.tsx`, `collapsible.tsx`, `dialog.tsx`, `dropdown-menu.tsx`,
+`input.tsx`, `item.tsx`, `label.tsx`, `pagination.tsx`, `select.tsx`,
+`separator.tsx`, `sheet.tsx`, `tabs.tsx`, `textarea.tsx`,
+`toggle-group.tsx`, `toggle.tsx`, `tooltip.tsx` — plus
+`apps/web/src/lib/utils.ts` (the standard `cn` helper: `clsx` then
+`tailwind-merge`). `apps/web/components.json` is the registry configuration
+that generated them (`"style": "new-york"`, `"baseColor": "neutral"`,
+`"iconLibrary": "lucide"`).
+
+**What was adapted rather than taken verbatim.** These are registry
+components deliberately edited for Sift's flat, chrome-free right-pane
+design system rather than dropped in unchanged. The departures are recorded
+in each file's own header comment; the substantive ones are `button.tsx`
+(no variant uses a border or a shadow, and upstream's bordered `outline`
+variant is redefined to the same background-contrast mechanism every other
+flat surface uses, so a caller reaching for it by name still gets a flat
+result), `item.tsx` (three named departures from the upstream registry
+source), and `pagination.tsx` (a documented departure from the registry's
+version). Radii and colors are bound to Sift's own CSS custom properties
+(`--radius-sm` and the token palette in `apps/web/src/styles/tokens.css`)
+rather than the registry's defaults.
+
+**Genuine npm dependencies, not copied code.** The primitives import
+`radix-ui`, `class-variance-authority`, `clsx`, `tailwind-merge`, and
+`lucide-react` from the registry as ordinary declared dependencies of
+`apps/web/package.json`. Those packages are consumed, not vendored, and
+carry their own licenses in `node_modules`.
+
+**License/ownership conclusion:** MIT-licensed source, copied under the
+project's intended distribution model, adapted, and redistributed here
+under this repository's own MIT `LICENSE`. MIT permits this without further
+obligation beyond preserving the notice; this entry is the attribution.
+
+**Test owner:** each primitive has a colocated `*.test.tsx` beside it under
+`apps/web/src/components/ui/`, and the flat-design constraints above are
+additionally enforced by the Playwright visual baselines in `tests/e2e/`.

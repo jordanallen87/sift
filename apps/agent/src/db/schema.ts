@@ -148,6 +148,19 @@ export const runs = sqliteTable(
     sessionId: text('session_id'),
     limits: text('limits'),
     result: text('result'),
+    // I1 (ADR 0006 decision 8; debugging-and-observability.md "WebMCP tool
+    // calls"): which transport asked for this run, from the same
+    // `X-Sift-Command-Origin` header and closed `COMMAND_ORIGINS`
+    // vocabulary `routes/commands.ts` already reads for a command
+    // (`@sift/contracts` `CommandOrigin`) — never a second, parallel
+    // provenance concept, and never consulted for an authorization
+    // decision.
+    //
+    // Deliberately NULLABLE with no default. NULL means "the caller did not
+    // state an origin", which is genuinely different from any origin token;
+    // defaulting it to `'user'` would manufacture a claim nobody made, and
+    // would silently relabel every run recorded before this column existed.
+    origin: text('origin'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },

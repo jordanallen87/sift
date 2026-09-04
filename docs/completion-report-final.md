@@ -37,7 +37,7 @@ Supersedes `completion-report-adaptive-experience.md`, which was written mid-ses
 
 ### `pnpm test:deployed`
 
-Against `https://pax-hackathon-production.up.railway.app`:
+Against `https://sift-hackathon-production.up.railway.app`:
 
 health · static assets · SPA-no-catchall · fixture case (4 seeded candidates) · investigation run · Runtime Inspector (245 events, correlated trace) · CORS · AgentCore `/ping` · AgentCore `/invocations` for both hero packs · **redeploy persistence** (a case and its 245 runtime events survived a real Railway redeploy).
 
@@ -241,7 +241,7 @@ The two skips are the same video files, and they activate once a recording is pr
 | Project ID | `1c02545d-5ed3-4ac6-82dc-fad2e09e8999` |
 | Service | `pax-hackathon` (`e98affa7-2756-4f5a-bbae-d3e84a06ced7`) |
 | Environment | `production` (`9e0c95c9-2f33-431a-93c3-1a592a069d00`) |
-| Public URL | `https://pax-hackathon-production.up.railway.app` |
+| Public URL | `https://sift-hackathon-production.up.railway.app` |
 | Volume | `/data`, backing `/data/sift.sqlite` |
 
 Two deployments this session, both of the exact committed tree. Redeploy persistence verified: a case and its 245 correlated runtime events survived.

@@ -1,6 +1,7 @@
 {
   "name": "@sift/packs",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "description": "Sift Decision Pack compiler, registry, and conformance runner, plus the built-in car-purchase and home-energy-guardian manifests.",

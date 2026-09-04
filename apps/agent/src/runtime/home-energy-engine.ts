@@ -100,6 +100,7 @@ import type {
   CaseState,
   CompiledDecisionPack,
   ExecutionResult,
+  PublicActivityEvent,
   PublicActivityEventType,
   PublicActivityPhase,
 } from '@sift/contracts';
@@ -218,6 +219,19 @@ function appendActivity(
     type: PublicActivityEventType;
     phase: PublicActivityPhase;
     summary: string;
+    /**
+     * Small, published, machine-readable facts a consumer surface can render
+     * beside the summary -- `PublicActivityEvent.safeDetails`
+     * (`packages/contracts/src/events.ts`), which `ActivityStore` already
+     * persists and replays as the `activity_events.data` column.
+     *
+     * "Safe" is the whole contract: this rides on the sanitized *public*
+     * stream, so only closed, non-user-shaped values belong here. Never a
+     * user-entered note, a model's private reasoning, a raw tool payload, a
+     * header, or anything credential-shaped -- those stay in the Runtime
+     * Inspector's own detail, behind `event-normalizer.ts`'s redaction.
+     */
+    safeDetails?: NonNullable<PublicActivityEvent['safeDetails']>;
   },
 ): void {
   activityStore.append({
@@ -230,6 +244,7 @@ function appendActivity(
     type: fields.type,
     phase: fields.phase,
     summary: fields.summary,
+    ...(fields.safeDetails !== undefined ? { safeDetails: fields.safeDetails } : {}),
   });
 }
 
@@ -279,6 +294,22 @@ function appendActivityForSwarmEvent(
           type: 'specialist.completed',
           phase: 'completed',
           summary: event.summary,
+          // How long this specialist genuinely took, forwarded onto the
+          // public stream so a consumer surface can freeze a running
+          // elapsed time at the node's real duration rather than leaving
+          // the column blank. `home-energy-swarm.ts` measures it across the
+          // node's own real start/finish hooks and OMITS it when nothing
+          // measured that node, so this spread carries a real figure or
+          // nothing at all -- never a zero and never an estimate.
+          //
+          // Safe to publish: a single integer millisecond count read from a
+          // clock, with no string leaf a note, payload, header, or
+          // credential could reach -- the same reasoning
+          // `event-normalizer.ts`'s `CallMetrics` records for keeping
+          // `durationMs` out of `redactValue`.
+          ...(event.durationMs !== undefined
+            ? { safeDetails: { durationMs: event.durationMs } }
+            : {}),
         });
       }
       return;
@@ -350,6 +381,10 @@ function appendActivityForSwarmEvent(
  * `GET /api/debug/runs/:runId`. `ctx.runId`/`ctx.caseId` (the real ones
  * this engine was `trigger()`ed with) are substituted in before either
  * durable write, exactly like `car-purchase-engine.ts` does.
+ *
+ * `onTraceId` is handed the trace each persisted event actually carries,
+ * so `runOneInvestigation` can record that same id -- not a second,
+ * separately minted one -- on the `runs` row. See its doc comment there.
  */
 interface DrainResult {
   readonly result: HomeEnergySwarmResult;
@@ -361,13 +396,6 @@ interface DrainResult {
    * identical `DrainResult` for the full rationale.
    */
   readonly lastSequence: number;
-  /**
-   * The real `traceId` every drained `RuntimeEvent` carried (the Swarm's own
-   * internally-minted trace) -- a *different* id than `runOneInvestigation`'s
-   * own local `traceId`, which only ever reaches `runStore.traceId`, never
-   * the Swarm. `undefined` only if the Swarm yielded no events at all.
-   */
-  readonly traceId: string | undefined;
 }
 
 async function drainSwarmToActivity(
@@ -376,22 +404,22 @@ async function drainSwarmToActivity(
   activityStore: ActivityStore,
   runtimeEventStore: RuntimeEventStore,
   clock: Clock,
+  onTraceId: (traceId: string) => void,
 ): Promise<DrainResult> {
   let next = await gen.next();
   let lastSequence = -1;
-  let traceId: string | undefined;
   while (!next.done) {
     const persisted = runtimeEventStore.append({
       ...next.value,
       caseId: ctx.caseId,
       runId: ctx.runId,
     });
+    onTraceId(persisted.traceId);
     appendActivityForSwarmEvent(next.value, ctx, activityStore, clock, persisted.id);
     lastSequence = persisted.sequence;
-    traceId = persisted.traceId;
     next = await gen.next();
   }
-  return { result: next.value, lastSequence, traceId };
+  return { result: next.value, lastSequence };
 }
 
 function scenarioFoldDeps(deps: HomeEnergyEngineDeps): {
@@ -831,12 +859,10 @@ async function runOneInvestigation(
     }
 
     const round = determineHomeEnergyRound(initialSnapshot);
-    const traceId = deps.idGenerator.next('trace');
 
     deps.runStore.updateStatus(params.runId, {
       status: 'running',
       updatedAt: deps.clock.now(),
-      traceId,
     });
     appendActivity(deps.activityStore, deps.clock, params.caseId, {
       runId: params.runId,
@@ -856,16 +882,33 @@ async function runOneInvestigation(
       round === 'round2' ? 'decision-synthesizer' : undefined,
     );
 
-    const {
-      result: swarmResult,
-      lastSequence,
-      traceId: swarmTraceId,
-    } = await drainSwarmToActivity(
+    // --- One trace per run, not two -- the identical correction
+    // `car-purchase-engine.ts`'s `runOneInvestigation` documents in full.
+    // The Swarm mints the trace every `runtime_events` row carries
+    // (`home-energy-swarm.ts`'s `RunAccumulator.traceId`); the run row now
+    // records that same id instead of a second, unrelated one that the
+    // Runtime Inspector's Overview showed under "Trace" while matching no
+    // event in the Timeline.
+    let recordedTraceId: string | undefined;
+    const recordTraceId = (candidate: string): string => {
+      if (recordedTraceId === undefined) {
+        recordedTraceId = candidate;
+        deps.runStore.updateStatus(params.runId, {
+          status: 'running',
+          updatedAt: deps.clock.now(),
+          traceId: candidate,
+        });
+      }
+      return recordedTraceId;
+    };
+
+    const { result: swarmResult, lastSequence } = await drainSwarmToActivity(
       executeHomeEnergySwarm(swarmDeps),
       { caseId: params.caseId, runId: params.runId },
       deps.activityStore,
       deps.runtimeEventStore,
       deps.clock,
+      recordTraceId,
     );
 
     const finalSnapshot =
@@ -884,11 +927,13 @@ async function runOneInvestigation(
         normalizeCaseStateChange(
           { stateDiff },
           {
-            // The Swarm's own real trace (see DrainResult.traceId's doc
-            // comment), never the unrelated local `traceId` above -- falls
-            // back to it only in the never-expected case the Swarm yielded
-            // no events at all, so this event still carries a real trace.
-            traceId: swarmTraceId ?? traceId,
+            // The same one trace the run row and every other event for
+            // this run carry. A trace is minted here only if the Swarm
+            // yielded no events at all (never expected) -- and
+            // `recordTraceId` puts that id on the run row too, so the
+            // Overview's "Trace" still names this run's one event rather
+            // than nothing.
+            traceId: recordedTraceId ?? recordTraceId(deps.idGenerator.next('trace')),
             caseId: params.caseId,
             runId: params.runId,
             obligationId: params.obligationId,

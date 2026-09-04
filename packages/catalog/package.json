@@ -1,6 +1,7 @@
 {
   "name": "@sift/catalog",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "description": "Bundled vehicle catalog (EPA fueleconomy.gov, public domain), bounded query functions, and the one adaptation boundary from a catalog record to a car-purchase pack option's attributes.",

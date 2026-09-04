@@ -1,18 +1,24 @@
 /**
  * Zod-validated Sift service configuration loader.
  *
- * Reads the nine environment variables documented in the repo root
- * `.env.example` (`SIFT_EXECUTION_TARGET`, `SIFT_DATA_DIR`,
- * `SIFT_AUTHORING_ENABLED`, `SIFT_DEBUG_ENABLED`, `SIFT_DEBUG_PAYLOAD_MODE`,
- * `SIFT_DEBUG_RETENTION_DAYS`, `SIFT_MODEL_ID`, `AWS_REGION`,
- * `SIFT_PUBLIC_ORIGIN`), applies exactly the defaults shown there, and
- * throws one `ConfigError` listing every invalid/missing variable at once.
+ * Reads the ten `SIFT_*`/`AWS_*` environment variables documented in the
+ * repo root `.env.example` (`SIFT_EXECUTION_TARGET`, `SIFT_DATA_DIR`,
+ * `SIFT_AUTHORING_ENABLED`, `SIFT_DEBUG_ENABLED`, `SIFT_TRACING_ENABLED`,
+ * `SIFT_DEBUG_PAYLOAD_MODE`, `SIFT_DEBUG_RETENTION_DAYS`, `SIFT_MODEL_ID`,
+ * `AWS_REGION`, `SIFT_PUBLIC_ORIGIN`), applies exactly the defaults shown
+ * there, and throws one `ConfigError` listing every invalid/missing
+ * variable at once.
  *
  * `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_HEADERS` are documented
  * in `.env.example` as an optional passthrough to Strands's own OTEL setup
  * ("enables an external OTEL exporter without changing Sift's own
- * SQLite-backed event persistence") and are out of this task's explicit
- * variable list; they are not validated here.
+ * SQLite-backed event persistence") and are deliberately still not
+ * validated here: they are standard OpenTelemetry variable names with an
+ * OTEL-defined meaning, read by `@opentelemetry/exporter-trace-otlp-http`'s
+ * own `OTLPTraceExporter` rather than by Sift, and `runtime/
+ * otel-span-recorder.ts` only checks whether `OTEL_EXPORTER_OTLP_ENDPOINT`
+ * is set at all in order to decide whether to attach that exporter. Sift
+ * never reinterprets or re-defaults them.
  *
  * `PORT` (used by `server.ts` to choose a listen port) is deliberately not
  * part of this schema: it is not documented in `.env.example` as
@@ -38,6 +44,7 @@ export interface RawEnv {
   SIFT_DATA_DIR?: string | undefined;
   SIFT_AUTHORING_ENABLED?: string | undefined;
   SIFT_DEBUG_ENABLED?: string | undefined;
+  SIFT_TRACING_ENABLED?: string | undefined;
   SIFT_DEBUG_PAYLOAD_MODE?: string | undefined;
   SIFT_DEBUG_RETENTION_DAYS?: string | undefined;
   SIFT_MODEL_ID?: string | undefined;
@@ -50,6 +57,19 @@ export interface SiftConfig {
   dataDir: string;
   authoringEnabled: boolean;
   debugEnabled: boolean;
+  /**
+   * Registers Sift's OpenTelemetry `TracerProvider` at boot so the spans the
+   * Strands SDK already emits (`dist/src/telemetry/tracer.js`, called from
+   * `multiagent/graph.js` and `swarm.js` on every run) are captured into
+   * `runtime_events` instead of discarded (`runtime/otel-span-recorder.ts`).
+   *
+   * Defaults to `true`: capture is entirely in-process and adds no network
+   * dependency, so a fixture run stays fully offline. Set `false` to leave
+   * the global OTel API unregistered, which is exactly the pre-existing
+   * behavior -- every Strands span is created and immediately discarded, and
+   * nothing else changes.
+   */
+  tracingEnabled: boolean;
   debugPayloadMode: DebugPayloadMode;
   /** Days of runtime/debug telemetry retained. 1-30 inclusive; docs/specs/debugging-and-observability.md: "cannot exceed 30 in this build." */
   debugRetentionDays: number;
@@ -91,6 +111,7 @@ const ConfigSchema = z.object({
   SIFT_DATA_DIR: z.string().min(1, 'must not be empty').default('.sift-data'),
   SIFT_AUTHORING_ENABLED: booleanFromEnvString.default(false),
   SIFT_DEBUG_ENABLED: booleanFromEnvString.default(true),
+  SIFT_TRACING_ENABLED: booleanFromEnvString.default(true),
   SIFT_DEBUG_PAYLOAD_MODE: z.enum(DEBUG_PAYLOAD_MODES).default('metadata-only'),
   // debugging-and-observability.md: "SIFT_DEBUG_RETENTION_DAYS defaults to 7
   // and cannot exceed 30 in this build." The spec states only the ceiling;
@@ -129,6 +150,7 @@ export function loadConfig(env: RawEnv = process.env): SiftConfig {
     dataDir: parsed.SIFT_DATA_DIR,
     authoringEnabled: parsed.SIFT_AUTHORING_ENABLED,
     debugEnabled: parsed.SIFT_DEBUG_ENABLED,
+    tracingEnabled: parsed.SIFT_TRACING_ENABLED,
     debugPayloadMode: parsed.SIFT_DEBUG_PAYLOAD_MODE,
     debugRetentionDays: parsed.SIFT_DEBUG_RETENTION_DAYS,
     modelId: parsed.SIFT_MODEL_ID ?? 'global.anthropic.claude-sonnet-4-6',

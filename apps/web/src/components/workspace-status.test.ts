@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { DecisionProposal, Recommendation } from '@sift/contracts';
-import { deriveWorkspaceStatus, type WorkspaceStatusInput } from './workspace-status.js';
+import type { DecisionProposal, PublicActivityEvent, Recommendation } from '@sift/contracts';
+import {
+  deriveActiveRunId,
+  deriveWorkspaceStatus,
+  type WorkspaceStatusInput,
+} from './workspace-status.js';
 
 function buildRecommendation(overrides: Partial<Recommendation> = {}): Recommendation {
   return {
@@ -208,5 +212,148 @@ describe('deriveWorkspaceStatus', () => {
       }),
     );
     expect(status.phase).toBe('decided');
+  });
+});
+
+describe('deriveActiveRunId', () => {
+  function buildActivityEvent(
+    overrides: Partial<PublicActivityEvent> = {},
+  ): PublicActivityEvent {
+    return {
+      schemaVersion: '1.0',
+      eventId: 'evt-1',
+      sequence: 1,
+      timestamp: '2026-08-27T00:00:00.000Z',
+      caseId: 'case-1',
+      type: 'run.queued',
+      phase: 'queued',
+      summary: 'Investigation queued.',
+      ...overrides,
+    };
+  }
+
+  /**
+   * The real shape `run-service.ts` + `car-purchase-engine.ts` emit: a
+   * `run.queued` carrying both ids, then run-correlated events carrying only
+   * the `runId`, then one terminal run-lifecycle event.
+   */
+  function buildRun(runId: string, startSequence: number): PublicActivityEvent[] {
+    const steps: Pick<PublicActivityEvent, 'type' | 'phase'>[] = [
+      { type: 'run.queued', phase: 'queued' },
+      { type: 'run.started', phase: 'active' },
+      { type: 'specialist.started', phase: 'active' },
+      { type: 'skill.activated', phase: 'completed' },
+      { type: 'tool.started', phase: 'active' },
+      { type: 'tool.completed', phase: 'completed' },
+      { type: 'specialist.completed', phase: 'completed' },
+    ];
+    return steps.map((step, index) =>
+      buildActivityEvent({
+        eventId: `${runId}-evt-${String(index)}`,
+        sequence: startSequence + index,
+        runId,
+        ...step,
+      }),
+    );
+  }
+
+  it('reports no active run for a case with no events at all', () => {
+    expect(deriveActiveRunId([])).toBeNull();
+  });
+
+  it('reports no active run when no event carries a runId (seeding and presentation-only commands are not runs)', () => {
+    const events = [
+      buildActivityEvent({
+        eventId: 'evt-created',
+        sequence: 1,
+        commandId: 'cmd-start',
+        type: 'command.accepted',
+        phase: 'completed',
+      }),
+    ];
+    expect(deriveActiveRunId(events)).toBeNull();
+  });
+
+  it('stays active on every event of a run, including the ones that report phase "completed" while the run continues', () => {
+    // The defect this function replaced: `tool.completed`,
+    // `skill.activated` and `specialist.completed` all carry
+    // `phase: 'completed'` mid-run, so a "latest event's phase" test flipped
+    // the whole workspace back to "nothing has happened" on every one of
+    // them. Asserted at EVERY prefix, not only the final one -- checking the
+    // end state alone passes on the broken derivation.
+    const run = buildRun('run-1', 1);
+    for (let length = 1; length <= run.length; length += 1) {
+      expect(deriveActiveRunId(run.slice(0, length))).toBe('run-1');
+    }
+  });
+
+  it('ends the run at a terminal run.completed event', () => {
+    const run = [
+      ...buildRun('run-1', 1),
+      buildActivityEvent({
+        eventId: 'run-1-done',
+        sequence: 99,
+        runId: 'run-1',
+        type: 'run.completed',
+        phase: 'completed',
+      }),
+    ];
+    expect(deriveActiveRunId(run)).toBeNull();
+  });
+
+  it('ends the run at a terminal run.failed event that follows run.queued directly (a refused investigation never reaches run.started)', () => {
+    const events = [
+      buildActivityEvent({ eventId: 'evt-q', sequence: 1, runId: 'run-1', commandId: 'cmd-1' }),
+      buildActivityEvent({
+        eventId: 'evt-f',
+        sequence: 2,
+        runId: 'run-1',
+        type: 'run.failed',
+        phase: 'failed',
+      }),
+    ];
+    expect(deriveActiveRunId(events)).toBeNull();
+  });
+
+  it('is unaffected by arrival order: a terminal event delivered out of sequence order still ends its run', () => {
+    const run = buildRun('run-1', 1);
+    const terminal = buildActivityEvent({
+      eventId: 'run-1-done',
+      sequence: 99,
+      runId: 'run-1',
+      type: 'run.completed',
+      phase: 'completed',
+    });
+    expect(deriveActiveRunId([terminal, ...run])).toBeNull();
+  });
+
+  it('follows the newest run: a second run queued after the first completed is active again', () => {
+    const events = [
+      ...buildRun('run-1', 1),
+      buildActivityEvent({
+        eventId: 'run-1-done',
+        sequence: 8,
+        runId: 'run-1',
+        type: 'run.completed',
+        phase: 'completed',
+      }),
+      ...buildRun('run-2', 9),
+    ];
+    expect(deriveActiveRunId(events)).toBe('run-2');
+  });
+
+  it('does not let a run that died without a terminal event pin the workspace once a newer run has finished', () => {
+    const events = [
+      ...buildRun('run-abandoned', 1),
+      ...buildRun('run-2', 20),
+      buildActivityEvent({
+        eventId: 'run-2-done',
+        sequence: 30,
+        runId: 'run-2',
+        type: 'run.completed',
+        phase: 'completed',
+      }),
+    ];
+    expect(deriveActiveRunId(events)).toBeNull();
   });
 });

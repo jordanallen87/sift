@@ -160,7 +160,7 @@ against a stale server is worse than no baseline at all.
 | Service | `pax-hackathon` (`e98affa7-2756-4f5a-bbae-d3e84a06ced7`) |
 | Environment | `production` (`9e0c95c9-2f33-431a-93c3-1a592a069d00`) |
 | Deployment | `50517e5b-1f11-4431-8b52-a13bbc18d7b3`, instance `RUNNING` |
-| Public URL | https://pax-hackathon-production.up.railway.app |
+| Public URL | https://sift-hackathon-production.up.railway.app |
 | Volume mount | `/data` |
 
 The `pax-` prefix is deliberate and must not be "corrected": these are live identifiers already

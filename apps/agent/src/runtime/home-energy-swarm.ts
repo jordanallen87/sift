@@ -211,6 +211,7 @@ import {
   type NormalizerContext,
   type RuntimeEvent,
 } from './event-normalizer.js';
+import { RuntimeEventQueue } from './runtime-event-queue.js';
 
 // --- Tool ids (see module header, judgment call 3) ---
 
@@ -416,6 +417,15 @@ export interface HomeEnergySwarmDeps {
   goalLoopMaxAttempts?: number;
   /** Per-node `RetrySteering` alternative-technique hint (strands-runtime.md: "The guidance identifies an allowed alternative technique from the active skill."). */
   alternativeTechniqueHints?: Partial<Record<HomeEnergySwarmNodeId, string>>;
+  /**
+   * Elapsed-millisecond source used only to measure real per-node durations
+   * for `RuntimeDebugEvent.durationMs` on `swarm.node_completed`. Defaults to
+   * wall-clock `Date.now`. Identical rationale to `CarPurchaseGraphDeps.
+   * nowMs`: `Clock` returns ISO business timestamps for case events, while
+   * this is a monotonic interval source for telemetry that a deterministic
+   * fixture test can advance itself.
+   */
+  nowMs?: () => number;
 }
 
 /** One real Swarm handoff, normalized from the SDK's `MultiAgentHandoffEvent` plus the completed source node's parsed `context` (strands-runtime.md "Energy Swarm": "A handoff emits `swarm.handoff`"; debugging-and-observability.md: "Swarm handoff source, target, reason, evidence delta, and cycle counter"). */
@@ -488,23 +498,95 @@ function deriveEvidenceDelta(context: ExecutionResult | undefined): number {
 
 /**
  * Collected mutable state one call to `executeHomeEnergySwarm` accumulates
- * across every node's hooks -- one run, one shared buffer, one shared
+ * across every node's hooks -- one run, one shared queue, one shared
  * monotonic `sequence`, identical rationale to `car-purchase-graph.ts`'s
- * `RunAccumulator`.
+ * `RunAccumulator`, including its `RuntimeEventQueue`: the Swarm's events
+ * reach their consumer as each node produces them, not in one burst after
+ * `swarm.invoke` resolves. See `runtime-event-queue.ts`.
  */
 interface RunAccumulator {
-  events: RuntimeEvent[];
+  queue: RuntimeEventQueue<RuntimeEvent>;
   sequence: () => number;
   traceId: string;
   runId: string;
   caseId: string;
   sessionId?: string;
+  /** Per-node elapsed-time measurement behind `swarm.node_completed`'s `durationMs`. See `createNodeDurationTracker`. */
+  nodeDurations: NodeDurationTracker;
+}
+
+// --- Per-node duration (RuntimeDebugEvent.durationMs on swarm node events) ---
+
+/** Records one node's real start reading and closes it into an elapsed interval. See `createNodeDurationTracker`. */
+export interface NodeDurationTracker {
+  /** Called from the node's real `BeforeNodeCallEvent` hook, synchronously, before the node runs. */
+  noteNodeStart(nodeId: string): void;
+  /**
+   * Called from the node's real `NodeResultEvent` hook. Returns the elapsed
+   * milliseconds since that node's own recorded start, or `undefined` when no
+   * start was ever observed for it -- never a zero standing in for "unknown".
+   */
+  measureNode(nodeId: string): number | undefined;
+}
+
+/**
+ * Measures how long each Swarm node genuinely took, as the interval between
+ * that node's own real `BeforeNodeCallEvent` and `NodeResultEvent` hook
+ * firings, read from `HomeEnergySwarmDeps.nowMs` (wall clock by default).
+ *
+ * **Keyed by node id, deliberately** -- the same discipline
+ * `car-purchase-graph.ts`'s identically-named tracker documents, and it
+ * matters here for a second reason beyond concurrency: a Swarm node can be
+ * handed control back and run *again* later in the same invocation, so each
+ * visit must be measured against that visit's own start reading rather than
+ * a single run-wide "last node start" variable.
+ *
+ * **Why this interval and not `NodeResult.duration`.** The installed
+ * `@strands-agents/sdk@1.14.0` does measure a per-node duration of its own
+ * (`multiagent/state.d.ts`'s `NodeResult.duration`, computed in
+ * `multiagent/nodes.js` as `Date.now() - nodeState.startTime`). That number
+ * is real, is correctly per-node, and is not discarded -- every `NodeResult`
+ * on the returned `HomeEnergySwarmResult.multiAgentResult.results` still
+ * carries it verbatim. What the runtime event carries is Sift's own
+ * interval, because it is the span a consumer surface actually observes
+ * between `swarm.node_started` and `swarm.node_completed`, it shares one
+ * time source with the rest of the run's telemetry, and it is injectable so
+ * the offline fixture suites can assert an exact measured number. `Date.now`
+ * inside the SDK is reachable only by mocking a global.
+ *
+ * Both readings are same-process wall clock taken microseconds apart on one
+ * event loop -- the timing docs/specs/debugging-and-observability.md treats
+ * as trustworthy, unlike a *cross-process* hook timestamp comparison.
+ */
+export function createNodeDurationTracker(
+  now: () => number = () => Date.now(),
+): NodeDurationTracker {
+  const startedAt = new Map<string, number>();
+  return {
+    noteNodeStart(nodeId: string): void {
+      startedAt.set(nodeId, now());
+    },
+    measureNode(nodeId: string): number | undefined {
+      const started = startedAt.get(nodeId);
+      startedAt.delete(nodeId);
+      return started === undefined ? undefined : Math.max(0, Math.round(now() - started));
+    },
+  };
 }
 
 function emitSwarmNodeEvent(
   acc: RunAccumulator,
   params: { nodeId: string; phase: 'start' | 'finish'; status?: string },
 ): void {
+  // Captured inside the synchronous hook callback, not when a consumer
+  // later drains the queue: the generator streams events while the Swarm is
+  // still handing off (`RuntimeEventQueue.streamWhile`), so a reading taken
+  // at drain time would measure the consumer's pace, not the node's.
+  if (params.phase === 'start') {
+    acc.nodeDurations.noteNodeStart(params.nodeId);
+  }
+  const durationMs =
+    params.phase === 'start' ? undefined : acc.nodeDurations.measureNode(params.nodeId);
   const event: RuntimeDebugEvent = {
     schemaVersion: '1.0',
     sequence: acc.sequence(),
@@ -518,6 +600,9 @@ function emitSwarmNodeEvent(
     name: params.phase === 'start' ? 'swarm.node_started' : 'swarm.node_completed',
     phase: params.phase === 'start' ? 'start' : 'finish',
     level: 'info',
+    // Omitted, never defaulted: a node whose start was never observed
+    // reports no duration at all rather than a fabricated `0`.
+    ...(durationMs !== undefined ? { durationMs } : {}),
     summary:
       params.phase === 'start'
         ? `Swarm node "${params.nodeId}" started.`
@@ -528,7 +613,7 @@ function emitSwarmNodeEvent(
     },
     redactions: [],
   };
-  acc.events.push(event);
+  acc.queue.push(event);
 }
 
 function emitSwarmHandoffEvent(acc: RunAccumulator, handoff: HomeEnergySwarmHandoff): void {
@@ -553,7 +638,7 @@ function emitSwarmHandoffEvent(acc: RunAccumulator, handoff: HomeEnergySwarmHand
     },
     redactions: [],
   };
-  acc.events.push(event);
+  acc.queue.push(event);
 }
 
 function emitSwarmCycleDetectedEvent(acc: RunAccumulator, message: string): void {
@@ -573,7 +658,7 @@ function emitSwarmCycleDetectedEvent(acc: RunAccumulator, message: string): void
     attributes: {},
     redactions: [],
   };
-  acc.events.push(event);
+  acc.queue.push(event);
 }
 
 function emitSwarmTimeoutEvent(acc: RunAccumulator, message: string): void {
@@ -593,7 +678,7 @@ function emitSwarmTimeoutEvent(acc: RunAccumulator, message: string): void {
     attributes: {},
     redactions: [],
   };
-  acc.events.push(event);
+  acc.queue.push(event);
 }
 
 function buildInterventions(
@@ -670,10 +755,10 @@ function buildInterventions(
 function wireAgentHooks(agent: Agent, ctx: NormalizerContext, acc: RunAccumulator): () => void {
   const cleanups = [
     agent.addHook(BeforeToolCallEvent, (event) => {
-      acc.events.push(normalizeBeforeToolCall(event, ctx, acc.sequence()));
+      acc.queue.push(normalizeBeforeToolCall(event, ctx, acc.sequence()));
     }),
     agent.addHook(AfterToolCallEvent, (event) => {
-      acc.events.push(normalizeAfterToolCall(event, ctx, acc.sequence()));
+      acc.queue.push(normalizeAfterToolCall(event, ctx, acc.sequence()));
       if (event.toolUse.name === 'skills' && event.result.status === 'success') {
         const input = event.toolUse.input;
         const skillId =
@@ -681,7 +766,7 @@ function wireAgentHooks(agent: Agent, ctx: NormalizerContext, acc: RunAccumulato
             ? (input as Record<string, unknown>)['skill_name']
             : undefined;
         if (typeof skillId === 'string') {
-          acc.events.push(
+          acc.queue.push(
             normalizeSkillActivation(
               {
                 skillId,
@@ -696,10 +781,10 @@ function wireAgentHooks(agent: Agent, ctx: NormalizerContext, acc: RunAccumulato
       }
     }),
     agent.addHook(BeforeModelCallEvent, (event) => {
-      acc.events.push(normalizeBeforeModelCall(event, ctx, acc.sequence()));
+      acc.queue.push(normalizeBeforeModelCall(event, ctx, acc.sequence()));
     }),
     agent.addHook(AfterModelCallEvent, (event) => {
-      acc.events.push(normalizeAfterModelCall(event, ctx, acc.sequence()));
+      acc.queue.push(normalizeAfterModelCall(event, ctx, acc.sequence()));
     }),
   ];
   return () => {
@@ -831,7 +916,7 @@ function buildSwarmSpecialistAgent(
     ...(acc.sessionId !== undefined ? { sessionId: acc.sessionId } : {}),
   };
   const emitIntervention = (event: InterventionEvent): void => {
-    acc.events.push(normalizeIntervention(event, ctx, acc.sequence()));
+    acc.queue.push(normalizeIntervention(event, ctx, acc.sequence()));
   };
   const interventions = buildInterventions(
     {
@@ -858,7 +943,7 @@ function buildSwarmSpecialistAgent(
   const contextInjector = buildContextInjector(request, {
     ctx,
     sequence: acc.sequence,
-    emit: (event) => acc.events.push(event),
+    emit: (event) => acc.queue.push(event),
   });
 
   const tools = filterToolsByName(buildHomeEnergyFixtureTools(), allowedTools);
@@ -880,11 +965,19 @@ function buildSwarmSpecialistAgent(
 
 /**
  * Runs the real bounded Home Energy Guardian Strands `Swarm` once. Yields
- * every normalized `RuntimeEvent` the run produced (tool/model calls, skill
+ * every normalized `RuntimeEvent` the run produces (tool/model calls, skill
  * activation, context injection, interventions, GoalLoop attempts, and
  * `swarm.node_started`/`swarm.node_completed`/`swarm.handoff`/
- * `swarm.cycle_detected`/`swarm.timeout` events), then returns the full
+ * `swarm.cycle_detected`/`swarm.timeout` events) *as the Swarm produces it*
+ * -- a consumer receives `anomaly-investigator`'s events while
+ * `rate-analyst` is still running -- then returns the full
  * `HomeEnergySwarmResult`.
+ *
+ * Same guarantees as `executeCarPurchaseGraph`: push (= `sequence`) order,
+ * nothing dropped (including the events that can only be produced after
+ * `swarm.invoke` resolves), a mid-run error rethrown unchanged only after
+ * everything produced before it has been yielded, and no pacing or delay of
+ * any kind.
  */
 export async function* executeHomeEnergySwarm(
   deps: HomeEnergySwarmDeps,
@@ -894,12 +987,14 @@ export async function* executeHomeEnergySwarm(
   const startNodeId: HomeEnergySwarmNodeId = deps.start ?? 'anomaly-investigator';
   const startRequest = requestFor(startNodeId, deps);
 
+  const now = deps.nowMs ?? ((): number => Date.now());
   const acc: RunAccumulator = {
-    events: [],
+    queue: new RuntimeEventQueue<RuntimeEvent>(),
     sequence: createSequenceCounter(),
     traceId: deps.idGenerator.next('trace'),
     runId: startRequest.runId,
     caseId: startRequest.caseId,
+    nodeDurations: createNodeDurationTracker(now),
   };
 
   const unwireCleanups: (() => void)[] = [];
@@ -925,7 +1020,7 @@ export async function* executeHomeEnergySwarm(
     ...(acc.sessionId !== undefined ? { sessionId: acc.sessionId } : {}),
   };
   const emitSynthesizerIntervention = (event: InterventionEvent): void => {
-    acc.events.push(normalizeIntervention(event, synthesizerCtx, acc.sequence()));
+    acc.queue.push(normalizeIntervention(event, synthesizerCtx, acc.sequence()));
   };
   const synthesizerInterventions = buildInterventions(
     {
@@ -1028,16 +1123,30 @@ export async function* executeHomeEnergySwarm(
     }),
   ];
 
+  // --- The run and the streaming of its events are genuinely concurrent;
+  // see `car-purchase-graph.ts`'s equivalent block for the full rationale.
+  // `swarm.invoke` is started here and handed to `queue.streamWhile`, which
+  // yields each `RuntimeEvent` the SDK's hooks push while the Swarm is still
+  // handing off between nodes, in push (= `sequence`) order. Nothing is
+  // paced or delayed.
+  //
+  // `onError` keeps the pre-existing wall-clock-budget behaviour exactly:
+  // a timeout records its `swarm.timeout` event *before* the final drain, so
+  // that event is still yielded ahead of the rethrow. Every other failure
+  // now also delivers what the run produced before it, instead of
+  // discarding the whole stream. ---
+  const invocation = swarm.invoke(deps.invokePrompt ?? buildInvokePrompt(startRequest));
+
   let multiAgentResult: MultiAgentResult;
   try {
-    multiAgentResult = await swarm.invoke(deps.invokePrompt ?? buildInvokePrompt(startRequest));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('exceeded wall-clock budget')) {
-      emitSwarmTimeoutEvent(acc, message);
-      for (const event of acc.events) yield event;
-    }
-    throw error;
+    multiAgentResult = yield* acc.queue.streamWhile(invocation, {
+      onError: (error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('exceeded wall-clock budget')) {
+          emitSwarmTimeoutEvent(acc, message);
+        }
+      },
+    });
   } finally {
     for (const cleanup of swarmCleanups) cleanup();
     for (const cleanup of unwireCleanups) cleanup();
@@ -1061,7 +1170,7 @@ export async function* executeHomeEnergySwarm(
     const lastAttemptIndex = rawGoalResult.attempts.length - 1;
     rawGoalResult.attempts.forEach((attempt, index) => {
       const exhausted = !rawGoalResult.passed && index === lastAttemptIndex;
-      acc.events.push(
+      acc.queue.push(
         normalizeGoalValidation(
           {
             attempt: attempt.attempt,
@@ -1076,7 +1185,10 @@ export async function* executeHomeEnergySwarm(
     });
   }
 
-  for (const event of acc.events) {
+  // Everything produced after the Swarm resolved (`swarm.cycle_detected`
+  // and the GoalLoop attempts above); the streaming loop already delivered
+  // the rest.
+  for (const event of acc.queue.drain()) {
     yield event;
   }
 

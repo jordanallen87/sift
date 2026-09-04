@@ -300,7 +300,7 @@ function buildCaseScopedCommandTool<
     execute: async (rawInput: unknown, context?: WebMcpToolCallContext) => {
       const parsed = inputSchema.safeParse(rawInput);
       if (!parsed.success) {
-        return validationFailureEnvelope();
+        return validationFailureEnvelope(parsed.error);
       }
       // `safeParse` above already checked `rawInput` against `inputSchema`
       // at runtime; this cast reasserts that fact rather than bypassing it
@@ -360,7 +360,7 @@ function buildCaseScopedReadTool<TInput extends { caseId: string }, TData>(
     execute: async (rawInput: unknown, context?: WebMcpToolCallContext) => {
       const parsed = inputSchema.safeParse(rawInput);
       if (!parsed.success) {
-        return validationFailureEnvelope();
+        return validationFailureEnvelope(parsed.error);
       }
       const input = parsed.data as TInput;
 
@@ -477,7 +477,7 @@ function buildDefineCaseAttributeTool(
   return buildCaseScopedCommandTool<DefineCaseAttributeInput, CommandReceipt>({
     name: 'sift_define_case_attribute',
     description:
-      "Defines a typed case-specific concern that the installed pack did not anticipate. A WebMCP call made in response to the user's explicit request records origin `user`; an extension autonomously proposed by a runtime agent uses an internal proposal event and remains pending until the user confirms it through the visible UI.",
+      "Defines a typed case-specific concern that the installed pack did not anticipate. A WebMCP call made in response to the user's explicit request records origin `user`; pass origin `agent_proposed` when you are proposing the field yourself, which records that provenance permanently. Whether such a proposal is usable immediately or waits for the person is the pack author's decision (`extensionPolicy.allowCaseAttributes`), never yours, and a pack that forbids case attributes rejects the call outright rather than quietly degrading it. Pass `values` to answer the new field for every option you can see, each with its own status and confidence -- an option you could not establish must say `status: 'unknown'` with a reason, never a blank and never a guess, and only a value the USER supplied may claim `status: 'verified'`. For a rating whose grades are words rather than numbers (`valueType: 'enum'`), also pass `orderedValues`: the same grades as `allowedValues`, listed WORST TO BEST. Without it the column renders but can never be scored, because Sift will not infer that \"fits two crates\" beats \"fits one\" from the order you happened to list them in -- so a criterion pointing at this attribute would have nothing to rank. With it, `sift_update_criteria` can add a criterion whose `appliesToAttribute` is this id and the ranking will move on a dimension the pack never had.",
     inputSchema: DefineCaseAttributeInputSchema,
     activeCaseId,
     call: (input, options) => commands.defineCaseAttribute(input, options),
@@ -1142,7 +1142,7 @@ function buildGetInteractionContextTool(
     inputSchema: toToolInputSchema(GetCaseContextInputSchema),
     execute: async (rawInput: unknown, context?: WebMcpToolCallContext) => {
       const parsed = GetCaseContextInputSchema.safeParse(rawInput);
-      if (!parsed.success) return validationFailureEnvelope();
+      if (!parsed.success) return validationFailureEnvelope(parsed.error);
       try {
         return await runAbortable(async () => {
           const caseState = getActiveCase();
@@ -1327,7 +1327,7 @@ function buildGetCaseContextTool(getActiveCase: () => CaseState | null): WebMcpT
     execute: async (rawInput: unknown, context?: WebMcpToolCallContext) => {
       const parsed = GetCaseContextInputSchema.safeParse(rawInput);
       if (!parsed.success) {
-        return validationFailureEnvelope();
+        return validationFailureEnvelope(parsed.error);
       }
       try {
         // Reading `getActiveCase()` and projecting it is fully synchronous
@@ -1373,7 +1373,7 @@ function buildListPacksTool(
     execute: async (rawInput: unknown, context?: WebMcpToolCallContext) => {
       const parsed = ListPacksInputSchema.safeParse(rawInput);
       if (!parsed.success) {
-        return validationFailureEnvelope();
+        return validationFailureEnvelope(parsed.error);
       }
       try {
         return await runAbortable(async () => {

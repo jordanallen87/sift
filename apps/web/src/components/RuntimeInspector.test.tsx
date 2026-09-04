@@ -166,6 +166,49 @@ describe('RuntimeInspector', () => {
     expect(items[1]).toHaveTextContent('second');
   });
 
+  it("shows the run's execution shape on its own tab, not just a flat list", async () => {
+    // The four analysts all start before any of them completes -- that is a
+    // real property of this Graph and it is invisible in a chronological
+    // list. This asserts the tab is genuinely wired to the same events the
+    // Timeline gets, so mounting it cannot silently regress to an empty
+    // panel.
+    const nodes = ['deal-analyst', 'ownership-cost-analyst', 'safety-reliability-analyst'];
+    server.use(
+      debugHandler(
+        buildOverview(),
+        nodes.map((nodeId, index) =>
+          buildEvent({
+            id: `debug-graph-${String(index)}`,
+            sequence: index,
+            category: 'graph',
+            name: 'graph.node_completed',
+            phase: 'start',
+            summary: `Graph node "${nodeId}" started.`,
+            attributes: { nodeId },
+          }),
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByTestId('runtime-inspector-tab-execution'));
+
+    const panel = await screen.findByTestId('runtime-inspector-execution');
+    for (const nodeId of nodes) {
+      expect(within(panel).getByText(new RegExp(nodeId))).toBeInTheDocument();
+    }
+  });
+
   it('re-fetches with the real server-side category filter when the Timeline filter changes', async () => {
     let capturedUrl: URL | undefined;
     server.use(
@@ -856,6 +899,540 @@ describe('RuntimeInspector', () => {
         expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
       });
       expect(await axe(baseElement)).toHaveNoViolations();
+    });
+  });
+
+  // The rest of the spec'd Timeline filter set ("category, agent, level, and
+  // free-text filters"), the WebMCP origin filter/badge, the sanitized export
+  // bundle, and the bounded-DOM windowing that makes a 245-event run readable
+  // in a 390 px pane. Every filter below is asserted at the REQUEST, not just
+  // at the rendered list: a filter that never reaches the server would
+  // disagree with the whole-run Overview beside it.
+  describe('complete filter set, export, and windowing', () => {
+    /** A handler that applies the real server's filter semantics, so a client test cannot pass by filtering locally. */
+    function filteringHandler(
+      events: ReturnType<typeof buildEvent>[],
+      overview = buildOverview(),
+      onRequest?: (url: URL) => void,
+    ) {
+      return http.get(`${BASE_URL}/api/debug/runs/${RUN_ID}`, ({ request }) => {
+        const url = new URL(request.url);
+        onRequest?.(url);
+        const category = url.searchParams.get('category');
+        const level = url.searchParams.get('level');
+        const agent = url.searchParams.get('agent');
+        const origin = url.searchParams.get('origin');
+        const q = url.searchParams.get('q');
+        const filtered = events.filter((event) => {
+          if (category !== null && event.category !== category) return false;
+          if (level !== null && event.level !== level) return false;
+          if (agent !== null && event.agentId !== agent) return false;
+          if (origin !== null && event.attributes['origin'] !== origin) return false;
+          if (
+            q !== null &&
+            !`${event.summary} ${event.name} ${event.agentId ?? ''}`
+              .toLowerCase()
+              .includes(q.toLowerCase())
+          ) {
+            return false;
+          }
+          return true;
+        });
+        return HttpResponse.json({ overview, events: filtered });
+      });
+    }
+
+    async function openTimeline(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+      await waitFor(() =>
+        expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+      );
+      await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+      await waitFor(() =>
+        expect(screen.getByTestId('runtime-inspector-timeline')).toBeInTheDocument(),
+      );
+    }
+
+    it('sends typed free text to the real server as ?q= and renders only what came back', async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        filteringHandler(
+          [
+            buildEvent({
+              id: 'debug-noise',
+              sequence: 0,
+              name: 'intervention.proceed',
+              summary: 'BudgetGuard: tool is excluded from the run tool-call budget.',
+            }),
+            buildEvent({ id: 'debug-tool', sequence: 1, summary: 'Reading dealer listings.' }),
+          ],
+          buildOverview(),
+          (url) => {
+            capturedUrl = url;
+          },
+        ),
+      );
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(user);
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-tool')).toBeInTheDocument();
+
+      await user.type(screen.getByTestId('runtime-inspector-filter-search'), 'budgetguard');
+
+      await waitFor(() => expect(capturedUrl?.searchParams.get('q')).toBe('budgetguard'));
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId('runtime-inspector-timeline-item-debug-tool'),
+        ).not.toBeInTheDocument();
+      });
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-noise')).toBeInTheDocument();
+    });
+
+    it('offers only the agents the run actually names, and sends the chosen one as ?agent=', async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        filteringHandler(
+          [
+            buildEvent({ id: 'debug-deal', sequence: 0, agentId: 'deal-analyst' }),
+            buildEvent({ id: 'debug-reliability', sequence: 1, agentId: 'reliability-analyst' }),
+          ],
+          buildOverview({ agentIds: ['deal-analyst', 'reliability-analyst'] }),
+          (url) => {
+            capturedUrl = url;
+          },
+        ),
+      );
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(user);
+
+      const select = screen.getByTestId('runtime-inspector-filter-agent');
+      expect(within(select).getByRole('option', { name: 'deal-analyst' })).toBeInTheDocument();
+
+      await user.selectOptions(select, 'deal-analyst');
+
+      await waitFor(() => expect(capturedUrl?.searchParams.get('agent')).toBe('deal-analyst'));
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId('runtime-inspector-timeline-item-debug-reliability'),
+        ).not.toBeInTheDocument();
+      });
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-deal')).toBeInTheDocument();
+    });
+
+    it('renders no agent control at all for a run whose events name no agent', async () => {
+      server.use(filteringHandler([buildEvent()], buildOverview({ agentIds: [] })));
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(user);
+
+      expect(screen.queryByTestId('runtime-inspector-filter-agent')).not.toBeInTheDocument();
+    });
+
+    it('badges a WebMCP-originated event and leaves an event that states no origin unbadged', async () => {
+      server.use(
+        filteringHandler(
+          [
+            buildEvent({
+              id: 'debug-webmcp',
+              sequence: 0,
+              summary: 'Command issued through a registered WebMCP tool.',
+              attributes: { origin: 'webmcp' },
+            }),
+            buildEvent({ id: 'debug-click', sequence: 1, attributes: {} }),
+          ],
+          buildOverview({ countsByOrigin: { webmcp: 1 } }),
+        ),
+      );
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(user);
+
+      expect(
+        screen.getByTestId('runtime-inspector-timeline-item-debug-webmcp-origin'),
+      ).toHaveTextContent('WebMCP');
+      // Absence of a badge is "nothing was stated", never a fabricated
+      // "user" origin -- the marker is only ever rendered when present.
+      expect(
+        screen.queryByTestId('runtime-inspector-timeline-item-debug-click-origin'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('sends ?origin= to the server when the run carries markers, and offers no origin control when it does not', async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        filteringHandler(
+          [
+            buildEvent({ id: 'debug-webmcp', sequence: 0, attributes: { origin: 'webmcp' } }),
+            buildEvent({ id: 'debug-click', sequence: 1, attributes: {} }),
+          ],
+          buildOverview({ countsByOrigin: { webmcp: 1 } }),
+          (url) => {
+            capturedUrl = url;
+          },
+        ),
+      );
+      const user = userEvent.setup();
+      const { unmount } = render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(user);
+
+      await user.selectOptions(screen.getByTestId('runtime-inspector-filter-origin'), 'webmcp');
+      await waitFor(() => expect(capturedUrl?.searchParams.get('origin')).toBe('webmcp'));
+      await waitFor(() => {
+        expect(
+          screen.queryByTestId('runtime-inspector-timeline-item-debug-click'),
+        ).not.toBeInTheDocument();
+      });
+
+      unmount();
+
+      // The same component against a run that predates origin propagation:
+      // no control, because every value it could offer returns nothing.
+      server.use(filteringHandler([buildEvent()], buildOverview({ countsByOrigin: {} })));
+      const secondUser = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(secondUser);
+      expect(screen.queryByTestId('runtime-inspector-filter-origin')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('runtime-inspector-origin-counts')).not.toBeInTheDocument();
+    });
+
+    it('exports the run through the real export route, honouring the filters currently applied', async () => {
+      let exportUrl: URL | undefined;
+      server.use(
+        filteringHandler([
+          buildEvent({ id: 'debug-1', sequence: 0, level: 'error', summary: 'A tool failed.' }),
+        ]),
+        http.get(`${BASE_URL}/api/debug/runs/${RUN_ID}/export`, ({ request }) => {
+          exportUrl = new URL(request.url);
+          return HttpResponse.json(
+            {
+              schemaVersion: '1.0',
+              runId: RUN_ID,
+              exportedAt: '2026-08-27T00:00:10.000Z',
+              filters: { level: 'error' },
+              overview: buildOverview(),
+              exportedEventCount: 1,
+              events: [buildEvent({ level: 'error' })],
+              redactionManifest: [],
+            },
+            {
+              headers: {
+                'Content-Disposition': 'attachment; filename="sift-run-run-1.json"',
+              },
+            },
+          );
+        }),
+      );
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(user);
+      await user.selectOptions(screen.getByTestId('runtime-inspector-filter-level'), 'error');
+      await waitFor(() =>
+        expect(screen.getByTestId('runtime-inspector-timeline-item-debug-1')).toBeInTheDocument(),
+      );
+
+      await user.click(screen.getByTestId('runtime-inspector-export'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-export-status')).toHaveTextContent(
+          'Exported 1 events to sift-run-run-1.json.',
+        );
+      });
+      // What you export is what you were looking at.
+      expect(exportUrl?.pathname).toBe(`/api/debug/runs/${RUN_ID}/export`);
+      expect(exportUrl?.searchParams.get('level')).toBe('error');
+    });
+
+    it('reports a failed export instead of silently claiming success', async () => {
+      server.use(
+        filteringHandler([buildEvent()]),
+        http.get(
+          `${BASE_URL}/api/debug/runs/${RUN_ID}/export`,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(user);
+
+      await user.click(screen.getByTestId('runtime-inspector-export'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-export-error')).toHaveTextContent('500');
+      });
+      expect(screen.queryByTestId('runtime-inspector-export-status')).not.toBeInTheDocument();
+    });
+
+    it('offers no export control when the Inspector was opened with no run in hand', async () => {
+      render(
+        <RuntimeInspector
+          runId={null}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument(),
+      );
+      expect(screen.queryByTestId('runtime-inspector-export')).not.toBeInTheDocument();
+    });
+
+    function buildLargeRun(count: number): ReturnType<typeof buildEvent>[] {
+      return Array.from({ length: count }, (_unused, index) =>
+        buildEvent({
+          id: `debug-${index}`,
+          sequence: index,
+          summary: `Event number ${index}.`,
+        }),
+      );
+    }
+
+    function renderedTimelineItemCount(): number {
+      return document.querySelectorAll('[data-testid^="runtime-inspector-timeline-item-"]').length;
+    }
+
+    it('keeps the rendered Timeline bounded for a run far larger than one window, and pages through the rest', async () => {
+      const events = buildLargeRun(300);
+      server.use(filteringHandler(events, buildOverview({ eventCount: 300 })));
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(user);
+
+      // 300 real events; a bounded number of DOM nodes.
+      expect(renderedTimelineItemCount()).toBe(50);
+      expect(screen.getByTestId('runtime-inspector-timeline-window')).toHaveTextContent(
+        'Showing 1–50 of 300 events',
+      );
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-0')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('runtime-inspector-timeline-item-debug-50'),
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId('runtime-inspector-timeline-later'));
+
+      expect(renderedTimelineItemCount()).toBe(50);
+      expect(screen.getByTestId('runtime-inspector-timeline-window')).toHaveTextContent(
+        'Showing 51–100 of 300 events',
+      );
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-50')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('runtime-inspector-timeline-item-debug-0'),
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId('runtime-inspector-timeline-earlier'));
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-0')).toBeInTheDocument();
+    });
+
+    it('omits the paging controls entirely for a run that fits in one window', async () => {
+      server.use(filteringHandler(buildLargeRun(3)));
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(user);
+
+      expect(renderedTimelineItemCount()).toBe(3);
+      expect(screen.queryByTestId('runtime-inspector-timeline-window')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('runtime-inspector-timeline-later')).not.toBeInTheDocument();
+    });
+
+    it('moves the window to the page holding a focused event deep inside a large run, so the jump target is really in the DOM', async () => {
+      server.use(filteringHandler(buildLargeRun(300), buildOverview({ eventCount: 300 })));
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+          focusEventId="debug-250"
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-timeline-item-debug-250')).toHaveAttribute(
+          'data-focused',
+          'true',
+        );
+      });
+      expect(renderedTimelineItemCount()).toBe(50);
+      expect(screen.getByTestId('runtime-inspector-timeline-window')).toHaveTextContent(
+        'Showing 251–300 of 300 events',
+      );
+    });
+
+    it('says so when a filter hides the event the Inspector was opened to show, and can undo it', async () => {
+      server.use(
+        filteringHandler([
+          buildEvent({ id: 'debug-1', sequence: 0, category: 'tool', summary: 'first' }),
+          buildEvent({ id: 'debug-2', sequence: 1, category: 'tool', summary: 'second' }),
+        ]),
+      );
+      const user = userEvent.setup();
+      render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+          focusEventId="debug-2"
+        />,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-timeline-item-debug-2')).toHaveAttribute(
+          'data-focused',
+          'true',
+        );
+      });
+      // No filters are active yet, so nothing is being hidden.
+      expect(screen.queryByTestId('runtime-inspector-focus-hidden')).not.toBeInTheDocument();
+
+      await user.selectOptions(screen.getByTestId('runtime-inspector-filter-category'), 'skill');
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-focus-hidden')).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByTestId('runtime-inspector-timeline-item-debug-2'),
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId('runtime-inspector-clear-filters'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('runtime-inspector-timeline-item-debug-2')).toHaveAttribute(
+          'data-focused',
+          'true',
+        );
+      });
+      expect(screen.queryByTestId('runtime-inspector-focus-hidden')).not.toBeInTheDocument();
+    });
+
+    it('has no axe violations with the full filter set, an origin badge, and the paging controls rendered', async () => {
+      const events = buildLargeRun(120);
+      events[0] = buildEvent({
+        id: 'debug-0',
+        sequence: 0,
+        summary: 'Command issued through a registered WebMCP tool.',
+        agentId: 'deal-analyst',
+        attributes: { origin: 'webmcp' },
+      });
+      server.use(
+        filteringHandler(
+          events,
+          buildOverview({
+            eventCount: 120,
+            agentIds: ['deal-analyst'],
+            countsByOrigin: { webmcp: 1 },
+          }),
+        ),
+      );
+      const user = userEvent.setup();
+      const { baseElement } = render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await openTimeline(user);
+      expect(screen.getByTestId('runtime-inspector-timeline-window')).toBeInTheDocument();
+
+      expect(await axe(baseElement)).toHaveNoViolations();
+    });
+
+    it('introduces no fixed width wider than the 390px pane, in the Timeline as rendered through the sheet portal', async () => {
+      server.use(
+        filteringHandler(
+          buildLargeRun(120),
+          buildOverview({
+            eventCount: 120,
+            agentIds: ['deal-analyst'],
+            countsByOrigin: { webmcp: 1 },
+          }),
+        ),
+      );
+      const user = userEvent.setup();
+      const { renderResult, overflowRisks } = renderAtNarrowWidth(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await waitFor(() =>
+        expect(renderResult.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+      );
+      await user.click(renderResult.getByTestId('runtime-inspector-tab-timeline'));
+      await waitFor(() =>
+        expect(renderResult.getByTestId('runtime-inspector-timeline')).toBeInTheDocument(),
+      );
+      expect(overflowRisks).toEqual([]);
+
+      // `renderAtNarrowWidth` scans its own container, and the Sheet portals
+      // its content to `document.body` -- outside that container, which is
+      // why the assertion above is necessary but not sufficient here. The
+      // same structural rule, applied to the markup that actually rendered.
+      const portaled = document.body.innerHTML;
+      const fixedWidths = [
+        ...portaled.matchAll(/(?<!max-)(?:min-)?width:\s*(\d+(?:\.\d+)?)px/gi),
+        ...portaled.matchAll(/\bmin-w-\[(\d+(?:\.\d+)?)px\]/gi),
+        ...portaled.matchAll(/(?<!max-|min-)\bw-\[(\d+(?:\.\d+)?)px\]/gi),
+      ].filter((match) => Number(match[1]) > 390);
+      expect(fixedWidths.map((match) => match[0])).toEqual([]);
     });
   });
 

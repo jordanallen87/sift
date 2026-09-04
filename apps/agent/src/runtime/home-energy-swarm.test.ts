@@ -2,7 +2,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import type { InvokableTool, ToolContext } from '@strands-agents/sdk';
+import { Model } from '@strands-agents/sdk';
+import type {
+  BaseModelConfig,
+  InvokableTool,
+  Message,
+  ModelStreamEvent,
+  StreamOptions,
+  ToolContext,
+} from '@strands-agents/sdk';
 import type { Clock, IdGenerator } from '@sift/core';
 import {
   createCapabilityCatalog,
@@ -23,6 +31,7 @@ import {
   CALCULATOR_TOOL_ID,
   HOME_ENERGY_SWARM_NODE_IDS,
   buildHomeEnergyFixtureTools,
+  createNodeDurationTracker,
   executeHomeEnergySwarm,
   DEFAULT_SYNTHESIZER_VALIDATOR,
   PROPOSE_INSPECTION_TOOL_ID,
@@ -1114,4 +1123,247 @@ describe('executeHomeEnergySwarm: handoff-context derivation edge cases and orch
   // itself; the `?? ''` fallback on the final assembled result remains
   // untested by a full run and is called out in this task's report as a
   // documented residual gap.
+});
+
+/**
+ * A real Strands `Model` that parks on a caller-controlled promise before
+ * delegating to the scripted provider it wraps -- the deterministic,
+ * timer-free stand-in for "this node is still working". No sleeps, no fake
+ * timers: the gate opens only when the test opens it.
+ */
+class GatedModel extends Model<BaseModelConfig> {
+  /** True once a Swarm node's `Agent` has genuinely entered this model and parked on the gate. */
+  streamEntered = false;
+  private readonly gate: Promise<void>;
+  private release: (() => void) | undefined;
+
+  constructor(private readonly inner: Model<BaseModelConfig>) {
+    super();
+    this.gate = new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+  }
+
+  /** Lets the parked node proceed. */
+  open(): void {
+    this.release?.();
+  }
+
+  override updateConfig(modelConfig: BaseModelConfig): void {
+    this.inner.updateConfig(modelConfig);
+  }
+
+  override getConfig(): BaseModelConfig {
+    return this.inner.getConfig();
+  }
+
+  override async *stream(
+    messages: Message[],
+    options?: StreamOptions,
+  ): AsyncIterable<ModelStreamEvent> {
+    this.streamEntered = true;
+    await this.gate;
+    yield* this.inner.stream(messages, options);
+  }
+}
+
+/** Advances the event loop until `predicate` holds; the turn bound is a failure guard, not a delay. */
+async function waitUntil(predicate: () => boolean, description: string): Promise<void> {
+  for (let turn = 0; turn < 5000; turn += 1) {
+    if (predicate()) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error(`waitUntil: ${description} never became true`);
+}
+
+describe('executeHomeEnergySwarm: per-node duration telemetry', () => {
+  it('reports how long every Swarm node really took, measured across its own execution', async () => {
+    // A stepping source whose step GROWS by 1000 ms per reading (elapsed
+    // 1000, 3000, 6000, 10000, ...). A plain fixed step would not do here:
+    // this Swarm is strictly sequential and reads the clock exactly twice
+    // per node, so every node would legitimately measure one identical step
+    // and the assertion below could not tell a real per-node interval from
+    // one shared constant. With a growing step, each node's own pair of
+    // readings yields a different, strictly larger figure than the node
+    // before it -- which only a genuinely per-node measurement produces.
+    let reads = 0;
+    const nowMs = (): number => {
+      reads += 1;
+      return ((reads * (reads + 1)) / 2) * 1000;
+    };
+    const { deps } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+
+    const { events } = await drain(executeHomeEnergySwarm({ ...deps, nowMs }));
+
+    const nodeFinishes = events.filter((event) => event.name === 'swarm.node_completed');
+    // Every one of the six real nodes reports one.
+    expect(nodeFinishes.map((event) => event.attributes['nodeId']).sort()).toEqual(
+      [...HOME_ENERGY_SWARM_NODE_IDS].sort(),
+    );
+    for (const event of nodeFinishes) {
+      expect(event.durationMs).toBeDefined();
+      expect(event.durationMs).toBeGreaterThan(0);
+      expect((event.durationMs ?? 0) % 1000).toBe(0);
+    }
+
+    // Each node is timed across its own span, not handed the run's total, a
+    // copy of its neighbour's, or a constant.
+    const durations = nodeFinishes.map((event) => event.durationMs ?? 0);
+    expect(durations).toEqual([...durations].sort((left, right) => left - right));
+    expect(new Set(durations).size).toBe(durations.length);
+
+    // A node's start closes nothing, so it carries no duration: the key is
+    // absent, not present-and-zero -- the same omit path a finish with no
+    // observed start takes (`createNodeDurationTracker` returns `undefined`
+    // there, never `0`).
+    for (const event of events.filter((event) => event.name === 'swarm.node_started')) {
+      expect(event).not.toHaveProperty('durationMs');
+    }
+    expect(events.some((event) => event.category === 'swarm' && event.durationMs === 0)).toBe(
+      false,
+    );
+  });
+
+  it('leaves handoff, cycle, and timeout events undurated: they close no node span', async () => {
+    let ticks = 0;
+    const nowMs = (): number => (ticks += 1000);
+    const { deps } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+
+    const { events } = await drain(executeHomeEnergySwarm({ ...deps, nowMs }));
+
+    const handoffs = events.filter((event) => event.name === 'swarm.handoff');
+    expect(handoffs.length).toBeGreaterThan(0);
+    for (const event of handoffs) {
+      expect(event).not.toHaveProperty('durationMs');
+    }
+  });
+});
+
+describe('createNodeDurationTracker (home-energy-swarm)', () => {
+  it('gives each node the interval between its own start and its own finish', () => {
+    // Keying by node id is what keeps two nodes' intervals from being
+    // swapped when more than one start is outstanding -- the Swarm reaches
+    // that state whenever a node is re-entered after a handoff, and the
+    // Graph reaches it on every run.
+    let clock = 0;
+    const tracker = createNodeDurationTracker(() => clock);
+
+    clock = 100;
+    tracker.noteNodeStart('anomaly-investigator');
+    clock = 130;
+    tracker.noteNodeStart('rate-analyst');
+    clock = 160;
+    tracker.noteNodeStart('weather-analyst');
+
+    clock = 220;
+    expect(tracker.measureNode('weather-analyst')).toBe(60);
+    clock = 300;
+    expect(tracker.measureNode('anomaly-investigator')).toBe(200);
+    clock = 400;
+    expect(tracker.measureNode('rate-analyst')).toBe(270);
+  });
+
+  it('reports no duration at all -- not a zero -- for a node whose start was never observed', () => {
+    const tracker = createNodeDurationTracker(() => 500);
+    expect(tracker.measureNode('source-challenger')).toBeUndefined();
+  });
+
+  it('measures a re-entered node from its latest start, never a stale earlier one', () => {
+    // Real Swarm behaviour: a specialist can be handed control back and run
+    // again inside one invocation.
+    let clock = 0;
+    const tracker = createNodeDurationTracker(() => clock);
+
+    clock = 10;
+    tracker.noteNodeStart('weather-analyst');
+    clock = 50;
+    expect(tracker.measureNode('weather-analyst')).toBe(40);
+
+    clock = 400;
+    tracker.noteNodeStart('weather-analyst');
+    clock = 430;
+    expect(tracker.measureNode('weather-analyst')).toBe(30);
+  });
+});
+
+/** Flushes pending microtasks and macrotasks so everything that *can* progress has, without sleeping for a fixed duration. */
+async function settleEventLoop(turns = 10): Promise<void> {
+  for (let turn = 0; turn < turns; turn += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
+
+/**
+ * Streaming integrity, identical in intent to `car-purchase-graph.test.ts`'s
+ * own streaming suite: the Swarm's events must reach a consumer as each node
+ * produces them, not in one burst once `swarm.invoke` has resolved. A test
+ * that only inspects the final event list would pass on a buffering
+ * implementation and prove nothing, so this one holds a mid-chain node open
+ * and asserts what has *already* been delivered.
+ */
+describe('executeHomeEnergySwarm streams events as the Swarm progresses', () => {
+  it('delivers the earlier nodes’ events while weather-analyst is still running', async () => {
+    const { deps } = buildDeps({
+      costWeight: ROUND1_COST_WEIGHT,
+      conservationWeight: ROUND1_CONSERVATION_WEIGHT,
+    });
+    const gated = new GatedModel(deps.modelFor('weather-analyst') as Model<BaseModelConfig>);
+    const patchedModelFor: HomeEnergySwarmDeps['modelFor'] = (nodeId) =>
+      nodeId === 'weather-analyst' ? gated : deps.modelFor(nodeId);
+
+    const received: RuntimeEvent[] = [];
+    let finished = false;
+    const gen = executeHomeEnergySwarm({ ...deps, modelFor: patchedModelFor });
+    const completed = (async () => {
+      try {
+        let next = await gen.next();
+        while (!next.done) {
+          received.push(next.value);
+          next = await gen.next();
+        }
+        return next.value;
+      } finally {
+        finished = true;
+      }
+    })();
+
+    // The Swarm's causal chain is anomaly-investigator -> rate-analyst ->
+    // weather-analyst -> ..., so once weather-analyst has parked on the
+    // gate, the two nodes before it have genuinely completed and the three
+    // after it cannot have started.
+    await waitUntil(() => gated.streamEntered, "weather-analyst's gated model call");
+    await settleEventLoop();
+    expect(finished).toBe(false);
+
+    const early = [...received];
+    expect(early.length).toBeGreaterThan(0);
+    for (const nodeId of ['anomaly-investigator', 'rate-analyst']) {
+      expect(
+        early.some(
+          (event) =>
+            event.category === 'swarm' &&
+            event.name === 'swarm.node_completed' &&
+            event.attributes['nodeId'] === nodeId,
+        ),
+        `expected node "${nodeId}"'s completion to have already been streamed`,
+      ).toBe(true);
+    }
+    expect(early.some((event) => event.agentId === 'decision-synthesizer')).toBe(false);
+
+    gated.open();
+    const result = await completed;
+    expect(result.multiAgentResult.status).toBe('COMPLETED');
+    // The early events are a genuine, unmodified prefix of the whole stream.
+    expect(received.slice(0, early.length)).toEqual(early);
+    expect(received.length).toBeGreaterThan(early.length);
+    // Ordering and completeness are unchanged by streaming: one gapless,
+    // strictly ascending sequence, exactly as the buffered drain produced.
+    expect(received.map((event) => event.sequence)).toEqual(received.map((_, index) => index));
+  });
 });

@@ -33,13 +33,16 @@
  * `CaseStore.append` (which only ever touches `case_events`/`cases`).
  */
 import {
+  CommandOriginSchema,
   RequestInvestigationInputSchema,
+  type CommandOrigin,
   type RequestInvestigationInput,
   type RunReceipt,
 } from '@sift/contracts';
 import { selectNextObligation, type Clock, type IdGenerator } from '@sift/core';
 import type { SiftDatabase } from '../db/connection.js';
 import { RUN_STATUSES, type RunStatus } from '../db/schema.js';
+import { runInSpanScope } from '../runtime/otel-span-recorder.js';
 import type { ActivityStore } from '../store/activity-store.js';
 import type { CaseStore } from '../store/case-store.js';
 import {
@@ -60,6 +63,23 @@ export interface RunRecord {
   readonly updatedAt: string;
   readonly traceId?: string;
   readonly sessionId?: string;
+  /**
+   * Which transport asked for this run (I1: WebMCP call provenance -- ADR
+   * 0006 decision 8, docs/specs/debugging-and-observability.md "WebMCP tool
+   * calls"). `sift_request_investigation` is the WebMCP tool that starts a
+   * run, so this is what makes "this assistant's tool call caused this
+   * entire run" a durable fact rather than an unrecorded one.
+   *
+   * `undefined` means the caller stated no origin -- NOT "a human clicked".
+   * The two are genuinely different facts and this field never collapses
+   * them: there is no default. Set once, at `create` time, from the same
+   * `X-Sift-Command-Origin` header, `readCommandOrigin` reader, and closed
+   * `CommandOrigin` vocabulary `routes/commands.ts` already uses; like that
+   * marker it is self-reported provenance for the developer/runtime trail
+   * only, and is never consulted for an authorization decision (see
+   * `packages/contracts/src/http.ts`'s `CommandOrigin` doc comment).
+   */
+  readonly origin?: CommandOrigin;
   /** A JSON-serializable summary of the run's outcome (e.g. `{ round, favoredOptionId }` on success, `{ error }` on failure). Never the raw `ExecutionResult`/case data itself -- see `car-purchase-engine.ts`. */
   readonly result?: unknown;
 }
@@ -174,16 +194,42 @@ export class MemoryRunStore implements RunStore {
   }
 }
 
+/**
+ * Reads the nullable `runs.origin` column back as a `CommandOrigin`.
+ *
+ * NULL -> `undefined` ("the caller stated no origin"). Anything outside the
+ * closed `COMMAND_ORIGINS` vocabulary -> also `undefined`: the only way such
+ * a value reaches this column is a hand-edited database (the write path
+ * accepts nothing but an already-validated `CommandOrigin`), and reporting
+ * an unrecognized token as if it were a real, known provenance claim would
+ * be worse than reporting that none was stated.
+ */
+function readStoredOrigin(value: string | null): CommandOrigin | undefined {
+  if (value === null) return undefined;
+  const parsed = CommandOriginSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export class SqliteRunStore implements RunStore {
   constructor(private readonly database: SiftDatabase) {}
 
   create(run: RunRecord): void {
     this.database.sqlite
       .prepare(
-        `INSERT INTO runs (id, case_id, obligation_id, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, case_id, obligation_id, status, origin, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(run.id, run.caseId, run.obligationId, run.status, run.createdAt, run.updatedAt);
+      .run(
+        run.id,
+        run.caseId,
+        run.obligationId,
+        run.status,
+        // NULL, never a substituted default: an unstated origin stays
+        // unstated in the durable record (see `RunRecord.origin`).
+        run.origin ?? null,
+        run.createdAt,
+        run.updatedAt,
+      );
   }
 
   findIdempotent(commandId: string): IdempotentRunRecord | undefined {
@@ -237,7 +283,7 @@ export class SqliteRunStore implements RunStore {
     const row = this.database.sqlite
       .prepare(
         `SELECT id, case_id as caseId, obligation_id as obligationId, status,
-                trace_id as traceId, session_id as sessionId, result,
+                trace_id as traceId, session_id as sessionId, origin, result,
                 created_at as createdAt, updated_at as updatedAt
          FROM runs WHERE id = ?`,
       )
@@ -249,12 +295,14 @@ export class SqliteRunStore implements RunStore {
           status: string;
           traceId: string | null;
           sessionId: string | null;
+          origin: string | null;
           result: string | null;
           createdAt: string;
           updatedAt: string;
         }
       | undefined;
     if (row === undefined) return undefined;
+    const origin = readStoredOrigin(row.origin);
     return {
       id: row.id,
       caseId: row.caseId,
@@ -264,6 +312,7 @@ export class SqliteRunStore implements RunStore {
       updatedAt: row.updatedAt,
       ...(row.traceId !== null ? { traceId: row.traceId } : {}),
       ...(row.sessionId !== null ? { sessionId: row.sessionId } : {}),
+      ...(origin !== undefined ? { origin } : {}),
       ...(row.result !== null ? { result: JSON.parse(row.result) as unknown } : {}),
     };
   }
@@ -301,7 +350,26 @@ const QUEUED_STATUS: RunStatus = RUN_STATUSES[0];
 export class RunService {
   constructor(private readonly deps: RunServiceDeps) {}
 
-  requestInvestigation(commandId: string, rawInput: unknown): ServiceResult<RunReceipt> {
+  /**
+   * `commandOrigin` (I1: WebMCP call provenance -- ADR 0006 decision 8) is
+   * the exact same optional marker `routes/commands.ts` threads into
+   * `CommandService`, arriving from the exact same `X-Sift-Command-Origin`
+   * header via the same `readCommandOrigin` reader. It changes only what
+   * gets *recorded* about this run, never what the run *does*: a request
+   * with and without the header queues a byte-identical run against the
+   * same obligation and returns an identical `RunReceipt`.
+   *
+   * Deliberately not consulted on the idempotent-replay branch below. That
+   * branch returns the receipt of the run the *original* call created; the
+   * origin already durably recorded is that original call's, and letting a
+   * differently-tagged retry rewrite it would let a replay restate history
+   * for a run it did not cause.
+   */
+  requestInvestigation(
+    commandId: string,
+    rawInput: unknown,
+    commandOrigin?: CommandOrigin,
+  ): ServiceResult<RunReceipt> {
     const existing = this.deps.runStore.findIdempotent(commandId);
     if (existing !== undefined) {
       const snapshot = this.deps.caseStore.load(existing.caseId);
@@ -369,6 +437,8 @@ export class RunService {
       caseId: input.caseId,
       obligationId,
       status: QUEUED_STATUS,
+      // Absent stays absent -- `RunRecord.origin` has no default.
+      ...(commandOrigin !== undefined ? { origin: commandOrigin } : {}),
       createdAt: now,
       updatedAt: now,
     });
@@ -380,6 +450,11 @@ export class RunService {
       now,
     );
 
+    // The same `safeDetails.origin` shape `CommandService.emitActivity`
+    // writes for a tagged command (`command-service.ts`), so the replayable
+    // public stream tells a WebMCP-started run from a clicked one without a
+    // second event shape or a second field name. Omitted entirely when no
+    // origin was stated, exactly as there.
     this.deps.activityStore.append({
       timestamp: now,
       caseId: input.caseId,
@@ -389,6 +464,7 @@ export class RunService {
       type: 'run.queued',
       phase: 'queued',
       summary: `Investigation queued for obligation "${obligationId}".`,
+      ...(commandOrigin !== undefined ? { safeDetails: { origin: commandOrigin } } : {}),
     });
 
     // Fire-and-forget: kick off the real adapter for this case's pinned
@@ -401,11 +477,21 @@ export class RunService {
     // e.g. `CarPurchaseEngine`'s) -- an implementation is contractually
     // required to never let that promise reject (see that interface's own
     // doc comment), so there is nothing here to `.catch`.
-    void this.deps.engines?.[snapshot.pack.id]?.trigger({
-      caseId: input.caseId,
-      runId,
-      obligationId,
-    });
+    //
+    // `runInSpanScope` is the one place a Sift run id is attached to the
+    // active OpenTelemetry context, so every span the Strands SDK starts
+    // inside this engine's async call tree is attributable to *this* run
+    // (`runtime/otel-span-recorder.ts`). It is a transparent passthrough
+    // when tracing is disabled or not installed: same call, same return
+    // value, no context manipulation. It never changes what the engine
+    // does -- only what can be recorded about it.
+    void runInSpanScope(runId, () =>
+      this.deps.engines?.[snapshot.pack.id]?.trigger({
+        caseId: input.caseId,
+        runId,
+        obligationId,
+      }),
+    );
 
     // A case gets its first plan the moment work is genuinely requested for
     // it. Failures are swallowed for the same reason `notifyRunPlan` does in

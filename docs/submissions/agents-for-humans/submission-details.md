@@ -171,7 +171,7 @@ Replace this draft with the exact public URL, scenario control labels, AgentCore
 - Docker
 - Railway
 
-**OpenTelemetry is deliberately absent from this list.** Sift never calls the Strands SDK's `setupTracer()` — the SDK is explicit that its telemetry module "is only loaded when the user explicitly imports and calls setupTracer or setupMeter" — no `@opentelemetry` package is a direct dependency, and no OTEL span is ever produced. The Runtime Inspector's correlation is real but Sift's own: lifecycle-hook events normalized in `apps/agent/src/runtime/event-normalizer.ts` under a Sift-minted `traceId`. See `docs/submissions/webmcp/claim-evidence-matrix.md` rows E8/E9.
+**OpenTelemetry is now part of this list (2026-09-04).** Sift registers a real `NodeTracerProvider` through the Strands SDK's own `setupTracer({ provider })` and records the spans the SDK already emits into `runtime_events`, with real `span_id`/`parent_span_id` links and span-measured durations (`apps/agent/src/runtime/otel-span-recorder.ts`). The lifecycle-hook correlation is unchanged and still real: hook events normalized in `apps/agent/src/runtime/event-normalizer.ts` under a Sift-minted `traceId`. Still not claimed: `setupMeter()`/OTEL metrics and W3C `traceparent` propagation to a tracing backend. See `docs/submissions/webmcp/claim-evidence-matrix.md` rows E8/E9.
 
 ## Architecture diagram requirements
 

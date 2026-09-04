@@ -17,6 +17,15 @@ export default tseslint.config(
       'test-results/**',
       '.stryker-tmp/**',
       'reports/**',
+      // Vendored brand-kit source (docs/brand/**, see its README). Design
+      // assets and the kit's own drop-in theme files, kept verbatim so the
+      // kit stays re-exportable; nothing here is imported, compiled, or
+      // shipped, and `docs/brand/tailwind/sift-theme.ts` is deliberately not
+      // in any tsconfig -- which is exactly what the type-checked ruleset
+      // errors on ("was not found by the project service"). `.prettierignore`
+      // already excludes all of `docs/` for the same reason: this is prose
+      // and design source, not code under the repo's formatting/lint gate.
+      'docs/brand/**',
       '**/*.d.ts',
     ],
   },

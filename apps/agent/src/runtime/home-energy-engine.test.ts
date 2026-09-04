@@ -29,7 +29,7 @@ import { SqliteActivityStore } from '../store/activity-store.js';
 import type { CaseStore } from '../store/case-store.js';
 import { SqliteCaseStore } from '../store/sqlite-case-store.js';
 import { SqliteRuntimeEventStore } from '../store/runtime-event-store.js';
-import type { HomeEnergySwarmResult } from './home-energy-swarm.js';
+import { HOME_ENERGY_SWARM_NODE_IDS, type HomeEnergySwarmResult } from './home-energy-swarm.js';
 import {
   createHomeEnergyEngine,
   determineHomeEnergyRound,
@@ -298,6 +298,15 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
       ),
     ).toBe(true);
     expect(run1Record.traceId).toBeTruthy();
+    // --- The Runtime Inspector Overview's "Trace" must actually identify
+    // this run's events. The run row's trace_id and the trace_id every
+    // runtime_events row for that run carries are ONE id -- previously the
+    // engine minted a local trace for the run row while the Swarm minted
+    // its own for every event, so the value on screen matched nothing in
+    // the Timeline. Asserted at the persisted-data level (both ids read
+    // back out of real SQLite), because that is exactly where the two
+    // diverged. ---
+    expect(runtimeEventsRound1.every((event) => event.traceId === run1Record.traceId)).toBe(true);
 
     // --- I2: a consumer-visible activity event derived from a real Swarm
     // RuntimeEvent carries a real debugEventId that resolves to its exact
@@ -381,6 +390,12 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
           event.agentId === 'decision-synthesizer',
       ),
     ).toBe(true);
+    // The same one-id invariant holds for round 2's own run row, and the
+    // two runs' traces are genuinely distinct (one trace per real Swarm
+    // invocation, so the Overview's "Trace" narrows to one run's events).
+    expect(run2Record.traceId).toBeTruthy();
+    expect(runtimeEventsRound2.every((event) => event.traceId === run2Record.traceId)).toBe(true);
+    expect(run2Record.traceId).not.toBe(run1Record.traceId);
 
     // --- Round 2 gets its own real, separately-sequenced case-state diff and
     // debugEventId correlations, distinct from round 1's. ---
@@ -405,6 +420,65 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
         .replayFrom(caseId, 0)
         .some((event) => event.type === 'intervention.confirmation_required'),
     ).toBe(true);
+  }, 30_000);
+
+  it("publishes each specialist's real duration onto the consumer activity stream, not only the Runtime Inspector", async () => {
+    // The gap this closes: `home-energy-swarm.ts` measures a real per-node
+    // duration and stamps it on the `runtime_events` row, but a consumer
+    // surface reads `activity_events`. Without `safeDetails` forwarding,
+    // the duration lands in the developer Inspector and the consumer pane's
+    // elapsed column stays permanently blank.
+    const { activityStore, runStore, runtimeEventStore, commandService, runService } =
+      buildLiveStack();
+
+    const startResult = commandService.startDemo('cmd-start', { demoId: 'home-energy-guardian' });
+    requireOkCommand(startResult);
+    const snapshot = startResult.value.snapshot!;
+    const caseId = snapshot.id;
+
+    const runResult = runService.requestInvestigation('cmd-run-1', {
+      caseId,
+      expectedSequence: snapshot.eventSequence,
+    });
+    requireOkRun(runResult);
+    const runId = runResult.value.runId;
+    const record = await waitForRunSettled(runStore, runId);
+    expect(record.status).toBe('completed');
+
+    const activity = activityStore.replayFrom(caseId, 0);
+    const completions = activity.filter(
+      (event) => event.runId === runId && event.type === 'specialist.completed',
+    );
+    // Every real Swarm node reaches the consumer stream, each carrying its
+    // own duration.
+    expect([...new Set(completions.map((event) => event.agentId))].sort()).toEqual(
+      [...HOME_ENERGY_SWARM_NODE_IDS].sort(),
+    );
+
+    const runtimeEvents = runtimeEventStore.listByRun(runId);
+    for (const event of completions) {
+      const durationMs = event.safeDetails?.['durationMs'];
+      expect(durationMs, `expected a duration for "${String(event.agentId)}"`).toBeTypeOf('number');
+      expect(durationMs as number).toBeGreaterThanOrEqual(0);
+
+      // It is that specialist's OWN measured interval, carried through
+      // unchanged from the exact correlated runtime event -- not a run
+      // total, a neighbour's figure, or a number invented at this layer.
+      const correlated = runtimeEvents.find((entry) => entry.id === event.debugEventId);
+      expect(correlated?.name).toBe('swarm.node_completed');
+      expect(correlated?.attributes['nodeId']).toBe(event.agentId);
+      expect(durationMs).toBe(correlated?.durationMs);
+    }
+
+    // A specialist that has only started has no elapsed time to freeze yet,
+    // so it publishes none -- absent, never a fabricated zero.
+    const starts = activity.filter(
+      (event) => event.runId === runId && event.type === 'specialist.started',
+    );
+    expect(starts.length).toBeGreaterThan(0);
+    for (const event of starts) {
+      expect(event.safeDetails?.['durationMs']).toBeUndefined();
+    }
   }, 30_000);
 
   it('logs a real, inspectable trace when the case does not exist at all', async () => {

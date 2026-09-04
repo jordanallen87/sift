@@ -98,16 +98,19 @@ import {
   buildSkillsPlugin,
 } from './plugins.js';
 import {
+  createRuntimeMetricsTracker,
   createSequenceCounter,
   normalizeAfterModelCall,
   normalizeAfterToolCall,
   normalizeBeforeModelCall,
   normalizeBeforeToolCall,
+  normalizeGoalValidation,
   normalizeIntervention,
   normalizeSkillActivation,
   type NormalizerContext,
   type RuntimeEvent,
 } from './event-normalizer.js';
+import { RuntimeEventQueue } from './runtime-event-queue.js';
 
 /** Every specialist id the four-wide parallel branch of the Graph runs before `source-challenger` (strands-runtime.md "Orchestration" topology). */
 export const CAR_PURCHASE_PARALLEL_SPECIALIST_IDS = [
@@ -160,13 +163,21 @@ export interface CarPurchaseGraphDeps {
   invokePrompt?: string;
   /** Overrides `GoalLoop.maxAttempts`. Defaults to `2` (strands-runtime.md "GoalLoop output validation"). */
   goalLoopMaxAttempts?: number;
+  /**
+   * Elapsed-millisecond source used only to measure real model/tool call
+   * and per-node durations for `RuntimeDebugEvent.durationMs`. Defaults to
+   * wall-clock `Date.now`. `Clock` is not reused here: it returns ISO
+   * business timestamps for case events, while this is a monotonic interval
+   * source for telemetry that a test can advance deterministically.
+   */
+  nowMs?: () => number;
 }
 
-/** `goalLoop.lastResult(agent)`'s shape, re-declared narrowly here so this module does not need to import the SDK's own (unexported-by-name) GoalLoop result type. */
+/** `goalLoop.lastResult(agent)`'s shape, re-declared narrowly here so this module does not need to import the SDK's own (unexported-by-name) GoalLoop result type. `attempt` is the real plugin's 1-indexed `GoalAttempt.attempt` (`vended-plugins/goal/plugin.d.ts`), previously omitted from this declaration even though the SDK always supplies it. */
 export interface CarPurchaseGoalLoopResult {
   readonly passed: boolean;
   readonly stopReason: string;
-  readonly attempts: readonly { passed: boolean; feedback?: string }[];
+  readonly attempts: readonly { attempt: number; passed: boolean; feedback?: string }[];
 }
 
 export interface CarPurchaseGraphResult {
@@ -249,25 +260,117 @@ const SPECIALIST_ROLE_DESCRIPTIONS: Record<CarPurchaseParallelSpecialistId, stri
 
 /**
  * Collected mutable state one call to `executeCarPurchaseGraph` accumulates
- * across every node's hooks -- one run, one shared buffer, one shared
+ * across every node's hooks -- one run, one shared queue, one shared
  * monotonic `sequence` (matching `strands-adapter.ts`'s single-agent
  * `execute()`, now multiplied across nodes: "a real cross-node streaming
  * need actually arises" here, exactly as that file's header comment
  * anticipated).
+ *
+ * `queue` is a `RuntimeEventQueue`, not a plain array, precisely because the
+ * SDK hooks that fill it are synchronous while the consumer draining it is
+ * asynchronous: the queue is what lets each node's events reach that
+ * consumer while later nodes are still running, rather than in one burst
+ * after `graph.invoke` resolves. See `runtime-event-queue.ts`.
  */
 interface RunAccumulator {
-  events: RuntimeEvent[];
+  queue: RuntimeEventQueue<RuntimeEvent>;
   sequence: () => number;
   traceId: string;
   runId: string;
   caseId: string;
   sessionId?: string;
+  /** Elapsed-time source every node's `RuntimeMetricsTracker` measures real model/tool call durations with. Wall-clock unless `CarPurchaseGraphDeps.nowMs` overrides it. */
+  now: () => number;
+  /** Per-node elapsed-time measurement behind `graph.node_completed`'s `durationMs`. See `createNodeDurationTracker`. */
+  nodeDurations: NodeDurationTracker;
+}
+
+// --- Per-node duration (RuntimeDebugEvent.durationMs on graph node events) ---
+
+/** Records one node's real start reading and closes it into an elapsed interval. See `createNodeDurationTracker`. */
+export interface NodeDurationTracker {
+  /** Called from the node's real `BeforeNodeCallEvent` hook, synchronously, before the node runs. */
+  noteNodeStart(nodeId: string): void;
+  /**
+   * Called from the node's real `NodeResultEvent` hook. Returns the elapsed
+   * milliseconds since that node's own recorded start, or `undefined` when no
+   * start was ever observed for it -- never a zero standing in for "unknown".
+   */
+  measureNode(nodeId: string): number | undefined;
+}
+
+/**
+ * Measures how long each Graph node genuinely took, as the interval between
+ * that node's own real `BeforeNodeCallEvent` and `NodeResultEvent` hook
+ * firings, read from `RunAccumulator.now`.
+ *
+ * **Keyed by node id, deliberately.** The four parallel specialists are
+ * genuinely in flight at once (`maxConcurrency` up to 4, and the real Graph
+ * starts every ready node before any of them completes), so a single
+ * "last node start" variable would anchor all four finishes to whichever
+ * node happened to start last and silently misattribute three of the four
+ * durations. This mirrors `createRuntimeMetricsTracker`'s identical
+ * `toolUseId`-keyed map for the SDK's concurrent tool executor.
+ *
+ * **Why this interval and not `NodeResult.duration`.** The installed
+ * `@strands-agents/sdk@1.14.0` does measure a per-node duration of its own:
+ * `multiagent/state.d.ts`'s `NodeResult.duration` ("Execution time in
+ * milliseconds"), computed in `multiagent/nodes.js` as
+ * `Date.now() - nodeState.startTime` around the node's own `handle()` call.
+ * That number is real, is correctly per-node, and is *not* discarded --
+ * every `NodeResult` on the returned `CarPurchaseGraphResult.
+ * multiAgentResult.results` still carries it verbatim. What is emitted on
+ * the runtime event is Sift's own interval instead, for three reasons:
+ *
+ * 1. it is the interval a consumer actually observes -- a surface that
+ *    starts a node's elapsed timer on `graph.node_completed`/`phase: start`
+ *    and freezes it on `phase: finish` is measuring exactly this span, so
+ *    the frozen number matches what the reader watched tick, whereas the
+ *    SDK's strictly-inner span would freeze slightly below it;
+ * 2. it comes from the same single time source as every other `durationMs`
+ *    in the run (`createRuntimeMetricsTracker` reads the same `now`), so a
+ *    node's duration and its own model/tool call durations are comparable
+ *    rather than drawn from two different clocks;
+ * 3. it is injectable, which is what lets the offline fixture suites assert
+ *    an exact measured number instead of a wall-clock value that changes
+ *    every run. `Date.now()` inside the SDK is reachable only by mocking a
+ *    global.
+ *
+ * Both readings are same-process wall clock taken microseconds apart on one
+ * event loop, which is precisely the timing docs/specs/
+ * debugging-and-observability.md treats as trustworthy -- unlike a
+ * *cross-process* hook timestamp comparison, which it does not.
+ */
+export function createNodeDurationTracker(
+  now: () => number = () => Date.now(),
+): NodeDurationTracker {
+  const startedAt = new Map<string, number>();
+  return {
+    noteNodeStart(nodeId: string): void {
+      startedAt.set(nodeId, now());
+    },
+    measureNode(nodeId: string): number | undefined {
+      const started = startedAt.get(nodeId);
+      startedAt.delete(nodeId);
+      return started === undefined ? undefined : Math.max(0, Math.round(now() - started));
+    },
+  };
 }
 
 function emitGraphNodeEvent(
   acc: RunAccumulator,
   params: { nodeId: string; phase: 'start' | 'finish'; status?: string },
 ): void {
+  // Timing is captured here, inside the synchronous hook callback -- not
+  // when a consumer later drains the queue. The generator streams events
+  // while the Graph is still running (`RuntimeEventQueue.streamWhile`), so a
+  // reading taken at drain time would measure the consumer's own pace, not
+  // the node's.
+  if (params.phase === 'start') {
+    acc.nodeDurations.noteNodeStart(params.nodeId);
+  }
+  const durationMs =
+    params.phase === 'start' ? undefined : acc.nodeDurations.measureNode(params.nodeId);
   const event: RuntimeDebugEvent = {
     schemaVersion: '1.0',
     sequence: acc.sequence(),
@@ -281,6 +384,9 @@ function emitGraphNodeEvent(
     name: 'graph.node_completed',
     phase: params.phase === 'start' ? 'start' : 'finish',
     level: 'info',
+    // Omitted, never defaulted: a node whose start was never observed
+    // reports no duration at all rather than a fabricated `0`.
+    ...(durationMs !== undefined ? { durationMs } : {}),
     summary:
       params.phase === 'start'
         ? `Graph node "${params.nodeId}" started.`
@@ -291,7 +397,7 @@ function emitGraphNodeEvent(
     },
     redactions: [],
   };
-  acc.events.push(event);
+  acc.queue.push(event);
 }
 
 function buildInterventions(
@@ -362,12 +468,19 @@ function buildInterventions(
 }
 
 function wireAgentHooks(agent: Agent, ctx: NormalizerContext, acc: RunAccumulator): () => void {
+  // One tracker per `Agent`: each Graph node has its own Strands `Meter`,
+  // so a shared tracker would mix six nodes' cumulative token totals into
+  // one meaningless delta. See `createRuntimeMetricsTracker`.
+  const metrics = createRuntimeMetricsTracker(acc.now);
   const cleanups = [
     agent.addHook(BeforeToolCallEvent, (event) => {
-      acc.events.push(normalizeBeforeToolCall(event, ctx, acc.sequence()));
+      metrics.noteToolCallStart(event);
+      acc.queue.push(normalizeBeforeToolCall(event, ctx, acc.sequence()));
     }),
     agent.addHook(AfterToolCallEvent, (event) => {
-      acc.events.push(normalizeAfterToolCall(event, ctx, acc.sequence()));
+      acc.queue.push(
+        normalizeAfterToolCall(event, ctx, acc.sequence(), metrics.measureToolCall(event)),
+      );
       if (event.toolUse.name === 'skills' && event.result.status === 'success') {
         const input = event.toolUse.input;
         const skillId =
@@ -375,7 +488,7 @@ function wireAgentHooks(agent: Agent, ctx: NormalizerContext, acc: RunAccumulato
             ? (input as Record<string, unknown>)['skill_name']
             : undefined;
         if (typeof skillId === 'string') {
-          acc.events.push(
+          acc.queue.push(
             normalizeSkillActivation(
               {
                 skillId,
@@ -390,10 +503,13 @@ function wireAgentHooks(agent: Agent, ctx: NormalizerContext, acc: RunAccumulato
       }
     }),
     agent.addHook(BeforeModelCallEvent, (event) => {
-      acc.events.push(normalizeBeforeModelCall(event, ctx, acc.sequence()));
+      metrics.noteModelCallStart(event);
+      acc.queue.push(normalizeBeforeModelCall(event, ctx, acc.sequence()));
     }),
     agent.addHook(AfterModelCallEvent, (event) => {
-      acc.events.push(normalizeAfterModelCall(event, ctx, acc.sequence()));
+      acc.queue.push(
+        normalizeAfterModelCall(event, ctx, acc.sequence(), metrics.measureModelCall(event)),
+      );
     }),
   ];
   return () => {
@@ -420,7 +536,7 @@ function buildSpecialistAgent(
     ...(acc.sessionId !== undefined ? { sessionId: acc.sessionId } : {}),
   };
   const emitIntervention = (event: InterventionEvent): void => {
-    acc.events.push(normalizeIntervention(event, ctx, acc.sequence()));
+    acc.queue.push(normalizeIntervention(event, ctx, acc.sequence()));
   };
   const interventions = buildInterventions(
     {
@@ -444,7 +560,7 @@ function buildSpecialistAgent(
   const contextInjector = buildContextInjector(request, {
     ctx,
     sequence: acc.sequence,
-    emit: (event) => acc.events.push(event),
+    emit: (event) => acc.queue.push(event),
   });
 
   const tools = filterToolsByName(buildCarPurchaseFixtureTools(), allowedTools);
@@ -509,22 +625,37 @@ function assertSkillsRootDirExists(skillsRootDir: string): void {
 
 /**
  * Runs the real six-node car-purchase Strands `Graph` once. Yields every
- * normalized `RuntimeEvent` the run produced (tool/model calls, skill
+ * normalized `RuntimeEvent` the run produces (tool/model calls, skill
  * activation, context injection, interventions, and one `graph.
- * node_completed` event per node lifecycle transition), then returns the
- * full `CarPurchaseGraphResult`.
+ * node_completed` event per node lifecycle transition) *as the Graph
+ * produces it* -- a consumer receives `deal-analyst`'s events while
+ * `source-challenger` is still running -- then returns the full
+ * `CarPurchaseGraphResult`.
+ *
+ * Guarantees a consumer can rely on:
+ *
+ * - events arrive in the run's own monotonic `sequence` order, with no gaps;
+ * - no event is dropped, including the `goal.*` events that can only be
+ *   read after `graph.invoke` resolves;
+ * - a mid-run failure rethrows the Graph's original error, but only after
+ *   every event produced before it has been yielded;
+ * - nothing is paced or delayed: a run that genuinely takes 300 ms still
+ *   takes 300 ms.
  */
 export async function* executeCarPurchaseGraph(
   deps: CarPurchaseGraphDeps,
 ): AsyncGenerator<RuntimeEvent, CarPurchaseGraphResult, undefined> {
   assertSkillsRootDirExists(deps.skillsRootDir);
 
+  const now = deps.nowMs ?? ((): number => Date.now());
   const acc: RunAccumulator = {
-    events: [],
+    queue: new RuntimeEventQueue<RuntimeEvent>(),
     sequence: createSequenceCounter(),
     traceId: deps.idGenerator.next('trace'),
     runId: deps.shortlistRequest.runId,
     caseId: deps.shortlistRequest.caseId,
+    now,
+    nodeDurations: createNodeDurationTracker(now),
   };
 
   const unwireCleanups: (() => void)[] = [];
@@ -565,7 +696,7 @@ export async function* executeCarPurchaseGraph(
     ...(acc.sessionId !== undefined ? { sessionId: acc.sessionId } : {}),
   };
   const emitSynthesizerIntervention = (event: InterventionEvent): void => {
-    acc.events.push(normalizeIntervention(event, synthesizerCtx, acc.sequence()));
+    acc.queue.push(normalizeIntervention(event, synthesizerCtx, acc.sequence()));
   };
   const synthesizerInterventions = buildInterventions(
     {
@@ -650,17 +781,79 @@ export async function* executeCarPurchaseGraph(
     }),
   ];
 
+  // --- The run and the streaming of its events are genuinely concurrent.
+  //
+  // `graph.invoke` is started here and its promise handed to
+  // `queue.streamWhile`, which yields each `RuntimeEvent` the SDK's hooks
+  // push while the Graph is still working. Awaiting the invocation first and
+  // draining afterwards would deliver an identical final list -- and be a
+  // lie: the six specialists genuinely execute over the whole run, and a
+  // consumer rendering them one at a time would receive all of them in the
+  // instant after the last node finished. Nothing here paces or delays
+  // anything; an event is handed over the moment the consumer asks for it.
+  //
+  // Ordering is push order, which is sequence order (every emitter allocates
+  // `acc.sequence()` and pushes in one synchronous statement), so downstream
+  // ordered-sequence replay and duplicate suppression are unaffected. On a
+  // mid-run failure, everything already queued is yielded before the error
+  // is rethrown. ---
+  const invocation = graph.invoke(deps.invokePrompt ?? buildInvokePrompt(deps.shortlistRequest));
+
   let multiAgentResult: MultiAgentResult;
   try {
-    multiAgentResult = await graph.invoke(
-      deps.invokePrompt ?? buildInvokePrompt(deps.shortlistRequest),
-    );
+    multiAgentResult = yield* acc.queue.streamWhile(invocation);
   } finally {
     for (const cleanup of graphCleanups) cleanup();
     for (const cleanup of unwireCleanups) cleanup();
   }
 
-  for (const event of acc.events) {
+  // --- GoalLoop validation attempts, read from the real plugin's own
+  // `lastResult` (`@strands-agents/sdk/vended-plugins/goal`'s `GoalResult`,
+  // whose `attempts` are 1-indexed `GoalAttempt`s) and emitted as real
+  // `goal.*` runtime events. These are necessarily produced *after* the
+  // streaming loop above has ended: `lastResult` is only populated once
+  // `graph.invoke` has driven `decision-synthesizer` to completion. They are
+  // pushed onto the same queue and drained by the explicit final drain
+  // below, so a run's last events are delivered rather than stranded in a
+  // queue nobody reads again.
+  //
+  // strands-runtime.md "GoalLoop output validation" requires a rejection to
+  // emit `goal.validation_failed` with machine-readable reasons; without
+  // this the car pack ran a genuine GoalLoop and recorded nothing about it,
+  // leaving `goal` the one required category with no producer on the
+  // WebMCP hero pack. `home-energy-swarm.ts` emits the same shape from the
+  // same `lastResult` read.
+  const rawGoalResult = goalLoop.lastResult(synthesizerAgent) as
+    | {
+        passed: boolean;
+        stopReason: string;
+        attempts: { attempt: number; passed: boolean; feedback?: string }[];
+      }
+    | undefined;
+  if (rawGoalResult !== undefined) {
+    const lastAttemptIndex = rawGoalResult.attempts.length - 1;
+    rawGoalResult.attempts.forEach((attempt, index) => {
+      const exhausted = !rawGoalResult.passed && index === lastAttemptIndex;
+      acc.queue.push(
+        normalizeGoalValidation(
+          {
+            attempt: attempt.attempt,
+            passed: attempt.passed,
+            ...(attempt.feedback !== undefined ? { feedback: attempt.feedback } : {}),
+            exhausted,
+          },
+          synthesizerCtx,
+          acc.sequence(),
+        ),
+      );
+    });
+  }
+
+  // Everything produced after the Graph resolved (the GoalLoop attempts
+  // above). The streaming loop has already delivered the rest, so this
+  // drain is normally short -- but it is what guarantees no event is left
+  // behind when the generator returns.
+  for (const event of acc.queue.drain()) {
     yield event;
   }
 
@@ -681,9 +874,6 @@ export async function* executeCarPurchaseGraph(
       .map((block) => block.text)
       .join('\n') ?? '';
 
-  const rawGoalResult = goalLoop.lastResult(synthesizerAgent) as
-    | { passed: boolean; stopReason: string; attempts: { passed: boolean; feedback?: string }[] }
-    | undefined;
   const goalLoopResult: CarPurchaseGoalLoopResult | undefined =
     rawGoalResult === undefined
       ? undefined

@@ -46,6 +46,8 @@ export interface CaseAttributeDraft {
   readonly appliesTo: readonly string[];
   readonly unit?: string;
   readonly allowedValues?: readonly string[];
+  /** Enum grades worst to best. Required for a custom enum to be scoreable at all -- see `scoring.ts` rule 3. */
+  readonly orderedValues?: readonly string[];
   readonly evidenceExpectation: EvidenceExpectation;
   readonly comparison: AttributeComparison;
   readonly reason: string;
@@ -140,6 +142,7 @@ export function createCaseAttributeDefinition(
     createdAt: clock.now(),
     ...(draft.unit !== undefined ? { unit: draft.unit } : {}),
     ...(draft.allowedValues !== undefined ? { allowedValues: [...draft.allowedValues] } : {}),
+    ...(draft.orderedValues !== undefined ? { orderedValues: [...draft.orderedValues] } : {}),
   };
 
   const parsed = CaseAttributeDefinitionSchema.safeParse(candidate);

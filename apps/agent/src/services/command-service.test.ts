@@ -1844,6 +1844,37 @@ describe('CommandService', () => {
       expect(updated.caseExtensions[0]?.definition.allowedValues).toEqual(['1500', '3500', '5000']);
     });
 
+    it('carries orderedValues through, which is what makes a model-defined enum scoreable at all', () => {
+      // `scoring.ts` rule 3 refuses to rank enum grades without a declared
+      // worst-to-best scale, and will not infer one from `allowedValues`. If
+      // the ordering is dropped anywhere between the WebMCP call and the
+      // stored definition, the column still renders and simply never scores
+      // -- a silent failure, so it is asserted rather than assumed.
+      const snapshot = startDemo();
+      const result = service.defineCaseAttribute('cmd-ordered', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        definition: {
+          id: 'custom.dog_crate_fit',
+          label: 'Dog crate fit',
+          valueType: 'enum',
+          appliesTo: ['car'],
+          allowedValues: ['none', 'one crate', 'two crates'],
+          orderedValues: ['none', 'one crate', 'two crates'],
+          evidenceExpectation: 'assertion',
+          comparison: 'higher_better',
+          reason: 'Two dog crates must fit behind the second row.',
+        },
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.caseExtensions[0]?.definition.orderedValues).toEqual([
+        'none',
+        'one crate',
+        'two crates',
+      ]);
+    });
+
     it("returns a 409-shaped conflict when the underlying append() call itself detects the case has advanced (a genuine race, not one loadForMutation's pre-check already catches -- see focusOption's identical-purpose test above)", () => {
       const snapshot = startDemo();
       const advanced = service.upsertOption('cmd-real', {

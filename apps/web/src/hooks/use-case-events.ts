@@ -18,8 +18,8 @@
  *   body. This hook reuses that *exact* endpoint for three purposes, not
  *   three different code paths: (1) the very first load for a case (snapshot
  *   + full activity backlog in one call), (2) the ongoing polling-fallback
- *   loop, and (3) a lightweight "refresh the canonical snapshot" call made
- *   after every live SSE event (see below) -- since `PublicActivityEvent`
+ *   loop, and (3) a lightweight, COALESCED "refresh the canonical snapshot"
+ *   call driven by live SSE events (see below) -- since `PublicActivityEvent`
  *   itself never carries a full updated `CaseState`, this is the only real
  *   route that can answer "what does the case look like now."
  *
@@ -30,14 +30,25 @@
  * event produced. Rather than hand-maintaining a second, web-side copy of
  * "which of the twenty event types actually changed canonical state" (a
  * classification that would silently drift from the real reducer in
- * `packages/core` this app must never re-implement), this hook re-fetches the
- * canonical snapshot via the same poll endpoint after *every* newly-applied,
+ * `packages/core` this app must never re-implement), this hook treats the
+ * canonical snapshot as possibly-stale after *every* newly-applied,
  * non-duplicate event. This is deliberately simple and safety-first --
  * "Canonical snapshots update only from committed case events" (product.md)
  * is satisfied by construction, at the cost of some redundant reads for
- * purely-narrative events (`tool.started`, `skill.activated`, ...). Demo-
- * scale event volume makes that cost negligible; a later optimization could
- * narrow the trigger set without changing this hook's external contract.
+ * purely-narrative events (`tool.started`, `skill.activated`, ...).
+ *
+ * What it does NOT do is issue one request per event. That was the original
+ * implementation, and it is a real defect at real event volumes: a single
+ * investigation emits ~73 correlated events, so the pane fired ~73 `GET
+ * ...?mode=poll` requests -- today inside a ~70 ms window, against a
+ * browser's ~6-connection-per-host budget the live SSE socket already holds
+ * one of -- and then discarded every response but the newest. The MARKING is
+ * per-event; the FETCHING is throttled and coalesced by
+ * `requestSnapshotRefresh` below (leading edge immediate, trailing edge
+ * guaranteed), which bounds a burst to `ceil(duration /
+ * snapshotRefreshIntervalMs) + 1` requests and still converges on the true
+ * final snapshot.
+ *
  * This same mechanism is what makes the server's slow-consumer resync marker
  * (`type: 'case.snapshot'`, `safeDetails.resyncRequired: true`,
  * architecture.md "Real-time event contract") work for free: it is just
@@ -79,6 +90,19 @@ import {
 const DEFAULT_POLL_INTERVAL_MS = 4000;
 const DEFAULT_RECONNECT_DELAY_MS = 1500;
 const DEFAULT_MAX_RECONNECT_ATTEMPTS = 3;
+/**
+ * Minimum spacing between two canonical-snapshot refreshes (see
+ * `requestSnapshotRefresh` below). A real investigation emits ~73
+ * correlated events; refreshing per event issued ~73 `GET
+ * ...?mode=poll` requests against a browser's ~6-connection-per-host budget
+ * (with the live SSE socket holding one of them), for a snapshot that is
+ * only ever read as "what does the case look like NOW" -- every response but
+ * the newest was discarded on arrival anyway. 250 ms is short enough that a
+ * person cannot perceive the trailing refresh landing after the last event
+ * of a burst, and long enough to bound a run streamed over several seconds
+ * to a couple of dozen requests rather than one per event.
+ */
+const DEFAULT_SNAPSHOT_REFRESH_INTERVAL_MS = 250;
 
 export type CaseEventsConnectionState =
   'connecting' | 'live' | 'reconnecting' | 'polling' | 'offline';
@@ -133,6 +157,8 @@ export interface UseCaseEventsOptions {
   reconnectDelayMs?: number;
   /** Consecutive SSE failures tolerated before falling back to polling. */
   maxReconnectAttempts?: number;
+  /** Minimum spacing between two coalesced canonical-snapshot refreshes. See `DEFAULT_SNAPSHOT_REFRESH_INTERVAL_MS`. */
+  snapshotRefreshIntervalMs?: number;
 }
 
 export interface UseCaseEventsResult {
@@ -226,12 +252,22 @@ export function useCaseEvents(options: UseCaseEventsOptions): UseCaseEventsResul
     const pollIntervalMs = config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     const reconnectDelayMs = config.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS;
     const maxReconnectAttempts = config.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
+    const snapshotRefreshIntervalMs =
+      config.snapshotRefreshIntervalMs ?? DEFAULT_SNAPSHOT_REFRESH_INTERVAL_MS;
 
     let disposed = false;
     const seenEventIds = new Set<string>();
     let lastSequence = 0;
     let reconnectAttempts = 0;
     let refreshToken = 0;
+    let refreshInFlight = false;
+    let refreshPending = false;
+    // Deliberately `-Infinity`, not `Date.now()`: the very first refresh of
+    // a connection cycle must go out immediately (the burst has not started
+    // yet, and a single isolated event has to land promptly), so nothing
+    // may look like a refresh that "just happened".
+    let lastRefreshStartedAt = Number.NEGATIVE_INFINITY;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let currentSource: EventSourceLike | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -252,7 +288,66 @@ export function useCaseEvents(options: UseCaseEventsOptions): UseCaseEventsResul
       }));
     }
 
-    function refreshSnapshot() {
+    function clearRefreshTimer() {
+      if (refreshTimer !== null) {
+        clearTimeout(refreshTimer);
+        refreshTimer = null;
+      }
+    }
+
+    /**
+     * Coalescing entry point for "the canonical snapshot may have moved --
+     * go and read it." Called once per newly-applied event; it is emphatically
+     * NOT one request per call.
+     *
+     * A run's events arrive in correlated bursts (a real investigation is
+     * ~73 events, today inside ~70 ms and, once the runtime streams as the
+     * graph progresses, spread over seconds). Issuing one poll per event put
+     * dozens of requests against a browser's ~6-connection-per-host budget
+     * while the live SSE socket held one of them, and every response but the
+     * newest was thrown away by the token guard below anyway.
+     *
+     * The policy is a leading-edge-plus-trailing-edge throttle:
+     *
+     * - the first refresh after a quiet period goes out immediately, so a
+     *   single isolated event is never delayed behind a timer;
+     * - any refresh requested while one is in flight, or inside the
+     *   `snapshotRefreshIntervalMs` cooldown after one started, collapses
+     *   into a single `refreshPending` flag;
+     * - a pending flag always produces exactly one more refresh once the
+     *   in-flight request settles and the cooldown elapses -- so the last
+     *   event of a burst is never the one whose refresh got dropped, and the
+     *   pane converges on the true final snapshot.
+     *
+     * That bounds a burst of any length to `ceil(duration /
+     * snapshotRefreshIntervalMs) + 1` requests instead of one per event,
+     * while leaving replay, dedup, resync and the polling fallback (all of
+     * which reach state through `applyPollResult`, not through here)
+     * untouched.
+     */
+    function requestSnapshotRefresh() {
+      if (disposed) return;
+      if (refreshInFlight || refreshTimer !== null) {
+        refreshPending = true;
+        return;
+      }
+      const sinceLastRefresh = Date.now() - lastRefreshStartedAt;
+      if (sinceLastRefresh >= snapshotRefreshIntervalMs) {
+        startSnapshotRefresh();
+        return;
+      }
+      refreshPending = true;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        if (disposed || !refreshPending) return;
+        startSnapshotRefresh();
+      }, snapshotRefreshIntervalMs - sinceLastRefresh);
+    }
+
+    function startSnapshotRefresh() {
+      refreshPending = false;
+      refreshInFlight = true;
+      lastRefreshStartedAt = Date.now();
       const token = ++refreshToken;
       fetchCaseEventsPoll(fetchImpl, baseUrl, activeCaseId, lastSequence)
         .then((result) => {
@@ -263,6 +358,12 @@ export function useCaseEvents(options: UseCaseEventsOptions): UseCaseEventsResul
           // A background refresh failure is not itself a transport-level
           // disconnect (SSE/polling remain the source of truth for
           // connection state) -- the last valid snapshot simply stays as-is.
+        })
+        .finally(() => {
+          refreshInFlight = false;
+          // Never dropped: whatever arrived while this request was in flight
+          // still gets a refresh of its own.
+          if (refreshPending) requestSnapshotRefresh();
         });
     }
 
@@ -281,7 +382,7 @@ export function useCaseEvents(options: UseCaseEventsOptions): UseCaseEventsResul
       seenEventIds.add(event.eventId);
       if (event.sequence > lastSequence) lastSequence = event.sequence;
       setState((prev) => ({ ...prev, events: sortEvents([...prev.events, event]) }));
-      refreshSnapshot();
+      requestSnapshotRefresh();
     }
 
     function clearReconnectTimer() {
@@ -301,6 +402,12 @@ export function useCaseEvents(options: UseCaseEventsOptions): UseCaseEventsResul
     function startPolling() {
       if (disposed) return;
       clearReconnectTimer();
+      // Polling reads the canonical snapshot on every tick (through
+      // `applyPollResult`), starting with the immediate `poll()` below, so a
+      // still-queued SSE-era snapshot refresh would only duplicate the very
+      // next request. Dropping it here cannot lose state.
+      clearRefreshTimer();
+      refreshPending = false;
       if (currentSource) {
         currentSource.close();
         currentSource = null;
@@ -380,6 +487,7 @@ export function useCaseEvents(options: UseCaseEventsOptions): UseCaseEventsResul
       disposed = true;
       clearReconnectTimer();
       clearPollTimer();
+      clearRefreshTimer();
       if (currentSource) {
         currentSource.close();
         currentSource = null;

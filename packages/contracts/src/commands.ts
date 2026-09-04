@@ -329,11 +329,57 @@ const CaseAttributeDraftSchema = z
     appliesTo: z.array(idString()).max(50),
     unit: safeString(60).optional(),
     allowedValues: z.array(safeString(200)).max(200).optional(),
+    /**
+     * The same grades as `allowedValues`, listed worst to best.
+     *
+     * Without this a model-defined enum column renders but cannot be
+     * scored: `scoring.ts` rule 3 is that enums are not ordinal until
+     * something declares them so, and it deliberately refuses to read an
+     * order out of `allowedValues`, which is a membership set. Supplying it
+     * is what lets a criterion point at a custom rating and actually move
+     * the ranking -- "fits two crates" beating "fits one" is a fact about
+     * this household's scale, not something the engine may infer.
+     */
+    orderedValues: z.array(safeString(200)).max(200).optional(),
     evidenceExpectation: z.enum(EVIDENCE_EXPECTATIONS),
     comparison: z.enum(ATTRIBUTE_COMPARISONS),
     reason: safeString(2000),
   })
-  .strict();
+  .strict()
+  .superRefine((draft, ctx) => {
+    if (draft.orderedValues === undefined) return;
+    const issue = (message: string) => {
+      ctx.addIssue({ code: 'custom', path: ['orderedValues'], message });
+    };
+    if (draft.valueType !== 'enum') {
+      issue('orderedValues only applies to an enum attribute; every other type already ranks itself');
+      return;
+    }
+    if (draft.allowedValues === undefined) {
+      issue('orderedValues requires allowedValues: a grade must be selectable before it can be ranked');
+      return;
+    }
+    if (new Set(draft.orderedValues).size !== draft.orderedValues.length) {
+      issue('orderedValues must not repeat a grade, which would give it two positions on the scale');
+      return;
+    }
+    // Same set, not merely a subset. A grade that is selectable but
+    // unordered scores as "not one of the declared grades", so a partial
+    // ordering ships a column that silently refuses to score some options
+    // -- the half-blank column this command exists to prevent.
+    const allowed = new Set(draft.allowedValues);
+    const ordered = new Set(draft.orderedValues);
+    const missing = [...allowed].filter((grade) => !ordered.has(grade));
+    const extra = [...ordered].filter((grade) => !allowed.has(grade));
+    if (extra.length > 0) {
+      issue(`orderedValues lists grades that are not selectable: ${extra.join(', ')}`);
+    }
+    if (missing.length > 0) {
+      issue(
+        `orderedValues must place every allowed grade on the scale; these have no position: ${missing.join(', ')}`,
+      );
+    }
+  });
 
 /**
  * One option's answer for the attribute being defined.

@@ -20,3 +20,11 @@ reports
 .DS_Store
 .vscode
 tests/e2e/.playwright-mcp
+
+# Brand-kit masters: ~1.2 MB of SVG/PNG logo, symbol, app-icon, and
+# reference-sheet artwork plus the kit's own docs. Design source, never read
+# at runtime -- the only brand files the container actually serves are the
+# favicon/manifest/logo copies under apps/web/public/, which the Dockerfile's
+# `pnpm --filter @sift/web build` emits into apps/web/dist. Excluded so
+# `COPY . .` does not carry the masters into the image.
+docs/brand

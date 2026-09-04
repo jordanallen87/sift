@@ -49,3 +49,12 @@ pnpm-debug.log*
 # Local runtime database (CLAUDE.md: `.sift-data/sift.sqlite` locally, `/data` on Railway).
 # Runtime state, not a fixture -- it was tracked, so every local run dirtied the tree.
 .sift-data/
+
+# Agent-tooling operating instructions and the internal engineering log.
+# Kept on disk (they are this project's own working record) but deliberately
+# not published: they are build-process scaffolding, not part of the product
+# a reader of this repository needs.
+CLAUDE.md
+CLAUDE_CODE_PROMPT.md
+docs/final-plan/claude-code-implementation-prompt.md
+docs/build-log.md

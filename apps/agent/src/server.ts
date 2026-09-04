@@ -36,6 +36,7 @@ import {
   createHomeEnergyEngine,
   homeEnergyCapabilityCatalog,
 } from './runtime/home-energy-engine.js';
+import { installSiftTracing, type SiftTracingHandle } from './runtime/otel-span-recorder.js';
 import { createSystemClock, createSystemIdGenerator } from './runtime-ports.js';
 import { CommandService } from './services/command-service.js';
 import { RunPlanService } from './services/run-plan-service.js';
@@ -60,6 +61,14 @@ export interface StartedServer {
   server: Server;
   config: SiftConfig;
   migration: MigrateResult;
+  /**
+   * The registered OpenTelemetry tracer provider and Sift span recorder
+   * (`runtime/otel-span-recorder.ts`), or `undefined` when
+   * `SIFT_TRACING_ENABLED=false`. Registration is process-global (the OTel
+   * API is), so a test that starts a server must `shutdown()` this alongside
+   * closing the server and database, exactly as it already does for those.
+   */
+  tracing?: SiftTracingHandle;
 }
 
 export function startServer(options: StartServerOptions = {}): Promise<StartedServer> {
@@ -98,6 +107,14 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
 
   const runStore = new SqliteRunStore(database);
   const runtimeEventStore = new SqliteRuntimeEventStore(database);
+  // Turns on capture of the OpenTelemetry spans the Strands SDK already
+  // emits on every Graph/Swarm/agent/model/tool call, writing them into the
+  // same `runtime_events` table the Runtime Inspector reads. Purely
+  // in-process unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set, so a fixture run
+  // stays fully offline. See `runtime/otel-span-recorder.ts`.
+  const tracing = config.tracingEnabled
+    ? installSiftTracing({ runtimeEventStore, runStore })
+    : undefined;
   const carPurchaseEngine = createCarPurchaseEngine({
     caseStore,
     activityStore,
@@ -177,7 +194,14 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
 
   return new Promise((resolvePromise) => {
     const server = app.listen(port, () => {
-      resolvePromise({ app, database, server, config, migration });
+      resolvePromise({
+        app,
+        database,
+        server,
+        config,
+        migration,
+        ...(tracing !== undefined ? { tracing } : {}),
+      });
     });
   });
 }

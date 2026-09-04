@@ -3,7 +3,7 @@
  * (docs/specs/architecture.md "Real-time event contract").
  *
  * Adapted from the label-registry pattern in
- * `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/execute/activity-labels.ts`
+ * `praetor:apps/web/src/components/strata19/execute/activity-labels.ts`
  * (docs/reuse-source-map.md: "Adapt the label-registry pattern so
  * user-visible activity never falls back to raw internal event names") --
  * see docs/reuse-attribution.md for the recorded entry. Only the *idea* is

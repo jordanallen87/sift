@@ -7,10 +7,12 @@ import {
   Message,
   TextBlock,
   ToolResultBlock,
+  type ToolUseData,
 } from '@strands-agents/sdk';
 import { describe, expect, it } from 'vitest';
 import type { JsonPatchOperation } from '@sift/contracts';
 import {
+  createRuntimeMetricsTracker,
   createSequenceCounter,
   diffJsonValues,
   hashContent,
@@ -27,11 +29,12 @@ import {
   normalizeSkillActivation,
   redactValue,
   type NormalizerContext,
+  type RuntimeEvent,
 } from './event-normalizer.js';
 import { ScriptedModelProvider } from './model-provider.js';
 import type { InterventionEvent } from './interventions.js';
 
-/** A real, minimally-constructed `Agent` -- used purely as the required `agent` field on real Strands hook event constructors, never invoked in this file. */
+/** A real, minimally-constructed `Agent` -- used purely as the required `agent` field on real Strands hook event constructors. `createRuntimeMetricsTracker`'s own describe blocks build and genuinely invoke their own agents instead. */
 function buildStubAgent(): Agent {
   return new Agent({ model: new ScriptedModelProvider({ beats: {} }), printer: false });
 }
@@ -249,6 +252,209 @@ describe('normalizeAfterModelCall', () => {
   });
 });
 
+/**
+ * These drive a *real* `Agent` over a real `ScriptedModelProvider` and read
+ * the resulting events, rather than hand-constructing an `AfterModelCallEvent`
+ * with a stub agent: token usage never appears on the hook event itself
+ * (`hooks/events.d.ts` -- it carries only agent/model/stopData/error/
+ * attemptCount/invocationState), it reaches the runtime through the agent's
+ * own `Meter`, which only accumulates when the provider genuinely emits a
+ * `ModelMetadataEvent`. Anything short of a real invocation would prove
+ * nothing about that path.
+ */
+describe('createRuntimeMetricsTracker (model calls)', () => {
+  /** A monotonic millisecond source that advances a fixed `stepMs` on every read, so a measured interval is exact rather than wall-clock-dependent. */
+  function steppingClock(stepMs: number): () => number {
+    let value = 0;
+    return () => (value += stepMs);
+  }
+
+  async function runScriptedModelCalls(
+    turns: ConstructorParameters<typeof ScriptedModelProvider>[0]['beats']['turn'],
+    now: () => number,
+  ): Promise<RuntimeEvent[]> {
+    const provider = new ScriptedModelProvider({ beats: { turn: turns } });
+    provider.setBeat('turn');
+    const agent = new Agent({ model: provider, printer: false });
+    const tracker = createRuntimeMetricsTracker(now);
+    const sequence = createSequenceCounter();
+    const events: RuntimeEvent[] = [];
+    agent.addHook(BeforeModelCallEvent, (event) => {
+      tracker.noteModelCallStart(event);
+    });
+    agent.addHook(AfterModelCallEvent, (event) => {
+      events.push(normalizeAfterModelCall(event, CTX, sequence(), tracker.measureModelCall(event)));
+    });
+    await agent.invoke('go');
+    return events;
+  }
+
+  it('stamps the token usage the model provider actually reported onto the model.call finish event', async () => {
+    const events = await runScriptedModelCalls(
+      [
+        {
+          text: 'done',
+          usage: { inputTokens: 120, outputTokens: 34, totalTokens: 154 },
+        },
+      ],
+      steppingClock(7),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.tokenUsage).toEqual({ input: 120, output: 34, total: 154 });
+  });
+
+  it('measures the real interval between the before and after model-call hooks', async () => {
+    // The stepping clock is read once by `noteModelCallStart` (t=9) and once
+    // by `measureModelCall` (t=18): a genuinely measured difference, not a
+    // constant baked into the producer.
+    const events = await runScriptedModelCalls([{ text: 'done' }], steppingClock(9));
+    expect(events[0]?.durationMs).toBe(9);
+  });
+
+  it('omits tokenUsage entirely -- not a zeroed object -- when the provider reports no usage', async () => {
+    // ScriptedModelProvider emits a real ModelMetadataEvent whose usage is
+    // all zeros when a turn declares none, which is exactly the shape a
+    // provider that does not report usage produces. The honest record of
+    // that is an absent field.
+    const events = await runScriptedModelCalls([{ text: 'done' }], steppingClock(3));
+
+    expect(events[0]).not.toHaveProperty('tokenUsage');
+    expect(events[0]?.tokenUsage).toBeUndefined();
+  });
+
+  it('reports each model call’s own usage, not the agent’s running total', async () => {
+    // Strands's `agent.metrics.accumulatedUsage` is cumulative across the
+    // whole agent, and `routes/debug.ts` sums `tokenUsage` across events for
+    // its run overview -- so stamping the accumulated figure on every event
+    // would over-count the run. Two consecutive model calls on one agent
+    // must therefore report 100/40/140 and then 60/10/70, never 100/40/140
+    // and 160/50/210.
+    const events = await runScriptedModelCalls(
+      [
+        {
+          text: '',
+          toolCalls: [{ name: 'missing-tool', input: {} }],
+          usage: { inputTokens: 100, outputTokens: 40, totalTokens: 140 },
+        },
+        { text: 'done', usage: { inputTokens: 60, outputTokens: 10, totalTokens: 70 } },
+      ],
+      steppingClock(2),
+    );
+
+    expect(events).toHaveLength(2);
+    expect(events[0]?.tokenUsage).toEqual({ input: 100, output: 40, total: 140 });
+    expect(events[1]?.tokenUsage).toEqual({ input: 60, output: 10, total: 70 });
+  });
+
+  it('leaves durationMs and tokenUsage off entirely when normalizeAfterModelCall is called without a tracker', () => {
+    const agent = buildStubAgent();
+    const event = new AfterModelCallEvent({
+      agent,
+      model: agent.model,
+      invocationState: {},
+      attemptCount: 1,
+      stopData: {
+        message: new Message({ role: 'assistant', content: [new TextBlock('done')] }),
+        stopReason: 'endTurn',
+      },
+    });
+
+    const debugEvent = normalizeAfterModelCall(event, CTX, 0);
+    expect(debugEvent).not.toHaveProperty('durationMs');
+    expect(debugEvent).not.toHaveProperty('tokenUsage');
+  });
+});
+
+describe('createRuntimeMetricsTracker (tool calls)', () => {
+  function toolUse(toolUseId: string): ToolUseData {
+    return { name: 'listing-reader', toolUseId, input: {} };
+  }
+
+  function afterToolCallEvent(agent: Agent, toolUseId: string): AfterToolCallEvent {
+    return new AfterToolCallEvent({
+      agent,
+      toolUse: toolUse(toolUseId),
+      tool: undefined,
+      result: new ToolResultBlock({
+        toolUseId,
+        status: 'success',
+        content: [new TextBlock('ok')],
+      }),
+      invocationState: {},
+    });
+  }
+
+  it('attributes a duration to the right call when two calls to the same tool overlap', () => {
+    // The SDK ships a ConcurrentToolExecutor, so two in-flight calls to one
+    // tool are real. Keying by the model-issued toolUseId is what keeps
+    // their measured intervals from being swapped.
+    const agent = buildStubAgent();
+    let clock = 0;
+    const tracker = createRuntimeMetricsTracker(() => clock);
+    const sequence = createSequenceCounter();
+
+    clock = 100;
+    tracker.noteToolCallStart(
+      new BeforeToolCallEvent({
+        agent,
+        toolUse: toolUse('tool-use-a'),
+        tool: undefined,
+        invocationState: {},
+      }),
+    );
+    clock = 130;
+    tracker.noteToolCallStart(
+      new BeforeToolCallEvent({
+        agent,
+        toolUse: toolUse('tool-use-b'),
+        tool: undefined,
+        invocationState: {},
+      }),
+    );
+
+    clock = 175;
+    const eventB = afterToolCallEvent(agent, 'tool-use-b');
+    const debugB = normalizeAfterToolCall(eventB, CTX, sequence(), tracker.measureToolCall(eventB));
+    clock = 190;
+    const eventA = afterToolCallEvent(agent, 'tool-use-a');
+    const debugA = normalizeAfterToolCall(eventA, CTX, sequence(), tracker.measureToolCall(eventA));
+
+    expect(debugB.durationMs).toBe(45);
+    expect(debugA.durationMs).toBe(90);
+  });
+
+  it('omits durationMs when no matching tool-call start was observed', () => {
+    const agent = buildStubAgent();
+    const tracker = createRuntimeMetricsTracker(() => 500);
+    const event = afterToolCallEvent(agent, 'tool-use-unobserved');
+
+    const debugEvent = normalizeAfterToolCall(event, CTX, 0, tracker.measureToolCall(event));
+    expect(debugEvent).not.toHaveProperty('durationMs');
+  });
+
+  it('never reports an estimatedCostUsd: Sift has no sourced price table to compute one from', () => {
+    const agent = buildStubAgent();
+    let clock = 0;
+    const tracker = createRuntimeMetricsTracker(() => clock);
+    clock = 10;
+    tracker.noteToolCallStart(
+      new BeforeToolCallEvent({
+        agent,
+        toolUse: toolUse('tool-use-a'),
+        tool: undefined,
+        invocationState: {},
+      }),
+    );
+    clock = 40;
+    const event = afterToolCallEvent(agent, 'tool-use-a');
+
+    const debugEvent = normalizeAfterToolCall(event, CTX, 0, tracker.measureToolCall(event));
+    expect(debugEvent.durationMs).toBe(30);
+    expect(debugEvent).not.toHaveProperty('estimatedCostUsd');
+  });
+});
+
 describe('normalizeSkillActivation', () => {
   it('produces a skill.activated event carrying skill id, obligation id, and reason', () => {
     const debugEvent = normalizeSkillActivation(
@@ -325,7 +531,16 @@ describe('normalizeIntervention', () => {
     expect(debugEvent.attributes['stage']).toBe('before_tool');
   });
 
-  it('uses info level for a proceed decision', () => {
+  // Deliberately changed from the original `expect(...).toBe('info')`.
+  // Six intervention handlers run on every tool call and most of them
+  // proceed, so proceed events swamped the stream (a real car run recorded
+  // 122 `BudgetGuard: tool is excluded from the run tool-call budget`
+  // proceeds out of 245 events). They still carry real audit value -- proof
+  // each guard genuinely ran -- so they are recorded, not dropped; `debug`
+  // is the level `routes/debug.ts`'s `?level=` filter and `countsByLevel`
+  // breakdown can act on to keep them out of the `info` stream. See
+  // `INTERVENTION_LEVEL` in event-normalizer.ts.
+  it('records a proceed decision at debug level so a level filter can separate it from outcomes that changed the run', () => {
     const interventionEvent: InterventionEvent = {
       type: 'intervention.proceed',
       handler: 'BudgetGuard',
@@ -336,7 +551,38 @@ describe('normalizeIntervention', () => {
       reason: 'within budget',
       timestamp: '2026-01-01T00:00:00.000Z',
     };
-    expect(normalizeIntervention(interventionEvent, CTX, 0).level).toBe('info');
+    const debugEvent = normalizeIntervention(interventionEvent, CTX, 0);
+    expect(debugEvent.level).toBe('debug');
+    // Demoted, not deleted: every attribute a reader needs survives.
+    expect(debugEvent.name).toBe('intervention.proceed');
+    expect(debugEvent.attributes['handler']).toBe('BudgetGuard');
+    expect(debugEvent.attributes['subject']).toBe('listing-reader');
+    expect(debugEvent.summary).toBe('BudgetGuard: within budget');
+  });
+
+  it('keeps every intervention outcome that changed the run above debug level', () => {
+    const base = {
+      handler: 'ConsequenceGuard',
+      runId: 'run-1',
+      obligationId: 'car.hard_constraints',
+      stage: 'before_tool',
+      subject: 'propose_recommendation',
+      reason: 'requires human confirmation',
+      timestamp: '2026-01-01T00:00:00.000Z',
+    } satisfies Omit<InterventionEvent, 'type'>;
+
+    expect(normalizeIntervention({ ...base, type: 'intervention.guide' }, CTX, 0).level).toBe(
+      'info',
+    );
+    expect(normalizeIntervention({ ...base, type: 'intervention.confirm' }, CTX, 1).level).toBe(
+      'info',
+    );
+    expect(normalizeIntervention({ ...base, type: 'intervention.transform' }, CTX, 2).level).toBe(
+      'info',
+    );
+    expect(normalizeIntervention({ ...base, type: 'intervention.deny' }, CTX, 3).level).toBe(
+      'warn',
+    );
   });
 });
 

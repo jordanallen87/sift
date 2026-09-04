@@ -12,6 +12,50 @@
       zoomed-out default so the 390px layout renders at 1:1 scale.
     -->
     <title>Sift</title>
+
+    <!--
+      Brand identity assets (docs/brand/BRAND-GUIDE.md). Every file below is
+      a real committed binary under apps/web/public/, which Vite copies
+      verbatim to the root of `dist/` at build time and serves from `/` in
+      dev -- the same static-asset convention global.css already relies on
+      for /fonts/**. In production apps/agent/src/app.ts's single
+      `express.static(apps/web/dist)` serves them from those same root
+      paths, so none of these 404s once deployed:
+
+        apps/web/public/favicon.ico                  -> /favicon.ico
+        apps/web/public/favicon-32x32.png            -> /favicon-32x32.png
+        apps/web/public/favicon-16x16.png            -> /favicon-16x16.png
+        apps/web/public/apple-touch-icon.png         -> /apple-touch-icon.png
+        apps/web/public/android-chrome-192x192.png   -> /android-chrome-192x192.png
+        apps/web/public/android-chrome-512x512.png   -> /android-chrome-512x512.png
+        apps/web/public/site.webmanifest             -> /site.webmanifest
+
+      `/favicon.ico` is declared explicitly rather than left to the
+      browser's implicit root request: app.ts deliberately has no SPA
+      catch-all, so an undeclared icon path is a real 404, and
+      tests/e2e/helpers/console-guard.ts fails a test on the resulting
+      console error.
+
+      The favicon artwork uses the simplified `symbol-core` mark, not the
+      full particle symbol -- BRAND-GUIDE.md "Small sizes" requires the
+      simplified mark below ~64px because the sift particles go visually
+      dense at favicon scale.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!--
+      Browser/OS chrome color only (the mobile address bar, the installed-PWA
+      title bar) -- it paints no pixel inside the document, so it is safe to
+      brand independently of the in-app palette. Sift Green #1F5C52 is the
+      brand primary from docs/brand/palette.json, matching `theme_color` in
+      site.webmanifest. The application's own surfaces stay on the
+      tokens.css ink-blue/paper palette; see docs/design-system.md.
+    -->
+    <meta name="theme-color" content="#1F5C52" />
   </head>
   <body>
     <div id="root"></div>

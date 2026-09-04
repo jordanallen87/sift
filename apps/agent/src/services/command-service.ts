@@ -1187,6 +1187,9 @@ export class CommandService {
       ...(input.definition.allowedValues !== undefined
         ? { allowedValues: input.definition.allowedValues }
         : {}),
+      ...(input.definition.orderedValues !== undefined
+        ? { orderedValues: input.definition.orderedValues }
+        : {}),
     };
 
     const extensionResult = defineCaseExtension(

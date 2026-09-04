@@ -68,13 +68,21 @@ describe('CAR_PURCHASE_SCRIPTED_EXECUTION_RESULTS', () => {
     }
   });
 
-  it('never asserts car.rear_cargo_crate_fit or car.driving_comfort_rating as a fact -- both stay in limitations, never in claims', () => {
+  it("never asserts car.rear_cargo_crate_fit, car.driving_comfort_rating, or the household's rear-facing-seat grade as a fact -- all three stay in limitations, never in claims", () => {
     const { householdFitRound1, householdFitRound2 } = CAR_PURCHASE_SCRIPTED_EXECUTION_RESULTS;
     for (const result of [householdFitRound1, householdFitRound2]) {
       expect(result.limitations.length).toBeGreaterThan(0);
       const claimsText = result.claims.map((claim) => claim.statement).join(' ');
       expect(claimsText).not.toMatch(
         /crate fits|crates fit|comfort is (excellent|good|fair|poor)/i,
+      );
+      // The three grades of `custom.rear_facing_seat_behind_driver`
+      // (`car-purchase-scenario.ts`'s `REAR_FACING_SEAT_GRADES`). Only the
+      // household can supply one -- nobody publishes rear-facing-seat
+      // clearance, so a specialist stating a grade would be inventing the
+      // one measurement this concern exists to leave honestly open.
+      expect(claimsText).not.toMatch(
+        /fits with room to spare|fits with driver seat back|driver seat must move forward/i,
       );
     }
   });

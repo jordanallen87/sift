@@ -421,10 +421,10 @@ test.describe('Choose our next car -- full demo journey', () => {
 
     // --- Custom concern: the visible-control equivalent of sift_define_case_attribute ---
     await sift.submitCustomConcern({
-      slug: 'dog_crate_fit',
-      label: 'Both dog crates fit behind the second row',
+      slug: 'rear_facing_seat_behind_driver',
+      label: 'Rear-facing seat fits behind the driver',
       reason:
-        'The household needs two 36in x 24in x 27in dog travel crates to fit behind the second row without folding either seat.',
+        'A second child arrives in three months, so a rear-facing seat has to go behind the driver without pushing the driver seat forward.',
       valueType: 'boolean',
       evidenceExpectation: 'verification',
       comparison: 'target',

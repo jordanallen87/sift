@@ -214,6 +214,207 @@ describe('useRuntimeInspector', () => {
     // payload to a component that no longer exists.
   });
 
+  it('forwards agent/search/origin as ?agent=/?q=/?origin=, trimming the free text it sends', async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      debugHandler(buildOverview(), [buildEvent()], (url) => {
+        capturedUrl = url;
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useRuntimeInspector({
+        runId: RUN_ID,
+        baseUrl: BASE_URL,
+        agent: 'deal-analyst',
+        search: '  budget guard  ',
+        origin: 'webmcp',
+      }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(capturedUrl?.searchParams.get('agent')).toBe('deal-analyst');
+    expect(capturedUrl?.searchParams.get('q')).toBe('budget guard');
+    expect(capturedUrl?.searchParams.get('origin')).toBe('webmcp');
+  });
+
+  it('sends no free-text parameter at all for whitespace-only search text', async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      debugHandler(buildOverview(), [buildEvent()], (url) => {
+        capturedUrl = url;
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL, search: '   ' }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(capturedUrl?.searchParams.has('q')).toBe(false);
+  });
+
+  it('re-fetches when the free-text filter changes', async () => {
+    let callCount = 0;
+    server.use(
+      debugHandler(buildOverview(), [buildEvent()], () => {
+        callCount += 1;
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ search }: { search?: string }) =>
+        useRuntimeInspector({
+          runId: RUN_ID,
+          baseUrl: BASE_URL,
+          ...(search !== undefined ? { search } : {}),
+        }),
+      { initialProps: {} },
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(callCount).toBe(1);
+
+    rerender({ search: 'budget' });
+    await waitFor(() => expect(callCount).toBe(2));
+  });
+
+  it('defaults agentIds/countsByOrigin to empty for a server that does not send them yet, rather than failing the whole contract parse', async () => {
+    server.use(debugHandler(buildOverview(), [buildEvent()]));
+
+    const { result } = renderHook(() => useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // `buildOverview()` above deliberately omits both fields.
+    expect(result.current.overview?.agentIds).toEqual([]);
+    expect(result.current.overview?.countsByOrigin).toEqual({});
+    expect(result.current.overview?.status).toBe('completed');
+  });
+
+  it('reads agentIds/countsByOrigin off the real response when the server does send them', async () => {
+    server.use(
+      debugHandler(buildOverview({ agentIds: ['deal-analyst'], countsByOrigin: { webmcp: 2 } }), [
+        buildEvent(),
+      ]),
+    );
+
+    const { result } = renderHook(() => useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.overview?.agentIds).toEqual(['deal-analyst']);
+    expect(result.current.overview?.countsByOrigin).toEqual({ webmcp: 2 });
+  });
+
+  describe('exportRun', () => {
+    function exportHandler(
+      body: Record<string, unknown>,
+      onRequest?: (url: URL) => void,
+      headers: Record<string, string> = {
+        'Content-Disposition': 'attachment; filename="sift-run-run-1.json"',
+      },
+    ) {
+      return http.get(`${BASE_URL}/api/debug/runs/${RUN_ID}/export`, ({ request }) => {
+        onRequest?.(new URL(request.url));
+        return HttpResponse.json(body, { headers });
+      });
+    }
+
+    function bundle(overrides: Record<string, unknown> = {}) {
+      return {
+        schemaVersion: '1.0',
+        runId: RUN_ID,
+        exportedAt: '2026-08-27T00:00:10.000Z',
+        filters: {},
+        overview: buildOverview(),
+        exportedEventCount: 1,
+        events: [buildEvent()],
+        redactionManifest: [],
+        ...overrides,
+      };
+    }
+
+    it('requests the export route with the same filters the Timeline is showing, and returns the server bytes verbatim', async () => {
+      let capturedUrl: URL | undefined;
+      server.use(
+        debugHandler(buildOverview(), [buildEvent()]),
+        exportHandler(bundle(), (url) => {
+          capturedUrl = url;
+        }),
+      );
+
+      const { result } = renderHook(() =>
+        useRuntimeInspector({
+          runId: RUN_ID,
+          baseUrl: BASE_URL,
+          level: 'error',
+          search: 'budget',
+        }),
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const exported = await result.current.exportRun();
+
+      expect(capturedUrl?.pathname).toBe(`/api/debug/runs/${RUN_ID}/export`);
+      expect(capturedUrl?.searchParams.get('level')).toBe('error');
+      expect(capturedUrl?.searchParams.get('q')).toBe('budget');
+      expect(exported.filename).toBe('sift-run-run-1.json');
+      expect(exported.exportedEventCount).toBe(1);
+      // The saved bytes are the server's, not a re-serialization: the
+      // redaction manifest and overview survive untouched.
+      expect(JSON.parse(exported.body)).toMatchObject({
+        runId: RUN_ID,
+        redactionManifest: [],
+      });
+    });
+
+    it("falls back to the spec'd filename when the response carries no Content-Disposition", async () => {
+      server.use(
+        debugHandler(buildOverview(), [buildEvent()]),
+        exportHandler(bundle(), undefined, {}),
+      );
+
+      const { result } = renderHook(() =>
+        useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL }),
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect((await result.current.exportRun()).filename).toBe('sift-run-run-1.json');
+    });
+
+    it('rejects rather than resolving with an empty bundle when there is no run to export', async () => {
+      const { result } = renderHook(() => useRuntimeInspector({ runId: null, baseUrl: BASE_URL }));
+
+      await expect(result.current.exportRun()).rejects.toThrow(/no run to export/i);
+    });
+
+    it('rejects with the status when the export request fails', async () => {
+      server.use(
+        debugHandler(buildOverview(), [buildEvent()]),
+        http.get(
+          `${BASE_URL}/api/debug/runs/${RUN_ID}/export`,
+          () => new HttpResponse(null, { status: 500 }),
+        ),
+      );
+
+      const { result } = renderHook(() =>
+        useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL }),
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await expect(result.current.exportRun()).rejects.toThrow(/500/);
+    });
+
+    it('rejects when the export response is not the export contract', async () => {
+      server.use(debugHandler(buildOverview(), [buildEvent()]), exportHandler({ not: 'a bundle' }));
+
+      const { result } = renderHook(() =>
+        useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL }),
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await expect(result.current.exportRun()).rejects.toThrow(/did not match its contract/);
+    });
+  });
+
   it('unmounting before a pending fetch rejects does not apply a late error state update', async () => {
     let rejectFetch: ((reason?: unknown) => void) | undefined;
     const fetchImpl = (() =>

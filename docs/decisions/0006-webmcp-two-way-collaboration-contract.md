@@ -246,6 +246,9 @@ and `sift_focus_question` (Decisions 4 and 6, and the presentation gap this ADR'
 plus `sift_list_notes`/`sift_add_note` once the companion `CaseNote` persistence design this ADR
 deliberately left unrestated (Decision 1's own caveat) landed separately. The origin marker (Decision
 8) ships as an `X-Sift-Command-Origin` header recorded onto the activity trail's `safeDetails.origin`
-— observability only, as specified, never a permission check. The "Open question" above (the fate of
+— observability only, as specified, never a permission check. `POST /api/cases/:caseId/run` reads the
+same header through the same reader and additionally records it on the durable `runs.origin` column,
+so a run started by `sift_request_investigation` is distinguishable from one started by a click after
+the fact, not only while the request is in flight. The "Open question" above (the fate of
 `sift_list_packs`/`sift_select_pack`) remains genuinely open: both tools were carried forward
 unchanged, which resolves nothing about their eventual fate one way or the other.

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import type { CaseState, PublicActivityEvent } from '@sift/contracts';
@@ -770,4 +770,124 @@ describe('useCaseEvents', () => {
     // reconnect timer that opens a second connection after `reconnectDelayMs`.
     expect(FakeEventSource.instances).toHaveLength(1);
   });
+
+  // --- Snapshot-refresh coalescing ---
+  //
+  // `handleMessage` marks the canonical snapshot possibly-stale on every
+  // applied event, which is correct and stays correct. It used to also FETCH
+  // on every applied event, which is not: one real investigation emits ~73
+  // correlated events in ~70 ms, so the pane issued ~73
+  // `GET ...?mode=poll` requests into a browser's ~6-connection-per-host
+  // budget that the live SSE socket already holds one of -- and then
+  // discarded every response but the newest.
+
+  it('coalesces a burst of correlated events into a small bounded number of snapshot refreshes rather than one per event, and still converges on the final snapshot', async () => {
+    const BURST_SIZE = 40;
+    const initialSnapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 0 });
+    // Reachable ONLY by a refresh issued after the whole burst has been
+    // applied (`afterSequence` reaches BURST_SIZE only then) -- so asserting
+    // the hook ends up here proves the trailing refresh is never the one
+    // coalescing drops.
+    const finalSnapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: BURST_SIZE });
+    let refreshCount = 0;
+    server.use(
+      http.get(`${BASE_URL}/api/cases/${CASE_ID}/events`, ({ request }) => {
+        const after = Number(new URL(request.url).searchParams.get('afterSequence') ?? '0');
+        if (after !== 0) refreshCount += 1;
+        return HttpResponse.json({
+          snapshot: after >= BURST_SIZE ? finalSnapshot : initialSnapshot,
+          events: [] as PublicActivityEvent[],
+        });
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useCaseEvents({
+        caseId: CASE_ID,
+        baseUrl: BASE_URL,
+        createEventSource: createFakeEventSource,
+        snapshotRefreshIntervalMs: 50,
+      }),
+    );
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0]!;
+    source.triggerOpen();
+    await waitFor(() => expect(result.current.connectionState).toBe('live'));
+
+    // The whole burst lands inside one synchronous window, exactly as a real
+    // run's does today. Half of it reports `phase: 'completed'`, as a real
+    // run's tool/skill/specialist events do.
+    act(() => {
+      for (let index = 0; index < BURST_SIZE; index += 1) {
+        source.emit(
+          buildEvent({
+            eventId: `evt-burst-${String(index)}`,
+            sequence: index + 1,
+            type: index % 2 === 0 ? 'tool.started' : 'tool.completed',
+            phase: index % 2 === 0 ? 'active' : 'completed',
+          }),
+        );
+      }
+    });
+
+    // Every event still applies -- coalescing bounds REQUESTS, and never
+    // drops an event.
+    await waitFor(() => expect(result.current.events).toHaveLength(BURST_SIZE));
+    await waitFor(() => expect(result.current.snapshot).toEqual(finalSnapshot));
+
+    // Bounded by the throttle window, not by the event count: one leading
+    // refresh plus one trailing refresh is the expected shape here, and the
+    // ceiling leaves room for timing without ever approaching BURST_SIZE.
+    expect(refreshCount).toBeGreaterThanOrEqual(1);
+    expect(refreshCount).toBeLessThanOrEqual(5);
+    expect(refreshCount).toBeLessThan(BURST_SIZE / 2);
+  });
+
+  it('still refreshes promptly for a single isolated event, never holding the quiet case behind a timer', async () => {
+    const initialSnapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 1 });
+    const refreshedSnapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 2 });
+    let refreshCount = 0;
+    server.use(
+      http.get(`${BASE_URL}/api/cases/${CASE_ID}/events`, ({ request }) => {
+        const after = Number(new URL(request.url).searchParams.get('afterSequence') ?? '0');
+        if (after === 0) {
+          return HttpResponse.json({
+            snapshot: initialSnapshot,
+            events: [] as PublicActivityEvent[],
+          });
+        }
+        refreshCount += 1;
+        return HttpResponse.json({
+          snapshot: refreshedSnapshot,
+          events: [] as PublicActivityEvent[],
+        });
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useCaseEvents({
+        caseId: CASE_ID,
+        baseUrl: BASE_URL,
+        createEventSource: createFakeEventSource,
+        // Deliberately far longer than this test will wait: a
+        // trailing-edge-only debounce would fail here. An isolated event has
+        // to go out on the leading edge.
+        snapshotRefreshIntervalMs: 30_000,
+      }),
+    );
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0]!;
+    source.triggerOpen();
+    await waitFor(() => expect(result.current.connectionState).toBe('live'));
+
+    act(() => {
+      source.emit(buildEvent({ eventId: 'evt-isolated', sequence: 2 }));
+    });
+
+    await waitFor(() => expect(result.current.snapshot).toEqual(refreshedSnapshot));
+    expect(refreshCount).toBe(1);
+  });
+
 });

@@ -1,6 +1,7 @@
 {
   "name": "@sift/web",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "description": "Sift right-pane React/Vite browser application and WebMCP registration -- the live case workspace, real-time event stream, and WebMCP tool registration.",

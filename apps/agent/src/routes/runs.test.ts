@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CommandReceipt, RunReceipt } from '@sift/contracts';
+import type { CommandReceipt, HttpErrorBody, RunReceipt } from '@sift/contracts';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
 
@@ -127,5 +127,87 @@ describe('POST /api/cases/:caseId/run', () => {
       n: number;
     };
     expect(count.n).toBe(1);
+  });
+
+  // I1 (ADR 0006 decision 8; debugging-and-observability.md "WebMCP tool
+  // calls"): `sift_request_investigation` is the WebMCP tool that starts a
+  // run, so "this assistant's tool call caused this entire run" is the one
+  // causal claim this route has to be able to prove afterwards. It reuses
+  // `routes/commands.ts`'s exact `X-Sift-Command-Origin` header,
+  // `readCommandOrigin` reader, and `COMMAND_ORIGINS` vocabulary -- not a
+  // second, parallel provenance concept.
+  describe('X-Sift-Command-Origin (I1: WebMCP call provenance)', () => {
+    it('durably records a webmcp-originated run on the run row and its run.queued activity event', async () => {
+      harness = await createHttpTestHarness();
+      const { caseId, expectedSequence } = await startDemo();
+
+      const response = await request(harness.server)
+        .post(`/api/cases/${caseId}/run`)
+        .set('Idempotency-Key', 'cmd-run-webmcp')
+        .set('X-Sift-Command-Origin', 'webmcp')
+        .send({ caseId, expectedSequence });
+
+      expect(response.status).toBe(200);
+      const runId = asJson<RunReceipt>(response.body).runId;
+
+      // Persisted state, not a spy: the real `runs` row in the real
+      // migrated SQLite database.
+      const row = harness.database.sqlite
+        .prepare('SELECT origin FROM runs WHERE id = ?')
+        .get(runId) as { origin: string | null } | undefined;
+      expect(row?.origin).toBe('webmcp');
+      expect(harness.runStore.load(runId)?.origin).toBe('webmcp');
+
+      // And on the replayable public stream, in the same `safeDetails.origin`
+      // shape `routes/commands.ts` already writes for a tagged command.
+      const queued = harness.activityStore
+        .replayFrom(caseId, 0)
+        .find((event) => event.type === 'run.queued');
+      expect(queued?.runId).toBe(runId);
+      expect(queued?.safeDetails).toEqual({ origin: 'webmcp' });
+    });
+
+    it('records no origin at all when the header is absent -- never a default of "user" or "webmcp"', async () => {
+      harness = await createHttpTestHarness();
+      const { caseId, expectedSequence } = await startDemo();
+
+      const response = await request(harness.server)
+        .post(`/api/cases/${caseId}/run`)
+        .set('Idempotency-Key', 'cmd-run-untagged')
+        .send({ caseId, expectedSequence });
+
+      expect(response.status).toBe(200);
+      const runId = asJson<RunReceipt>(response.body).runId;
+
+      const row = harness.database.sqlite
+        .prepare('SELECT origin FROM runs WHERE id = ?')
+        .get(runId) as { origin: string | null } | undefined;
+      expect(row?.origin).toBeNull();
+      expect(harness.runStore.load(runId)?.origin).toBeUndefined();
+
+      const queued = harness.activityStore
+        .replayFrom(caseId, 0)
+        .find((event) => event.type === 'run.queued');
+      expect(queued?.safeDetails).toBeUndefined();
+    });
+
+    it('returns 400 VALIDATION for an unrecognized origin value, never creating a run', async () => {
+      harness = await createHttpTestHarness();
+      const { caseId, expectedSequence } = await startDemo();
+
+      const response = await request(harness.server)
+        .post(`/api/cases/${caseId}/run`)
+        .set('Idempotency-Key', 'cmd-run-bogus')
+        .set('X-Sift-Command-Origin', 'ui')
+        .send({ caseId, expectedSequence });
+
+      expect(response.status).toBe(400);
+      expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
+      // Proves it never reached `RunService`: no run row exists at all.
+      const count = harness.database.sqlite.prepare('SELECT COUNT(*) as n FROM runs').get() as {
+        n: number;
+      };
+      expect(count.n).toBe(0);
+    });
   });
 });

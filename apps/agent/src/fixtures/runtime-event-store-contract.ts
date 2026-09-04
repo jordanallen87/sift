@@ -74,6 +74,64 @@ export function runRuntimeEventStoreContractTests(createStore: () => RuntimeEven
       expect(() => store.append(draft('run-1', 'case-1', 0))).toThrow();
     });
 
+    it('appendMany() persists a whole batch, in order, each with its own synthetic id', () => {
+      const store = createStore();
+      const persisted = store.appendMany([
+        draft('run-1', 'case-1', 0, { summary: 'first', name: 'a' }),
+        draft('run-1', 'case-1', 1, { summary: 'second', name: 'b' }),
+        draft('run-1', 'case-1', 2, { summary: 'third', name: 'c' }),
+      ]);
+
+      expect(persisted.map((event) => event.summary)).toEqual(['first', 'second', 'third']);
+      expect(new Set(persisted.map((event) => event.id)).size).toBe(3);
+      expect(store.listByRun('run-1').map((event) => event.sequence)).toEqual([0, 1, 2]);
+    });
+
+    it('appendMany() accepts an empty batch without writing anything', () => {
+      const store = createStore();
+      expect(store.appendMany([])).toEqual([]);
+      expect(store.listByRun('run-1')).toEqual([]);
+    });
+
+    it('appendMany() interleaves with append() on the same run', () => {
+      const store = createStore();
+      store.append(draft('run-1', 'case-1', 0, { summary: 'normalized' }));
+      store.appendMany([draft('run-1', 'case-1', 1, { summary: 'span' })]);
+
+      expect(store.listByRun('run-1').map((event) => event.summary)).toEqual([
+        'normalized',
+        'span',
+      ]);
+    });
+
+    it('appendMany() applies the batch atomically: a duplicate (runId, sequence) anywhere in it writes none of it', () => {
+      const store = createStore();
+      store.append(draft('run-1', 'case-1', 0));
+
+      expect(() =>
+        store.appendMany([
+          draft('run-1', 'case-1', 1, { summary: 'would-have-been-written' }),
+          draft('run-1', 'case-1', 0, { summary: 'collides' }),
+        ]),
+      ).toThrow();
+
+      expect(store.listByRun('run-1')).toHaveLength(1);
+    });
+
+    it('appendMany() applies the same Redactor stage as append()', () => {
+      const store = createStore();
+      store.appendMany([
+        draft('run-1', 'case-1', 0, {
+          attributes: { note: 'token is SIFT_TEST_SECRET_ABC123' },
+          redactions: [],
+        }),
+      ]);
+
+      const [event] = store.listByRun('run-1');
+      expect(event?.attributes['note']).toBe('token is [REDACTED]');
+      expect(event?.redactions.some((r) => r.path === 'note')).toBe(true);
+    });
+
     it('filters listByRun() by category', () => {
       const store = createStore();
       store.append(draft('run-1', 'case-1', 0, { category: 'tool' }));

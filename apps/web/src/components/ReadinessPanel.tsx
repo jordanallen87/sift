@@ -19,12 +19,12 @@
  * shape, a real `ReadinessResult` value from `@sift/core` is assignable here
  * without adaptation the moment a later task wires it in.
  *
- * Adapted from `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/inline/renderers/ReadinessStateCard.tsx`'s
+ * Adapted from `praetor:apps/web/src/components/strata19/inline/renderers/ReadinessStateCard.tsx`'s
  * fail-closed, non-vacuous-measurement principle ("`ready === false` with an
  * empty `blockers` array is a real and important case ... it renders as
  * 'Not ready' with the check fraction rather than as a blocker list that
  * appears to be loading forever") and from
- * `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/orchestration/ReadinessPanel.tsx`'s
+ * `praetor:apps/web/src/components/orchestration/ReadinessPanel.tsx`'s
  * blocker taxonomy/bucket breakdown idea -- see docs/reuse-attribution.md
  * for the recorded entry. Only the information architecture is reused;
  * Praetor's `shadcn` primitives, scoring model, and desktop assumptions are

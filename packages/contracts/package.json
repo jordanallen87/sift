@@ -1,6 +1,7 @@
 {
   "name": "@sift/contracts",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "description": "Zod schemas and shared API/event types for Sift: attributes, case state, commands, events, packs, Strands runtime, scenarios, and HTTP envelopes.",

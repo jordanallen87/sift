@@ -76,14 +76,14 @@ test.describe('keyboard operation and accessibility', () => {
     // --- Fill CustomConcernForm using real keystrokes, not `.fill()` ---
     const form = page.getByTestId('custom-concern-form');
     await form.getByLabel('Concern id').focus();
-    await page.keyboard.type('dog_crate_fit');
+    await page.keyboard.type('rear_facing_seat_behind_driver');
     await form.getByLabel('Label', { exact: true }).focus();
-    await page.keyboard.type('Both dog crates fit behind the second row');
+    await page.keyboard.type('Rear-facing seat fits behind the driver');
     await form.getByLabel('Value type').selectOption('boolean');
     await form.getByLabel('Evidence expectation').selectOption('verification');
     await form.getByLabel('Why this matters to you').focus();
     await page.keyboard.type(
-      'The household needs two 36in x 24in x 27in dog travel crates to fit behind the second row.',
+      'A second child arrives in three months, so a rear-facing seat has to go behind the driver.',
     );
 
     const submit = form.getByTestId('custom-concern-form-submit');

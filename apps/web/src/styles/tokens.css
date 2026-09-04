@@ -63,15 +63,110 @@
   --color-border-strong: #828983; /* component boundaries: inputs, card edges, buttons */
 
   /* ---------------------------------------------------------------------
-   * Color — brand ("ink-blue")
-   * A dark, desaturated fountain-pen blue used for primary actions, links,
-   * the active/in-progress signal, and focus. Deliberately not a bright
-   * SaaS blue or an indigo/violet accent.
+   * Color — brand ("Sift Green")
+   *
+   * A dark, desaturated forest green used for primary actions, links, and
+   * focus. This is the corporate identity primary from the brand kit, not
+   * an interface-only colour invented alongside it: the values below are
+   * `var()` references into the `--sift-green-*` ramp declared further down
+   * this block (a forward reference between custom properties in the same
+   * rule is resolved at computed-value time, so declaration order does not
+   * matter), which in turn mirrors docs/brand/palette.json one-for-one.
+   * Referencing rather than re-typing `#1f5c52` is deliberate: the previous
+   * ink-blue brand and the identity green were two independent literals
+   * that could — and did — drift apart. There is now exactly one place the
+   * brand primary is written down.
+   *
+   * Was ink-blue `#2c4870` (a dark fountain-pen navy). It read cold against
+   * the paper/cream neutrals and, more importantly, was simply not the
+   * brand. The navy did not leave the palette: it now carries the `active`
+   * status on its own terms (see the status block below).
+   *
+   * `--color-brand-strong` is green.800, not the brand kit's own
+   * `--sift-brand-hover` (green.700). green.700 sits ΔE00 2.3 / 1.11:1 from
+   * the base — at or below the just-noticeable-difference threshold, so a
+   * hover would read as no feedback at all. The retired navy pair
+   * (#2c4870 → #1f3555) had a ΔE00 6.5 / 1.34:1 / ΔL* 8.4 step; green.800
+   * reproduces that step almost exactly (ΔE00 5.8 / 1.30:1 / ΔL* 7.1),
+   * where green.900 would overshoot to ΔE00 10.9 and read as a different
+   * colour rather than a state. The kit's hover/active aliases are tuned
+   * for the static mark, not for a pressed button.
+   *
+   * `--color-brand-tint` is green.100, not green.50. The tint's role is a
+   * *subtle brand-coloured surface*, and most of the places that use it
+   * (the Runtime Inspector's view tabs, OptionRankBadge, CaseInsightsPanel,
+   * OptionCompareView's pinned row) sit on `--color-surface` — pure white.
+   * green.50 is only 1.08:1 against white and would vanish there; green.100
+   * holds 1.26:1, marginally better than the navy tint it replaces (1.23:1)
+   * and at effectively the same lightness (L* 91.0 vs 91.8), so it occupies
+   * the identical role in the value structure.
    * ------------------------------------------------------------------- */
-  --color-brand: #2c4870;
-  --color-brand-strong: #1f3555; /* hover/pressed */
-  --color-brand-tint: #e3e8f0; /* subtle brand-colored surface */
+  --color-brand: var(--sift-green-600);
+  --color-brand-strong: var(--sift-green-800); /* hover/pressed */
+  --color-brand-tint: var(--sift-green-100); /* subtle brand-colored surface */
   --color-focus-ring: var(--color-brand);
+
+  /* ---------------------------------------------------------------------
+   * Color — Sift brand identity ("Sift Green")
+   *
+   * The corporate identity palette from the Sift brand kit
+   * (docs/brand/palette.json, docs/brand/BRAND-GUIDE.md; the same values
+   * are carried in the kit's own docs/brand/sift-tokens.css so the kit
+   * stays re-exportable). It exists here so anything that must render
+   * *the brand itself* -- the logo lockup at /brand/sift-logo.svg, the
+   * favicon/app-icon family, `<meta name="theme-color">`, the manifest's
+   * theme/background colors, submission and marketing surfaces -- reads
+   * one value from the same cascade as every other Sift token instead of
+   * re-typing `#1F5C52`.
+   *
+   * This ramp is now also the *source* of the interface brand: the
+   * `--color-brand*` tokens above are `var()` references into it, so the
+   * mark and the workspace chrome cannot drift apart. (They previously
+   * could: the interface brand was an independent ink-blue literal and
+   * this ramp was consumed by nothing.) The neutral surfaces and text
+   * remain the "paper and ink" system -- `--color-paper`/`--color-ink` --
+   * which this block still deliberately does not touch.
+   *
+   * Names match the brand kit's own `--sift-*` namespace one-for-one for
+   * traceability back to palette.json. The kit's neutral ramp and its
+   * `--sift-bg`/`--sift-surface`/`--sift-text`/`--sift-border` semantic
+   * aliases are intentionally omitted: they would duplicate and compete
+   * with the paper/ink tokens above, which remain the single source of
+   * truth for interface color.
+   *
+   * The kit also ships docs/brand/tailwind/sift-theme.css, which is NOT
+   * imported anywhere. Its `@theme inline` block redefines
+   * `--color-background`, `--color-foreground`, `--color-muted`,
+   * `--color-border`, and `--color-ring` (already owned by tailwind.css's
+   * shadcn bridge) and `--radius-md`/`-lg`/`-xl` with different values
+   * than this file's radius scale (8/12/16px vs Sift's 10/14/18px), and
+   * its `@layer base` rule repaints `html`/`body` and `:focus-visible`.
+   * Importing it would be exactly the same-name `@theme`-versus-`:root`
+   * collision tailwind.css's own header comment warns against.
+   * ------------------------------------------------------------------- */
+  --sift-green-50: #f2f8f6;
+  --sift-green-100: #d7e9e5;
+  --sift-green-200: #a8d1ca;
+  --sift-green-300: #77b4aa;
+  --sift-green-400: #4a9386;
+  --sift-green-500: #2c7468;
+  --sift-green-600: #1f5c52; /* Sift Green — the brand primary */
+  --sift-green-700: #1b554b;
+  --sift-green-800: #164a41;
+  --sift-green-900: #103a32;
+  --sift-green-950: #0b241f;
+
+  /* The kit's own semantic aliases, kept for the *mark* and for anything
+     re-exporting the brand kit. Note that the product's interactive steps
+     deliberately differ: `--color-brand-strong` is green.800 rather than
+     this `--sift-brand-hover` (green.700), and `--color-brand-tint` is
+     green.100 rather than this `--sift-brand-soft` (green.50). See the
+     reasoning in the brand block above -- a static mark and a pressed
+     button have different legibility requirements. */
+  --sift-brand: var(--sift-green-600); /* identity primary: mark, theme-color, manifest */
+  --sift-brand-hover: var(--sift-green-700);
+  --sift-brand-active: var(--sift-green-800);
+  --sift-brand-soft: var(--sift-green-50);
 
   /* ---------------------------------------------------------------------
    * shadcn/ui bridge
@@ -113,6 +208,28 @@
    * -bg tint, and to >= 4.5:1 as white-on-fill, so the same token works as
    * text, an outlined chip, or a solid badge. Never the only signal for a
    * state — always pair with the state's text label/icon.
+   *
+   * Separation between status inks is measured in CIEDE2000 (ΔE00), not in
+   * WCAG contrast ratio. Contrast ratio is the wrong instrument here and
+   * will mislead anyone who reaches for it: because every ink is
+   * deliberately tuned into the same narrow luminance band (that is what
+   * lets them all clear 4.5:1 on the same backgrounds), *every* pair in
+   * this block sits under 2:1 of every other -- `blocked` and `error` are
+   * 1.40:1 apart and are obviously different colours (ΔE00 22.4). Only
+   * `decided` clears 2:1 of anything, and only because it is near-black.
+   * The working floor is ΔE00 >= 13.7, the tightest pair this system
+   * already treats as distinct (`blocked` vs `stale`).
+   *
+   * Audited against that floor after the brand moved to Sift Green: every
+   * status-to-status pair now clears it, and every status clears it against
+   * `--color-brand` except `satisfied` (ΔE00 9.7). `satisfied` is kept as
+   * moss green anyway, deliberately: it is not a status-to-status collision
+   * (it clears 16.7 from its nearest status neighbour), the two never
+   * render as the same *kind* of element -- the brand is button fills,
+   * links, and focus rings; `satisfied` is chip text on a tint -- and at
+   * roughly 4x the just-noticeable difference with a 6.1 L* gap they read
+   * as related shades rather than the same colour. Green meaning "this is
+   * settled" is also the correct family for it now that the brand is green.
    * ------------------------------------------------------------------- */
 
   /* satisfied — required evidence is in and sufficient */
@@ -120,7 +237,36 @@
   --color-status-satisfied-bg: #e5ede6;
   --color-status-satisfied-border: #b9cfbe;
 
-  /* active — currently being investigated right now */
+  /* active — currently being investigated right now.
+   *
+   * This navy is the colour the interface brand used to be. When the brand
+   * moved to Sift Green these three lines were bare literals rather than
+   * `var(--color-brand*)` references, so `active` would have silently
+   * stayed navy while everything else turned green. The literals are kept,
+   * but they are now *deliberate* rather than coincidental: `active` owns
+   * this navy outright and no longer tracks the brand.
+   *
+   * Why `active` does NOT follow the brand:
+   *   1. A status says something about the *case*; the brand says something
+   *      about the *product*. `active` is the highest-frequency status in
+   *      the UI (every pulsing "working" dot, the Live connection chip,
+   *      filter chips, Runtime Inspector rows). Pointing it at the brand
+   *      would paint all of that the same colour as every primary button,
+   *      link, and focus ring -- brand-on-brand, with the status carrying
+   *      no independent signal.
+   *   2. Green is now the palette's *completion* family (brand chrome plus
+   *      `satisfied` moss). "In flight" is not "done"; a green `active`
+   *      would sit ΔE00 9.7 from the brand and 9.7 from `satisfied`, and
+   *      `active` and `satisfied` chips render side by side in the same
+   *      Readiness grouping. That is a real legibility regression in the
+   *      densest region of the product.
+   *   3. Contrast. This navy holds AAA on every pair it is used in
+   *      (7.53:1 on its own -bg, 8.15:1 on paper, 9.26:1 as white-on-fill).
+   *      Every alternative blue far enough from Sift Green to be told apart
+   *      has to be lighter, and the whole search space at that separation
+   *      lands at ~4.7:1 on paper -- an AAA-to-AA regression.
+   * It separates cleanly from the new brand (ΔE00 24.7) and from every
+   * other status ink (minimum ΔE00 19.1, vs `stale`). */
   --color-status-active-ink: #2c4870;
   --color-status-active-bg: #e3e8f0;
   --color-status-active-border: #b7c3d6;
@@ -160,10 +306,45 @@
   --color-status-error-bg: #f3e1dc;
   --color-status-error-border: #e0b7ac;
 
-  /* ready — every required obligation is satisfied; awaiting human review */
-  --color-status-ready-ink: #1b665f;
-  --color-status-ready-bg: #dfebe9;
-  --color-status-ready-border: #a9ccc7;
+  /* ready — every required obligation is satisfied; awaiting human review.
+   *
+   * Was deep teal `#1b665f`, which sat ΔE00 3.8 from the new brand green --
+   * visually the same colour. "Your approval needed" would have been
+   * indistinguishable from every primary button, in the one state where the
+   * product most needs the human to see that *they* must act and that the
+   * chip is not itself the button. It had to move.
+   *
+   * Why not a lighter/darker green, per the brand kit's "supporting colours
+   * are lighter/darker greens plus neutrals" guidance: the green family is
+   * full at the lightness band WCAG allows here. Text needing >= 4.5:1 on
+   * white caps the ink at about L* 47, and L* 28 / 35 / 41 are already
+   * `--color-brand-strong` / `--color-brand` / `satisfied`. Going darker
+   * hits green.900 at ΔE00 5.1 from `--color-brand-strong`, and darker
+   * still (green.950) collides with `decided` ink-charcoal at ΔE00 10.4
+   * and stops reading as a status at all. A same-hue answer needs a large
+   * lightness gap, and there is no gap left to take.
+   *
+   * Why not the freed navy `#2c4870`: `active` keeps it (see above), for
+   * the contrast reason that also rules it out here -- only one token can
+   * have it, and `active` is the one with no viable alternative.
+   *
+   * So `ready` stays recognisably *teal* -- continuity with what shipped --
+   * but moves decisively from the green side of teal to the blue side.
+   * `#0f6076` is ΔE00 14.8 from the brand and 15.0 from `active` navy,
+   * both above this palette's own empirical separation floor (ΔE00 13.7,
+   * the tightest pair the design system already treats as distinct:
+   * `blocked` vs `stale`). Every other separation is >= 19.3. It is also
+   * strictly *better* on contrast than the teal it replaces: 6.25:1 on
+   * paper (was 5.94), 7.11:1 on surface and as white-on-fill (was 6.75,
+   * so this pair gains AAA), 5.80:1 on its own -bg (was 5.53).
+   *
+   * The -bg and -border follow the ink to the blue side at matched
+   * lightness (L* 92.0 vs the old 92.1; L* 79.3 vs 79.5), so the token
+   * keeps its exact weight in the value structure and `--color-ink-muted`
+   * still clears 4.5:1 on the tint (4.98, was 4.99). */
+  --color-status-ready-ink: #0f6076;
+  --color-status-ready-bg: #dfeaef;
+  --color-status-ready-border: #a9cad6;
 
   /* decided — the case is closed (approved, rejected, or revision requested) */
   --color-status-decided-ink: #1b1d1b;

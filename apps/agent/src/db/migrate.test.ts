@@ -26,7 +26,7 @@ const REQUIRED_TABLES = [
  * if a migration were accidentally added, renamed, or dropped, which is
  * precisely what this list exists to catch.
  */
-const ALL_MIGRATIONS = ['0001_initial.sql', '0002_run_plans.sql'];
+const ALL_MIGRATIONS = ['0001_initial.sql', '0002_run_plans.sql', '0003_run_origin.sql'];
 
 function tableNames(database: SiftDatabase): string[] {
   const rows = database.sqlite

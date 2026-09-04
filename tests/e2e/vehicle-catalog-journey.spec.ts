@@ -87,6 +87,9 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
     await resultsList.locator('li').first().getByRole('button', { name: /add/i }).click();
     await expect(page.getByTestId('shortlist-count')).toContainText('2 of');
 
+    // The bar summarises the shortlist in one row; its entries live in the
+    // panel, so open it before asserting on them.
+    await sift.expandShortlist();
     await expect(page.getByTestId('vehicle-catalog-shortlist-list').locator('li')).toHaveCount(2);
 
     // --- Create the real, persisted case from the shortlist ---

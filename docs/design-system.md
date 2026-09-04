@@ -18,9 +18,10 @@ palette or an AI-generic warm-cream-and-serif landing page.
 Two AI-demo defaults were deliberately avoided: a warm cream background
 with a high-contrast display serif and a terracotta accent, and a
 near-black background with a single neon accent. Sift's palette instead
-sits on a cool, quiet paper tone with a dark desaturated "fountain-pen
-ink" blue as its brand color, and reserves saturated color entirely for
-the nine status tokens described below.
+sits on a cool, quiet paper tone with a dark desaturated forest green —
+Sift Green, the corporate identity primary — as its brand color, and
+reserves saturated color entirely for the nine status tokens described
+below.
 
 ## Palette
 
@@ -30,13 +31,47 @@ the nine status tokens described below.
 | `--color-surface` | `#FBFBF9` | Card/panel fill |
 | `--color-surface-sunken` | `#E4E7E1` | Recessed areas: code, Runtime Inspector rows |
 | `--color-ink` | `#1B1D1B` | Primary text |
-| `--color-brand` | `#2C4870` | Primary actions, links, focus, the "active" signal |
+| `--color-brand` | `#1F5C52` | Primary actions, links, focus |
+| `--color-brand-strong` | `#164A41` | Hover/pressed |
+| `--color-brand-tint` | `#D7E9E5` | Subtle brand-colored surface |
 
-Brand color rationale: a dark, desaturated navy-indigo read as ink rather
-than UI chrome. It is far enough from a bright SaaS blue (`#3B82F6`-class)
-or a violet/indigo accent (Linear/Stripe-class) to read as a distinct
-choice rather than a framework default, while staying calm and legible at
-small sizes.
+Brand color rationale: this is Sift Green, the corporate identity primary
+from the brand kit (`docs/brand/palette.json`, green.600). It is a dark,
+desaturated forest green that reads as ink rather than UI chrome, far
+enough from a bright SaaS blue (`#3B82F6`-class) or a violet/indigo accent
+(Linear/Stripe-class) to read as a distinct choice rather than a framework
+default, and it sits warmer against the paper neutrals than the ink-blue
+it replaced.
+
+The three tokens are `var()` references into the `--sift-green-*` ramp in
+`tokens.css` rather than copied literals, so the identity mark and the
+workspace chrome cannot drift apart — which they previously did, the
+interface brand being an independent navy and the identity ramp being
+consumed by nothing.
+
+Two of the three deliberately diverge from the brand kit's own semantic
+aliases, because a static mark and an interactive control have different
+requirements:
+
+- **`--color-brand-strong` is green.800, not the kit's `--sift-brand-hover`
+  (green.700).** green.700 is only ΔE00 2.3 / 1.11:1 from the base — at or
+  below the just-noticeable-difference threshold, so a hover would read as
+  no feedback at all. The retired navy pair (`#2C4870` → `#1F3555`) had a
+  ΔE00 6.5 / 1.34:1 / ΔL\* 8.4 step; green.800 reproduces it almost exactly
+  (ΔE00 5.8 / 1.30:1 / ΔL\* 7.1). green.900 would overshoot to ΔE00 10.9 and
+  read as a different color rather than a state.
+- **`--color-brand-tint` is green.100, not the kit's `--sift-brand-soft`
+  (green.50).** Most tint usage sits on `--color-surface` (pure white):
+  green.50 is only 1.08:1 there and would vanish; green.100 holds 1.26:1,
+  marginally better than the navy tint it replaces (1.23:1), at effectively
+  the same lightness (L\* 91.0 vs 91.8).
+
+### Formerly-navy: what happened to `#2C4870`
+
+The ink-blue did not leave the palette. It was simultaneously the brand
+*and* the `active` status, written as two independent literals; when the
+brand moved to green, `active` kept the navy — see "Why `active` did not
+follow the brand" below.
 
 ### Status tokens
 
@@ -49,13 +84,13 @@ Required Visible States list adds **stale**, an **error** state, **ready**
 | State | Ink | Meaning |
 | --- | --- | --- |
 | `satisfied` | moss green `#3B6B4C` | required evidence is in and sufficient |
-| `active` | brand ink-blue `#2C4870` | being investigated right now |
+| `active` | ink-blue `#2C4870` | being investigated right now |
 | `blocked` | plum/wine `#6B3550` | stuck on a human or a missing capability |
 | `accepted-uncertainty` | ochre `#8A5A16` | a gap the user explicitly accepted |
 | `open` | stone gray `#64665F` | not yet started — deliberately hue-less |
 | `stale` | dusty mauve `#75636C` | evidence aged past its validity window |
 | `error` | brick red `#A13A2A` | a recoverable technical/tool failure |
-| `ready` | deep teal `#1B665F` | every requirement met, awaiting human review |
+| `ready` | petrol blue `#0F6076` | every requirement met, awaiting human review |
 | `decided` | ink charcoal `#1B1D1B` | the case is closed |
 
 Design choices behind this set:
@@ -65,6 +100,19 @@ Design choices behind this set:
   their own `-bg` tint, and as white text on a solid fill of the ink color
   — so the same token works as a label, an outlined chip, or a filled
   badge without a second set of "accessible" variants.
+- **Separation between status inks is measured in CIEDE2000 (ΔE00), not in
+  WCAG contrast ratio.** Contrast ratio is the wrong instrument for
+  *distinctness* and will mislead anyone who reaches for it. Because every
+  ink is deliberately tuned into the same narrow luminance band — which is
+  exactly what lets them all clear 4.5:1 on the same backgrounds — *every*
+  pair in this set sits under 2:1 of every other. `blocked` and `error` are
+  1.40:1 apart and are obviously different colors (ΔE00 22.4). Only
+  `decided` clears 2:1 of anything, and only because it is near-black. A
+  2:1 rule applied to these tokens is unsatisfiable: reaching it would
+  force an ink either light enough to fail 4.5:1 on white or dark enough to
+  collide with `decided`. The working floor is instead **ΔE00 ≥ 13.7**, the
+  tightest pair this system already treats as distinct (`blocked` vs
+  `stale`).
 - **`blocked` and `error` are deliberately different hues** (plum vs.
   brick red). `blocked` is a case-domain state — the run is stuck on a
   human or a missing capability, which is a normal, expected pause, not an
@@ -94,6 +142,117 @@ Design choices behind this set:
   label (see `docs/specs/product.md`'s terminology table — "Your approval
   needed," "Action blocked," etc.) and, at the component level, an icon.
   Color is reinforcement, not the only channel.
+
+### The Sift Green repoint: two collisions and how they were resolved
+
+Moving `--color-brand` from ink-blue to Sift Green broke two things that a
+find-and-replace would have missed. Both were resolved deliberately.
+
+**1. `active` did not follow the brand — it kept the navy.**
+
+`--color-status-active-ink`/`-bg` were hardcoded literals equal to the old
+brand, not `var()` references, so `active` would have silently stayed navy
+while everything else turned green. The literals are kept, but they are now
+*deliberate* rather than coincidental: `active` owns `#2C4870` outright.
+
+It does not point at `--color-brand` because:
+
+1. A status says something about the *case*; the brand says something about
+   the *product*. `active` is the highest-frequency status in the UI —
+   every pulsing "working" dot, the Live connection chip, filter chips,
+   Runtime Inspector rows. Pointing it at the brand would paint all of that
+   the same color as every primary button, link, and focus ring, leaving
+   the status with no independent signal.
+2. Green is now the palette's *completion* family (brand chrome plus
+   `satisfied` moss). "In flight" is not "done". A green `active` would sit
+   ΔE00 9.7 from the brand *and* 9.7 from `satisfied`, and `active` and
+   `satisfied` chips render side by side in the same Readiness grouping —
+   a real legibility regression in the densest region of the product.
+3. Contrast. The navy holds AAA on every pair it is used in (7.53:1 on its
+   own `-bg`, 8.15:1 on paper, 9.26:1 as white-on-fill). Every alternative
+   blue far enough from Sift Green to be told apart has to be lighter, and
+   the whole search space at that separation lands around 4.7:1 on paper —
+   an AAA→AA regression.
+
+It separates cleanly from the new brand (ΔE00 24.7) and from every other
+status ink (minimum ΔE00 19.1, against `stale`).
+
+**2. `ready` moved from green-teal to petrol blue.**
+
+`#1B665F` sat **ΔE00 3.8** from `#1F5C52` — visually the same color. "Your
+approval needed" would have been indistinguishable from every primary
+button, in the one state where the product most needs the human to see that
+*they* must act and that the chip is not itself the button.
+
+A lighter or darker green — the brand kit's own guidance for supporting
+colors — does not work here, because the green family is full at the
+lightness band WCAG allows. Text needing ≥ 4.5:1 on white caps the ink at
+about L\* 47, and L\* 28 / 35 / 41 are already `--color-brand-strong` /
+`--color-brand` / `satisfied`. Going darker hits green.900 at ΔE00 5.1 from
+`--color-brand-strong`; darker still (green.950) collides with `decided`
+ink-charcoal at ΔE00 10.4 and stops reading as a status at all.
+
+The freed navy was evaluated and rejected for `ready` specifically because
+`active` has no viable alternative to it (reason 3 above) and only one token
+can hold it. A search of the remaining gamut at `ready`'s required contrast
+returns only olive (H≈100) and violet (H≈315) as genuinely free hues; both
+are wrong for this design world, and violet is the accent family the brand
+rationale above explicitly rejects.
+
+So `ready` stays recognisably *teal* — continuity with what shipped — but
+moves decisively from the green side of teal to the blue side. `#0F6076` is
+ΔE00 14.8 from the brand and 15.0 from `active`, both above the ΔE00 13.7
+floor; every other separation is ≥ 19.3. It is also strictly *better* on
+contrast than the teal it replaces, gaining AAA on white.
+
+**Audit of the remaining seven.** Every status-to-status pair clears the
+ΔE00 13.7 floor after the change, and every status clears it against
+`--color-brand` except `satisfied` (ΔE00 9.7). `satisfied` is kept as moss
+green anyway, deliberately: it is not a status-to-status collision (16.7
+from its nearest status neighbour), the two never render as the same *kind*
+of element — the brand is button fills, links, and focus rings; `satisfied`
+is chip text on a tint — and at roughly 4× the just-noticeable difference
+with a 6.1 L\* gap they read as related shades rather than one color. Green
+meaning "this is settled" is also the correct family for it now that the
+brand is green.
+
+### Measured contrast, before and after
+
+Every pair touched by the repoint. All clear WCAG AA (4.5:1); the two
+regressions from AAA are noted.
+
+| Pair | Before | After |
+| --- | --- | --- |
+| white on `--color-brand` (primary button) | 9.26 AAA | 7.75 AAA |
+| white on `--color-brand-strong` (hover) | 12.36 AAA | 10.05 AAA |
+| `--color-brand` text on `--color-surface` (white) | 9.26 AAA | 7.75 AAA |
+| `--color-brand` text on `--color-paper` | 8.15 AAA | 6.82 **AA** |
+| `--color-brand` text on `--color-brand-tint` | 7.53 AAA | 6.15 **AA** |
+| `--color-brand-strong` on tint (`--accent-foreground` on `--accent`, `::selection`) | 10.05 AAA | 7.98 AAA |
+| `--color-ink` on tint (pinned compare row) | 13.78 AAA | 13.47 AAA |
+| `--color-ink-muted` on tint | 4.96 AA | 4.84 AA |
+| `ready` ink on `ready` bg | 5.53 AA | 5.80 AA |
+| `ready` ink on `--color-paper` | 5.94 AA | 6.25 AA |
+| `ready` ink on `--color-surface` (white) | 6.75 AA | **7.11 AAA** |
+| `ready` ink on `--color-surface-sunken` | 5.40 AA | 5.69 AA |
+| white on `ready` ink (filled badge) | 6.75 AA | **7.11 AAA** |
+| `--color-ink-muted` on `ready` bg | 4.99 AA | 4.98 AA |
+| `--color-ink` on `ready` bg (review card fill) | 13.89 AAA | 13.85 AAA |
+
+`active` is unchanged and retains 7.53 / 8.15 / 9.26 (own `-bg` / paper /
+white-on-fill).
+
+The two AAA→AA drops are both forced by the brand primary itself, which is
+fixed by the identity: `#1F5C52` is lighter than the navy it replaces, so
+anything measured against it loses a little headroom. Both remain well
+clear of AA, and the pair that matters most in practice — brand text on
+`--color-surface`, where every link in the component tree actually renders,
+since links live inside white cards — stays AAA at 7.75. Brand text
+directly on `--color-paper` is the rarer case.
+
+`--color-ink-muted` still clears 4.5:1 against all nine status backgrounds
+(worst case 4.82 on `error`, with `ready` at 4.98), so `tokens.css`'s
+standing promise for that token holds.
 
 ### Mapping the full required-states list
 

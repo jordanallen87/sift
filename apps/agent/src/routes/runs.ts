@@ -3,12 +3,15 @@
  * service"), dispatching to `RunService.requestInvestigation`. See
  * `services/run-service.ts`'s header comment for why this is a separate
  * service/route from `CommandService`/`routes/commands.ts`.
+ *
+ * Separate service, but the *same* `X-Sift-Command-Origin` provenance
+ * marker (I1 -- ADR 0006 decision 8): see the `POST .../run` handler below.
  */
 import { Router } from 'express';
 import { RunReceiptSchema } from '@sift/contracts';
 import type { RunService } from '../services/run-service.js';
 import type { RunPlanService } from '../services/run-plan-service.js';
-import { readCommandId, respondWithServiceResult } from './http-support.js';
+import { readCommandId, readCommandOrigin, respondWithServiceResult } from './http-support.js';
 
 export interface RunsRouterDeps {
   readonly runService: RunService;
@@ -58,13 +61,27 @@ export function createRunsRouter(deps: RunsRouterDeps): Router {
     const commandId = readCommandId(req, res);
     if (commandId === undefined) return;
 
+    // The same optional `X-Sift-Command-Origin` marker `routes/commands.ts`
+    // reads, through the same `readCommandOrigin` reader, against the same
+    // closed `COMMAND_ORIGINS` vocabulary and the same failure contract (an
+    // unrecognized value is already answered `400 VALIDATION` by the reader
+    // itself; a missing header is `origin: undefined`, never a default).
+    //
+    // This route needs it more than any other: `sift_request_investigation`
+    // is the WebMCP tool that *starts a run*, so without threading the
+    // marker here, the project's central causal claim -- "this assistant's
+    // tool call caused this entire run" -- was recorded nowhere, and a
+    // WebMCP-triggered investigation was indistinguishable from a click.
+    const originResult = readCommandOrigin(req, res);
+    if (!originResult.ok) return;
+
     const rawBody: Record<string, unknown> =
       typeof req.body === 'object' && req.body !== null
         ? (req.body as Record<string, unknown>)
         : {};
     const input = { ...rawBody, caseId: req.params.caseId };
 
-    const result = deps.runService.requestInvestigation(commandId, input);
+    const result = deps.runService.requestInvestigation(commandId, input, originResult.origin);
     respondWithServiceResult(res, result, (value) => RunReceiptSchema.parse(value));
   });
 

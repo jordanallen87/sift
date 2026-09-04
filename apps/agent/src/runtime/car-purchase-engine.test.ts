@@ -12,9 +12,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import type {
+  AttributeRecord,
   CaseEvent,
   CaseState,
   CommandReceipt,
+  EntityRecord,
   ExecutionResult,
   RunReceipt,
 } from '@sift/contracts';
@@ -31,9 +33,10 @@ import type { CaseStore } from '../store/case-store.js';
 import { SqliteCaseStore } from '../store/sqlite-case-store.js';
 import { SqliteRuntimeEventStore } from '../store/runtime-event-store.js';
 import { carPurchaseCapabilityCatalog } from './car-purchase-scenario.js';
-import type { CarPurchaseGraphResult } from './car-purchase-graph.js';
+import { CAR_PURCHASE_GRAPH_NODE_IDS, type CarPurchaseGraphResult } from './car-purchase-graph.js';
 import {
   createCarPurchaseEngine,
+  deriveUnestablishedAttributeLimitations,
   determineCarPurchaseRound,
   DETERMINISTIC_DEMO_CANDIDATE_IDS,
   foldRound1,
@@ -219,15 +222,17 @@ describe('determineCarPurchaseRound', () => {
     return { caseExtensions: extensions } as CaseState;
   }
 
-  function dogCrateExtension(
+  function caseExtension(
+    id: `custom.${string}`,
     confirmation: 'pending' | 'confirmed' | 'rejected',
+    label = 'Both dog crates fit',
   ): CaseState['caseExtensions'][number] {
     return {
       id: 'ext-1',
       caseId: 'case-1',
       definition: {
-        id: 'custom.dog_crate_fit',
-        label: 'Both dog crates fit',
+        id,
+        label,
         valueType: 'boolean',
         required: true,
         appliesTo: ['candidate'],
@@ -242,6 +247,12 @@ describe('determineCarPurchaseRound', () => {
       },
       createdAt: '2026-08-27T00:00:00.000Z',
     };
+  }
+
+  function dogCrateExtension(
+    confirmation: 'pending' | 'confirmed' | 'rejected',
+  ): CaseState['caseExtensions'][number] {
+    return caseExtension('custom.dog_crate_fit', confirmation);
   }
 
   it('is round1 when there is no dog-crate case extension at all', () => {
@@ -261,6 +272,220 @@ describe('determineCarPurchaseRound', () => {
   it('is round2 once the dog-crate extension is confirmed', () => {
     const state = caseStateWithExtensions([dogCrateExtension('confirmed')]);
     expect(determineCarPurchaseRound(state)).toBe('round2');
+  });
+
+  // The regression this generalisation exists for. The trigger used to test
+  // one literal attribute id, so a household whose unanticipated concern was
+  // ANY other `custom.*` attribute never reached round 2 -- and round 2 is
+  // the only path that emits `proposal.proposed`, so that household got no
+  // approval control at all. The pack's story is "an unanticipated concern
+  // triggers another pass", not "one specific hardcoded concern does".
+  it('is round2 for a confirmed case extension whose id is not the demo dog-crate one', () => {
+    const state = caseStateWithExtensions([
+      caseExtension(
+        'custom.rear_facing_seat_behind_driver',
+        'confirmed',
+        'A rear-facing car seat fits behind the driver',
+      ),
+    ]);
+    expect(determineCarPurchaseRound(state)).toBe('round2');
+  });
+
+  it('is round2 when any one of several extensions is confirmed, whatever its id', () => {
+    const state = caseStateWithExtensions([
+      caseExtension('custom.infotainment_platform', 'rejected', 'Infotainment platform'),
+      caseExtension(
+        'custom.rear_facing_seat_behind_driver',
+        'confirmed',
+        'A rear-facing car seat fits behind the driver',
+      ),
+    ]);
+    expect(determineCarPurchaseRound(state)).toBe('round2');
+  });
+
+  it('is round1 when several extensions exist but none is confirmed', () => {
+    const state = caseStateWithExtensions([
+      caseExtension('custom.infotainment_platform', 'rejected', 'Infotainment platform'),
+      caseExtension('custom.roof_box_clearance', 'pending', 'Roof box clearance'),
+    ]);
+    expect(determineCarPurchaseRound(state)).toBe('round1');
+  });
+});
+
+/**
+ * The engine used to attach two unconditional English sentences to every
+ * round-2 recommendation ("Whether both dog crates fit behind the second row
+ * remains unverified for every candidate.", "Driving comfort remains
+ * unverified for every candidate.") -- assertions about coverage it never
+ * checked, merged AHEAD of the derived scoreboard limitations, so a populated
+ * column read as a flat contradiction on line 1. These prove the replacement
+ * is measured from the case's own attribute records and named from the case's
+ * own labels.
+ */
+describe('deriveUnestablishedAttributeLimitations', () => {
+  function caseStateWith(overrides: Partial<CaseState>): CaseState {
+    return {
+      entities: [],
+      criteria: [],
+      caseExtensions: [],
+      ...overrides,
+    } as unknown as CaseState;
+  }
+
+  function candidate(id: string, attributes: EntityRecord['attributes']): EntityRecord {
+    return {
+      id,
+      kind: 'candidate',
+      label: id,
+      attributes,
+      createdAt: '2026-08-27T00:00:00.000Z',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    };
+  }
+
+  function unknownRecord(definitionId: string, label: string): AttributeRecord {
+    return {
+      definitionId,
+      label,
+      origin: 'pack',
+      sourceIds: [],
+      status: 'unknown',
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    };
+  }
+
+  function goodComfort(): AttributeRecord {
+    return {
+      definitionId: 'car.driving_comfort_rating',
+      label: 'Driving comfort',
+      origin: 'pack',
+      sourceIds: ['source-test-drive'],
+      status: 'supported',
+      value: { type: 'enum', value: 'good' },
+      updatedAt: '2026-08-27T00:00:00.000Z',
+    };
+  }
+
+  const comfortCriterion = {
+    id: 'pref.driving_comfort',
+    label: 'Driving comfort',
+    kind: 'preference',
+    weight: 25,
+    direction: 'higher_better',
+    appliesToAttribute: 'car.driving_comfort_rating',
+    origin: 'pack',
+    status: 'active',
+  } as CaseState['criteria'][number];
+
+  const pack = compileCarPurchasePack(carPurchaseCapabilityCatalog(), FIXED_CLOCK);
+
+  it('names a pack attribute by its real label when no candidate has established it', () => {
+    const state = caseStateWith({
+      criteria: [comfortCriterion],
+      entities: [
+        candidate('candidate-a', {
+          'car.driving_comfort_rating': unknownRecord(
+            'car.driving_comfort_rating',
+            'Driving comfort',
+          ),
+        }),
+        candidate('candidate-b', {}),
+      ],
+    });
+    expect(deriveUnestablishedAttributeLimitations(state, pack)).toEqual([
+      'Driving comfort: not established for any candidate on this case.',
+    ]);
+  });
+
+  it('says nothing once every candidate has an established value for it', () => {
+    const state = caseStateWith({
+      criteria: [comfortCriterion],
+      entities: [
+        candidate('candidate-a', { 'car.driving_comfort_rating': goodComfort() }),
+        candidate('candidate-b', { 'car.driving_comfort_rating': goodComfort() }),
+      ],
+    });
+    expect(deriveUnestablishedAttributeLimitations(state, pack)).toEqual([]);
+  });
+
+  it('reports partial coverage as partial rather than as a blanket unknown', () => {
+    const state = caseStateWith({
+      criteria: [comfortCriterion],
+      entities: [
+        candidate('candidate-a', { 'car.driving_comfort_rating': goodComfort() }),
+        candidate('candidate-b', {}),
+        candidate('candidate-c', {}),
+      ],
+    });
+    expect(deriveUnestablishedAttributeLimitations(state, pack)).toEqual([
+      'Driving comfort: established for only 1 of the 3 candidates.',
+    ]);
+  });
+
+  it("names a confirmed case extension by the extension's own label, whatever its id", () => {
+    const state = caseStateWith({
+      caseExtensions: [
+        {
+          id: 'ext-1',
+          caseId: 'case-1',
+          definition: {
+            id: 'custom.rear_facing_seat_behind_driver',
+            label: 'A rear-facing car seat fits behind the driver',
+            valueType: 'boolean',
+            required: false,
+            appliesTo: ['candidate'],
+            evidenceExpectation: 'verification',
+            comparison: 'target',
+            sensitive: false,
+            origin: 'agent_proposed',
+            reason: 'The household needs a rear-facing infant seat behind the driver.',
+            confirmation: 'confirmed',
+            proposedBy: 'model',
+            createdAt: '2026-08-27T00:00:00.000Z',
+          },
+          createdAt: '2026-08-27T00:00:00.000Z',
+        },
+      ],
+      entities: [candidate('candidate-a', {}), candidate('candidate-b', {})],
+    });
+    expect(deriveUnestablishedAttributeLimitations(state, pack)).toEqual([
+      'A rear-facing car seat fits behind the driver: not established for any candidate on this case.',
+    ]);
+  });
+
+  it('ignores an extension a human has not confirmed and a criterion the case excluded', () => {
+    const state = caseStateWith({
+      caseExtensions: [
+        {
+          id: 'ext-1',
+          caseId: 'case-1',
+          definition: {
+            id: 'custom.infotainment_platform',
+            label: 'Infotainment platform',
+            valueType: 'string',
+            required: false,
+            appliesTo: ['candidate'],
+            evidenceExpectation: 'source',
+            comparison: 'none',
+            sensitive: false,
+            origin: 'agent_proposed',
+            reason: 'Proposed but never accepted.',
+            confirmation: 'pending',
+            proposedBy: 'model',
+            createdAt: '2026-08-27T00:00:00.000Z',
+          },
+          createdAt: '2026-08-27T00:00:00.000Z',
+        },
+      ],
+      criteria: [{ ...comfortCriterion, status: 'excluded' }],
+      entities: [candidate('candidate-a', {}), candidate('candidate-b', {})],
+    });
+    expect(deriveUnestablishedAttributeLimitations(state, pack)).toEqual([]);
+  });
+
+  it('claims nothing at all when the case has no candidates to have established anything about', () => {
+    const state = caseStateWith({ criteria: [comfortCriterion], entities: [] });
+    expect(deriveUnestablishedAttributeLimitations(state, pack)).toEqual([]);
   });
 });
 
@@ -405,6 +630,15 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
     expect(runtimeEventsRound1.some((event) => event.category === 'tool')).toBe(true);
     expect(runtimeEventsRound1.some((event) => event.category === 'skill')).toBe(true);
     expect(run1Record.traceId).toBeTruthy();
+    // --- The Runtime Inspector Overview's "Trace" must actually identify
+    // this run's events. The run row's trace_id and the trace_id every
+    // runtime_events row for that run carries are ONE id -- previously the
+    // engine minted a local trace for the run row while the Graph minted
+    // its own for every event, so the value on screen matched nothing in
+    // the Timeline. Asserted at the persisted-data level (both ids read
+    // back out of real SQLite), because that is exactly where the two
+    // diverged. ---
+    expect(runtimeEventsRound1.every((event) => event.traceId === run1Record.traceId)).toBe(true);
 
     // --- I2: a consumer-visible activity event derived from a real Graph
     // RuntimeEvent carries a real debugEventId that resolves to its exact
@@ -548,6 +782,16 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
 
     // --- The revised recommendation + pending proposal, produced independently from real state ---
     expect(snapshot.recommendation?.favoredOptionId).toBe('candidate-crv');
+    // The two coverage limitations round 2 leads with are measured, not
+    // asserted: both attributes really are unestablished on all four
+    // candidates here (`packages/scenarios`' seeds leave
+    // `car.driving_comfort_rating` explicitly unknown and never write
+    // `custom.dog_crate_fit` at all), and both are named from the case's own
+    // labels rather than a baked-in English sentence.
+    expect(snapshot.recommendation?.limitations.slice(0, 2)).toEqual([
+      'Both dog crates fit behind the second row: not established for any candidate on this case.',
+      'Driving comfort: not established for any candidate on this case.',
+    ]);
     expect(snapshot.proposal).not.toBeNull();
     expect(snapshot.proposal?.status).toBe('pending');
 
@@ -580,6 +824,12 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
         (event) => event.category === 'graph' && event.name === 'graph.node_completed',
       ),
     ).toBe(true);
+    // The same one-id invariant holds for round 2's own run row, and the
+    // two runs' traces are genuinely distinct (one trace per real Graph
+    // invocation, so the Overview's "Trace" narrows to one run's events).
+    expect(run2Record.traceId).toBeTruthy();
+    expect(runtimeEventsRound2.every((event) => event.traceId === run2Record.traceId)).toBe(true);
+    expect(run2Record.traceId).not.toBe(run1Record.traceId);
 
     // --- Round 2 gets its own real, separately-sequenced case-state diff and
     // debugEventId correlations, distinct from round 1's. ---
@@ -603,6 +853,184 @@ describe('car-purchase-engine (live, real Graph, real SQLite)', () => {
         .replayFrom(caseId, 0)
         .some((event) => event.type === 'intervention.confirmation_required'),
     ).toBe(true);
+  }, 30_000);
+
+  /**
+   * The demo-blocking regression, end to end through the live stack: the
+   * household's unanticipated concern is a `custom.*` attribute that is NOT
+   * `custom.dog_crate_fit`. Round 2 is the only path that emits
+   * `proposal.proposed` (`foldRound2`), and `RecommendationHero` renders no
+   * approval control when `proposal` is null -- so a hardcoded round-2
+   * trigger silently removed the product's central claim ("the model may
+   * propose; only a human may approve") from every case whose concern was
+   * anything else. Nothing here names the concern to the engine; the round,
+   * the derived obligation, and the recommendation's limitations all come
+   * from the case's own persisted state.
+   */
+  it('reaches round2 and produces a pending proposal for a confirmed concern that is not the dog-crate one', async () => {
+    const { caseStore, runStore, commandService, runService, idGenerator } = buildLiveStack();
+
+    const startResult = commandService.startDemo('cmd-start', { demoId: 'car-purchase' });
+    requireOkCommand(startResult);
+    let snapshot = requireSnapshot(startResult.value);
+    const caseId = snapshot.id;
+    snapshot = seedRealCandidates(caseStore, caseId, snapshot, FIXED_CLOCK, idGenerator);
+    expect(determineCarPurchaseRound(snapshot)).toBe('round1');
+
+    const defineResult = commandService.defineCaseAttribute(
+      'cmd-define',
+      {
+        caseId,
+        expectedSequence: snapshot.eventSequence,
+        definition: {
+          id: 'custom.rear_facing_seat_behind_driver',
+          label: 'A rear-facing car seat fits behind the driver',
+          valueType: 'boolean',
+          appliesTo: ['candidate'],
+          evidenceExpectation: 'verification',
+          comparison: 'target',
+          reason:
+            'The household needs a rear-facing infant seat to fit behind the driver without moving the driver seat forward.',
+        },
+      },
+      'agent_proposed',
+    );
+    requireOkCommand(defineResult);
+    snapshot = requireSnapshot(defineResult.value);
+
+    // Read purely from real state -- the engine is never told which round to run.
+    expect(determineCarPurchaseRound(snapshot)).toBe('round2');
+
+    const criteriaResult = commandService.updateCriteria('cmd-criteria', {
+      caseId,
+      expectedSequence: snapshot.eventSequence,
+      operations: [
+        {
+          op: 'add',
+          criterion: {
+            id: 'custom.rear_facing_seat_behind_driver',
+            label: 'A rear-facing car seat fits behind the driver',
+            kind: 'hard_constraint',
+            weight: 20,
+            direction: 'higher_better',
+            appliesToAttribute: 'custom.rear_facing_seat_behind_driver',
+            question:
+              'Does a rear-facing car seat fit behind the driver without moving the driver seat forward?',
+          },
+        },
+      ],
+    });
+    requireOkCommand(criteriaResult);
+    snapshot = requireSnapshot(criteriaResult.value);
+
+    const runResult = runService.requestInvestigation('cmd-run', {
+      caseId,
+      obligationId: 'car.deal_normalization',
+      expectedSequence: snapshot.eventSequence,
+    });
+    requireOkRun(runResult);
+    const record = await waitForRunSettled(runStore, runResult.value.runId);
+    expect(record.status).toBe('completed');
+    expect(record.result).toMatchObject({ round: 'round2' });
+
+    snapshot = caseStore.load(caseId)!;
+
+    // The approval control the hardcoded trigger used to withhold.
+    expect(snapshot.proposal).not.toBeNull();
+    expect(snapshot.proposal?.status).toBe('pending');
+    expect(snapshot.recommendation).not.toBeNull();
+
+    // The obligation round 2 investigated is THIS case's concern -- and the
+    // demo's dog-crate obligation was never fabricated onto a case that
+    // never had that concern.
+    expect(
+      snapshot.obligations.some((o) => o.id === 'case.custom.rear_facing_seat_behind_driver'),
+    ).toBe(true);
+    expect(snapshot.obligations.some((o) => o.id === 'case.custom.dog_crate_fit')).toBe(false);
+    expect(snapshot.recommendation?.resolvedObligationIds).toContain(
+      'case.custom.rear_facing_seat_behind_driver',
+    );
+    expect(snapshot.recommendation?.resolvedObligationIds).not.toContain(
+      'case.custom.dog_crate_fit',
+    );
+
+    // The recommendation's limitations describe THIS case's unestablished
+    // attributes, by their real labels -- never the demo's dog crates.
+    const limitations = snapshot.recommendation?.limitations ?? [];
+    expect(limitations.join('\n')).not.toMatch(/dog crate/i);
+    expect(
+      limitations.some((entry) =>
+        entry.startsWith('A rear-facing car seat fits behind the driver:'),
+      ),
+    ).toBe(true);
+  }, 30_000);
+
+  it("publishes each specialist's real duration onto the consumer activity stream, not only the Runtime Inspector", async () => {
+    // The gap this closes: `car-purchase-graph.ts` measures a real per-node
+    // duration and stamps it on the `runtime_events` row, but a consumer
+    // surface reads `activity_events`. Without `safeDetails` forwarding,
+    // the duration lands in the developer Inspector and the consumer pane's
+    // elapsed column stays permanently blank.
+    const {
+      caseStore,
+      activityStore,
+      runStore,
+      runtimeEventStore,
+      commandService,
+      runService,
+      idGenerator,
+    } = buildLiveStack();
+
+    const startResult = commandService.startDemo('cmd-start', { demoId: 'car-purchase' });
+    requireOkCommand(startResult);
+    let snapshot = requireSnapshot(startResult.value);
+    const caseId = snapshot.id;
+    snapshot = seedRealCandidates(caseStore, caseId, snapshot, FIXED_CLOCK, idGenerator);
+
+    const runResult = runService.requestInvestigation('cmd-run-1', {
+      caseId,
+      obligationId: 'car.deal_normalization',
+      expectedSequence: snapshot.eventSequence,
+    });
+    requireOkRun(runResult);
+    const runId = runResult.value.runId;
+    const record = await waitForRunSettled(runStore, runId);
+    expect(record.status).toBe('completed');
+
+    const activity = activityStore.replayFrom(caseId, 0);
+    const completions = activity.filter(
+      (event) => event.runId === runId && event.type === 'specialist.completed',
+    );
+    // Every real Graph node reaches the consumer stream, each carrying its
+    // own duration.
+    expect(completions.map((event) => event.agentId).sort()).toEqual(
+      [...CAR_PURCHASE_GRAPH_NODE_IDS].sort(),
+    );
+
+    const runtimeEvents = runtimeEventStore.listByRun(runId);
+    for (const event of completions) {
+      const durationMs = event.safeDetails?.['durationMs'];
+      expect(durationMs, `expected a duration for "${String(event.agentId)}"`).toBeTypeOf('number');
+      expect(durationMs as number).toBeGreaterThanOrEqual(0);
+
+      // It is that specialist's OWN measured interval, carried through
+      // unchanged from the exact correlated runtime event -- not a run
+      // total, a neighbour's figure, or a number invented at this layer.
+      const correlated = runtimeEvents.find((entry) => entry.id === event.debugEventId);
+      expect(correlated?.name).toBe('graph.node_completed');
+      expect(correlated?.attributes['nodeId']).toBe(event.agentId);
+      expect(durationMs).toBe(correlated?.durationMs);
+    }
+
+    // A specialist that has only started has no elapsed time to freeze yet,
+    // so it publishes none -- absent, never a fabricated zero.
+    const starts = activity.filter(
+      (event) => event.runId === runId && event.type === 'specialist.started',
+    );
+    expect(starts.length).toBeGreaterThan(0);
+    for (const event of starts) {
+      expect(event.safeDetails?.['durationMs']).toBeUndefined();
+    }
   }, 30_000);
 
   it('logs a real, inspectable trace when the case does not exist at all (neither runs nor activity_events can hold a foreign key to it)', async () => {
@@ -817,7 +1245,15 @@ describe('foldRound1 / foldRound2 (direct unit tests via a hand-built CarPurchas
     };
   }
 
-  function seededCase(): {
+  /**
+   * `concern` adds one real, human-accepted `custom.*` case extension through
+   * the real `CommandService.defineCaseAttribute` -- exactly the durable
+   * state `determineCarPurchaseRound` reads to decide a round-2 pass is
+   * underway, and therefore the precondition `foldRound2`'s case-extension
+   * obligation derivation now legitimately depends on. Omit it for a case
+   * that reached `foldRound2` with no accepted concern of its own.
+   */
+  function seededCase(concern?: { id: `custom.${string}`; label: string }): {
     deps: CarPurchaseEngineDeps;
     caseId: string;
     snapshot: CaseState;
@@ -846,6 +1282,27 @@ describe('foldRound1 / foldRound2 (direct unit tests via a hand-built CarPurchas
     let snapshot = requireSnapshot(startResult.value);
     const caseId = snapshot.id;
     snapshot = seedRealCandidates(caseStore, caseId, snapshot, FIXED_CLOCK, idGenerator);
+    if (concern !== undefined) {
+      const defineResult = commandService.defineCaseAttribute(
+        'cmd-define-concern',
+        {
+          caseId,
+          expectedSequence: snapshot.eventSequence,
+          definition: {
+            id: concern.id,
+            label: concern.label,
+            valueType: 'boolean',
+            appliesTo: ['candidate'],
+            evidenceExpectation: 'verification',
+            comparison: 'target',
+            reason: `The household raised "${concern.label}" as a concern the pack never anticipated.`,
+          },
+        },
+        'agent_proposed',
+      );
+      requireOkCommand(defineResult);
+      snapshot = requireSnapshot(defineResult.value);
+    }
     void pack;
     return { deps, caseId, snapshot };
   }
@@ -948,20 +1405,95 @@ describe('foldRound1 / foldRound2 (direct unit tests via a hand-built CarPurchas
     expect(snapshot.recommendation?.favoredOptionId).toBeNull();
   });
 
-  it('foldRound2 derives the case.custom.dog_crate_fit obligation on a case that has none yet, and skips re-deriving it on a second call', () => {
-    const { deps, caseId } = seededCase();
+  it('foldRound2 derives the obligation for whichever concern the case actually accepted, and skips re-deriving it on a second call', () => {
+    const { deps, caseId } = seededCase({
+      id: 'custom.rear_facing_seat_behind_driver',
+      label: 'A rear-facing car seat fits behind the driver',
+    });
     const pack = deps.registry.get('car-purchase', '1.0.0')!;
     const graphResult = fakeGraphResult();
 
     const firstPass = foldRound2(deps, caseId, pack, graphResult);
-    const derived = firstPass.obligations.find((o) => o.id === 'case.custom.dog_crate_fit');
+    const derived = firstPass.obligations.find(
+      (o) => o.id === 'case.custom.rear_facing_seat_behind_driver',
+    );
     expect(derived).toBeDefined();
+    expect(derived?.label).toBe('A rear-facing car seat fits behind the driver');
+    // The demo's own concern is never fabricated onto a case that never had it.
+    expect(firstPass.obligations.some((o) => o.id === 'case.custom.dog_crate_fit')).toBe(false);
 
     // Second call against the now-already-derived obligation exercises
-    // ensureDogCrateObligation's early-return branch instead of re-deriving.
+    // ensureCaseExtensionObligations's early-return branch instead of re-deriving.
     const secondPass = foldRound2(deps, caseId, pack, fakeGraphResult());
-    const derivedAgain = secondPass.obligations.filter((o) => o.id === 'case.custom.dog_crate_fit');
+    const derivedAgain = secondPass.obligations.filter(
+      (o) => o.id === 'case.custom.rear_facing_seat_behind_driver',
+    );
     expect(derivedAgain).toHaveLength(1);
+  });
+
+  it('foldRound2 derives no case-extension obligation at all when the case accepted no concern of its own', () => {
+    const { deps, caseId } = seededCase();
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+
+    const snapshot = foldRound2(deps, caseId, pack, fakeGraphResult());
+    expect(snapshot.obligations.some((o) => o.origin === 'case_extension')).toBe(false);
+    expect(snapshot.recommendation?.resolvedObligationIds).not.toContain(
+      'case.custom.dog_crate_fit',
+    );
+    // Round 2 still completes and still yields the human approval control.
+    expect(snapshot.proposal?.status).toBe('pending');
+  });
+
+  /**
+   * The other half of the coverage-derived limitation contract, proven
+   * through the real fold rather than only through the pure function: a
+   * limitation the engine states must stop being stated the moment the
+   * column behind it is populated. The old hardcoded sentence could not do
+   * this -- it was attached unconditionally, so a filled Driving comfort
+   * column produced a recommendation that contradicted the table beside it.
+   */
+  it('foldRound2 drops a coverage limitation once every candidate has an established value for that attribute', () => {
+    const { deps, caseId, snapshot } = seededCase();
+    const pack = deps.registry.get('car-purchase', '1.0.0')!;
+
+    const comfortLine = 'Driving comfort: not established for any candidate on this case.';
+    const before = foldRound2(deps, caseId, pack, fakeGraphResult());
+    expect(before.recommendation?.limitations).toContain(comfortLine);
+
+    // A real test drive happens: every candidate gains a sourced comfort
+    // rating, through ordinary `option.upserted` events.
+    const rated = deps.caseStore.load(caseId)!;
+    const events: CaseEvent[] = rated.entities.map((entity, index) => ({
+      eventId: deps.idGenerator.next('event'),
+      caseId,
+      sequence: rated.eventSequence + 1 + index,
+      timestamp: FIXED_CLOCK.now(),
+      type: 'option.upserted',
+      payload: {
+        entity: {
+          ...entity,
+          attributes: {
+            ...entity.attributes,
+            'car.driving_comfort_rating': {
+              definitionId: 'car.driving_comfort_rating',
+              label: 'Driving comfort',
+              origin: 'user',
+              sourceIds: ['source-dealer-offer-candidate-rav4'],
+              status: 'supported',
+              value: { type: 'enum', value: 'good' },
+              updatedAt: FIXED_CLOCK.now(),
+            } satisfies AttributeRecord,
+          },
+        },
+      },
+    }));
+    const applied = deps.caseStore.append(caseId, events, rated.eventSequence);
+    if (applied.status !== 'applied') throw new Error('test setup: failed to rate driving comfort');
+
+    const after = foldRound2(deps, caseId, pack, fakeGraphResult());
+    expect(after.recommendation?.limitations).not.toContain(comfortLine);
+    expect(after.recommendation?.limitations.join('\n')).not.toMatch(/Driving comfort: /);
+    void snapshot;
   });
 
   it('foldRound2 records no evidence.conflicted supersession event when there is no stale round-1 teaser-price evidence to supersede', () => {
@@ -1051,8 +1583,11 @@ describe('foldRound1 / foldRound2 (direct unit tests via a hand-built CarPurchas
     ).toThrow(/failed to create the decision proposal.*status "conflict"/);
   });
 
-  it('foldRound2 throws a real, inspectable error when deriving the case.custom.dog_crate_fit obligation hits a genuine append conflict', () => {
-    const { deps, caseId } = seededCase();
+  it('foldRound2 throws a real, inspectable error naming the concern when deriving its obligation hits a genuine append conflict', () => {
+    const { deps, caseId } = seededCase({
+      id: 'custom.rear_facing_seat_behind_driver',
+      label: 'A rear-facing car seat fits behind the driver',
+    });
     const pack = deps.registry.get('car-purchase', '1.0.0')!;
     const conflictingCaseStore = caseStoreConflictingOn(deps.caseStore, (events) =>
       events.some((event) => event.type === 'obligation.updated'),
@@ -1061,7 +1596,7 @@ describe('foldRound1 / foldRound2 (direct unit tests via a hand-built CarPurchas
     expect(() =>
       foldRound2({ ...deps, caseStore: conflictingCaseStore }, caseId, pack, graphResult),
     ).toThrow(
-      /failed to append the derived "case\.custom\.dog_crate_fit" obligation.*status "conflict"/,
+      /failed to append the derived "case\.custom\.rear_facing_seat_behind_driver" obligation.*status "conflict"/,
     );
   });
 

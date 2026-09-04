@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
@@ -559,6 +559,180 @@ describe('App', () => {
       });
       expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
         'Sift is investigating.',
+      );
+    });
+
+    // Regression gate for a real defect found by auditing the client against
+    // a live run's actual event stream. `isRunActive` used to be "does the
+    // single most recent event carry a non-terminal phase?" -- but roughly
+    // half of a real run's ~73 correlated events (`tool.completed`,
+    // `skill.activated`, `specialist.completed`) legitimately report
+    // `phase: 'completed'` while the run continues. So on any render that
+    // landed on one of those, the hero reverted to "Nothing's been looked
+    // into yet." with a primary-emphasis "Ask Sift to look into this"
+    // button, mid-investigation. Invisible only because today's whole burst
+    // lands inside ~70 ms; once the runtime streams events as the graph
+    // progresses it becomes a visible flicker of "nothing has happened" in
+    // the middle of an investigation.
+    //
+    // Asserting only the state after the burst passes on the buggy code --
+    // this asserts after EVERY event, which is where the defect lives.
+    it('never reverts the hero to the not-started phase mid-run, on any event of a realistic burst (half of which report phase "completed")', async () => {
+      const beforeRun = buildFixtureCaseState({ id: CASE_ID, recommendation: null });
+      const afterRun = buildFixtureCaseState({
+        id: CASE_ID,
+        eventSequence: 12,
+        entities: [
+          {
+            id: 'candidate-rav4',
+            kind: 'candidate',
+            label: '2023 Toyota RAV4 Hybrid',
+            attributes: {},
+            createdAt: '2026-08-27T00:00:00.000Z',
+            updatedAt: '2026-08-27T00:00:00.000Z',
+          },
+        ],
+        recommendation: {
+          id: 'rec-burst-1',
+          status: 'ready',
+          rationale: 'The RAV4 leads on the criteria that were checked.',
+          facts: [],
+          hypotheses: [],
+          limitations: [],
+          sourceIds: [],
+          favoredOptionId: 'candidate-rav4',
+          confidence: 0.8,
+          resolvedObligationIds: [],
+          acceptedUncertaintyObligationIds: [],
+          generatedAt: '2026-08-27T00:05:00.000Z',
+        },
+      });
+      // The canonical snapshot only gains the recommendation once the run
+      // has actually finished, exactly as the real server's does -- so every
+      // mid-burst assertion below is genuinely about the run's lifecycle and
+      // not about a recommendation quietly appearing early.
+      let currentSnapshot = beforeRun;
+
+      renderLiveWorkspace(beforeRun);
+      server.use(
+        http.get(`/api/cases/${CASE_ID}/events`, () =>
+          HttpResponse.json({ snapshot: currentSnapshot, events: [] as PublicActivityEvent[] }),
+        ),
+        // The workspace refetches the RunPlan whenever `eventSequence`
+        // moves, which this test's post-run snapshot genuinely does. Not
+        // what is under test here -- answered honestly (no plan) rather than
+        // left to `onUnhandledRequest: 'error'`.
+        http.get(`/api/cases/${CASE_ID}/run-plan`, () => new HttpResponse(null, { status: 404 })),
+        runHandler({ ...buildFakeCommandReceipt({ caseId: CASE_ID }), runId: 'run-burst-1' }),
+      );
+      const user = await startDemoAndWait();
+
+      expect(screen.getByTestId('recommendation-hero-status')).toHaveAttribute(
+        'data-phase',
+        'not_started',
+      );
+
+      await user.click(screen.getByTestId('request-investigation'));
+      await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+      const source = FakeEventSource.instances.at(-1)!;
+      source.triggerOpen();
+
+      // An ordered burst in the real shape `run-service.ts` and
+      // `car-purchase-engine.ts` emit: `run.queued` carries both commandId
+      // and runId, every later event of the run carries only the runId, and
+      // the run ends with a terminal `run.completed`.
+      const buildBurstEvent = (
+        index: number,
+        step: Pick<PublicActivityEvent, 'type' | 'phase' | 'summary'>,
+      ): PublicActivityEvent => ({
+        schemaVersion: '1.0',
+        eventId: `evt-burst-${String(index)}`,
+        sequence: index + 1,
+        timestamp: '2026-08-27T00:01:00.000Z',
+        caseId: CASE_ID,
+        runId: 'run-burst-1',
+        ...(index === 0 ? { commandId: 'cmd-burst-1' } : {}),
+        ...step,
+      });
+
+      const midRunBurst: PublicActivityEvent[] = [
+        { type: 'run.queued', phase: 'queued', summary: 'Investigation queued.' },
+        { type: 'run.started', phase: 'active', summary: 'Investigation started (initial pass).' },
+        { type: 'specialist.started', phase: 'active', summary: 'Deal analyst started working.' },
+        { type: 'skill.activated', phase: 'completed', summary: 'Activated skill "deal-review".' },
+        { type: 'tool.started', phase: 'active', summary: 'Calling tool "listing_reader".' },
+        { type: 'tool.completed', phase: 'completed', summary: 'Tool "listing_reader" finished.' },
+        { type: 'evidence.accepted', phase: 'completed', summary: 'Evidence accepted.' },
+        { type: 'specialist.completed', phase: 'completed', summary: 'Deal analyst finished.' },
+        { type: 'specialist.started', phase: 'active', summary: 'Safety analyst started working.' },
+        { type: 'tool.completed', phase: 'completed', summary: 'Tool "safety_reader" finished.' },
+        { type: 'obligation.updated', phase: 'completed', summary: 'An obligation was satisfied.' },
+      ].map((step, index) =>
+        buildBurstEvent(index, step as Pick<PublicActivityEvent, 'type' | 'phase' | 'summary'>),
+      );
+
+      // Half of it reports a terminal phase -- the exact condition the old
+      // derivation mistook for "the run is over".
+      expect(
+        midRunBurst.filter((event) => event.phase === 'completed').length,
+      ).toBeGreaterThanOrEqual(midRunBurst.length / 2);
+
+      for (const event of midRunBurst) {
+        act(() => {
+          source.emit(event);
+        });
+
+        const status = screen.getByTestId('recommendation-hero-status');
+        expect(status).not.toHaveAttribute('data-phase', 'not_started');
+        expect(status).toHaveAttribute('data-phase', 'investigating');
+        expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
+          'Sift is investigating.',
+        );
+        expect(screen.getByTestId('recommendation-hero-headline')).not.toHaveTextContent(
+          "Nothing's been looked into yet.",
+        );
+      }
+
+      // The recommendation lands in the canonical snapshot before the run
+      // reports itself finished, exactly as the real engine's does
+      // (`car-purchase-engine.ts` writes it, then appends `run.completed`).
+      currentSnapshot = afterRun;
+      act(() => {
+        source.emit(
+          buildBurstEvent(midRunBurst.length, {
+            type: 'recommendation.ready',
+            phase: 'completed',
+            summary: 'A recommendation is ready for review.',
+          }),
+        );
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('recommendation-hero-status')).toHaveAttribute(
+          'data-phase',
+          'ready_blocked',
+        );
+      });
+      expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
+        'Leading so far: 2023 Toyota RAV4 Hybrid',
+      );
+
+      // The terminal event genuinely ends the run -- and ending it must not
+      // blank the answer the run just produced.
+      act(() => {
+        source.emit(
+          buildBurstEvent(midRunBurst.length + 1, {
+            type: 'run.completed',
+            phase: 'completed',
+            summary: 'Investigation completed (initial pass).',
+          }),
+        );
+      });
+      expect(screen.getByTestId('recommendation-hero-status')).toHaveAttribute(
+        'data-phase',
+        'ready_blocked',
+      );
+      expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
+        'Leading so far: 2023 Toyota RAV4 Hybrid',
       );
     });
 

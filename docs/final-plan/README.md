@@ -16,7 +16,7 @@ This plan must close three gaps together:
 
 - [Canonical adaptive decision experience](./final-approved-experience.md) — the approved product thesis, responsibility model, complete vehicle journey, persistent pane composition, demo spine, non-goals, and definition of done. This document wins when older design notes conflict.
 - [Canonical hackathon execution plan](./final-hackathon-execution-plan.md) — the sole execution control plane: scope lock, ordered TDD work, release gates, cut rules, exact user inputs, and post-WebMCP AWS decision. This document wins when older plans conflict.
-- [Claude Code implementation prompt](./claude-code-implementation-prompt.md) — the copy/paste autonomous execution handoff, precedence rules, safety boundaries, evidence contract, and final reporting requirements.
+- Implementation handoff prompt (`claude-code-implementation-prompt.md`) — the copy/paste autonomous execution handoff, precedence rules, safety boundaries, evidence contract, and final reporting requirements. Retained in the working repository but excluded from the published one as build-process scaffolding; it is not linked here because it is not published.
 - [User journey](./user-journey.md) — verified current car flow, its failures, and the emerging target journey.
 - [Conversation orchestration](./conversation-orchestration.md) — bootstrap discovery, pack activation, elicitation, next-move rules, and the division between conversation and canvas.
 - [WebMCP example review](./webmcp-example-review.md) — code-grounded patterns from five OpenAI showcase apps and the requirements they imply for Sift.

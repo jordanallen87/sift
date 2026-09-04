@@ -538,7 +538,7 @@ describe('checkReleaseMetadataPublicUrls', () => {
       join(dir, 'docs', 'submissions', 'release-metadata.json'),
       JSON.stringify({
         repositoryUrl: 'https://github.com/example/sift',
-        deployedUrl: 'https://pax-hackathon-production.up.railway.app',
+        deployedUrl: 'https://sift-hackathon-production.up.railway.app',
         webmcpVideoUrl: 'https://youtube.com/watch?v=abc',
         agentsForHumansVideoUrl: 'https://youtube.com/watch?v=def',
       }),

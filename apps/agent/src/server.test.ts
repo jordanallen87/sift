@@ -13,6 +13,11 @@ describe('startServer', () => {
   afterEach(async () => {
     if (started) {
       await new Promise<void>((resolve) => started?.server.close(() => resolve()));
+      // `startServer` registers a process-global OpenTelemetry tracer
+      // provider (`runtime/otel-span-recorder.ts`); unregistering it here
+      // keeps it from outliving this file's database, exactly like closing
+      // the server and the database below.
+      await started.tracing?.shutdown();
       started.database.close();
     }
     if (dataDir) rmSync(dataDir, { recursive: true, force: true });
@@ -41,11 +46,16 @@ describe('startServer', () => {
     dataDir = mkdtempSync(join(tmpdir(), 'sift-server-test-'));
     const first = await startServer({ port: 0, dataDir });
     await new Promise<void>((resolve) => first.server.close(() => resolve()));
+    await first.tracing?.shutdown();
     first.database.close();
 
     started = await startServer({ port: 0, dataDir });
     expect(started.migration.applied).toEqual([]);
-    expect(started.migration.alreadyApplied).toEqual(['0001_initial.sql', '0002_run_plans.sql']);
+    expect(started.migration.alreadyApplied).toEqual([
+      '0001_initial.sql',
+      '0002_run_plans.sql',
+      '0003_run_origin.sql',
+    ]);
   });
 
   it('falls back to config.dataDir and to a PORT read from the environment when neither StartServerOptions field is given (every other test above always passes both explicitly)', async () => {

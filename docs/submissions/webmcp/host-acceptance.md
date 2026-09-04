@@ -5,7 +5,7 @@ The canonical plan's Task 10 asks for a session in a real ChatGPT or WebMCP-enab
 **Status: performed, automated, and passing — with two named limits.** This page previously read "not performed", on the reasoning that no WebMCP host could be driven. That stopped being true: Chrome 152 ships WebMCP natively and exposes a `WebMCP` CDP domain, so the session is now a repeatable gate rather than a transcript. See ADR 0013.
 
 ```
-SIFT_HOST_URL=https://pax-hackathon-production.up.railway.app pnpm test:host
+SIFT_HOST_URL=https://sift-hackathon-production.up.railway.app pnpm test:host
 ```
 
 ## The session, as it actually runs

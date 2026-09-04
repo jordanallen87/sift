@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import type { Message, ModelStreamEvent, StreamOptions } from '@strands-agents/sdk';
 import type { Clock, IdGenerator } from '@sift/core';
 import {
   createCapabilityCatalog,
@@ -11,10 +12,11 @@ import {
 } from '@sift/packs';
 import type { ExecutionRequest, ExecutionResult } from '@sift/contracts';
 import { PROPOSE_RECOMMENDATION_TOOL_ID } from './strands-adapter.js';
-import { ScriptedModelProvider } from './model-provider.js';
+import { ScriptedModelProvider, type ScriptedModelProviderConfig } from './model-provider.js';
 import {
   CAR_PURCHASE_GRAPH_NODE_IDS,
   CAR_PURCHASE_PARALLEL_SPECIALIST_IDS,
+  createNodeDurationTracker,
   executeCarPurchaseGraph,
   type CarPurchaseGraphDeps,
   type CarPurchaseGraphResult,
@@ -348,6 +350,87 @@ function buildDeps(overrides: Partial<CarPurchaseGraphDeps> = {}): CarPurchaseGr
 
 function isRuntimeEvent(item: unknown): item is RuntimeEvent {
   return typeof item === 'object' && item !== null && 'sequence' in item;
+}
+
+/**
+ * A real `ScriptedModelProvider` whose `stream()` parks on a
+ * caller-controlled promise before serving its scripted turn -- the
+ * deterministic, timer-free stand-in for "this node is still working". Used
+ * to hold one Graph node open while asserting what a consumer has *already*
+ * received from the nodes that finished before it.
+ */
+class GatedModelProvider extends ScriptedModelProvider {
+  /** True once a node's `Agent` has genuinely entered this provider's `stream()` and is parked on the gate. */
+  streamEntered = false;
+  private readonly gate: Promise<void>;
+  private release: (() => void) | undefined;
+
+  constructor(config: ScriptedModelProviderConfig) {
+    super(config);
+    this.gate = new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+  }
+
+  /** Lets the parked node proceed. */
+  open(): void {
+    this.release?.();
+  }
+
+  override async *stream(
+    messages: Message[],
+    options?: StreamOptions,
+  ): AsyncIterable<ModelStreamEvent> {
+    this.streamEntered = true;
+    await this.gate;
+    yield* super.stream(messages, options);
+  }
+}
+
+/** Runs the generator to completion in the background, appending each yielded event to `received` as it arrives. */
+function consumeInBackground(
+  gen: AsyncGenerator<RuntimeEvent, CarPurchaseGraphResult, undefined>,
+): {
+  received: RuntimeEvent[];
+  done: () => boolean;
+  completed: Promise<CarPurchaseGraphResult>;
+} {
+  const received: RuntimeEvent[] = [];
+  let finished = false;
+  const completed = (async () => {
+    try {
+      let next = await gen.next();
+      while (!next.done) {
+        received.push(next.value);
+        next = await gen.next();
+      }
+      return next.value;
+    } finally {
+      finished = true;
+    }
+  })();
+  return { received, done: () => finished, completed };
+}
+
+/** Flushes pending microtasks and macrotasks so everything that *can* progress has, without sleeping for a fixed duration. */
+async function settleEventLoop(turns = 10): Promise<void> {
+  for (let turn = 0; turn < turns; turn += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
+
+/**
+ * Advances the event loop until `predicate` holds. Bounded by a turn count
+ * rather than a wall-clock timeout, so it is deterministic and never sleeps;
+ * the bound is a failure guard, not a delay (the loop returns the moment the
+ * condition is met).
+ */
+async function waitUntil(predicate: () => boolean, description: string): Promise<void> {
+  for (let turn = 0; turn < 5000; turn += 1) {
+    if (predicate()) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error(`waitUntil: ${description} never became true`);
 }
 
 async function drain(
@@ -704,5 +787,484 @@ describe('executeCarPurchaseGraph', () => {
         event.agentId === 'deal-analyst',
     );
     expect(denyEvent).toBeDefined();
+  });
+});
+
+/**
+ * Producer-side telemetry the car pack genuinely runs but, until this
+ * suite, never recorded. Each of these asserts on the events the real
+ * six-node Graph actually yielded -- never on a spy or a call count.
+ */
+describe('executeCarPurchaseGraph runtime telemetry', () => {
+  it('emits a real goal.validated event for the GoalLoop the car pack actually runs', async () => {
+    const { events, result } = await drain(executeCarPurchaseGraph(buildDeps()));
+
+    const goalEvents = events.filter((event) => event.category === 'goal');
+    expect(goalEvents).toHaveLength(1);
+    expect(goalEvents[0]?.name).toBe('goal.validated');
+    expect(goalEvents[0]?.level).toBe('info');
+    expect(goalEvents[0]?.phase).toBe('finish');
+    // Attributed to the node that owns the GoalLoop, and carrying the real
+    // plugin's own 1-indexed attempt number.
+    expect(goalEvents[0]?.agentId).toBe('decision-synthesizer');
+    expect(goalEvents[0]?.obligationId).toBe('car.shortlist');
+    expect(goalEvents[0]?.attributes['attempt']).toBe(1);
+    expect(goalEvents[0]?.attributes['exhausted']).toBe(false);
+
+    // The events describe the same run the returned GoalLoop result does.
+    expect(goalEvents).toHaveLength(result.goalLoopResult?.attempts.length ?? 0);
+  });
+
+  it('emits one goal.validation_failed with the validator’s real feedback, then a goal.validated, when the first draft is rejected', async () => {
+    const deps = buildDeps();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          { text: '' },
+          { text: 'Recommend candidate-rav4 per source-listing-candidate-rav4.' },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+    const patchedModelFor: CarPurchaseGraphDeps['modelFor'] = (nodeId) =>
+      nodeId === 'decision-synthesizer' ? provider : deps.modelFor(nodeId);
+
+    const { events } = await drain(executeCarPurchaseGraph({ ...deps, modelFor: patchedModelFor }));
+
+    const goalEvents = events.filter((event) => event.category === 'goal');
+    expect(goalEvents.map((event) => event.name)).toEqual([
+      'goal.validation_failed',
+      'goal.validated',
+    ]);
+    expect(goalEvents[0]?.level).toBe('warn');
+    // Not exhausted: attempt 1 failed but attempt 2 was still available, so
+    // this is an `update`, not the run-ending `error` phase.
+    expect(goalEvents[0]?.phase).toBe('update');
+    expect(goalEvents[0]?.attributes['attempt']).toBe(1);
+    expect(goalEvents[0]?.attributes['feedback']).toContain('must include text');
+    expect(goalEvents[1]?.attributes['attempt']).toBe(2);
+  });
+
+  it('marks the final rejection exhausted when the GoalLoop runs out of attempts', async () => {
+    const deps = buildDeps();
+    const provider = new ScriptedModelProvider({
+      beats: { turn: [{ text: '' }, { text: '' }] },
+    });
+    provider.setBeat('turn');
+    const patchedModelFor: CarPurchaseGraphDeps['modelFor'] = (nodeId) =>
+      nodeId === 'decision-synthesizer' ? provider : deps.modelFor(nodeId);
+
+    const { events, result } = await drain(
+      executeCarPurchaseGraph({ ...deps, modelFor: patchedModelFor }),
+    );
+
+    expect(result.goalLoopResult?.passed).toBe(false);
+    const goalEvents = events.filter((event) => event.category === 'goal');
+    expect(goalEvents.map((event) => event.name)).toEqual([
+      'goal.validation_failed',
+      'goal.validation_failed',
+    ]);
+    expect(goalEvents[0]?.attributes['exhausted']).toBe(false);
+    expect(goalEvents[0]?.phase).toBe('update');
+    expect(goalEvents[1]?.attributes['exhausted']).toBe(true);
+    expect(goalEvents[1]?.phase).toBe('error');
+  });
+
+  it('records the token usage the model provider actually reported, per call and never accumulated', async () => {
+    const deps = buildDeps();
+    const provider = new ScriptedModelProvider({
+      beats: {
+        turn: [
+          {
+            toolCalls: [
+              {
+                name: PROPOSE_RECOMMENDATION_TOOL_ID,
+                input: {
+                  candidateIds: ['candidate-rav4'],
+                  rationale: 'strongest ownership cost and safety',
+                },
+              },
+            ],
+            usage: { inputTokens: 900, outputTokens: 120, totalTokens: 1020 },
+          },
+          {
+            text: 'Recommend candidate-rav4 per source-listing-candidate-rav4.',
+            usage: { inputTokens: 1100, outputTokens: 60, totalTokens: 1160 },
+          },
+        ],
+      },
+    });
+    provider.setBeat('turn');
+    const patchedModelFor: CarPurchaseGraphDeps['modelFor'] = (nodeId) =>
+      nodeId === 'decision-synthesizer' ? provider : deps.modelFor(nodeId);
+
+    const { events } = await drain(executeCarPurchaseGraph({ ...deps, modelFor: patchedModelFor }));
+
+    const synthesizerModelCalls = events.filter(
+      (event) =>
+        event.category === 'model' &&
+        event.phase === 'finish' &&
+        event.agentId === 'decision-synthesizer',
+    );
+    // The second call reports 1100/60/1160 -- its own usage -- not the
+    // 2000/180/2180 the agent's cumulative Strands `Meter` holds by then.
+    expect(synthesizerModelCalls.map((event) => event.tokenUsage)).toEqual([
+      { input: 900, output: 120, total: 1020 },
+      { input: 1100, output: 60, total: 1160 },
+    ]);
+  });
+
+  it('omits tokenUsage on every model call whose provider reported no usage, rather than recording zeros', async () => {
+    const { events } = await drain(executeCarPurchaseGraph(buildDeps()));
+
+    // No provider in the default fixture declares usage, so every one of
+    // them emits an all-zero ModelMetadataEvent -- the same thing a live
+    // provider that reports no usage does. Absent, never `0`.
+    const modelCalls = events.filter(
+      (event) => event.category === 'model' && event.phase === 'finish',
+    );
+    expect(modelCalls.length).toBeGreaterThan(0);
+    for (const event of modelCalls) {
+      expect(event).not.toHaveProperty('tokenUsage');
+    }
+    expect(events.some((event) => event.tokenUsage !== undefined)).toBe(false);
+  });
+
+  it('measures every model and tool call duration from a real interval rather than a constant', async () => {
+    // A 1000 ms-per-read stepping source: any recorded duration is a whole
+    // number of steps, which sub-second wall-clock could not produce, and
+    // is > 0, which a hard-coded constant or an unmeasured default could
+    // not produce either.
+    let ticks = 0;
+    const nowMs = (): number => (ticks += 1000);
+
+    const { events } = await drain(executeCarPurchaseGraph(buildDeps({ nowMs })));
+
+    const timed = events.filter(
+      (event) =>
+        (event.category === 'model' || event.category === 'tool') &&
+        (event.phase === 'finish' || event.phase === 'error'),
+    );
+    expect(timed.length).toBeGreaterThan(0);
+    for (const event of timed) {
+      expect(event.durationMs).toBeDefined();
+      expect(event.durationMs).toBeGreaterThan(0);
+      expect((event.durationMs ?? 0) % 1000).toBe(0);
+    }
+
+    // Start events close nothing, so they carry no duration.
+    for (const event of events.filter((event) => event.phase === 'start')) {
+      expect(event).not.toHaveProperty('durationMs');
+    }
+  });
+
+  it('reports how long every Graph node really took, measured across its own execution', async () => {
+    // Same 1000 ms-per-read stepping source as the model/tool duration test
+    // above: a recorded node duration that is a positive whole number of
+    // steps could not come from a hard-coded constant, an unmeasured
+    // default, or sub-millisecond wall clock.
+    let ticks = 0;
+    const nowMs = (): number => (ticks += 1000);
+
+    const { events } = await drain(executeCarPurchaseGraph(buildDeps({ nowMs })));
+
+    const nodeFinishes = events.filter(
+      (event) => event.category === 'graph' && event.phase === 'finish',
+    );
+    // Every one of the six real nodes reports one, not just the ones a
+    // consumer happens to look at first.
+    expect(nodeFinishes.map((event) => event.attributes['nodeId']).sort()).toEqual(
+      [...CAR_PURCHASE_GRAPH_NODE_IDS].sort(),
+    );
+    for (const event of nodeFinishes) {
+      expect(event.durationMs).toBeDefined();
+      expect(event.durationMs).toBeGreaterThan(0);
+      expect((event.durationMs ?? 0) % 1000).toBe(0);
+    }
+
+    // A node's start closes nothing, so it carries no duration: a surface
+    // rendering an elapsed column has nothing to freeze yet. The key is
+    // absent, not present-and-zero -- the same omit path a finish with no
+    // observed start takes (`createNodeDurationTracker` returns `undefined`
+    // there, never `0`).
+    for (const event of events.filter(
+      (event) => event.category === 'graph' && event.phase === 'start',
+    )) {
+      expect(event).not.toHaveProperty('durationMs');
+    }
+    expect(events.some((event) => event.category === 'graph' && event.durationMs === 0)).toBe(
+      false,
+    );
+  });
+
+  it('gives each of the four genuinely concurrent specialists its own duration, not one shared interval', async () => {
+    let ticks = 0;
+    const nowMs = (): number => (ticks += 1000);
+
+    const { events } = await drain(executeCarPurchaseGraph(buildDeps({ nowMs })));
+
+    const graphEvents = events.filter((event) => event.category === 'graph');
+    const parallelPhases = graphEvents
+      .filter((event) =>
+        (CAR_PURCHASE_PARALLEL_SPECIALIST_IDS as readonly string[]).includes(
+          String(event.attributes['nodeId']),
+        ),
+      )
+      .map((event) => event.phase);
+    // The hazard this test exists for is only real because the four
+    // specialists are genuinely in flight together: all four starts land
+    // before any of them finishes, so a single run-wide "last node start"
+    // reading would anchor every one of the four finishes to whichever
+    // specialist happened to start last.
+    expect(parallelPhases).toEqual([
+      'start',
+      'start',
+      'start',
+      'start',
+      'finish',
+      'finish',
+      'finish',
+      'finish',
+    ]);
+
+    const durations = new Map<string, number | undefined>(
+      graphEvents
+        .filter((event) => event.phase === 'finish')
+        .map((event) => [String(event.attributes['nodeId']), event.durationMs]),
+    );
+    for (const specialistId of CAR_PURCHASE_PARALLEL_SPECIALIST_IDS) {
+      expect(durations.get(specialistId)).toBeGreaterThan(0);
+    }
+    // Four separate intervals, not four readings of one.
+    const parallelDurations = CAR_PURCHASE_PARALLEL_SPECIALIST_IDS.map((id) => durations.get(id));
+    expect(new Set(parallelDurations).size).toBe(parallelDurations.length);
+
+    // `createNodeDurationTracker`'s own tests below hold the exact keying
+    // proof: from outside the Graph the individual start readings are not
+    // observable, so misattribution can only be pinned down against the
+    // tracker directly, exactly as `event-normalizer.test.ts` pins down the
+    // same hazard for the SDK's concurrent tool executor.
+  });
+
+  it('never stamps an estimatedCostUsd: no sourced price table exists to compute one from', async () => {
+    const { events } = await drain(executeCarPurchaseGraph(buildDeps()));
+    expect(events.some((event) => event.estimatedCostUsd !== undefined)).toBe(false);
+  });
+
+  it('records intervention.proceed at debug so the info stream is not drowned by handlers deciding to do nothing', async () => {
+    const { events } = await drain(executeCarPurchaseGraph(buildDeps()));
+
+    const interventions = events.filter((event) => event.category === 'intervention');
+    const proceeds = interventions.filter((event) => event.name === 'intervention.proceed');
+
+    // They genuinely dominate: this run records far more "a guard looked
+    // and had no objection" than every other outcome combined.
+    expect(proceeds.length).toBeGreaterThan(interventions.length - proceeds.length);
+
+    // Recorded, not deleted -- each keeps the handler/stage/subject a
+    // reader needs to audit that the guard ran.
+    for (const event of proceeds) {
+      expect(event.level).toBe('debug');
+      expect(event.attributes['handler']).toBeTypeOf('string');
+      expect(event.attributes['stage']).toBeTypeOf('string');
+    }
+
+    // The level a `?level=` filter (routes/debug.ts) acts on: nothing above
+    // debug is a proceed, so filtering them out leaves only the decisions
+    // that changed the run's course.
+    const aboveDebug = events.filter((event) => event.level !== 'debug');
+    expect(aboveDebug.some((event) => event.name === 'intervention.proceed')).toBe(false);
+    expect(aboveDebug.length).toBeLessThan(events.length);
+  });
+});
+
+/**
+ * Streaming integrity: the generator must hand each `RuntimeEvent` to its
+ * consumer AS THE GRAPH PRODUCES IT, not accumulate the whole six-node run
+ * and drain it after `graph.invoke` resolves.
+ *
+ * These are deliberately not "the final event list looks right" assertions:
+ * a buffered implementation produces an identical final list, so such a test
+ * would prove nothing. Each test below instead holds a node open on a
+ * caller-controlled gate (no timers, no sleeps) and asserts on what a
+ * consumer has *already* received while later nodes are demonstrably still
+ * pending.
+ */
+describe('createNodeDurationTracker', () => {
+  it('gives each concurrently running node the interval between its own start and its own finish', () => {
+    // The real Graph holds all four parallel specialists open at once, so
+    // three of the four starts are still outstanding when the first one
+    // finishes. A single "last node start" reading would hand every one of
+    // them the same anchor; keying by node id is what keeps their intervals
+    // from being swapped.
+    let clock = 0;
+    const tracker = createNodeDurationTracker(() => clock);
+
+    clock = 100;
+    tracker.noteNodeStart('deal-analyst');
+    clock = 130;
+    tracker.noteNodeStart('ownership-cost-analyst');
+    clock = 160;
+    tracker.noteNodeStart('safety-reliability-analyst');
+    clock = 200;
+    tracker.noteNodeStart('household-fit-analyst');
+
+    // Finishing out of start order, as the real Graph genuinely does.
+    clock = 260;
+    expect(tracker.measureNode('safety-reliability-analyst')).toBe(100);
+    clock = 300;
+    expect(tracker.measureNode('deal-analyst')).toBe(200);
+    clock = 340;
+    expect(tracker.measureNode('household-fit-analyst')).toBe(140);
+    clock = 500;
+    expect(tracker.measureNode('ownership-cost-analyst')).toBe(370);
+  });
+
+  it('reports no duration at all -- not a zero -- for a node whose start was never observed', () => {
+    const tracker = createNodeDurationTracker(() => 500);
+    expect(tracker.measureNode('deal-analyst')).toBeUndefined();
+  });
+
+  it('measures a re-run node from its latest start, never a stale earlier one', () => {
+    let clock = 0;
+    const tracker = createNodeDurationTracker(() => clock);
+
+    clock = 10;
+    tracker.noteNodeStart('source-challenger');
+    clock = 50;
+    expect(tracker.measureNode('source-challenger')).toBe(40);
+
+    clock = 400;
+    tracker.noteNodeStart('source-challenger');
+    clock = 430;
+    expect(tracker.measureNode('source-challenger')).toBe(30);
+  });
+});
+
+describe('executeCarPurchaseGraph streams events as the Graph progresses', () => {
+  it('delivers the finished parallel specialists’ events while source-challenger is still running', async () => {
+    const deps = buildDeps();
+    const gated = new GatedModelProvider({
+      beats: {
+        turn: [{ toolCalls: [{ name: 'strands_structured_output', input: CHALLENGE_RESULT }] }],
+      },
+    });
+    gated.setBeat('turn');
+    const patchedModelFor: CarPurchaseGraphDeps['modelFor'] = (nodeId) =>
+      nodeId === 'source-challenger' ? gated : deps.modelFor(nodeId);
+
+    const consumer = consumeInBackground(
+      executeCarPurchaseGraph({ ...deps, modelFor: patchedModelFor }),
+    );
+
+    // Let the Graph run as far as it possibly can. AND-semantics means all
+    // four parallel specialists must complete before source-challenger is
+    // eligible, and source-challenger then parks inside its gated model
+    // call -- so once the gate is reached, and while it stays shut, the run
+    // is provably mid-flight and cannot have finished.
+    await waitUntil(() => gated.streamEntered, "source-challenger's gated model call");
+    await settleEventLoop();
+    expect(consumer.done()).toBe(false);
+
+    // ...and the consumer already holds the earlier nodes' events.
+    const early = [...consumer.received];
+    expect(early.length).toBeGreaterThan(0);
+    for (const specialistId of CAR_PURCHASE_PARALLEL_SPECIALIST_IDS) {
+      expect(
+        early.some(
+          (event) =>
+            event.category === 'graph' &&
+            event.phase === 'finish' &&
+            event.attributes['nodeId'] === specialistId,
+        ),
+        `expected node "${specialistId}"'s completion to have already been streamed`,
+      ).toBe(true);
+    }
+    // Nothing downstream of the parked node has been invented ahead of time.
+    expect(early.some((event) => event.agentId === 'decision-synthesizer')).toBe(false);
+
+    gated.open();
+    const result = await consumer.completed;
+    expect(result.multiAgentResult.status).toBe('COMPLETED');
+    // The early events are a genuine prefix of the whole stream, unchanged.
+    expect(consumer.received.slice(0, early.length)).toEqual(early);
+    expect(consumer.received.length).toBeGreaterThan(early.length);
+  });
+
+  it('yields in one gapless, strictly ascending sequence -- the ordering downstream duplicate suppression relies on', async () => {
+    const { events } = await drain(executeCarPurchaseGraph(buildDeps()));
+
+    // Every sequence the run allocated is delivered exactly once, in order,
+    // with no gaps: `RunAccumulator.sequence` is monotonic from 0 and every
+    // allocation is pushed in the same synchronous statement, so a dropped
+    // or reordered event would show up here as a hole or an inversion.
+    expect(events.map((event) => event.sequence)).toEqual(events.map((_, index) => index));
+
+    // Real Graph topology order survives streaming: every parallel
+    // specialist's completion is streamed before source-challenger's, which
+    // is streamed before decision-synthesizer's.
+    const graphFinish = (nodeId: string): number =>
+      events.findIndex(
+        (event) =>
+          event.category === 'graph' &&
+          event.phase === 'finish' &&
+          event.attributes['nodeId'] === nodeId,
+      );
+    for (const specialistId of CAR_PURCHASE_PARALLEL_SPECIALIST_IDS) {
+      expect(graphFinish(specialistId)).toBeGreaterThanOrEqual(0);
+      expect(graphFinish(specialistId)).toBeLessThan(graphFinish('source-challenger'));
+    }
+    expect(graphFinish('source-challenger')).toBeLessThan(graphFinish('decision-synthesizer'));
+  });
+
+  it('still delivers the events produced after the Graph resolves (the GoalLoop’s recorded attempts), last', async () => {
+    const { events, result } = await drain(executeCarPurchaseGraph(buildDeps()));
+
+    // `goalLoop.lastResult` is only readable once the run has finished, so
+    // these are pushed after `graph.invoke` resolves -- the exact events a
+    // "stop yielding when the run settles" implementation would drop.
+    const goalIndexes = events.flatMap((event, index) =>
+      event.category === 'goal' ? [index] : [],
+    );
+    expect(goalIndexes).toHaveLength(result.goalLoopResult?.attempts.length ?? 0);
+    expect(goalIndexes).toEqual([events.length - 1]);
+  });
+
+  it('surfaces a mid-run Graph failure only after everything produced before it has been delivered', async () => {
+    // A real orchestration bound tripped mid-run: `maxSteps: 5` lets the
+    // four parallel specialists and source-challenger genuinely execute,
+    // then the real Graph throws while scheduling the sixth node. (A failing
+    // *node* is not usable here: the installed SDK deliberately turns one
+    // into a FAILED NodeResult so parallel paths can continue -- see
+    // `multiagent/graph.js`'s own header -- and never rejects `invoke`.)
+    const deps = buildDeps();
+    const boundedPack = {
+      ...deps.pack,
+      orchestration: { ...deps.pack.orchestration, maxSteps: 5 },
+    };
+
+    const consumer = consumeInBackground(executeCarPurchaseGraph({ ...deps, pack: boundedPack }));
+    // Attach the rejection handler immediately so the failure is never an
+    // unhandled rejection while the assertions below run.
+    const outcome = consumer.completed.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    const error = await outcome;
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('max steps reached');
+
+    // The four parallel specialists genuinely ran and were genuinely
+    // delivered before the failure: an error does not swallow the stream.
+    for (const specialistId of CAR_PURCHASE_PARALLEL_SPECIALIST_IDS) {
+      expect(
+        consumer.received.some((event) => event.agentId === specialistId),
+        `expected node "${specialistId}"'s events to survive the mid-run failure`,
+      ).toBe(true);
+    }
+    expect(consumer.received.map((event) => event.sequence)).toEqual(
+      consumer.received.map((_, index) => index),
+    );
   });
 });

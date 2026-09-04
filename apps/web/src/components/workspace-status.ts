@@ -45,7 +45,91 @@
  * means "the human has rendered *a* verdict on this proposal," not
  * specifically "approved."
  */
-import type { DecisionProposal, Recommendation } from '@sift/contracts';
+import { PUBLIC_ACTIVITY_EVENT_TYPES } from '@sift/contracts';
+import type {
+  DecisionProposal,
+  PublicActivityEvent,
+  PublicActivityEventType,
+  PublicActivityPhase,
+  Recommendation,
+} from '@sift/contracts';
+
+/**
+ * The two `PublicActivityPhase` values that END a lifecycle rather than
+ * describe a step within one (`packages/contracts/src/events.ts`:
+ * `queued | active | waiting | completed | failed`). Read straight off that
+ * union so a new non-terminal phase cannot silently be treated as terminal.
+ */
+const TERMINAL_PHASES: readonly PublicActivityPhase[] = ['completed', 'failed'];
+
+/**
+ * The subset of `PublicActivityEventType` that reports the RUN's own
+ * lifecycle -- `run.queued`, `run.started`, `run.completed`, `run.failed`
+ * (`apps/agent/src/services/run-service.ts` appends the first;
+ * `apps/agent/src/runtime/car-purchase-engine.ts` and `home-energy-engine.ts`
+ * append the other three). Derived from the contract's own type list rather
+ * than written out here, so a later run-lifecycle event type is picked up by
+ * construction instead of being missed by a hand-maintained copy.
+ *
+ * Every OTHER activity type reports the lifecycle of something *inside* a
+ * run -- a tool call, a skill activation, a specialist handoff -- and each of
+ * those reaches `phase: 'completed'` many times over the course of one run
+ * that is still very much in flight. That distinction is the whole point of
+ * this set: only a run-lifecycle event in a terminal phase ends the run.
+ */
+const RUN_LIFECYCLE_EVENT_TYPES: ReadonlySet<PublicActivityEventType> = new Set(
+  PUBLIC_ACTIVITY_EVENT_TYPES.filter((type) => type.startsWith('run.')),
+);
+
+/**
+ * The id of the run currently in flight, or `null` when no run is.
+ *
+ * Replaces a derivation that asked only "does the most recent event carry a
+ * non-terminal phase?" -- which is not a question about the run at all.
+ * Roughly half of a real run's ~73 correlated events (`tool.completed`,
+ * `skill.activated`, `specialist.completed`) legitimately carry
+ * `phase: 'completed'` while the run continues, so that predicate flickered
+ * false on every one of them, and `deriveWorkspaceStatus` below answered
+ * "Nothing's been looked into yet." mid-investigation. Invisible only while
+ * the whole burst lands inside one ~70 ms frame; once the runtime streams
+ * events as the graph progresses, it becomes a visible reversion to the
+ * empty state in the middle of a run.
+ *
+ * The run's ACTUAL lifecycle, as the event contract represents it: a run
+ * opens at `run.queued` and every event correlated to it carries its
+ * `runId`; it ends when a run-lifecycle event for that same `runId` reports
+ * a terminal phase (`run.completed`, or `run.failed` -- which can also
+ * follow `run.queued` directly, with no `run.started` in between, when an
+ * investigation is refused up front). Only the newest run is considered
+ * (the highest-sequence event carrying any `runId`), so a run that died
+ * without ever emitting its terminal event cannot pin the workspace to
+ * "investigating" forever once a later run has finished.
+ *
+ * Order-independent by construction: the terminal check scans every event
+ * correlated to the run rather than trusting arrival order, so a replayed
+ * backlog, a duplicate delivery, or a post-terminal event that still
+ * carries the `runId` all reach the same answer.
+ */
+export function deriveActiveRunId(events: readonly PublicActivityEvent[]): string | null {
+  let latestRunId: string | null = null;
+  let latestSequence = Number.NEGATIVE_INFINITY;
+  for (const event of events) {
+    if (event.runId === undefined) continue;
+    if (event.sequence > latestSequence) {
+      latestSequence = event.sequence;
+      latestRunId = event.runId;
+    }
+  }
+  if (latestRunId === null) return null;
+
+  const ended = events.some(
+    (event) =>
+      event.runId === latestRunId &&
+      RUN_LIFECYCLE_EVENT_TYPES.has(event.type) &&
+      TERMINAL_PHASES.includes(event.phase),
+  );
+  return ended ? null : latestRunId;
+}
 
 export const HERO_PHASES = [
   'not_started',
@@ -70,6 +154,11 @@ export interface HeroAction {
 }
 
 export interface WorkspaceStatusInput {
+  /**
+   * Whether a run is currently in flight. Callers derive this with
+   * `deriveActiveRunId` above rather than inspecting the latest event's
+   * phase -- see that function for why the two are not the same question.
+   */
   isRunActive: boolean;
   recommendation: Recommendation | null;
   proposal: DecisionProposal | null;

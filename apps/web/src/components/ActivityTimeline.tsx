@@ -45,7 +45,7 @@
  * item to a *different* run's exact Timeline event) as it would be from the
  * old consumer-surface ledger.
  *
- * Adapted from `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/hq/ActivityView.tsx`'s
+ * Adapted from `praetor:apps/web/src/components/strata19/hq/ActivityView.tsx`'s
  * chronological grouping/label/detail-disclosure information architecture
  * (docs/reuse-source-map.md) -- see docs/reuse-attribution.md. Only the
  * "route every enum through a safe-label table, including an unrecognized

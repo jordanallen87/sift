@@ -69,10 +69,13 @@ export interface CaseHeaderProps {
  * `polling` map to design-system.md's documented treatment ("a small
  * connection indicator using `active` (pulsing, motion-token-driven) for
  * reconnecting, and `open`/muted for polling fallback"); `live` reuses the
- * same `active` token for the steady connected state -- design-system.md's
- * own Palette rationale names `--color-brand` as "the active" signal, and a
- * live SSE connection is exactly that; `offline` uses the `error` token
- * (a technical connection failure, not a case-domain `blocked` state).
+ * same `active` token for the steady connected state, because a live SSE
+ * connection is precisely "something is happening right now". Note that
+ * `active` is its own navy hue and deliberately NOT `--color-brand` (it
+ * tracked the brand only incidentally, while the brand happened to be that
+ * same navy; see the `active` block in tokens.css for why it did not follow
+ * the brand to Sift Green). `offline` uses the `error` token -- a technical
+ * connection failure, not a case-domain `blocked` state.
  */
 const CONNECTION_META: Record<
   CaseHeaderConnectionState,

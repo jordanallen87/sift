@@ -26,7 +26,8 @@
  * here as guessed literals.
  */
 import type { DemoScenario } from '../../packages/contracts/src/index.js';
-import { DOG_CRATE_FIT_OBLIGATION_ID } from '../../apps/agent/src/runtime/scripted-beats/car-purchase.js';
+import { REAR_FACING_SEAT_OBLIGATION_ID } from '../../apps/agent/src/runtime/scripted-beats/car-purchase.js';
+import { REAR_FACING_SEAT_GRADES } from '../../apps/agent/src/runtime/car-purchase-scenario.js';
 
 export const CAR_PURCHASE_DEMO_SCENARIO: DemoScenario = {
   id: 'car-purchase-demo',
@@ -70,17 +71,20 @@ export const CAR_PURCHASE_DEMO_SCENARIO: DemoScenario = {
         caseId: 'case-1',
         expectedSequence: 0,
         definition: {
-          id: 'custom.dog_crate_fit',
-          label: 'Both dog crates fit behind the second row',
-          valueType: 'boolean',
+          id: 'custom.rear_facing_seat_behind_driver',
+          label: 'Rear-facing seat fits behind the driver',
+          valueType: 'enum',
           appliesTo: ['candidate'],
+          allowedValues: [...REAR_FACING_SEAT_GRADES],
+          orderedValues: [...REAR_FACING_SEAT_GRADES],
           evidenceExpectation: 'verification',
-          comparison: 'target',
+          comparison: 'higher_better',
           reason:
-            'The household needs two dog travel crates to fit behind the second row without folding either seat.',
+            "A second child arrives in three months; a rear-facing seat has to go behind the driver without pushing the driver's seat forward.",
         },
       },
-      description: 'ChatGPT calls sift_define_case_attribute for the two-dog-crate requirement.',
+      description:
+        'ChatGPT calls sift_define_case_attribute for the rear-facing-car-seat requirement.',
     },
     {
       command: 'reviewCaseExtension',
@@ -96,17 +100,17 @@ export const CAR_PURCHASE_DEMO_SCENARIO: DemoScenario = {
           {
             op: 'add',
             criterion: {
-              id: 'custom.dog_crate_fit',
-              label: 'Both dog crates fit behind the second row',
+              id: 'custom.rear_facing_seat_behind_driver',
+              label: 'Rear-facing seat fits behind the driver',
               kind: 'hard_constraint',
               weight: 20,
               direction: 'higher_better',
-              appliesToAttribute: 'custom.dog_crate_fit',
+              appliesToAttribute: 'custom.rear_facing_seat_behind_driver',
             },
           },
         ],
       },
-      description: 'ChatGPT calls sift_update_criteria to add the new dog-crate criterion.',
+      description: 'ChatGPT calls sift_update_criteria to add the new rear-facing-seat criterion.',
     },
     {
       command: 'reviewProposal',
@@ -157,13 +161,13 @@ export const CAR_PURCHASE_DEMO_SCENARIO: DemoScenario = {
     { kind: 'intervention', action: 'confirm', handler: 'ConsequenceGuard' },
     {
       kind: 'case_extension_defined',
-      definitionId: 'custom.dog_crate_fit',
+      definitionId: 'custom.rear_facing_seat_behind_driver',
       origin: 'agent_proposed',
     },
     {
       kind: 'case_obligation_created',
-      obligationId: DOG_CRATE_FIT_OBLIGATION_ID,
-      criterionId: 'custom.dog_crate_fit',
+      obligationId: REAR_FACING_SEAT_OBLIGATION_ID,
+      criterionId: 'custom.rear_facing_seat_behind_driver',
     },
     { kind: 'obligation_status', obligationId: 'car.deal_normalization', status: 'satisfied' },
     { kind: 'obligation_status', obligationId: 'car.hard_constraints', status: 'satisfied' },
@@ -173,12 +177,19 @@ export const CAR_PURCHASE_DEMO_SCENARIO: DemoScenario = {
       status: 'accepted_uncertainty',
     },
     { kind: 'obligation_status', obligationId: 'car.household_fit', status: 'satisfied' },
-    { kind: 'obligation_status', obligationId: DOG_CRATE_FIT_OBLIGATION_ID, status: 'satisfied' },
+    {
+      kind: 'obligation_status',
+      obligationId: REAR_FACING_SEAT_OBLIGATION_ID,
+      status: 'satisfied',
+    },
     { kind: 'obligation_status', obligationId: 'car.shortlist', status: 'satisfied' },
     { kind: 'readiness', ready: true, blockers: [] },
     { kind: 'recommendation', favoredOptionId: 'candidate-crv' },
     { kind: 'human_action', action: 'focus_option:candidate-rav4' },
-    { kind: 'human_action', action: 'confirm_case_extension:custom.dog_crate_fit' },
+    {
+      kind: 'human_action',
+      action: 'confirm_case_extension:custom.rear_facing_seat_behind_driver',
+    },
     { kind: 'human_action', action: 'approve_proposal:candidate-crv+candidate-outback' },
     { kind: 'forbidden_event_absent', eventType: 'decision.approved.actor.agent' },
   ],

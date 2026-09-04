@@ -285,12 +285,33 @@ export class SiftPage {
    * for `vehicle-add-veh-...`). Waits for its results-list card to exist
    * first -- the search results are real, debounced, network-driven state,
    * never a fixed sleep.
+   *
+   * Confirmation is the row's own Add control flipping to its added state,
+   * not a shortlist entry: the shortlist is a collapsed bar whose list Radix
+   * unmounts until it is expanded, so asserting on `shortlist-item-*` here
+   * would force every caller to open the panel just to add a vehicle. Use
+   * `expandShortlist()` when the entry itself is the thing under test.
    */
   async addVehicleToShortlist(vehicleId: string): Promise<void> {
     const addButton = this.page.getByTestId(`vehicle-add-${vehicleId}`);
     await expect(addButton).toBeVisible();
     await addButton.click();
-    await expect(this.page.getByTestId(`shortlist-item-${vehicleId}`)).toBeVisible();
+    await expect(addButton).toBeDisabled();
+    await expect(this.page.getByTestId('vehicle-catalog-shortlist')).toBeVisible();
+  }
+
+  /**
+   * Opens the shortlist bar's panel, which is where its per-vehicle entries
+   * and Remove controls live. Idempotent: already-expanded is a no-op, so a
+   * test can call it without tracking the bar's state.
+   */
+  async expandShortlist(): Promise<void> {
+    const trigger = this.page.getByTestId('shortlist-bar-trigger');
+    await expect(trigger).toBeVisible();
+    if ((await trigger.getAttribute('aria-expanded')) !== 'true') {
+      await trigger.click();
+    }
+    await expect(this.page.getByTestId('vehicle-catalog-shortlist-list')).toBeVisible();
   }
 
   /** Clicks "Start comparison" and waits for the real `POST /api/cases` response, returning its `caseId`. The subsequent per-vehicle `upsertOption` calls happen after this resolves; callers that need to wait for the full case body should also wait for `case-workspace`. */

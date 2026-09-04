@@ -60,47 +60,58 @@
  *     this function's own internal `try`/`catch` never lets a failure hang
  *     the run forever or vanish silently.
  *
- * --- Round-1-vs-round-2 state detection (the one genuinely new judgment
- * call this task adds) ---
+ * --- Round-1-vs-round-2 state detection ---
  *
  * `scripted-beats/car-purchase.ts`'s scenario-only `setScenarioBeat` flips
  * every scripted provider between `'round1'`/`'round2'` from an external
  * call the test harness controls. A live trigger has no such caller -- the
- * round must be read from the case's own persisted state. The signal used
- * is exactly the one CLAUDE.md's task brief for this file names: whether
- * the household's `custom.dog_crate_fit` case extension has been
- * **confirmed** (`extension.definition.confirmation === 'confirmed'`,
- * `command-service.ts`'s `reviewCaseExtension`) -- the one durable fact that
- * is true if and only if the household has already gone through the
- * WebMCP-driven "two dog crates" concern-and-criteria-reweight beat this
- * demo's round 2 investigates. A *pending* (not yet human-reviewed) or
- * *rejected* extension is deliberately still `round1`: round 2's dog-crate
- * household-fit investigation and hard-constraint disqualification only
- * make sense once a human has actually accepted the concern as real.
+ * round must be read from the case's own persisted state. The signal is
+ * whether this case has gained **any confirmed case extension**: a `custom.*`
+ * attribute a human has accepted (`extension.definition.confirmation ===
+ * 'confirmed'`, `command-service.ts`'s `defineCaseAttribute`/
+ * `reviewCaseExtension`). That is the durable fact that is true if and only
+ * if the household has already gone through the WebMCP-driven
+ * concern-and-criteria beat round 2 investigates. A *pending* (not yet
+ * human-reviewed) or *rejected* extension is deliberately still `round1`:
+ * round 2's household-fit investigation and hard-constraint disqualification
+ * only make sense once a human has actually accepted the concern as real.
  *
- * This does not depend on the derived `case.custom.dog_crate_fit`
- * *obligation* existing yet, because nothing durably creates it before this
- * engine runs: `command-service.ts`'s own header comment documents that
- * `updateCriteria`/`defineCaseAttribute` do not derive a case obligation for
- * a newly-added user concern (a real, separately-documented, deliberately
- * deferred gap in that file, not fixed here). This engine closes exactly
- * the missing-obligation half of that gap for its own round-2 trigger,
- * once it has already independently decided a round-2 run is underway:
- * `ensureDogCrateObligation` derives and durably appends
- * `case.custom.dog_crate_fit` (reusing `dogCrateObligationTemplate` and
- * `@sift/core`'s `deriveObligations`, exactly like `car-purchase-scenario.ts`
- * does inline) if it is not already present, before folding round 2's
- * `household-fit-analyst` result against it. It deliberately does not also
+ * The trigger is deliberately NOT keyed to any particular attribute id. It
+ * used to test for the literal `custom.dog_crate_fit`, which made the pack's
+ * story ("an unanticipated concern triggers another pass") false for every
+ * household whose concern was anything else: no round 2, no revised
+ * shortlist, and -- because round 2 is the only path that emits
+ * `proposal.proposed` -- no approval control at all, which is the product's
+ * central claim. Everything downstream of the trigger is likewise driven off
+ * the extension the case actually carries: `ensureCaseExtensionObligations`
+ * derives `case.<attributeId>` for each confirmed extension (the same
+ * convention `command-service.ts`'s `synthesizeUserConcernObligationTemplate`
+ * already mints), round 2 folds `household-fit-analyst`'s result against that
+ * obligation, and `deriveUnestablishedAttributeLimitations` names attributes
+ * by the case's own labels.
+ *
+ * Deriving the obligation here is a fallback, not the primary path:
+ * `command-service.ts`'s `updateCriteria` already derives a case-extension
+ * obligation generically for a newly-added criterion that needs an evidence
+ * question, so on the normal route the obligation exists before this engine
+ * runs and `ensureCaseExtensionObligations` is an early-returning no-op. It
+ * still closes the case where a concern was defined (`defineCaseAttribute`)
+ * without a criterion ever being added for it. It deliberately does not also
  * add `linkedCriterionId`/`linkedObligationId` back onto the `CaseExtension`
- * record itself (a cosmetic completion of the same documented gap,
- * genuinely out of this task's scope) -- see the dated `docs/build-log.md`
- * entry for this task.
+ * record itself (a cosmetic completion of a separately documented gap) --
+ * see the dated `docs/build-log.md` entry for this task.
  */
 import type {
+  AttributeDefinition,
   CaseEvent,
+  CaseExtension,
   CaseState,
   CompiledDecisionPack,
+  Criterion,
+  EntityRecord,
   EvidenceLink,
+  ObligationTemplate,
+  PublicActivityEvent,
   PublicActivityEventType,
   PublicActivityPhase,
 } from '@sift/contracts';
@@ -125,7 +136,6 @@ import {
 } from './car-purchase-graph.js';
 import {
   buildGraphDeps,
-  dogCrateObligationTemplate,
   ensureSourcesExist,
   entityLabelsById,
   extractCitedSourceIds,
@@ -137,14 +147,10 @@ import {
 import type { RuntimeEvent } from './event-normalizer.js';
 import {
   buildCarPurchaseScriptedProviders,
-  DOG_CRATE_FIT_OBLIGATION_ID,
   setScenarioBeat,
   type CarPurchaseScenarioBeat,
 } from './scripted-beats/car-purchase.js';
 import { deriveScoredRecommendationFields, mergeLimitations } from './recommendation-scoring.js';
-
-/** The typed `custom.*` case-attribute id the household's confirmed two-dog-crate concern is defined under (`command-service.ts` `defineCaseAttribute`). See this file's header comment. */
-export const DOG_CRATE_EXTENSION_ID = 'custom.dog_crate_fit';
 
 /**
  * The exact candidate id set the deterministic car-purchase demo fixture
@@ -188,17 +194,152 @@ const HARD_CONSTRAINTS_SUMMARY =
   'Every candidate meets the household feature requirements (AWD, adaptive cruise, blind-spot monitoring, forward collision warning, 2 LATCH anchors). candidate-crv, candidate-cx5, and candidate-outback meet the maximum-budget requirement; candidate-rav4 does not.';
 
 /**
+ * Every `custom.*` concern this case has legitimately gained AND a human has
+ * accepted, in the order the case recorded them (`CaseState.caseExtensions`
+ * is append-ordered, so this is deterministic without sorting). A pending or
+ * rejected extension is deliberately excluded -- see this file's header
+ * comment.
+ */
+export function confirmedCaseExtensions(caseState: CaseState): CaseExtension[] {
+  return caseState.caseExtensions.filter(
+    (extension) => extension.definition.confirmation === 'confirmed',
+  );
+}
+
+/**
+ * The case-scoped obligation id one confirmed extension derives, byte-
+ * identical to the convention `command-service.ts`'s
+ * `synthesizeUserConcernObligationTemplate` already mints for a newly-added
+ * criterion (`` `case.${criterion.id}` ``) and to the demo's own long-standing
+ * `case.custom.dog_crate_fit`. `linkedCriterionId` wins when the reducer has
+ * already linked one, so an extension whose criterion id differs from its
+ * attribute id still converges on the SAME obligation record rather than
+ * producing a confusing duplicate.
+ */
+export function caseExtensionObligationId(extension: CaseExtension): string {
+  return `case.${extension.linkedCriterionId ?? extension.definition.id}`;
+}
+
+/**
  * Pure round detection from real case state. See this file's header comment
  * for the full reasoning. Exported directly for a fast, focused unit test
  * independent of running the real Graph.
  */
 export function determineCarPurchaseRound(caseState: CaseState): CarPurchaseScenarioBeat {
-  const dogCrateConfirmed = caseState.caseExtensions.some(
-    (extension) =>
-      extension.definition.id === DOG_CRATE_EXTENSION_ID &&
-      extension.definition.confirmation === 'confirmed',
+  return confirmedCaseExtensions(caseState).length > 0 ? 'round2' : 'round1';
+}
+
+/**
+ * The attributes this case says matter, in a stable order: every confirmed
+ * extension's own `custom.*` attribute first (the concerns the household
+ * added, which is what a round-2 recommendation is about), then every
+ * attribute an active criterion measures -- singly via `appliesToAttribute`
+ * or as one part of a composite via `composedOfAttributes`. Deduplicated,
+ * first occurrence wins.
+ */
+function ratedAttributeIds(caseState: CaseState): string[] {
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+  const push = (attributeId: string | undefined): void => {
+    if (attributeId === undefined || seen.has(attributeId)) return;
+    seen.add(attributeId);
+    ordered.push(attributeId);
+  };
+
+  for (const extension of confirmedCaseExtensions(caseState)) {
+    push(extension.definition.id);
+  }
+  for (const criterion of caseState.criteria) {
+    if (criterion.status !== 'active') continue;
+    push(criterion.appliesToAttribute);
+    for (const composed of criterion.composedOfAttributes ?? []) push(composed);
+  }
+  return ordered;
+}
+
+/** The attribute definition this case can resolve for `attributeId`, from the pinned pack or from a confirmed extension. `undefined` when a criterion names an attribute neither declares. */
+function attributeDefinitionFor(
+  attributeId: string,
+  caseState: CaseState,
+  pack: CompiledDecisionPack,
+): AttributeDefinition | undefined {
+  const packAttribute = pack.attributes.find((attribute) => attribute.id === attributeId);
+  if (packAttribute !== undefined) return packAttribute;
+  return confirmedCaseExtensions(caseState).find(
+    (extension) => extension.definition.id === attributeId,
+  )?.definition;
+}
+
+/** The label a person actually reads for `attributeId` -- never the raw id if anything on the case names it. */
+function attributeLabelFor(
+  attributeId: string,
+  definition: AttributeDefinition | undefined,
+  caseState: CaseState,
+  entities: readonly EntityRecord[],
+): string {
+  if (definition !== undefined) return definition.label;
+  const criterion: Criterion | undefined = caseState.criteria.find(
+    (entry) => entry.appliesToAttribute === attributeId,
   );
-  return dogCrateConfirmed ? 'round2' : 'round1';
+  if (criterion !== undefined) return criterion.label;
+  for (const entity of entities) {
+    const record = entity.attributes[attributeId];
+    if (record !== undefined) return record.label;
+  }
+  return attributeId;
+}
+
+/**
+ * The recommendation limitations this engine can state as measured fact:
+ * for each attribute the case says matters (`ratedAttributeIds`), how many
+ * of the entities it applies to actually carry an established value for it.
+ *
+ * This replaces two unconditional English sentences the round-2 fold used to
+ * attach to every recommendation ("Whether both dog crates fit behind the
+ * second row remains unverified for every candidate.", "Driving comfort
+ * remains unverified for every candidate."). Both asserted coverage the
+ * engine never checked, named one hardcoded concern, and -- because
+ * `mergeLimitations` puts engine-authored lines ahead of derived ones --
+ * rendered first, so populating either column produced a flat contradiction
+ * on the first line a person read. CLAUDE.md: a limitation must be true when
+ * it is stated.
+ *
+ * "Established" is `status !== 'unknown'`, i.e. the record carries a real
+ * value (`AttributeRecordSchema` requires `value` for every non-`unknown`
+ * status). The partial wording deliberately does not say the covered
+ * candidates are *verified* -- `verified` is a specific human attestation in
+ * this product's vocabulary and a `supported` value is not one.
+ *
+ * Exported for a focused unit test: this is pure over `(CaseState,
+ * CompiledDecisionPack)` and needs no Graph, store, or clock.
+ */
+export function deriveUnestablishedAttributeLimitations(
+  caseState: CaseState,
+  pack: CompiledDecisionPack,
+): string[] {
+  const limitations: string[] = [];
+  for (const attributeId of ratedAttributeIds(caseState)) {
+    const definition = attributeDefinitionFor(attributeId, caseState, pack);
+    const applicable =
+      definition === undefined
+        ? caseState.entities
+        : caseState.entities.filter((entity) => definition.appliesTo.includes(entity.kind));
+    if (applicable.length === 0) continue;
+
+    const established = applicable.filter((entity) => {
+      const record = entity.attributes[attributeId];
+      return record !== undefined && record.status !== 'unknown';
+    }).length;
+    if (established === applicable.length) continue;
+
+    const label = attributeLabelFor(attributeId, definition, caseState, applicable);
+    limitations.push(
+      established === 0
+        ? `${label}: not established for any candidate on this case.`
+        : `${label}: established for only ${established} of the ${applicable.length} candidates.`,
+    );
+  }
+  return limitations;
 }
 
 export interface CarPurchaseEngineDeps {
@@ -246,6 +387,19 @@ function appendActivity(
     type: PublicActivityEventType;
     phase: PublicActivityPhase;
     summary: string;
+    /**
+     * Small, published, machine-readable facts a consumer surface can render
+     * beside the summary -- `PublicActivityEvent.safeDetails`
+     * (`packages/contracts/src/events.ts`), which `ActivityStore` already
+     * persists and replays as the `activity_events.data` column.
+     *
+     * "Safe" is the whole contract: this rides on the sanitized *public*
+     * stream, so only closed, non-user-shaped values belong here. Never a
+     * user-entered note, a model's private reasoning, a raw tool payload, a
+     * header, or anything credential-shaped -- those stay in the Runtime
+     * Inspector's own detail, behind `event-normalizer.ts`'s redaction.
+     */
+    safeDetails?: NonNullable<PublicActivityEvent['safeDetails']>;
   },
 ): void {
   activityStore.append({
@@ -258,6 +412,7 @@ function appendActivity(
     type: fields.type,
     phase: fields.phase,
     summary: fields.summary,
+    ...(fields.safeDetails !== undefined ? { safeDetails: fields.safeDetails } : {}),
   });
 }
 
@@ -297,6 +452,22 @@ function appendActivityForRuntimeEvent(
         type: event.phase === 'start' ? 'specialist.started' : 'specialist.completed',
         phase: event.phase === 'start' ? 'active' : 'completed',
         summary: event.summary,
+        // How long this specialist genuinely took, forwarded onto the
+        // public stream so a consumer surface can freeze a running elapsed
+        // time at the node's real duration rather than leaving the column
+        // blank. `car-purchase-graph.ts` measures it across the node's own
+        // real start/finish hooks and OMITS it when nothing measured that
+        // node, so this spread carries a real figure or nothing at all --
+        // never a zero and never an estimate.
+        //
+        // Safe to publish: a single integer millisecond count read from a
+        // clock, with no string leaf a note, payload, header, or credential
+        // could reach -- the same reasoning `event-normalizer.ts`'s
+        // `CallMetrics` records for keeping `durationMs` out of
+        // `redactValue`.
+        ...(event.durationMs !== undefined
+          ? { safeDetails: { durationMs: event.durationMs } }
+          : {}),
       });
       return;
     }
@@ -383,6 +554,10 @@ function appendActivityForRuntimeEvent(
  * `car-purchase-graph.ts`'s own `deps.idGenerator.next('trace')`),
  * `category`/`name`/`phase`/`level`/`attributes`/`payload`/etc. -- is the
  * real, untouched value the Graph produced; nothing here is fabricated.
+ *
+ * `onTraceId` is handed the trace each persisted event actually carries,
+ * so `runOneInvestigation` can record that same id -- not a second,
+ * separately minted one -- on the `runs` row. See its doc comment there.
  */
 interface DrainResult {
   readonly result: CarPurchaseGraphResult;
@@ -397,18 +572,6 @@ interface DrainResult {
    * finished.
    */
   readonly lastSequence: number;
-  /**
-   * The real `traceId` every drained `RuntimeEvent` carried (the Graph's own
-   * internally-minted trace, from `executeCarPurchaseGraph`'s own
-   * `deps.idGenerator.next('trace')` -- a *different* id than
-   * `runOneInvestigation`'s own local `traceId`, which only ever reaches
-   * `runStore.traceId`, never the Graph). `undefined` only if the Graph
-   * yielded no events at all. `runOneInvestigation` reuses this exact value
-   * for the `case.state_changed` event so every runtime_events row for one
-   * run shares one real trace, matching what a real client already expects
-   * ("every event... carries available correlation fields").
-   */
-  readonly traceId: string | undefined;
 }
 
 async function drainGraphToActivity(
@@ -417,68 +580,121 @@ async function drainGraphToActivity(
   activityStore: ActivityStore,
   runtimeEventStore: RuntimeEventStore,
   clock: Clock,
+  onTraceId: (traceId: string) => void,
 ): Promise<DrainResult> {
   let next = await gen.next();
   let lastSequence = -1;
-  let traceId: string | undefined;
   while (!next.done) {
     const persisted = runtimeEventStore.append({
       ...next.value,
       caseId: ctx.caseId,
       runId: ctx.runId,
     });
+    onTraceId(persisted.traceId);
     appendActivityForRuntimeEvent(next.value, ctx, activityStore, clock, persisted.id);
     lastSequence = persisted.sequence;
-    traceId = persisted.traceId;
     next = await gen.next();
   }
-  return { result: next.value, lastSequence, traceId };
+  return { result: next.value, lastSequence };
 }
 
-/** Derives and durably appends `case.custom.dog_crate_fit` if it is not already present. See this file's header comment. */
-function ensureDogCrateObligation(
+/**
+ * The `ObligationTemplate` one confirmed extension derives, built from the
+ * extension's own definition and (when the case has one) the criterion the
+ * household added for it. Every field mirrors `command-service.ts`'s
+ * `synthesizeUserConcernObligationTemplate`, which documents each choice at
+ * length; the shapes are kept identical so a concern that reaches BOTH paths
+ * converges on one obligation record rather than two rival descriptions of
+ * the same question. Nothing here is invented from the pack: an unanticipated
+ * concern has no installed skill or specialist, so both preference lists stay
+ * empty rather than naming one that might not be able to investigate it.
+ */
+function caseExtensionObligationTemplate(
+  extension: CaseExtension,
+  criterion: Criterion | undefined,
+): ObligationTemplate {
+  const label = criterion?.label ?? extension.definition.label;
+  return {
+    id: caseExtensionObligationId(extension),
+    label,
+    question: criterion?.question ?? `What should be established about "${label}"?`,
+    category: 'user_concern',
+    required: true,
+    // The household's own weight when it added a criterion; otherwise the
+    // midpoint of the 0-100 scale, which asserts neither urgency nor
+    // triviality about a concern nobody has weighted yet.
+    priority: criterion?.weight ?? 50,
+    requiredEvidenceLevel: 'E1',
+    maxAttempts: 2,
+    acceptedUncertaintyAllowed: true,
+    dependsOn: [],
+    preferredSkills: [],
+    preferredSpecialists: [],
+    completionRule: {
+      minimumEvidenceLevel: 'E1',
+      minimumIndependentSources: 0,
+      acceptedUncertaintyAllowed: true,
+    },
+    origin: 'case_extension',
+  };
+}
+
+/**
+ * Derives and durably appends `case.<attributeId>` for every confirmed case
+ * extension that does not already have its obligation, whatever that
+ * attribute happens to be. See this file's header comment for why this is a
+ * fallback rather than the primary derivation path.
+ */
+function ensureCaseExtensionObligations(
   deps: CarPurchaseEngineDeps,
   caseId: string,
   pack: CompiledDecisionPack,
   snapshot: CaseState,
+  extensions: readonly CaseExtension[],
 ): CaseState {
-  if (snapshot.obligations.some((obligation) => obligation.id === DOG_CRATE_FIT_OBLIGATION_ID)) {
-    return snapshot;
-  }
-  const template: CaseExtensionObligationTemplate = {
-    template: dogCrateObligationTemplate(),
-    criterionId: DOG_CRATE_EXTENSION_ID,
-  };
-  const nextObligations = deriveObligations(pack, [template], snapshot.obligations, deps.clock);
-  const derived = nextObligations.find(
-    (obligation) => obligation.id === DOG_CRATE_FIT_OBLIGATION_ID,
-  );
-  if (derived === undefined) {
-    throw new Error(
-      `car-purchase-engine: failed to derive the "${DOG_CRATE_FIT_OBLIGATION_ID}" obligation for case "${caseId}"`,
+  let current = snapshot;
+  for (const extension of extensions) {
+    const obligationId = caseExtensionObligationId(extension);
+    if (current.obligations.some((obligation) => obligation.id === obligationId)) {
+      continue;
+    }
+    const criterion = current.criteria.find(
+      (entry) => entry.id === (extension.linkedCriterionId ?? extension.definition.id),
     );
+    const template: CaseExtensionObligationTemplate = {
+      template: caseExtensionObligationTemplate(extension, criterion),
+      criterionId: extension.linkedCriterionId ?? extension.definition.id,
+    };
+    const nextObligations = deriveObligations(pack, [template], current.obligations, deps.clock);
+    const derived = nextObligations.find((obligation) => obligation.id === obligationId);
+    if (derived === undefined) {
+      throw new Error(
+        `car-purchase-engine: failed to derive the "${obligationId}" obligation for case "${caseId}"`,
+      );
+    }
+    const event: CaseEvent = {
+      eventId: deps.idGenerator.next('event'),
+      caseId,
+      sequence: current.eventSequence + 1,
+      timestamp: deps.clock.now(),
+      type: 'obligation.updated',
+      payload: { obligation: derived },
+    };
+    const appended = deps.caseStore.append(caseId, [event], current.eventSequence);
+    if (appended.status !== 'applied') {
+      throw new Error(
+        `car-purchase-engine: failed to append the derived "${obligationId}" obligation for case "${caseId}": status "${appended.status}"`,
+      );
+    }
+    appendActivity(deps.activityStore, deps.clock, caseId, {
+      obligationId,
+      type: 'obligation.updated',
+      phase: 'completed',
+      summary: `Derived a case obligation for the household's confirmed concern: "${derived.label}".`,
+    });
+    current = appended.snapshot;
   }
-  const event: CaseEvent = {
-    eventId: deps.idGenerator.next('event'),
-    caseId,
-    sequence: snapshot.eventSequence + 1,
-    timestamp: deps.clock.now(),
-    type: 'obligation.updated',
-    payload: { obligation: derived },
-  };
-  const appended = deps.caseStore.append(caseId, [event], snapshot.eventSequence);
-  if (appended.status !== 'applied') {
-    throw new Error(
-      `car-purchase-engine: failed to append the derived "${DOG_CRATE_FIT_OBLIGATION_ID}" obligation for case "${caseId}": status "${appended.status}"`,
-    );
-  }
-  appendActivity(deps.activityStore, deps.clock, caseId, {
-    obligationId: DOG_CRATE_FIT_OBLIGATION_ID,
-    type: 'obligation.updated',
-    phase: 'completed',
-    summary: `Derived a case obligation for the household's confirmed concern: "${derived.label}".`,
-  });
-  return appended.snapshot;
+  return current;
 }
 
 function scenarioDepsFrom(deps: CarPurchaseEngineDeps): CarPurchaseScenarioDeps {
@@ -636,7 +852,20 @@ export function foldRound2(
   const trajectory = emptyScenarioTrajectory();
 
   let snapshot = loadSnapshotOrThrow(deps.caseStore, caseId);
-  snapshot = ensureDogCrateObligation(deps, caseId, pack, snapshot);
+  // The concerns this case actually gained and a human actually accepted --
+  // the same signal `determineCarPurchaseRound` used to decide a round-2 pass
+  // is underway. Never one hardcoded attribute id: fabricating the demo's own
+  // dog-crate obligation onto a case that raised a different concern would put
+  // a question nobody asked in front of the household.
+  const extensions = confirmedCaseExtensions(snapshot);
+  snapshot = ensureCaseExtensionObligations(deps, caseId, pack, snapshot, extensions);
+  // Round 2 runs one household-fit investigation, so its result is folded
+  // against one obligation: the first accepted concern in case order. Any
+  // further accepted concerns keep their own derived obligations open, which
+  // is the honest state for a question nothing investigated
+  // (packs-and-routing.md "Unsupported concerns remain explicit unknowns").
+  const investigatedExtensionObligationId =
+    extensions[0] !== undefined ? caseExtensionObligationId(extensions[0]) : undefined;
 
   const dealResult = graphResult.executionResults['deal-analyst'];
   if (dealResult === undefined) {
@@ -699,7 +928,16 @@ export function foldRound2(
     householdFitResult,
     scenarioDeps,
     trajectory,
-    { attemptsToRecord: 2, obligationIdOverride: DOG_CRATE_FIT_OBLIGATION_ID },
+    {
+      attemptsToRecord: 2,
+      // Routes the round-2 household-fit findings to this case's own accepted
+      // concern. With no accepted concern the result stays on the obligation
+      // it was produced for, rather than being attached to one that does not
+      // exist on this case.
+      ...(investigatedExtensionObligationId !== undefined
+        ? { obligationIdOverride: investigatedExtensionObligationId }
+        : {}),
+    },
   );
 
   const challengeResult = graphResult.executionResults['source-challenger'];
@@ -845,11 +1083,13 @@ export function foldRound2(
         facts: scored.facts,
         hypotheses: [],
         confidence: scored.confidence,
+        // Measured from this case's own attribute records and named from its
+        // own labels -- see deriveUnestablishedAttributeLimitations for what
+        // these replaced and why. Merged ahead of the scoreboard's derived
+        // lines as before; the difference is that these are now true when
+        // stated, and disappear entirely once a column is populated.
         limitations: mergeLimitations(
-          [
-            'Whether both dog crates fit behind the second row remains unverified for every candidate.',
-            'Driving comfort remains unverified for every candidate.',
-          ],
+          deriveUnestablishedAttributeLimitations(snapshot, pack),
           scored.limitations,
         ),
         sourceIds: shortlistSourceIds,
@@ -858,7 +1098,11 @@ export function foldRound2(
           'car.deal_normalization',
           'car.ownership_cost',
           'car.household_fit',
-          DOG_CRATE_FIT_OBLIGATION_ID,
+          // Only the concern round 2 actually folded evidence against is
+          // claimed as resolved.
+          ...(investigatedExtensionObligationId !== undefined
+            ? [investigatedExtensionObligationId]
+            : []),
           'car.shortlist',
         ],
         acceptedUncertaintyObligationIds: ['car.safety_reliability'],
@@ -955,12 +1199,10 @@ async function runOneInvestigation(
     }
 
     const round = determineCarPurchaseRound(initialSnapshot);
-    const traceId = deps.idGenerator.next('trace');
 
     deps.runStore.updateStatus(params.runId, {
       status: 'running',
       updatedAt: deps.clock.now(),
-      traceId,
     });
     appendActivity(deps.activityStore, deps.clock, params.caseId, {
       runId: params.runId,
@@ -974,16 +1216,37 @@ async function runOneInvestigation(
     setScenarioBeat(providers, round);
     const graphDeps = buildGraphDeps(initialSnapshot, pack, providers, scenarioDepsFrom(deps));
 
-    const {
-      result: graphResult,
-      lastSequence,
-      traceId: graphTraceId,
-    } = await drainGraphToActivity(
+    // --- One trace per run, not two. The Runtime Inspector's Overview
+    // renders `runs.trace_id` under "Trace"; the Timeline below it renders
+    // `runtime_events`, every one of which is stamped with the trace the
+    // real Graph mints internally (`car-purchase-graph.ts`'s
+    // `RunAccumulator.traceId`). This engine used to mint a *second*,
+    // unrelated `trace-*` id for the run row, so the id on screen matched
+    // no event anywhere -- a correlation field that correlated to nothing.
+    // The Graph's id is the canonical one (the events are the thing being
+    // identified), so the run row now records the id its own events carry,
+    // written as soon as the first event is persisted: an in-flight run
+    // shows a usable trace, and so does a run that later fails mid-drain.
+    let recordedTraceId: string | undefined;
+    const recordTraceId = (candidate: string): string => {
+      if (recordedTraceId === undefined) {
+        recordedTraceId = candidate;
+        deps.runStore.updateStatus(params.runId, {
+          status: 'running',
+          updatedAt: deps.clock.now(),
+          traceId: candidate,
+        });
+      }
+      return recordedTraceId;
+    };
+
+    const { result: graphResult, lastSequence } = await drainGraphToActivity(
       executeCarPurchaseGraph(graphDeps),
       { caseId: params.caseId, runId: params.runId },
       deps.activityStore,
       deps.runtimeEventStore,
       deps.clock,
+      recordTraceId,
     );
 
     const finalSnapshot =
@@ -1002,11 +1265,13 @@ async function runOneInvestigation(
         normalizeCaseStateChange(
           { stateDiff },
           {
-            // The Graph's own real trace (see DrainResult.traceId's doc
-            // comment), never the unrelated local `traceId` above -- falls
-            // back to it only in the never-expected case the Graph yielded
-            // no events at all, so this event still carries a real trace.
-            traceId: graphTraceId ?? traceId,
+            // The same one trace the run row and every other event for
+            // this run carry. A trace is minted here only if the Graph
+            // yielded no events at all (never expected) -- and
+            // `recordTraceId` puts that id on the run row too, so the
+            // Overview's "Trace" still names this run's one event rather
+            // than nothing.
+            traceId: recordedTraceId ?? recordTraceId(deps.idGenerator.next('trace')),
             caseId: params.caseId,
             runId: params.runId,
             obligationId: params.obligationId,

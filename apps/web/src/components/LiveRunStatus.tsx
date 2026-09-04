@@ -53,8 +53,33 @@
  * derived its content from (`LiveRunStatusReceipt.commandId`/`runId` and
  * their correlated `PublicActivityEvent`s) rather than a broader claim about
  * investigation the underlying data cannot support.
+ *
+ * **The badge reports the RUN's phase, not the newest event's phase.** This
+ * component used to read `history.at(-1).phase` straight into the badge,
+ * which is not a question about the run at all: roughly half of a real
+ * run's correlated events (`tool.completed`, `skill.activated`,
+ * `specialist.completed`) legitimately carry `phase: 'completed'` while the
+ * run is still very much in flight, interleaved with the `active` ones. That
+ * was invisible only for as long as the runtime buffered the whole stream
+ * and drained it in one ~70 ms burst after the graph had already finished --
+ * the badge alternated, but it alternated inside a single frame and settled
+ * on whatever the last event happened to be. `car-purchase-graph.ts` and
+ * `home-energy-swarm.ts` now stream events as the graph runs (first event at
+ * ~6.5 ms rather than ~55.6 ms, delivery spread across the run), so the same
+ * derivation would now visibly flip "In progress" -> "Completed" ->
+ * "In progress" on camera mid-run and reach the right answer only by luck of
+ * ordering.
+ *
+ * `deriveRunPhase` below answers the run-level question instead, delegating
+ * the "is this run still going" half of it to `workspace-status.ts`'s
+ * `deriveActiveRunId` -- the same derivation the hero headline uses, so the
+ * badge and the headline cannot disagree about whether Sift is still working.
+ * The per-event *summary* line is deliberately left as-is: that one genuinely
+ * is "the latest thing that happened," and it is the part a person watches to
+ * see the run move.
  */
 import { getActivityLabel, STATUS_TONE_META } from './activity-labels.js';
+import { deriveActiveRunId } from './workspace-status.js';
 import type { PublicActivityEvent, PublicActivityPhase } from '@sift/contracts';
 import { Badge } from '@/components/ui/badge';
 
@@ -85,13 +110,16 @@ const PHASE_TONE: Record<PublicActivityPhase, keyof typeof STATUS_TONE_META> = {
   failed: 'error',
 };
 
-// Bound the phase breadcrumb to a small, fixed number of entries -- a real
-// Swarm run can reach dozens of distinct phase transitions (each tool
-// call/skill activation/handoff alternates active<->completed, so
-// consecutive-only deduping below does nothing to bound it), and rendering
-// all of them conveys no real information beyond "it alternated a lot"
-// while pushing the rest of the workspace down by a large, growing amount.
-// A fixed module-scope constant, not recomputed per render.
+// Bound the phase breadcrumb to a small, fixed number of entries. Deriving
+// each step from the RUN's phase rather than each event's phase already
+// removes the pathological case this bound was originally written for (a
+// Swarm run alternating active<->completed across ~35 sub-steps produced 42
+// rendered <li> entries, because consecutive-only deduping cannot collapse
+// an alternation). The bound stays because the run-level lifecycle is small
+// but not fixed-length: every confirmation gate the run opens and closes is
+// a real active -> waiting -> active pair, so a run that pauses for the
+// human several times still grows without a ceiling. A fixed module-scope
+// constant, not recomputed per render.
 const MAX_VISIBLE_PHASE_STEPS = 4;
 
 function correlatedEvents(
@@ -107,6 +135,82 @@ function correlatedEvents(
     .sort((a, b) => a.sequence - b.sequence);
 }
 
+/**
+ * The phase of the run (or, for a receipt that never started one, of the
+ * command) that `history` describes -- NOT the phase of its newest event.
+ * `history` must already be correlated to one receipt and sorted by
+ * `sequence`, exactly as `correlatedEvents` returns it.
+ *
+ * Four cases, in the order they are decided:
+ *
+ * 1. **Nothing has streamed back yet.** A real receipt exists, so something
+ *    was genuinely accepted; `queued` is the honest report until the first
+ *    correlated event lands. (Unchanged behaviour.)
+ *
+ * 2. **The run is still in flight** (`deriveActiveRunId` returns an id).
+ *    The badge reports a non-terminal phase no matter what the last
+ *    individual sub-step reported, which is the whole point of this
+ *    function. Within that, it reports the strongest state the run has
+ *    actually reached: `waiting` if a gate is currently open (see below),
+ *    otherwise `active` once any correlated event has reported real work
+ *    starting, otherwise still `queued` -- a run that has only been queued
+ *    should not claim to be in progress.
+ *
+ *    **Why `waiting` outranks `active` here.** Every other phase describes
+ *    what Sift is doing; `waiting` is the one phase that is a claim on the
+ *    *human*, and a pane reading "In progress" while the run cannot proceed
+ *    without an answer is a worse lie than the one this function exists to
+ *    fix. Promoting it is safe precisely because it is not the `completed`
+ *    situation in disguise: dozens of sub-steps reach `completed` on their
+ *    way through a healthy run, but there is at most one unanswered gate at
+ *    a time, and the very next correlated event for the run *is* the gate
+ *    being answered (`interventions.ts` `ConsequenceGuard` resolves a
+ *    `Confirm` and the run continues). So "the newest correlated event
+ *    reports `waiting`" means "unanswered gate," and any later event means
+ *    "answered" -- it cannot flicker the way a raw per-event read does.
+ *
+ * 3. **No run was ever involved** -- a presentation-only or otherwise
+ *    non-run command, whose only correlated event is its own
+ *    `command.accepted`. There is no interleaving to be confused by, and
+ *    that event's phase *is* the command's status.
+ *
+ * 4. **The run is over.** Report the outcome it actually reached, taken
+ *    from the newest correlated event carrying a terminal phase -- which is
+ *    the run's own `run.completed`/`run.failed`, since nothing else is
+ *    appended after it. Deliberately not "did any event fail?": a run can
+ *    survive a `tool.failed` that `RetrySteering` recovers from, and
+ *    calling that whole run Failed would be the same class of defect in the
+ *    other direction. Reading the newest terminal event rather than simply
+ *    the newest event also keeps a post-terminal straggler that still
+ *    carries the run id (a duplicate delivery, a replayed backlog) from
+ *    dragging a finished run back to "In progress".
+ */
+function deriveRunPhase(history: readonly PublicActivityEvent[]): PublicActivityPhase {
+  const latest = history.at(-1);
+  if (latest === undefined) {
+    return 'queued';
+  }
+
+  if (deriveActiveRunId(history) !== null) {
+    if (latest.phase === 'waiting') {
+      return 'waiting';
+    }
+    return history.some((event) => event.phase === 'active') ? 'active' : 'queued';
+  }
+
+  if (!history.some((event) => event.runId !== undefined)) {
+    return latest.phase;
+  }
+
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const phase = history[index]?.phase;
+    if (phase === 'completed' || phase === 'failed') {
+      return phase;
+    }
+  }
+  return latest.phase;
+}
+
 export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
   if (receipt === null) {
     return null;
@@ -114,21 +218,40 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
 
   const history = correlatedEvents(events, receipt);
   const latest = history.at(-1) ?? null;
-  const phase: PublicActivityPhase = latest?.phase ?? 'queued';
-  const tone = STATUS_TONE_META[PHASE_TONE[phase]];
 
-  // A distinct, ordered breadcrumb of every phase actually reached, deduping
-  // consecutive repeats of the same phase -- never inventing an
-  // intermediate phase the real event stream did not report.
+  // A distinct, ordered breadcrumb of every phase this block actually
+  // *displayed*, in order: `deriveRunPhase` is re-evaluated over each prefix
+  // of the correlated history, and a step is recorded only where that
+  // answer changed. Two properties follow, both of which the previous
+  // per-event breadcrumb lacked:
+  //
+  // - It cannot disagree with the badge. The badge is literally the last
+  //   entry (`phaseSequence.at(-1)` below), so "Queued -> In progress ->
+  //   Completed" always ends in the state the badge is showing.
+  // - It says something. Fed raw event phases, a streamed run now reads
+  //   "In progress -> Completed -> In progress -> Completed -> ..." forever,
+  //   which describes the sub-steps' bookkeeping rather than the run and
+  //   conveys nothing beyond "it alternated a lot." Fed run phases, the
+  //   same run reads "Queued -> In progress -> Completed" -- the lifecycle a
+  //   person is actually watching for.
+  //
+  // Derived from the sorted history rather than from arrival order, so a
+  // replayed backlog, a duplicate delivery, or an out-of-order SSE frame all
+  // produce the same breadcrumb -- it is a function of the event set, not of
+  // how it happened to arrive.
   const phaseSequence: PublicActivityPhase[] = [];
-  for (const event of history) {
-    if (phaseSequence.at(-1) !== event.phase) {
-      phaseSequence.push(event.phase);
+  for (let index = 0; index < history.length; index += 1) {
+    const step = deriveRunPhase(history.slice(0, index + 1));
+    if (phaseSequence.at(-1) !== step) {
+      phaseSequence.push(step);
     }
   }
   if (phaseSequence.length === 0) {
-    phaseSequence.push('queued');
+    phaseSequence.push(deriveRunPhase(history));
   }
+
+  const phase: PublicActivityPhase = phaseSequence[phaseSequence.length - 1] ?? 'queued';
+  const tone = STATUS_TONE_META[PHASE_TONE[phase]];
 
   // The most recent phase is always kept (a `slice` from the end never
   // drops the last element), and a leading truncation indicator appears
@@ -154,7 +277,9 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
         // Remounts (replaying `.status-change-enter`) on every real phase
         // transition (queued -> active -> completed/failed) -- a live run
         // progressing should read as a felt moment, not a silent label
-        // swap.
+        // swap. Now that `phase` is the run's phase, those remounts are the
+        // handful of genuine lifecycle transitions rather than one animation
+        // per streamed sub-step.
         key={phase}
         data-testid="live-run-status-phase"
         className="status-change-enter label-caps gap-[var(--space-1)] rounded-[var(--radius-pill)] px-[var(--space-2)] py-[var(--space-0-5)]"
@@ -164,6 +289,14 @@ export function LiveRunStatus({ receipt, events }: LiveRunStatusProps) {
         {PHASE_LABEL[phase]}
       </Badge>
 
+      {/*
+        The one genuinely per-event part of this block, and deliberately
+        left that way. The badge above answers "where is this run," which
+        the newest event cannot answer; this line answers "what just
+        happened," which is exactly what the newest event is for. It is also
+        the only thing here that moves while a run streams, so it is what
+        makes the block read as live rather than as a static label.
+      */}
       {latest ? (
         <p
           data-testid="live-run-status-summary"

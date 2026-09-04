@@ -1,9 +1,10 @@
 {
   "name": "@sift/scenarios",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
-  "description": "Sift fixture data, scripted tools/model, scenario runner, and assertions. Fixture tools ship in Task 3; scripted model/runner/assertions ship in later tasks.",
+  "description": "Sift fixture data, scripted tools and model provider, scenario runner, and trajectory assertions.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {

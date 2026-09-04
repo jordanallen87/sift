@@ -8,9 +8,9 @@
  * - `round1`: the initial investigation (before the household interacts),
  *   producing a preliminary favor of `candidate-rav4`.
  * - `round2`: the revised investigation, run after the household's WebMCP-
- *   driven criteria reweight and `custom.dog_crate_fit` concern, producing
- *   the revised favor of `candidate-crv` (plus `candidate-outback` as the
- *   close alternative).
+ *   driven criteria reweight and `custom.rear_facing_seat_behind_driver`
+ *   concern, producing the revised favor of `candidate-crv` (plus
+ *   `candidate-outback` as the close alternative).
  *
  * Every number below is the REAL output of the real fixture tools
  * (`packages/scenarios/src/tools/`, verified directly against
@@ -36,10 +36,14 @@
  *   total ownership cost" claim.
  * - candidate-crv has the largest known cargo width (42.8 in), cargo volume
  *   (39.3 cu ft), rear door opening (44.9 in), and second-row legroom
- *   (40.4 in) of the four candidates -- the real, defensible reason it is
- *   the household-fit standout once the dog-crate concern is added, even
- *   though actual crate fit remains genuinely unverified for every
- *   candidate.
+ *   (40.4 in, against 39.5 in for candidate-outback, 39.0 in for
+ *   candidate-cx5, and 37.8 in for candidate-rav4) of the four candidates --
+ *   the real, defensible reason it is the household-fit standout once the
+ *   rear-facing-seat concern is added, even though whether a rear-facing
+ *   seat actually clears the driver's seating position remains genuinely
+ *   unverified for every candidate: published legroom is measured to a
+ *   fixed front-seat reference position and no specification sheet states
+ *   it.
  * - candidate-outback's reliability rating is genuinely disputed between two
  *   independent, current, traceable sources (`source-consumer-drive-index`:
  *   "Above Average"; `source-autotrust-reliability-survey`: "Below
@@ -66,7 +70,9 @@ export type CarPurchaseScenarioBeat = (typeof CAR_PURCHASE_SCENARIO_BEATS)[numbe
 
 /**
  * The synthesized `case_extension`-origin obligation id for the household's
- * two-dog-crate concern (`../car-purchase-scenario.js` derives the real
+ * rear-facing-car-seat concern -- a second child arrives in three months and
+ * a rear-facing seat has to go behind the driver without pushing the
+ * driver's seat forward (`../car-purchase-scenario.js` derives the real
  * `ObligationTemplate` this id names, via `@sift/core`'s `deriveObligations`
  * -- see that file's module header for the full "userConcern template" gap
  * this works around). `household-fit-analyst`'s round-2 result below targets
@@ -75,7 +81,7 @@ export type CarPurchaseScenarioBeat = (typeof CAR_PURCHASE_SCENARIO_BEATS)[numbe
  * re-litigate the pack obligation `car.household_fit` already resolved
  * (accepted_uncertainty) in round 1.
  */
-export const DOG_CRATE_FIT_OBLIGATION_ID = 'case.custom.dog_crate_fit';
+export const REAR_FACING_SEAT_OBLIGATION_ID = 'case.custom.rear_facing_seat_behind_driver';
 
 const ALL_CANDIDATE_IDS = [
   'candidate-rav4',
@@ -362,12 +368,12 @@ const HOUSEHOLD_FIT_ROUND1_RESULT: ExecutionResult = {
 };
 
 const HOUSEHOLD_FIT_ROUND2_RESULT: ExecutionResult = {
-  obligationId: DOG_CRATE_FIT_OBLIGATION_ID,
+  obligationId: REAR_FACING_SEAT_OBLIGATION_ID,
   disposition: 'evidence_found',
   claims: [
     {
       statement:
-        'For the newly added two-dog-crate requirement (custom.dog_crate_fit): candidate-crv has the most favorable known cargo width (42.8 in) and volume (39.3 cu ft) of the four candidates, and candidate-outback has the most favorable known cargo length (40.0 in). Neither published width/length/volume figure confirms whether two 36 in x 24 in crate footprints actually clear the wheel wells, rear seatback contour, and load-floor step for any candidate.',
+        "For the newly added rear-facing-seat requirement (custom.rear_facing_seat_behind_driver): candidate-crv has the most second-row legroom of the four candidates (40.4 in), ahead of candidate-outback (39.5 in), candidate-cx5 (39.0 in), and candidate-rav4 (37.8 in). Published legroom is measured to a fixed front-seat reference position, so it indicates which candidate has the most room to work with and nothing more: no specification sheet states whether a rear-facing infant seat clears the driver's own seating position on any of the four.",
       stance: 'neutral',
       confidence: 0.5,
       sourceIds: ['source-household-fit-candidate-crv', 'source-household-fit-candidate-outback'],
@@ -380,7 +386,7 @@ const HOUSEHOLD_FIT_ROUND2_RESULT: ExecutionResult = {
     summary: `Known cargo/rear-seat specifications re-confirmed for ${candidateId}.`,
   })),
   limitations: [
-    'Whether both dog crates fit behind the second row without folding either seat cannot be determined from specifications alone for any candidate -- this remains a physical-measurement or test-drive question.',
+    "Whether a rear-facing seat fits behind the driver without moving the driver's seat forward cannot be established from published specifications for any candidate -- it is a physical fit check in the vehicle itself, with this household's own seat.",
     'Driving comfort remains subjective and unresolved for every candidate pending a test drive.',
   ],
   suggestedStatus: 'accepted_uncertainty',
@@ -512,11 +518,11 @@ const DECISION_TEXT_ROUND1 =
 export const PROPOSAL_ROUND2: CarPurchaseProposal = {
   candidateIds: ['candidate-crv', 'candidate-outback'],
   rationale:
-    "candidate-rav4 is disqualified: its normalized true out-the-door price ($33,291.30) exceeds the household's $32,000.00 hard-constraint budget by $1,291.30. Among the three budget-compliant candidates, candidate-crv has the largest known cargo dimensions (favorable for the new two-dog-crate requirement) and is tied for the lowest 5-year ownership cost. candidate-outback is offered as the close alternative: comparably priced and safety-rated, though its reliability rating is genuinely disputed between two sources. Driving comfort and exact crate fit remain open test-drive questions for both.",
+    "candidate-rav4 is disqualified: its normalized true out-the-door price ($33,291.30) exceeds the household's $32,000.00 hard-constraint budget by $1,291.30. Among the three budget-compliant candidates, candidate-crv has the most second-row legroom (favorable for the new rear-facing-seat requirement) and is tied for the lowest 5-year ownership cost. candidate-outback is offered as the close alternative: comparably priced and safety-rated, though its reliability rating is genuinely disputed between two sources. Driving comfort and whether a rear-facing seat clears the driver's seating position remain open in-person questions for both.",
 };
 
 const DECISION_TEXT_ROUND2 =
-  'Revise the shortlist to candidate-crv, with candidate-outback as a close alternative. candidate-rav4 is disqualified per source-dealer-offer-candidate-rav4 (true price over the household budget). candidate-crv has the largest known cargo dimensions per source-household-fit-candidate-crv and is tied for lowest ownership cost per source-ownership-calculator-candidate-crv. candidate-outback remains competitive per source-national-crash-safety-consortium but carries a disputed reliability rating per source-consumer-drive-index and source-autotrust-reliability-survey. Crate fit and driving comfort require a test drive for both.';
+  'Revise the shortlist to candidate-crv, with candidate-outback as a close alternative. candidate-rav4 is disqualified per source-dealer-offer-candidate-rav4 (true price over the household budget). candidate-crv has the most second-row legroom per source-household-fit-candidate-crv and is tied for lowest ownership cost per source-ownership-calculator-candidate-crv. candidate-outback remains competitive per source-national-crash-safety-consortium but carries a disputed reliability rating per source-consumer-drive-index and source-autotrust-reliability-survey. Rear-facing seat fit and driving comfort still have to be checked in the car itself, for both.';
 
 function buildDecisionSynthesizerProvider(): ScriptedModelProvider {
   return new ScriptedModelProvider({

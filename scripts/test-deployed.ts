@@ -48,7 +48,7 @@ async function main(): Promise<void> {
     console.error(
       '[sift] test:deployed: SIFT_DEPLOYED_URL is not set. This is an opt-in check against a ' +
         'real, already-deployed instance (docs/specs/testing.md) -- set it to the deployed ' +
-        'origin (e.g. https://pax-hackathon-production.up.railway.app) and rerun.',
+        'origin (e.g. https://sift-hackathon-production.up.railway.app) and rerun.',
     );
     process.exit(1);
   }

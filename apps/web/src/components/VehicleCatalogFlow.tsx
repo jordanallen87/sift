@@ -11,13 +11,30 @@
  * WebMCP callback already uses (CLAUDE.md "Visible UI controls and WebMCP
  * callbacks use the same command implementation").
  *
- * Two-panel narrow-pane layout, not a desktop-style split view: search/
- * filter controls, then results, then the shortlist review + "Start
- * comparison" action -- all stacked vertically, since the canonical
- * viewport is 390-480px (product.md "The canonical viewport is ChatGPT's
- * right pane").
+ * ## Layout: the list is the page
+ *
+ * This screen used to stack three full-width cards -- shortlist, then
+ * search-and-filters, then results -- so at 390px a reader scrolled past
+ * two panels to reach the thing they came for, and each result carried a
+ * seven-field detail grid that made the list longer still. The catalog is
+ * 853 vehicles; the list deserves the viewport.
+ *
+ * So the three competing panels each moved to a surface that costs nothing
+ * until it is wanted:
+ *
+ * - filters -> `VehicleFilterSheet`, behind a filter button, with active
+ *   facets shown as removable chips;
+ * - per-vehicle detail -> `VehicleDetailSheet`, behind a tap on the row,
+ *   which is also what let the row shrink to a scannable line;
+ * - the shortlist -> `ShortlistFooter`, a fixed one-row bar that expands.
+ *
+ * What is left between the header and the footer is the list itself, plus
+ * real pagination: `limit`/`offset` were supported by the client, the route
+ * and the query layer all along, and this component was the only thing that
+ * never sent them -- so it was permanently pinned to the first 20 of 853
+ * with no way forward.
  */
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { VehicleCatalogRecord } from '@sift/catalog/browser';
 import { mapCatalogRecordToOption } from '@sift/catalog/browser';
 import type { CommandReceipt } from '@sift/contracts';
@@ -32,75 +49,41 @@ import {
 } from '../api/catalog-client.js';
 import { SiftClientError } from '../api/sift-client.js';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { ErrorState } from './ErrorState.js';
 import { HelpButton } from './HelpButton.js';
-import { VehicleSilhouette } from './VehicleSilhouette.js';
+import { CatalogPagination } from './CatalogPagination.js';
+import { ShortlistFooter } from './ShortlistFooter.js';
+import { VehicleDetailSheet } from './VehicleDetailSheet.js';
+import { VehicleFilterSheet, type VehicleFilters } from './VehicleFilterSheet.js';
+import { VehicleResultCard } from './VehicleResultCard.js';
+import { clampPage } from './pagination-window.js';
 
 export const MAX_SHORTLIST_SIZE = 5;
 export const MIN_SHORTLIST_SIZE = 2;
 
+const DEFAULT_PAGE_SIZE = 20;
+
+const EMPTY_FILTERS: VehicleFilters = {
+  query: '',
+  make: '',
+  bodyStyle: '',
+  fuelType: '',
+  year: '',
+};
+
 export interface VehicleCatalogFlowProps {
-  /** Called once the case and every shortlisted vehicle have been durably created, with the final `CommandReceipt` (carrying the fresh `caseId`) -- lets `App` transition into the normal case workspace. */
   onCaseCreated?: (receipt: CommandReceipt) => void;
-  /** Called when the user backs out to the launcher without creating a case. */
   onCancel?: () => void;
 }
-
-function vehicleLabel(record: VehicleCatalogRecord): string {
-  const trimSuffix = record.trim !== null && record.trim.length > 0 ? ` ${record.trim}` : '';
-  return `${record.year} ${record.make} ${record.model}${trimSuffix}`;
-}
-
-/**
- * Label/value rows for the expanded-width result card's detail grid.
- *
- * This is the "genuinely different IA" the expanded layout owes the record,
- * not just the narrow row's spec line stretched wider (change-set §7): the
- * narrow row stays a terse recognise-and-shortlist line, while an expanded
- * card has room for an actual mini spec sheet, including two fields the
- * narrow line never shows (EPA's 1-10 fuel-economy score and cargo volume).
- * Each row is independently omitted when the catalog does not know the
- * value -- `schema.ts`'s "null is a deliberate present value, never
- * fabricated" -- rather than rendering a placeholder dash.
- */
-function vehicleCardDetails(record: VehicleCatalogRecord): { label: string; value: string }[] {
-  return [
-    record.bodyStyle !== null ? { label: 'Body style', value: record.bodyStyle } : null,
-    record.drivetrain !== null ? { label: 'Drivetrain', value: record.drivetrain } : null,
-    record.fuelType !== null ? { label: 'Fuel type', value: record.fuelType } : null,
-    record.combinedMpg !== null
-      ? { label: 'Combined MPG', value: `${record.combinedMpg} MPG` }
-      : null,
-    record.annualFuelCostUsd !== null
-      ? {
-          label: 'Est. annual fuel cost',
-          value: `$${record.annualFuelCostUsd.toLocaleString('en-US')}/yr`,
-        }
-      : null,
-    record.fuelEconomyScore !== null
-      ? { label: 'EPA fuel economy score', value: `${record.fuelEconomyScore}/10` }
-      : null,
-    record.luggageVolumeCuFt !== null
-      ? { label: 'Cargo volume', value: `${record.luggageVolumeCuFt} cu ft` }
-      : null,
-  ].filter((entry): entry is { label: string; value: string } => entry !== null);
-}
-
-const selectClassName =
-  'min-h-[var(--size-touch-target-min)] h-9 w-full min-w-0 rounded-[var(--radius-sm)] border-0 bg-muted px-3 py-1 text-[length:var(--font-size-base)] outline-none transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60';
 
 export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFlowProps) {
   const commands = useSiftCommands();
   const apiConfig = useApiConfig();
 
-  const [queryText, setQueryText] = useState('');
-  const [makeFilter, setMakeFilter] = useState('');
-  const [bodyStyleFilter, setBodyStyleFilter] = useState('');
-  const [fuelTypeFilter, setFuelTypeFilter] = useState('');
-  const [yearFilter, setYearFilter] = useState('');
+  const [filters, setFilters] = useState<VehicleFilters>(EMPTY_FILTERS);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
   const [makes, setMakes] = useState<string[]>([]);
   const [bodyStyles, setBodyStyles] = useState<string[]>([]);
   const [fuelTypes, setFuelTypes] = useState<string[]>([]);
@@ -112,6 +95,8 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
   const [resultsTotal, setResultsTotal] = useState(0);
 
   const [shortlist, setShortlist] = useState<VehicleCatalogRecord[]>([]);
+  /** The row whose full spec sheet is open; `null` closes it. */
+  const [detailVehicle, setDetailVehicle] = useState<VehicleCatalogRecord | null>(null);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -164,11 +149,13 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
       setSearchError(null);
       searchCatalogVehicles(
         {
-          ...(queryText.trim().length > 0 ? { query: queryText.trim() } : {}),
-          ...(makeFilter.length > 0 ? { make: makeFilter } : {}),
-          ...(bodyStyleFilter.length > 0 ? { bodyStyle: bodyStyleFilter } : {}),
-          ...(fuelTypeFilter.length > 0 ? { fuelType: fuelTypeFilter } : {}),
-          ...(yearFilter.length > 0 ? { year: Number(yearFilter) } : {}),
+          ...(filters.query.trim().length > 0 ? { query: filters.query.trim() } : {}),
+          ...(filters.make.length > 0 ? { make: filters.make } : {}),
+          ...(filters.bodyStyle.length > 0 ? { bodyStyle: filters.bodyStyle } : {}),
+          ...(filters.fuelType.length > 0 ? { fuelType: filters.fuelType } : {}),
+          ...(filters.year.length > 0 ? { year: Number(filters.year) } : {}),
+          limit: pageSize,
+          offset: (page - 1) * pageSize,
         },
         apiConfig,
       )
@@ -189,7 +176,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
         });
     },
     // `apiConfig` deliberately omitted: stable per `AppProviders` mount.
-    [queryText, makeFilter, bodyStyleFilter, fuelTypeFilter, yearFilter],
+    [filters, page, pageSize],
   );
 
   // Debounced search -- a real network debounce, not a fabricated loading
@@ -209,7 +196,6 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
 
   const shortlistIds = useMemo(() => new Set(shortlist.map((v) => v.id)), [shortlist]);
   const atCapacity = shortlist.length >= MAX_SHORTLIST_SIZE;
-  const canStart = shortlist.length >= MIN_SHORTLIST_SIZE && shortlist.length <= MAX_SHORTLIST_SIZE;
 
   function addToShortlist(record: VehicleCatalogRecord) {
     if (shortlistIds.has(record.id) || atCapacity) return;
@@ -220,8 +206,31 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
     setShortlist((prev) => prev.filter((v) => v.id !== id));
   }
 
+  /**
+   * Any filter change returns to page 1.
+   *
+   * Narrowing 853 results to 12 while sitting on page 30 would otherwise
+   * render an empty list that looks like a broken search rather than a
+   * successful filter.
+   */
+  function handleFiltersChange(next: VehicleFilters) {
+    setFilters(next);
+    setPage(1);
+  }
+
+  /**
+   * A bigger page size keeps the reader as close to their place as the new
+   * pagination allows, rather than stranding them past the end.
+   */
+  function handlePageSizeChange(nextSize: number) {
+    setPage((current) => clampPage(current, resultsTotal, nextSize));
+    setPageSize(nextSize);
+  }
+
   async function handleStartComparison() {
-    if (!canStart || creating) return;
+    if (shortlist.length < MIN_SHORTLIST_SIZE || shortlist.length > MAX_SHORTLIST_SIZE || creating) {
+      return;
+    }
     setCreating(true);
     setCreateError(null);
 
@@ -276,256 +285,65 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
     }
   }
 
+  const hasResults = results.length > 0;
+  // Exactly one summary of the result set, and exactly one live region:
+  // `CatalogPagination` carries the "1-20 of 853" span whenever it renders,
+  // and this line covers the single-page case it deliberately sits out.
+  const showPlainCount = hasResults && resultsTotal <= pageSize;
+
   return (
     <div
       data-testid="vehicle-catalog-flow"
       className="page-shell page-enter flex min-h-screen flex-col gap-[var(--space-4)] p-[var(--space-4)]"
+      // `ShortlistFooter` publishes this on the document root while it is
+      // mounted and reclaims it when the shortlist empties, so the fallback
+      // is what makes the page correct when no bar exists.
+      style={{ scrollPaddingBottom: 'var(--shortlist-bar-inset, 0px)' }}
     >
-      <div className="flex items-center justify-between gap-[var(--space-2)]">
-        <div className="flex flex-col gap-[var(--space-1)]">
-          <h1 className="font-[family-name:var(--font-display)] text-[length:var(--font-size-xl)] font-semibold text-foreground">
+      <header className="flex items-start justify-between gap-[var(--space-3)]">
+        <div className="min-w-0">
+          <h1 className="text-[length:var(--font-size-2xl)] font-[var(--font-weight-semibold)]">
             Compare vehicles
           </h1>
           <p className="text-[length:var(--font-size-sm)] text-muted-foreground">
-            Search the vehicle catalog, add up to {MAX_SHORTLIST_SIZE} to your shortlist, then start
-            a real comparison case.
+            Shortlist up to {MAX_SHORTLIST_SIZE} vehicles, then start a real comparison.
           </p>
         </div>
-        <div className="flex shrink-0 items-start gap-[var(--space-1)]">
+        <div className="flex shrink-0 items-center gap-[var(--space-1)]">
           <HelpButton />
           <Button
             type="button"
-            data-testid="vehicle-catalog-back"
             variant="secondary"
             size="sm"
+            // `size="sm"` is 36px tall; the pane's controls owe 44px.
             className="min-h-[var(--size-touch-target-min)] shrink-0"
-            onClick={onCancel}
+            data-testid="vehicle-catalog-back"
             disabled={creating}
+            onClick={() => {
+              onCancel?.();
+            }}
           >
             Back
           </Button>
         </div>
-      </div>
+      </header>
 
-      <section
-        data-testid="vehicle-catalog-shortlist"
-        aria-labelledby="vehicle-catalog-shortlist-heading"
-        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
-      >
-        <div className="flex items-center justify-between gap-[var(--space-2)]">
-          <h2 id="vehicle-catalog-shortlist-heading" className="text-[length:var(--font-size-md)]">
-            Your shortlist
-          </h2>
-          <Badge variant={atCapacity ? 'destructive' : 'secondary'} data-testid="shortlist-count">
-            {shortlist.length} of {MAX_SHORTLIST_SIZE}
-          </Badge>
-        </div>
-
-        {shortlist.length === 0 ? (
-          <p
-            data-testid="vehicle-catalog-shortlist-empty"
-            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-          >
-            Add at least {MIN_SHORTLIST_SIZE} vehicles below to start a comparison.
-          </p>
-        ) : (
-          <ul
-            data-testid="vehicle-catalog-shortlist-list"
-            className="flex flex-col gap-[var(--space-1)]"
-          >
-            {shortlist.map((vehicle) => (
-              <li
-                key={vehicle.id}
-                data-testid={`shortlist-item-${vehicle.id}`}
-                className="list-item-enter flex items-center justify-between gap-[var(--space-2)] rounded-[var(--radius-sm)] bg-muted px-[var(--space-2)] py-[var(--space-1)]"
-              >
-                <span className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]">
-                  {vehicleLabel(vehicle)}
-                </span>
-                <Button
-                  type="button"
-                  data-testid={`shortlist-remove-${vehicle.id}`}
-                  variant="secondary"
-                  size="xs"
-                  className="min-h-[var(--size-touch-target-min)] min-w-[var(--size-touch-target-min)] bg-card text-card-foreground hover:bg-card/90"
-                  disabled={creating}
-                  onClick={() => {
-                    removeFromShortlist(vehicle.id);
-                  }}
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {createError ? (
-          <ErrorState
-            message={createError}
-            onRetry={() => {
-              void handleStartComparison();
-            }}
-          />
-        ) : null}
-
-        <Button
-          type="button"
-          data-testid="vehicle-catalog-start-comparison"
-          aria-busy={creating}
-          disabled={!canStart || creating}
-          className="min-h-[var(--size-touch-target-min)]"
-          onClick={() => {
-            void handleStartComparison();
-          }}
-        >
-          {creating
-            ? 'Starting…'
-            : `Start comparison${shortlist.length > 0 ? ` (${shortlist.length})` : ''}`}
-        </Button>
-      </section>
-
-      <section
-        data-testid="vehicle-catalog-search"
-        aria-labelledby="vehicle-catalog-search-heading"
-        className="flex flex-col gap-[var(--space-2)] rounded-[var(--radius-lg)] bg-card p-[var(--space-4)]"
-      >
-        <h2 id="vehicle-catalog-search-heading" className="text-[length:var(--font-size-md)]">
-          Browse the catalog
-        </h2>
-
-        <div className="flex flex-col gap-[var(--space-1)]">
-          <Label
-            htmlFor="vehicle-catalog-query"
-            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-          >
-            Search
-          </Label>
-          <Input
-            id="vehicle-catalog-query"
-            type="text"
-            placeholder="Make, model, or trim"
-            value={queryText}
-            className="min-h-[var(--size-touch-target-min)] border-0"
-            onChange={(event) => {
-              setQueryText(event.target.value);
-            }}
-          />
-        </div>
-
-        <div className="flex flex-col gap-[var(--space-1)]">
-          <Label
-            htmlFor="vehicle-catalog-year"
-            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-          >
-            Model year
-          </Label>
-          <select
-            id="vehicle-catalog-year"
-            value={yearFilter}
-            className={selectClassName}
-            onChange={(event) => {
-              setYearFilter(event.target.value);
-            }}
-          >
-            <option value="">Any year</option>
-            {years.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/*
-          `flex-wrap` plus each filter's own `min-w` (rather than a new
-          breakpoint) is what lets a third filter join this row at expanded
-          width without cramming three selects into the same 390-480px
-          narrow pane the wrapping already has to serve: below roughly
-          420px the filters wrap onto their own lines the same way they
-          always have, and above it -- where `.page-shell` has real room --
-          they settle onto one row on their own.
-        */}
-        <div className="flex flex-col gap-[var(--space-2)] min-[400px]:flex-row min-[400px]:flex-wrap">
-          <div className="flex min-w-[140px] flex-1 flex-col gap-[var(--space-1)]">
-            <Label
-              htmlFor="vehicle-catalog-make"
-              className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-            >
-              Make
-            </Label>
-            <select
-              id="vehicle-catalog-make"
-              value={makeFilter}
-              className={selectClassName}
-              onChange={(event) => {
-                setMakeFilter(event.target.value);
-              }}
-            >
-              <option value="">Any make</option>
-              {makes.map((make) => (
-                <option key={make} value={make}>
-                  {make}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex min-w-[140px] flex-1 flex-col gap-[var(--space-1)]">
-            <Label
-              htmlFor="vehicle-catalog-body-style"
-              className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-            >
-              Body style
-            </Label>
-            <select
-              id="vehicle-catalog-body-style"
-              value={bodyStyleFilter}
-              className={selectClassName}
-              onChange={(event) => {
-                setBodyStyleFilter(event.target.value);
-              }}
-            >
-              <option value="">Any body style</option>
-              {bodyStyles.map((style) => (
-                <option key={style} value={style}>
-                  {style}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex min-w-[140px] flex-1 flex-col gap-[var(--space-1)]">
-            <Label
-              htmlFor="vehicle-catalog-fuel-type"
-              className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-            >
-              Fuel type
-            </Label>
-            <select
-              id="vehicle-catalog-fuel-type"
-              value={fuelTypeFilter}
-              className={selectClassName}
-              onChange={(event) => {
-                setFuelTypeFilter(event.target.value);
-              }}
-            >
-              <option value="">Any fuel type</option>
-              {fuelTypes.map((fuelType) => (
-                <option key={fuelType} value={fuelType}>
-                  {fuelType}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
+      <VehicleFilterSheet
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+        makes={makes}
+        bodyStyles={bodyStyles}
+        fuelTypes={fuelTypes}
+        years={years}
+        resultCount={resultsTotal}
+        busy={searchStatus === 'loading'}
+      />
 
       <section
         data-testid="vehicle-catalog-results"
         aria-labelledby="vehicle-catalog-results-heading"
-        aria-busy={searchStatus === 'loading'}
-        className="flex flex-col gap-[var(--space-2)]"
+        // Reserves the fixed bar's height so the last result stays reachable.
+        className="flex flex-1 flex-col gap-[var(--space-3)] pb-[var(--shortlist-bar-inset,0px)]"
       >
         <h2 id="vehicle-catalog-results-heading" className="sr-only">
           Search results
@@ -534,169 +352,100 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
         {searchStatus === 'loading' ? (
           <p
             data-testid="vehicle-catalog-loading"
-            aria-live="polite"
-            className="loading-pulse text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+            className="text-[length:var(--font-size-sm)] text-muted-foreground"
           >
             Searching…
           </p>
         ) : null}
 
-        {searchStatus === 'error' ? (
+        {searchStatus === 'error' && searchError !== null ? (
           <ErrorState
-            message={searchError ?? 'Could not load the vehicle catalog.'}
+            message={searchError}
             onRetry={() => {
               runSearch({ cancelled: false });
             }}
           />
         ) : null}
 
-        {searchStatus === 'idle' && results.length === 0 ? (
+        {searchStatus === 'idle' && !hasResults ? (
           <p
             data-testid="vehicle-catalog-empty"
-            className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+            className="text-[length:var(--font-size-sm)] text-muted-foreground"
           >
             No vehicles matched your search.
           </p>
         ) : null}
 
-        {results.length > 0 ? (
-          <>
-            <p
-              data-testid="vehicle-catalog-results-count"
-              className="text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]"
-            >
-              Showing {results.length} of {resultsTotal}
-            </p>
-            {/*
-              `.option-grid` (global.css) collapses to a single column on
-              its own at narrow width, so this is the same list markup for
-              both layouts -- only the expanded per-card detail grid below
-              is new content, not a second copy of this list.
-            */}
-            <ul data-testid="vehicle-catalog-results-list" className="option-grid">
-              {results.map((vehicle) => {
-                const alreadyAdded = shortlistIds.has(vehicle.id);
-                // Kept to five short specs on purpose. The catalog record
-                // carries 83 EPA fields, but this is a 390px-wide browse
-                // list whose job is to let someone recognise a vehicle and
-                // shortlist it -- the full detail belongs in the comparison
-                // view, where a shortlisted candidate is actually weighed.
-                //
-                // Annual fuel cost earns its place here because it is EPA's
-                // most decision-relevant published number, is populated for
-                // 100% of the catalog, and is the one running-cost figure
-                // that separates two vehicles with similar MPG. It is
-                // labelled "est." because EPA's figure assumes 15,000
-                // miles/year at a national average fuel price, neither of
-                // which is this shopper's actual situation.
-                const specs = [
-                  vehicle.bodyStyle,
-                  vehicle.drivetrain,
-                  vehicle.fuelType,
-                  vehicle.combinedMpg !== null ? `${vehicle.combinedMpg} MPG combined` : null,
-                  vehicle.annualFuelCostUsd !== null
-                    ? `est. $${vehicle.annualFuelCostUsd.toLocaleString('en-US')}/yr fuel`
-                    : null,
-                ].filter((value): value is string => value !== null);
-                // The expanded-width-only mini spec sheet -- see
-                // `vehicleCardDetails`'s own comment for why this is a
-                // genuinely different card, not the narrow row stretched.
-                const cardDetails = vehicleCardDetails(vehicle);
-                return (
-                  <li
-                    key={vehicle.id}
-                    data-testid={`vehicle-card-${vehicle.id}`}
-                    className="list-item-enter flex flex-col gap-[var(--space-2)] rounded-[var(--radius-md)] bg-card p-[var(--space-3)]"
-                  >
-                    <div className="flex items-center justify-between gap-[var(--space-2)]">
-                      {/* The silhouette is the row's visual anchor: 853
-                          text rows are parsed, not scanned, and body style
-                          is the field a person browsing is usually sorting
-                          by. `shrink-0` because the label beside it wraps
-                          to three lines at 390px and a flex-basis-auto SVG
-                          would be squeezed to nothing. */}
-                      <VehicleSilhouette
-                        bodyStyle={vehicle.bodyStyle}
-                        className="w-[44px] shrink-0 text-[var(--color-ink)]"
-                      />
-                      <div className="flex min-w-0 flex-col gap-[var(--space-1)]">
-                        <span className="text-[length:var(--font-size-sm)] font-[var(--font-weight-semibold)] text-[var(--color-ink)]">
-                          {vehicleLabel(vehicle)}
-                        </span>
-                        {specs.length > 0 ? (
-                          // Each spec keeps its own trailing separator inside a
-                          // `nowrap` span rather than being one joined string.
-                          // At 390px this line wraps, and a plain join let the
-                          // break land *before* a separator -- so a wrapped
-                          // line opened with "· est. $2,800/yr fuel", which
-                          // reads as a bullet rather than a continuation.
-                          // Binding the separator to the end of the preceding
-                          // spec puts the break after it, where it belongs, and
-                          // also stops a single spec being split mid-phrase.
-                          <span className="text-[length:var(--font-size-xs)] text-[var(--color-ink-secondary)]">
-                            {specs.map((spec, index) => (
-                              <Fragment key={spec}>
-                                <span className="whitespace-nowrap">
-                                  {spec}
-                                  {index < specs.length - 1 ? ' ·' : ''}
-                                </span>
-                                {/* The separating space lives OUTSIDE the
-                                    nowrap span on purpose: it is the only
-                                    break opportunity on this line. Putting it
-                                    inside (as a trailing " · ") left the line
-                                    with nowhere to break at all, so instead of
-                                    wrapping it overflowed and clipped the last
-                                    spec mid-word. */}
-                                {index < specs.length - 1 ? ' ' : ''}
-                              </Fragment>
-                            ))}
-                          </span>
-                        ) : null}
-                      </div>
-                      <Button
-                        type="button"
-                        data-testid={`vehicle-add-${vehicle.id}`}
-                        variant={alreadyAdded ? 'secondary' : 'default'}
-                        size="sm"
-                        className="min-h-[var(--size-touch-target-min)] shrink-0"
-                        disabled={alreadyAdded || (atCapacity && !alreadyAdded)}
-                        onClick={() => {
-                          addToShortlist(vehicle);
-                        }}
-                      >
-                        {alreadyAdded ? 'Added' : 'Add'}
-                      </Button>
-                    </div>
-                    {cardDetails.length > 0 ? (
-                      // `hidden` / `min-[481px]:grid` reuses `.page-shell`'s
-                      // own 481px expanded-width boundary (global.css) rather
-                      // than inventing a second one -- below it this detail
-                      // sheet takes no layout space at all, above it the
-                      // card grows from a row into a real two-column spec
-                      // grid.
-                      <dl
-                        data-testid={`vehicle-card-details-${vehicle.id}`}
-                        className="hidden min-[481px]:grid grid-cols-2 gap-x-[var(--space-3)] gap-y-[var(--space-2)] border-t border-border pt-[var(--space-2)]"
-                      >
-                        {cardDetails.map(({ label, value }) => (
-                          <div key={label} className="flex flex-col gap-[var(--space-1)]">
-                            <dt className="text-[length:var(--font-size-xs)] text-[var(--color-ink-muted)]">
-                              {label}
-                            </dt>
-                            <dd className="text-[length:var(--font-size-sm)] text-[var(--color-ink)]">
-                              {value}
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          </>
+        {showPlainCount ? (
+          <p
+            data-testid="vehicle-catalog-results-count"
+            className="text-[length:var(--font-size-sm)] text-muted-foreground tabular-nums"
+            aria-live="polite"
+          >
+            {resultsTotal.toLocaleString('en-US')}{' '}
+            {resultsTotal === 1 ? 'vehicle' : 'vehicles'}
+          </p>
         ) : null}
+
+        {hasResults ? (
+          <ul data-testid="vehicle-catalog-results-list" className="option-grid">
+            {results.map((vehicle) => (
+              <VehicleResultCard
+                key={vehicle.id}
+                vehicle={vehicle}
+                added={shortlistIds.has(vehicle.id)}
+                atCapacity={atCapacity}
+                onAdd={addToShortlist}
+                onOpenDetails={setDetailVehicle}
+              />
+            ))}
+          </ul>
+        ) : null}
+
+        <CatalogPagination
+          totalCount={resultsTotal}
+          pageSize={pageSize}
+          currentPage={page}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+          busy={searchStatus === 'loading'}
+        />
       </section>
+
+      <VehicleDetailSheet
+        vehicle={detailVehicle}
+        open={detailVehicle !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailVehicle(null);
+        }}
+        inShortlist={detailVehicle !== null && shortlistIds.has(detailVehicle.id)}
+        shortlistFull={atCapacity}
+        onToggleShortlist={(vehicle) => {
+          if (shortlistIds.has(vehicle.id)) removeFromShortlist(vehicle.id);
+          else addToShortlist(vehicle);
+        }}
+      />
+
+      <ShortlistFooter
+        shortlist={shortlist}
+        maxSize={MAX_SHORTLIST_SIZE}
+        minSize={MIN_SHORTLIST_SIZE}
+        onRemove={removeFromShortlist}
+        onStartComparison={() => {
+          void handleStartComparison();
+        }}
+        creating={creating}
+        error={
+          createError === null ? undefined : (
+            <ErrorState
+              message={createError}
+              onRetry={() => {
+                void handleStartComparison();
+              }}
+            />
+          )
+        }
+      />
     </div>
   );
 }

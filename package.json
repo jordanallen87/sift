@@ -1,6 +1,7 @@
 {
   "name": "sift",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "description": "Sift: a real-time, source-linked decision workspace. Dual-hackathon monorepo root.",

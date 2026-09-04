@@ -1,0 +1,106 @@
+/* Sift brand tokens — flat monochrome green + neutrals. No gradients. */
+:root {
+  --sift-green-50: #F2F8F6;
+  --sift-green-100: #D7E9E5;
+  --sift-green-200: #A8D1CA;
+  --sift-green-300: #77B4AA;
+  --sift-green-400: #4A9386;
+  --sift-green-500: #2C7468;
+  --sift-green-600: #1F5C52;
+  --sift-green-700: #1B554B;
+  --sift-green-800: #164A41;
+  --sift-green-900: #103A32;
+  --sift-green-950: #0B241F;
+  --sift-neutral-50: #F7F8F7;
+  --sift-neutral-100: #E9ECEA;
+  --sift-neutral-200: #D5D9D7;
+  --sift-neutral-300: #B8BEBC;
+  --sift-neutral-400: #929A97;
+  --sift-neutral-500: #6D7672;
+  --sift-neutral-600: #525A57;
+  --sift-neutral-700: #3A403E;
+  --sift-neutral-800: #272C2A;
+  --sift-neutral-900: #1B1F1E;
+  --sift-neutral-950: #111413;
+  --sift-white: #FFFFFF;
+  --sift-brand: #1F5C52;
+  --sift-brand-hover: #1B554B;
+  --sift-brand-active: #164A41;
+  --sift-brand-soft: #F2F8F6;
+  --sift-bg: #F7F8F7;
+  --sift-surface: #FFFFFF;
+  --sift-surface-muted: #E9ECEA;
+  --sift-text: #111413;
+  --sift-text-muted: #525A57;
+  --sift-border: #D5D9D7;
+  --sift-focus-ring: #4A9386;
+}
+.dark {
+  --sift-brand: #77B4AA;
+  --sift-brand-hover: #A8D1CA;
+  --sift-brand-active: #D7E9E5;
+  --sift-brand-soft: #0B241F;
+  --sift-bg: #111413;
+  --sift-surface: #1B1F1E;
+  --sift-surface-muted: #272C2A;
+  --sift-text: #F7F8F7;
+  --sift-text-muted: #B8BEBC;
+  --sift-border: #3A403E;
+  --sift-focus-ring: #77B4AA;
+}
+
+/* Sift — Tailwind CSS v4 theme
+   Import after Tailwind's theme/utilities and before app component CSS.
+   Flat design only: no gradients are defined by this theme. */
+
+
+
+@theme inline {
+  --color-sift-50: var(--sift-green-50);
+  --color-sift-100: var(--sift-green-100);
+  --color-sift-200: var(--sift-green-200);
+  --color-sift-300: var(--sift-green-300);
+  --color-sift-400: var(--sift-green-400);
+  --color-sift-500: var(--sift-green-500);
+  --color-sift-600: var(--sift-green-600);
+  --color-sift-700: var(--sift-green-700);
+  --color-sift-800: var(--sift-green-800);
+  --color-sift-900: var(--sift-green-900);
+  --color-sift-950: var(--sift-green-950);
+  --color-ink-50: var(--sift-neutral-50);
+  --color-ink-100: var(--sift-neutral-100);
+  --color-ink-200: var(--sift-neutral-200);
+  --color-ink-300: var(--sift-neutral-300);
+  --color-ink-400: var(--sift-neutral-400);
+  --color-ink-500: var(--sift-neutral-500);
+  --color-ink-600: var(--sift-neutral-600);
+  --color-ink-700: var(--sift-neutral-700);
+  --color-ink-800: var(--sift-neutral-800);
+  --color-ink-900: var(--sift-neutral-900);
+  --color-ink-950: var(--sift-neutral-950);
+
+  --color-background: var(--sift-bg);
+  --color-surface: var(--sift-surface);
+  --color-surface-muted: var(--sift-surface-muted);
+  --color-foreground: var(--sift-text);
+  --color-muted: var(--sift-text-muted);
+  --color-border: var(--sift-border);
+  --color-brand: var(--sift-brand);
+  --color-brand-hover: var(--sift-brand-hover);
+  --color-brand-active: var(--sift-brand-active);
+  --color-brand-soft: var(--sift-brand-soft);
+  --color-ring: var(--sift-focus-ring);
+
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+/* Optional semantic helpers for projects that prefer class names over variables. */
+@layer base {
+  html { background: var(--sift-bg); color: var(--sift-text); }
+  body { background: var(--sift-bg); color: var(--sift-text); }
+  :focus-visible { outline: 2px solid var(--sift-focus-ring); outline-offset: 2px; }
+}

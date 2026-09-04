@@ -5,7 +5,7 @@
  * controls.
  *
  * Adapted from
- * `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/inline/renderers/ApprovalGateCard.tsx`'s
+ * `praetor:apps/web/src/components/strata19/inline/renderers/ApprovalGateCard.tsx`'s
  * "one clear primary action" idea -- "the approve/reject control itself is
  * the envelope's single `primaryAction`; the card never invents a second
  * one, which is also how 'no self-approval' stays enforceable server-side

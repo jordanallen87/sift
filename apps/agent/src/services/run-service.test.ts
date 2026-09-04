@@ -314,4 +314,47 @@ describe('SqliteRunStore', () => {
     const store = createStore();
     expect(store.load('missing')).toBeUndefined();
   });
+
+  // I1 (ADR 0006 decision 8): the durable half of "this assistant's tool
+  // call caused this entire run".
+  describe('origin (I1: WebMCP call provenance)', () => {
+    it('round-trips a webmcp origin through real SQLite and survives the run advancing to completion', () => {
+      const store = createStore();
+      store.create(runRecord({ origin: 'webmcp' }));
+
+      expect(store.load('run-1')?.origin).toBe('webmcp');
+
+      // `RunStatusUpdate` carries no origin at all -- provenance is stated
+      // once, when the run is created, and no later lifecycle write can
+      // rewrite or clear who asked for it.
+      store.updateStatus('run-1', { status: 'running', updatedAt: now, traceId: 'trace-1' });
+      store.updateStatus('run-1', { status: 'completed', updatedAt: now, result: { round: 1 } });
+      expect(store.load('run-1')?.origin).toBe('webmcp');
+      expect(store.load('run-1')?.status).toBe('completed');
+    });
+
+    it('stores NULL and reads back an absent field when no origin was stated -- never a substituted default', () => {
+      const store = createStore();
+      store.create(runRecord());
+
+      const row = test?.sqlite.prepare('SELECT origin FROM runs WHERE id = ?').get('run-1') as
+        | { origin: string | null }
+        | undefined;
+      expect(row?.origin).toBeNull();
+
+      const loaded = store.load('run-1');
+      expect(loaded?.origin).toBeUndefined();
+      expect('origin' in (loaded ?? {})).toBe(false);
+    });
+
+    it('reads an origin token outside COMMAND_ORIGINS back as "not stated" rather than reporting it as real provenance', () => {
+      const store = createStore();
+      store.create(runRecord());
+      // Only reachable by editing the database directly: the write path
+      // accepts nothing but an already-validated `CommandOrigin`.
+      test?.sqlite.prepare("UPDATE runs SET origin = 'ui' WHERE id = ?").run('run-1');
+
+      expect(store.load('run-1')?.origin).toBeUndefined();
+    });
+  });
 });
