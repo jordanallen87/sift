@@ -27,6 +27,41 @@ describe('WorkspaceAppBar', () => {
     expect(screen.getByRole('heading', { name: 'Choose Our Next Car' })).toBeInTheDocument();
   });
 
+  it.each(['narrow', 'expanded'] as const)(
+    'renders the Sift mark beside the title as decoration at %s layout',
+    (layout) => {
+      render(<WorkspaceAppBar {...buildProps({ layout, title: 'Vehicle Selection' })} />);
+
+      const mark = screen.getByTestId('workspace-app-bar-brand-mark');
+      // The one-colour symbol, at the path the production build serves
+      // (`apps/web/public/brand/sift-mark.svg`), in both layouts -- the
+      // product's identity is not a wide-screen luxury.
+      expect(mark).toHaveAttribute('src', '/brand/sift-mark.svg');
+
+      // Decorative. The heading beside it is this banner's accessible name
+      // and it names the *case*, which is what someone arriving here needs;
+      // the product is already named by the document title. A mark that
+      // announced "Sift" ahead of every case title is noise a sighted user
+      // skips and a screen-reader user cannot.
+      expect(mark).toHaveAttribute('alt', '');
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Vehicle Selection' })).toBeInTheDocument();
+    },
+  );
+
+  it('keeps the title truncating rather than letting the mark squeeze it', () => {
+    render(<WorkspaceAppBar {...buildProps({ layout: 'narrow' })} />);
+
+    // The row is genuinely tight at 390px, so which of the two absorbs the
+    // squeeze is a real decision and not a detail: `shrink-0` on the mark
+    // plus `min-w-0 truncate` on the title means a long case title ellipses,
+    // exactly as it did before the mark existed, instead of crushing it.
+    expect(screen.getByTestId('workspace-app-bar-brand-mark').className).toContain('shrink-0');
+    const title = screen.getByTestId('workspace-app-bar-title');
+    expect(title.className).toContain('truncate');
+    expect(title.className).toContain('min-w-0');
+  });
+
   it.each([
     ['live', 'Live'],
     ['reconnecting', 'Reconnecting'],

@@ -116,6 +116,34 @@ pnpm --filter @sift/web build
 pnpm --filter @sift/agent start
 ```
 
+### What the browser remembers
+
+Two things, both in `localStorage`, both scoped to the one browser, and neither of them case
+content.
+
+**`sift:activeCaseId`** (`apps/web/src/app/active-case-storage.ts`) is a pointer to the case that
+was last open. On the next load Sift confirms that id still resolves against
+`GET /api/cases/:caseId` and reopens it — so **a returning browser lands on the case, not the
+launcher.** That is deliberate, not a bug: a right-hand pane gets closed and reopened constantly,
+and losing your place every time would be worse. Only the id is stored; every field of the case is
+re-fetched from the server rather than trusted from local state. If the id no longer resolves
+(deleted case, a stale id from a different data directory), the pointer is cleared and you get the
+launcher.
+
+The consequence catches people out, so it is worth stating plainly: there is no in-app "back to the
+launcher" control. **Reset demo** in the workspace toolbar (`aria-label="Reset demo"`, testid
+`workspace-app-bar-reset-demo`) restarts that pack's demo case from its fixture under a _new_ case
+id — a clean slate, not a way out. To get the launcher back, clear `sift:activeCaseId` (devtools →
+Application → Local Storage) or open the app in a fresh browsing context.
+
+**`sift:firstRunGuideSeen`** (`apps/web/src/app/first-run-storage.ts`) records that this browser has
+already been shown the first-run guide. The guide appears once, on your first case in that browser,
+and is marked seen the moment it opens rather than when it is dismissed — so a reload, a reset, or a
+closed tab cannot make it reappear. The identical content stays permanently reachable from the
+**"?"** Help control (`aria-label="Help and instructions"`) in the top row of every top-level
+screen; both surfaces render one shared module,
+[`apps/web/src/components/HowSiftWorks.tsx`](apps/web/src/components/HowSiftWorks.tsx).
+
 ---
 
 ## The two demos
@@ -197,7 +225,8 @@ behavior — not a bug, and not something to debug.
 
 To actually exercise WebMCP you need one of:
 
-1. **ChatGPT's WebMCP-capable in-app browser.**
+1. **ChatGPT's WebMCP-capable in-app browser** — including ChatGPT desktop's right-hand pane. See
+   [Opening Sift in ChatGPT desktop](#opening-sift-in-chatgpt-desktop).
 2. **Chrome 152 or newer**, which ships WebMCP natively in Blink and exposes a `WebMCP` CDP domain,
    launched with the feature flags:
 
@@ -213,6 +242,68 @@ which has no WebMCP at all, and exits non-zero rather than reporting a hollow pa
 `pnpm webmcp:bridge` goes further: it is a stdio MCP server that maps MCP `tools/list` onto the
 page's live WebMCP registrations and `tools/call` onto `WebMCP.invokeTool`, so **any** MCP client
 can drive the real page with the real tool descriptions. See [Testing and verification](#testing-and-verification).
+
+### Opening Sift in ChatGPT desktop
+
+ChatGPT desktop's right-hand browser pane takes a URL directly, and Sift's 390–480px layout is
+aimed at exactly that width. Point the pane at `http://localhost:8080` for a local single-process
+build (see [Or run it as one process](#or-run-it-as-one-process)) or at the public URL, and it loads
+like any other page.
+
+One caveat first, because it decides how much weight to put on the rest of this section: this has
+been checked by hand on macOS, and **the repository has no automated gate for ChatGPT desktop.**
+Chrome 152+ is the only host verified end to end here, by `pnpm test:host`. A page cannot tell hosts
+apart — `document.modelContext` is `document.modelContext` — so the page-side contract is the same
+one those tests cover, but "it works in ChatGPT desktop" is a hand-checked setup note in this
+README, not a tested claim.
+
+**The footer strip is the diagnostic.** Once a case is open, Sift renders one line at the bottom of
+the pane ([`apps/web/src/components/WebMcpStatus.tsx`](apps/web/src/components/WebMcpStatus.tsx))
+straight from the real `adapter.supported()` check — there is no second, cosmetic indicator to
+mislead you:
+
+- **"WebMCP ready — a connected assistant can operate this page."** `document.modelContext` is
+  present and Sift's tools are registered against it. This is what a correct setup looks like.
+- **"WebMCP unavailable in this browser — every action is still available here."** The host has no
+  WebMCP surface. That is the entire diagnosis: nothing you say to the assistant will reach the
+  page, and reloading will not change it. Everything visible still works. See
+  [Troubleshooting](#troubleshooting).
+
+The strip renders in the case workspace, not on the launcher, so start or resume a case before
+reading it.
+
+#### Recording or demoing the pane
+
+Two habits are worth adopting before you screen-share, both ordinary hygiene rather than anything
+Sift requires:
+
+- **Start a Temporary Chat**, so the session is not written to your conversation history.
+- **Collapse the conversation sidebar**, so your chat titles are not on screen.
+
+Both are ChatGPT application actions rather than Sift ones. Their current key bindings are listed
+under ChatGPT's own keyboard-shortcut settings and are remappable per user, so this README names the
+actions rather than the keystrokes.
+
+#### What to ask it
+
+Nothing in the pane tells an assistant what it can do — the 26 tools are not discoverable by looking
+at the page, and only the 3 global read tools exist before a case is open. Sift therefore ships a
+vetted list of example phrases in
+[`apps/web/src/components/HowSiftWorks.tsx`](apps/web/src/components/HowSiftWorks.tsx), each
+annotated with the tool it actually reaches. The annotation is type-checked, not documentary:
+`phrase.tools` is typed against `SIFT_WEBMCP_TOOL_NAMES`, so an example citing a capability Sift
+does not register fails `tsc`. The same list renders in the product, in the first-run guide and
+behind the Help control. Three of them:
+
+| Say                                                     | Tool it reaches              | What happens in the pane                                                   |
+| ------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------- |
+| "Look into the safety record on these."                 | `sift_request_investigation` | Starts a real investigation run; sourced findings arrive as they land.     |
+| "What's driving the ranking?"                           | `sift_explain_ranking`       | Reads out Sift's own scoring, criterion by criterion, instead of guessing. |
+| "Make ownership cost matter more than driving comfort." | `sift_update_criteria`       | Reweights the criteria, and marks whatever that invalidates.               |
+
+Your own click and the assistant's call land on the same case, in the same pane, with no reload
+between them — that is the shared-command claim, and it is what
+[`pnpm test:journey`](#opt-in-suites-that-need-something-real) exists to check rather than assert.
 
 ### The tool catalog
 
@@ -551,6 +642,12 @@ Expected in any ordinary browser. WebMCP is not a polyfillable library; the brow
 implement it. Use ChatGPT's WebMCP-capable in-app browser, or Chrome 152+ launched with
 `--enable-features=WebMCP,WebMCPTesting,DevToolsWebMCPSupport`. Sift's
 "WebMCP unavailable in this browser" notice is the correct, tested fallback. See [WebMCP](#webmcp).
+
+**Sift opens straight into a case instead of the launcher.**
+Deliberate. The browser stores a pointer to the last open case under `sift:activeCaseId` in
+`localStorage` and reopens it. "Reset demo" restarts the demo under a new case id rather than
+returning you to the launcher — clear that key, or use a fresh browsing context, to get the launcher
+back. See [What the browser remembers](#what-the-browser-remembers).
 
 **`pnpm test:host` says no Google Chrome found.**
 It refuses to fall back to Playwright's bundled Chromium, which has no WebMCP and would produce a

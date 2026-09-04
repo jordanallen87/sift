@@ -43,7 +43,20 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export interface CustomConcernFormProps {
   caseId: string;
-  expectedSequence: number;
+  /**
+   * Resolves the `expectedSequence` this write must carry, at SUBMIT time.
+   *
+   * A plain `expectedSequence: number` prop was a render-time value used for
+   * a submit-time decision, and the gap between the two is real: the pane's
+   * canonical snapshot refreshes on a coalescing throttle, so between the
+   * events of a live run it is legitimately behind the server and this form
+   * would send a sequence the case had already moved past -- a visible,
+   * unexplainable failure for the person, on a write nothing had actually
+   * invalidated. `App.tsx`'s `resolveExpectedSequence` answers with the
+   * sequence the server confirms, reading it only when the client knows it
+   * is behind.
+   */
+  resolveExpectedSequence: () => Promise<number>;
   /** Entity kinds this concern may apply to, e.g. `['car']`. */
   applicableKinds: string[];
 }
@@ -85,7 +98,7 @@ const labelClassName = 'text-[length:var(--font-size-sm)] text-[var(--color-ink-
 
 export function CustomConcernForm({
   caseId,
-  expectedSequence,
+  resolveExpectedSequence,
   applicableKinds,
 }: CustomConcernFormProps) {
   const commands = useSiftCommands();
@@ -110,22 +123,24 @@ export function CustomConcernForm({
       .map((entry) => entry.trim())
       .filter((entry) => entry.length > 0);
 
-    commands
-      .defineCaseAttribute({
-        caseId,
-        expectedSequence,
-        definition: {
-          id: `custom.${form.slug}`,
-          label: form.label.trim(),
-          valueType: form.valueType,
-          appliesTo: form.appliesTo,
-          ...(form.unit.trim().length > 0 ? { unit: form.unit.trim() } : {}),
-          ...(allowedValues.length > 0 ? { allowedValues } : {}),
-          evidenceExpectation: form.evidenceExpectation,
-          comparison: form.comparison,
-          reason: form.reason.trim(),
-        },
-      })
+    resolveExpectedSequence()
+      .then((expectedSequence) =>
+        commands.defineCaseAttribute({
+          caseId,
+          expectedSequence,
+          definition: {
+            id: `custom.${form.slug}`,
+            label: form.label.trim(),
+            valueType: form.valueType,
+            appliesTo: form.appliesTo,
+            ...(form.unit.trim().length > 0 ? { unit: form.unit.trim() } : {}),
+            ...(allowedValues.length > 0 ? { allowedValues } : {}),
+            evidenceExpectation: form.evidenceExpectation,
+            comparison: form.comparison,
+            reason: form.reason.trim(),
+          },
+        }),
+      )
       .then(() => {
         setSubmitting(false);
         setSuccess(true);

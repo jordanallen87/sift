@@ -397,12 +397,60 @@ export function WorkspaceAppBar({
       className="sticky top-0 z-[var(--z-sticky)] flex flex-wrap items-center justify-between gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-3)] shadow-[var(--shadow-soft)]"
     >
       <div className="flex min-w-0 flex-col gap-[var(--space-1)]">
-        <h1
-          data-testid="workspace-app-bar-title"
-          className="min-w-0 truncate text-[length:var(--font-size-lg)]"
-        >
-          {title}
-        </h1>
+        {/* The symbol, beside the case title, as the workspace's only
+            persistent statement of whose software this is. Sift's canonical
+            surface is a pane docked inside somebody else's product, where
+            there is no browser chrome, no tab strip and no page header to
+            supply that -- the case title names the decision, and nothing
+            names the tool.
+
+            Measured before it was added rather than after, because this row
+            is genuinely tight (see fix 2 above). At 390px the bar already
+            wraps into two rows -- identity above, toolbar below -- and the
+            identity row uses 156 of the 358px available to it. A 24px mark
+            plus a `--space-2` gap grows that row to ~188px and leaves the
+            bar's height, the toolbar's row and the title's own truncation
+            point unchanged; nothing moves and no control loses its place.
+
+            `shrink-0` next to the title's existing `min-w-0 truncate` is
+            what keeps that true for a long title: the title absorbs the
+            squeeze by truncating, exactly as it does today, instead of
+            crushing the mark.
+
+            The one-colour `sift-mark.svg` (`symbol-green`), not the
+            multi-tone `symbol-primary`, and not `symbol-core`:
+            docs/brand/BRAND-GUIDE.md "Small sizes" calls for the one-colour
+            symbol below ~48px, and `symbol-core-*` -- which the same section
+            recommends below ~64px -- turns out to be a single-path master
+            that renders as a bare crescent rather than a legible S, so it is
+            not usable in the product as exported. 24px (`--space-6`) is
+            where the particle field was still reading cleanly when the
+            variants were rendered and inspected side by side.
+
+            `alt=""`: the `<h1>` beside it is the accessible name of this
+            banner, and it names the case, which is what someone arriving
+            here needs. The product is already named by the document title.
+            A branded image announcing "Sift" ahead of every case title is
+            noise a sighted user can skip and a screen-reader user cannot.
+
+            `width`/`height` are the viewBox's, for aspect ratio before load
+            (`h-[...] w-auto` sets the real size) -- see `DemoLauncher`. */}
+        <div className="flex min-w-0 items-center gap-[var(--space-2)]">
+          <img
+            src="/brand/sift-mark.svg"
+            alt=""
+            width={290}
+            height={277}
+            data-testid="workspace-app-bar-brand-mark"
+            className="h-[var(--space-6)] w-auto shrink-0"
+          />
+          <h1
+            data-testid="workspace-app-bar-title"
+            className="min-w-0 truncate text-[length:var(--font-size-lg)]"
+          >
+            {title}
+          </h1>
+        </div>
         <div className="flex flex-wrap items-center gap-[var(--space-2)]">
           <Badge
             data-testid="workspace-app-bar-connection-status"

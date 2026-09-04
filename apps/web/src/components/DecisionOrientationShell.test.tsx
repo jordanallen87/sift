@@ -280,11 +280,15 @@ describe('DecisionOrientationShell: what Sift is working on', () => {
 /**
  * The shell used to spend four stacked lines plus a full-width progress bar
  * on the top of a 390-640px pane, which is most of a phone screen before a
- * single option is visible. It is now one row plus an expander.
+ * single option is visible. It is now one row plus an expander, and only
+ * that row is pinned (see the following describe for the second half of
+ * that change).
  *
  * The tests that matter here are not the compression ones -- they are the
  * three about what compression is *not allowed* to do: hide a warning, let
  * the visible row contradict what it hid, or clip a sentence mid-thought.
+ * "Not hidden" is what they assert, and it stays satisfied by a line that
+ * scrolls.
  */
 describe('DecisionOrientationShell: one row, detail behind an expander', () => {
   it('carries where you are, how far along, and what is next without opening anything', () => {
@@ -430,6 +434,163 @@ describe('DecisionOrientationShell: one row, detail behind an expander', () => {
 });
 
 /**
+ * Pinned and visible are two different properties, and the shell used to
+ * treat them as one.
+ *
+ * The two warning lines above must never be collapsed, truncated, or put
+ * behind a control -- that rule is unchanged and the tests for it stand.
+ * What they never required is that they occupy the top of the viewport for
+ * the entire session. Measured at 390px on an 844px pane, they made the
+ * pinned box 133.56px collapsed and 183.94px open; the row alone is 72px.
+ *
+ * So these tests describe the split: the row is what sticks, and everything
+ * else the shell says renders unconditionally in normal flow directly
+ * beneath it. Every test here would fail if a future change "saved space"
+ * by hiding one of those lines instead of unpinning it.
+ */
+describe('DecisionOrientationShell: what is pinned, and what merely stays visible', () => {
+  const qualified = orientation({ provisional: true });
+  const flight = {
+    plannedItems: 6,
+    optionsUnderInvestigation: 2,
+    unverifiableConcerns: 1,
+    planVersion: 2,
+  };
+
+  function renderQualified(): void {
+    render(
+      <DecisionOrientationShell orientation={qualified} layout="narrow" workInFlight={flight} />,
+    );
+  }
+
+  it('pins the row, the expander, and nothing else', () => {
+    // `decision-orientation-shell` is the sticky box, and `App.tsx` measures
+    // exactly this element to size `case-workspace-scroll`'s
+    // `scroll-padding-top`. Anything inside it is chrome a person pays for
+    // on every screen of the case.
+    renderQualified();
+
+    const pinned = screen.getByTestId('decision-orientation-shell');
+    expect(pinned).toContainElement(screen.getByTestId('orientation-phase'));
+    expect(pinned).toContainElement(screen.getByTestId('orientation-coverage'));
+    expect(pinned).toContainElement(screen.getByTestId('orientation-next-step'));
+    expect(pinned).toContainElement(screen.getByTestId('orientation-details-toggle'));
+
+    for (const testId of [
+      'orientation-unverifiable',
+      'orientation-provisional',
+      'orientation-details',
+    ]) {
+      expect(pinned, testId).not.toContainElement(screen.getByTestId(testId));
+    }
+  });
+
+  it('still shows both qualifications with nothing opened, and adds no control in front of them', () => {
+    // The whole point of the move: unpinning is not burying. Both lines are
+    // on screen for a person who has pressed nothing, and the only
+    // disclosure control in the shell is still the one on the row.
+    renderQualified();
+
+    expect(screen.getByTestId('orientation-unverifiable')).toBeVisible();
+    expect(screen.getByTestId('orientation-provisional')).toBeVisible();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button')).toBe(screen.getByTestId('orientation-details-toggle'));
+  });
+
+  it('says the same words, in the same order, immediately after the row', () => {
+    // Reading order is the thing that has to survive: row, then the concern
+    // nothing can check, then the qualification on the result, then the
+    // detail. A screen reader walking the pane meets them where it did.
+    renderQualified();
+
+    const order = [
+      'decision-orientation-shell',
+      'orientation-unverifiable',
+      'orientation-provisional',
+      'orientation-details',
+    ].map((testId) => screen.getByTestId(testId));
+
+    for (let index = 1; index < order.length; index += 1) {
+      const previous = order[index - 1];
+      const next = order[index];
+      expect(previous, `${String(index)} follows`).toBeDefined();
+      expect(next, `${String(index)} follows`).toBeDefined();
+      expect(
+        (previous?.compareDocumentPosition(next as Node) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
+        `element ${String(index)} must follow element ${String(index - 1)} in reading order`,
+      ).toBeTruthy();
+    }
+
+    expect(screen.getByTestId('orientation-unverifiable').textContent).toContain(
+      'nothing Sift can check',
+    );
+    expect(screen.getByTestId('orientation-provisional').textContent).not.toBe('');
+  });
+
+  it('does not grow the pinned box when the disclosure opens', async () => {
+    // The reason `scroll-padding-top` is now stable across the disclosure:
+    // the detail region the toggle controls lives outside the sticky
+    // element, so opening it moves content, not chrome.
+    const user = userEvent.setup();
+    render(<DecisionOrientationShell orientation={orientation()} layout="narrow" />);
+
+    const pinned = screen.getByTestId('decision-orientation-shell');
+    const details = screen.getByTestId('orientation-details');
+    expect(pinned).not.toContainElement(details);
+
+    await user.click(screen.getByTestId('orientation-details-toggle'));
+
+    expect(screen.getByTestId('orientation-details-toggle')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(screen.getByTestId('orientation-route')).toBeVisible();
+    expect(pinned).not.toContainElement(screen.getByTestId('orientation-details'));
+  });
+
+  it('costs no empty box when it has nothing to say', () => {
+    // It is a flex item in `case-workspace-scroll`'s 16px-gap column, so an
+    // empty-but-rendered block would spend 32px of scroll space on nothing.
+    // Hidden, not unmounted: the testids inside are read through
+    // `textContent` by the journey suites.
+    render(<DecisionOrientationShell orientation={orientation()} layout="narrow" />);
+
+    const body = screen.getByTestId('orientation-body');
+    expect(body).toBeInTheDocument();
+    expect(body).not.toBeVisible();
+    expect(screen.getByTestId('orientation-route')).toBeInTheDocument();
+  });
+
+  it('renders that block the moment there is a qualification to carry', () => {
+    renderQualified();
+
+    const body = screen.getByTestId('orientation-body');
+    expect(body).toBeVisible();
+    expect(body).toContainElement(screen.getByTestId('orientation-provisional'));
+    expect(body).toContainElement(screen.getByTestId('orientation-unverifiable'));
+  });
+
+  it('has no accessibility violations with both qualifications on screen', async () => {
+    const { container } = render(
+      <DecisionOrientationShell orientation={qualified} layout="narrow" workInFlight={flight} />,
+    );
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('fits the narrow pane with the qualifications unpinned', () => {
+    for (const width of [390, 430, 480]) {
+      const { renderResult, overflowRisks } = renderAtNarrowWidth(
+        <DecisionOrientationShell orientation={qualified} layout="narrow" workInFlight={flight} />,
+        width,
+      );
+      expect(overflowRisks, `overflow at ${String(width)}px`).toEqual([]);
+      renderResult.unmount();
+    }
+  });
+});
+
+/**
  * The one state where the shell renders the whole pipeline rather than a
  * hand-written `DecisionOrientation`.
  *
@@ -523,5 +684,54 @@ describe('DecisionOrientationShell: a decided case is settled, not in progress',
     expect(screen.getByTestId('orientation-phase')).toBeVisible();
     expect(screen.getByTestId('orientation-next-step')).toBeVisible();
     expect(screen.getByTestId('orientation-next-step')).not.toBeEmptyDOMElement();
+  });
+});
+
+describe('DecisionOrientationShell: measurable by its scroll container', () => {
+  it('forwards containerRef to its own outer element', () => {
+    // Not a decoration. This shell is `sticky top-0` inside
+    // `case-workspace-scroll`, so its rendered height is exactly the inset
+    // that container's `scroll-padding-top` has to carry -- otherwise
+    // `App.tsx`'s `scrollIntoView({block: 'start'})` dock moves land their
+    // target underneath it (measured at 430px before the fix: 134px of the
+    // recommendation hero hidden, heading included). The height is not
+    // derivable from props -- it moves with `layout` and with how many lines
+    // the summary row wraps to -- so the caller has to be able to read the
+    // real box, which is what this ref is for. It must land on the sticky
+    // element rather than on anything wrapping it: the block beneath the row
+    // scrolls, and counting it would push every scrolled-to region down by a
+    // band that never covers it.
+    const ref = { current: null as HTMLElement | null };
+
+    render(
+      <DecisionOrientationShell orientation={orientation()} layout="narrow" containerRef={ref} />,
+    );
+
+    expect(ref.current).toBe(screen.getByTestId('decision-orientation-shell'));
+  });
+
+  it('renders identically with the ref omitted', () => {
+    // A pure pass-through: the shell neither reads nor reacts to it, so the
+    // rendered markup must not depend on whether one was supplied.
+    //
+    // `useId`'s output is normalised out because it is deliberately unstable
+    // across renders in a single document (`_r_15_` vs `_r_16_` here) --
+    // comparing it would test React's id counter, not this component.
+    const withoutIds = (markup: string): string => markup.replaceAll(/_r_[0-9a-z]+_/g, '_id_');
+
+    const { container: withRef } = render(
+      <DecisionOrientationShell
+        orientation={orientation()}
+        layout="narrow"
+        containerRef={{ current: null }}
+      />,
+    );
+    const withRefMarkup = withoutIds(withRef.innerHTML);
+
+    const { container: without } = render(
+      <DecisionOrientationShell orientation={orientation()} layout="narrow" />,
+    );
+
+    expect(withoutIds(without.innerHTML)).toBe(withRefMarkup);
   });
 });

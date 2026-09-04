@@ -5,6 +5,9 @@
  * card/approval controls/WebMCP status, primary controls stay inside the
  * viewport with at least a 44x44 CSS-pixel target.
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import { expect, type Locator, type Page } from '@playwright/test';
 
 import { isNarrowWidth } from '../../../apps/web/src/hooks/width-mode-constants.js';
@@ -255,6 +258,102 @@ export async function assertNoStickyOverlap(
     }, box);
 
     expect(coveringTag, `${testId} must not be covered by a fixed/sticky control`).toBeNull();
+  }
+}
+
+/**
+ * Scrolling a region to the top of its scroll container must not park it
+ * underneath the sticky chrome already sitting there.
+ *
+ * `assertNoStickyOverlap` above is the closest existing check and it does not
+ * cover this. It measures wherever the page happens to be scrolled at the
+ * moment it runs -- in practice the top, where a `position: sticky` element
+ * is still in normal flow and overlaps nothing -- so it is structurally
+ * incapable of seeing a defect that only exists *after* something scrolls.
+ * It is also limited to the testids a caller passes as its primary actions.
+ *
+ * The gap was real, not theoretical. `App.tsx`'s `handleReviewDecidedCase`
+ * and `handleConfirmShortlist` -- the `review_question` and
+ * `confirm_shortlist` dock moves, the latter being the one control in the
+ * product that wears a "Your decision" badge -- both call
+ * `scrollIntoView({block: 'start'})`, which aligns the target's top edge with
+ * the scrollport's top edge. That is exactly where `DecisionOrientationShell`
+ * is parked (`sticky top-0`). Measured in Chromium at 430px before the fix:
+ * clicking "Confirm what moves forward" put `recommendation-hero` at
+ * `top: -0.25` under a shell spanning `0.19 -> 133.75`, hiding its first
+ * 134px including the whole of its heading, and moved focus there -- so a
+ * keyboard user was placed on a region nobody could read. Every gate was
+ * green throughout.
+ *
+ * What this asserts is the property rather than the implementation: land the
+ * element at the top of its scroller the way the product does, then require
+ * that no `position: fixed`/`sticky` element that is not one of its own
+ * ancestors covers it. The ancestor exemption is the same distinction
+ * `assertNoStickyOverlap` documents -- being *part of* pinned chrome is not
+ * being *hidden by* it. How the offset is achieved is left open: today it is
+ * `scroll-padding-top` on `case-workspace-scroll`, measured from the shell's
+ * live height, and this assertion would hold equally for `scroll-margin-top`
+ * on each target or for chrome that stopped overlapping altogether.
+ *
+ * The scroller is restored to the top afterwards, so a caller can run this
+ * mid-journey without silently moving the page under later assertions or a
+ * named screenshot.
+ */
+export async function assertScrollIntoViewClearsStickyChrome(
+  page: Page,
+  testIds: readonly string[],
+): Promise<void> {
+  for (const testId of testIds) {
+    const locator = page.getByTestId(testId).first();
+    if ((await locator.count()) === 0) continue;
+    if (!(await locator.isVisible())) continue;
+
+    const result = await locator.evaluate((element) => {
+      element.scrollIntoView({ block: 'start' });
+      const target = element.getBoundingClientRect();
+      for (const candidate of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
+        const style = getComputedStyle(candidate);
+        if (style.position !== 'fixed' && style.position !== 'sticky') continue;
+        if (candidate.contains(element)) continue;
+        const rect = candidate.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) continue;
+        const overlaps =
+          target.x < rect.x + rect.width &&
+          target.x + target.width > rect.x &&
+          target.y < rect.y + rect.height &&
+          target.y + target.height > rect.y;
+        // 1px, not 0: a scrollport inset and a sticky element's own box are
+        // resolved separately and routinely land a fraction of a pixel apart
+        // even when they are flush by construction.
+        if (overlaps && rect.bottom - target.top > 1) {
+          return {
+            covering: candidate.getAttribute('data-testid') ?? candidate.tagName.toLowerCase(),
+            coveredPx: rect.bottom - target.top,
+          };
+        }
+      }
+      return null;
+    });
+
+    // Put the scroller back where the caller left it.
+    await locator.evaluate((element) => {
+      for (let node = element.parentElement; node !== null; node = node.parentElement) {
+        const overflowY = getComputedStyle(node).overflowY;
+        if (overflowY === 'auto' || overflowY === 'scroll') {
+          node.scrollTop = 0;
+          return;
+        }
+      }
+    });
+
+    expect(
+      result,
+      `scrolling "${testId}" to the top of its scroll container left it underneath ` +
+        `"${result?.covering ?? ''}" by ${String(Math.round(result?.coveredPx ?? 0))}px -- ` +
+        `a region the product navigates someone to must not land behind sticky chrome ` +
+        `(the scroll container needs \`scroll-padding-top\`, or the target \`scroll-margin-top\`, ` +
+        `matching that chrome's height)`,
+    ).toBeNull();
   }
 }
 
@@ -524,6 +623,236 @@ async function resetPaneScroll(target: Locator): Promise<void> {
   });
 }
 
+/* ---------------------------------------------------------------------------
+ * Brand-colour integrity.
+ *
+ * The measured blind spot this closes -- and why it is NOT the pixel ratio.
+ *
+ * The whole app was recoloured from ink-blue `#2c4870` to Sift Green
+ * `#1f5c52` (every primary button, the app-bar mark, the LIVE pill, several
+ * badges). A pre-rebrand navy baseline for `seeded-case` was then restored
+ * and `car-purchase-journey.spec.ts` re-run at `right-pane-390`. It PASSED.
+ * Eighteen baselines across the car-purchase, home-energy and
+ * vehicle-catalog journeys stayed silently stale through that rebrand for
+ * the same reason -- `--update-snapshots` never rewrote them, because the
+ * comparison never failed.
+ *
+ * The obvious explanation is wrong, and it matters that it is wrong, because
+ * it points at the wrong repair. The intuition is "the captured element is
+ * much taller than the viewport, so the recoloured controls are a small
+ * fraction of a huge image and land under `maxDiffPixelRatio: 0.01`". They
+ * do not. Measured on this build (`case-workspace` at `right-pane-390`):
+ * the element is 390x844 with `scrollHeight === clientHeight === 844`, i.e.
+ * EXACTLY one viewport -- the pane shell is fixed-height, so the capture is
+ * 329,160px, not a tall strip -- and running Playwright's own comparator
+ * over the green and navy renderings of that identical state gives:
+ *
+ *   | pixelmatch threshold | pixels counted different |
+ *   | --- | --- |
+ *   | 0.2 (Playwright's default) | 0 |
+ *   | 0.1 | 0 |
+ *   | 0.05 | 15,866 (4.8%) |
+ *   | 0 | 16,341 (4.96%) |
+ *
+ * So 16,341 pixels -- 4.96% of the image, nearly 5x the 1% budget -- really
+ * do change colour, and the ratio threshold is not what lets them through.
+ * `maxDiffPixelRatio` never gets consulted: at the default per-pixel
+ * threshold the count reaching it is ZERO. Lowering the ratio to 0, or
+ * setting `maxDiffPixels: 0`, changes nothing at all.
+ *
+ * The actual mechanism is `pixelmatch`'s per-pixel colour tolerance.
+ * Playwright compares PNGs with `pixelmatch` at `threshold: options.threshold
+ * ?? 0.2` (playwright-core 1.62.1, `coreBundle.js` `compareImages`), and
+ * pixelmatch calls two pixels identical when their YIQ distance
+ * `0.5053*dy^2 + 0.299*di^2 + 0.1957*dq^2` is at or below
+ * `35215 * threshold^2` = 1408.6. Navy `#2c4870` vs green `#1f5c52` is
+ * 113.1 -- an eighth of the tolerance. Two colours a person cannot confuse
+ * are, to the gate, the same pixel. `threshold` would have to fall below
+ * ~0.057 for the rebrand to register even one pixel, and that is the number
+ * that absorbs font antialiasing and GPU dithering across machines: buying
+ * colour sensitivity there costs exactly the cross-machine determinism the
+ * whole baseline suite rests on. Capturing a viewport-clipped shot instead
+ * is likewise no help -- the capture already IS one viewport.
+ *
+ * Hence a second, independent, non-raster signal, in the same shape and for
+ * the same reason as the `ScreenshotIdentityCheck` text assertion directly
+ * above (a pixel-diff could not read the Pax -> Sift rename either; it
+ * cannot read colour either). This one is a computed-style assertion, so it
+ * is exact rather than tolerance-bound, costs one `page.evaluate` per
+ * screenshot, and needs no network.
+ *
+ * It anchors on `docs/brand/palette.json` -- the corporate identity palette
+ * -- rather than on `apps/web/src/styles/tokens.css`, which is the file
+ * under test. Anchoring on tokens.css would be circular: editing the brand
+ * would edit the expectation and the gate would stay green. Anchoring on
+ * the identity means a rebrand of the interface fails until the identity
+ * itself is deliberately changed, and it is the assertion that would have
+ * caught the ORIGINAL defect too -- before the rebrand, tokens.css's
+ * interface brand (navy) and palette.json's identity (green) were two
+ * independent literals that had already silently drifted apart, which is
+ * precisely what tokens.css's own brand comment now records.
+ * ------------------------------------------------------------------------- */
+
+/** The identity palette (`docs/brand/palette.json`), the single source of truth for Sift Green. */
+interface BrandPalette {
+  readonly primary: string;
+  readonly white: string;
+  readonly green: Readonly<Record<string, string>>;
+}
+
+const BRAND_PALETTE_PATH = fileURLToPath(
+  new URL('../../../docs/brand/palette.json', import.meta.url),
+);
+
+let brandPaletteCache: BrandPalette | undefined;
+
+function brandPalette(): BrandPalette {
+  brandPaletteCache ??= JSON.parse(readFileSync(BRAND_PALETTE_PATH, 'utf8')) as BrandPalette;
+  return brandPaletteCache;
+}
+
+/** `#1F5C52` -> `rgb(31, 92, 82)`, the exact form `getComputedStyle` serializes an opaque colour to. */
+function hexToCssRgb(hex: string): string {
+  const match = /^#([0-9a-fA-F]{6})$/.exec(hex.trim());
+  expect(
+    match,
+    `docs/brand/palette.json must hold 6-digit hex colours, got "${hex}"`,
+  ).not.toBeNull();
+  const value = Number.parseInt(match![1]!, 16);
+  return `rgb(${(value >> 16) & 0xff}, ${(value >> 8) & 0xff}, ${value & 0xff})`;
+}
+
+/**
+ * Which interface token must equal which identity-ramp step, and why.
+ *
+ * The two deliberate non-identities are documented in tokens.css's brand
+ * block and reproduced here so this stays a single readable contract:
+ * `--color-brand-strong` is green.800 (not the kit's green.700
+ * `--sift-brand-hover`, which sits at the just-noticeable-difference
+ * threshold from the base and would read as no hover feedback at all), and
+ * `--color-brand-tint` is green.100 (not green.50, which is only 1.08:1
+ * against the white surfaces it is actually painted on).
+ */
+function expectedBrandTokens(): ReadonlyMap<string, string> {
+  const palette = brandPalette();
+  const green = (step: string): string => {
+    const value = palette.green[step];
+    expect(value, `docs/brand/palette.json is missing green.${step}`).toBeTruthy();
+    return hexToCssRgb(value!);
+  };
+  expect(
+    palette.primary.toLowerCase(),
+    'docs/brand/palette.json: `primary` and `green.600` must be the same colour',
+  ).toBe(palette.green['600']?.toLowerCase());
+
+  return new Map([
+    // The interface brand, and the shadcn bridge alias every `bg-primary`
+    // utility in the app resolves through.
+    ['--color-brand', green('600')],
+    ['--primary', green('600')],
+    ['--color-focus-ring', green('600')],
+    ['--color-brand-strong', green('800')],
+    ['--color-brand-tint', green('100')],
+    // The identity aliases the logo lockup, favicon family, `theme-color`
+    // and manifest read.
+    ['--sift-brand', green('600')],
+    ['--sift-green-600', green('600')],
+    // The other half of the primary action: a brand fill is only legible
+    // because this pairs with it.
+    ['--color-ink-on-brand', hexToCssRgb(palette.white)],
+  ]);
+}
+
+/**
+ * Every brand token resolves to the identity palette, and the primary
+ * action actually paints with it.
+ *
+ * Two independent claims, because they fail independently:
+ *
+ *  1. TOKEN IDENTITY. Each token is resolved through the rendering engine
+ *     (an off-screen probe element assigned `background-color: var(--token)`,
+ *     read back and removed synchronously) rather than by string-matching
+ *     `getPropertyValue`. That normalises every spelling of a colour to one
+ *     serialized form, and it makes an undefined or renamed token fail
+ *     loudly: `var(--gone)` resolves to `rgba(0, 0, 0, 0)`, not to the old
+ *     value. A missing stylesheet fails here too.
+ *
+ *  2. RENDERED USAGE. Every visible primary `Button` (`ui/button.tsx`'s
+ *     default variant -- `bg-primary text-primary-foreground`) must compute
+ *     to exactly the brand fill and the on-brand text colour. Token identity
+ *     alone would not notice a primary action that stopped consuming the
+ *     token; this is the half that reads the pixels a person actually sees.
+ *
+ * Deliberately skips a button the pointer happens to rest on: `bg-primary`
+ * carries `hover:bg-primary/90`, so a hovered control's computed fill is a
+ * legitimately different value, and Playwright leaves the mouse wherever the
+ * last click put it. Asserting on it would be asserting on cursor position.
+ * Nothing else here depends on state the journey did not choose.
+ */
+export async function assertBrandColorIntegrity(page: Page, label: string): Promise<void> {
+  const expected = expectedBrandTokens();
+  const observed = await page.evaluate(
+    (tokenNames: string[]) => {
+      const probe = document.createElement('div');
+      probe.style.cssText =
+        'position:fixed;left:-9999px;top:-9999px;width:0;height:0;opacity:0;pointer-events:none';
+      document.body.appendChild(probe);
+      const tokens: Record<string, string> = {};
+      for (const name of tokenNames) {
+        probe.style.backgroundColor = 'transparent';
+        probe.style.backgroundColor = `var(${name})`;
+        tokens[name] = getComputedStyle(probe).backgroundColor;
+      }
+      probe.remove();
+
+      const primaryActions = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-slot="button"][data-variant="default"]'),
+      )
+        .filter((element) => element.checkVisibility() && !element.matches(':hover'))
+        .map((element) => {
+          const style = getComputedStyle(element);
+          return {
+            id:
+              element.getAttribute('data-testid') ??
+              `"${(element.textContent ?? '').trim().slice(0, 40)}"`,
+            background: style.backgroundColor,
+            foreground: style.color,
+          };
+        });
+
+      return { tokens, primaryActions };
+    },
+    [...expected.keys()],
+  );
+
+  for (const [token, want] of expected) {
+    expect(
+      observed.tokens[token],
+      `${label}: \`${token}\` resolves to ${observed.tokens[token]}, but docs/brand/palette.json ` +
+        `requires ${want}. The visual baselines CANNOT see this: Playwright's pixelmatch ` +
+        `threshold (0.2) calls colours identical up to a YIQ distance of 1408, and a whole ` +
+        `rebrand measured 113. Either apps/web/src/styles/tokens.css drifted from the identity ` +
+        `palette, the token was renamed (an unresolved var reads as rgba(0, 0, 0, 0)), or the ` +
+        `stylesheet did not load`,
+    ).toBe(want);
+  }
+
+  const brand = expected.get('--color-brand')!;
+  const onBrand = expected.get('--color-ink-on-brand')!;
+  for (const action of observed.primaryActions) {
+    expect(
+      action.background,
+      `${label}: primary action ${action.id} paints ${action.background}, not the brand fill ${brand}. ` +
+        `A primary Button must consume \`bg-primary\` -> \`--primary\` -> \`--color-brand\``,
+    ).toBe(brand);
+    expect(
+      action.foreground,
+      `${label}: primary action ${action.id} draws its label ${action.foreground}, not the ` +
+        `on-brand text colour ${onBrand} the brand fill is contrast-checked against`,
+    ).toBe(onBrand);
+  }
+}
+
 export async function expectNamedScreenshot(
   page: Page,
   target: Locator,
@@ -543,6 +872,13 @@ export async function expectNamedScreenshot(
       `screenshot "${name}": identity text missing on "${check.testId}"`,
     ).toContainText(check.text);
   }
+  // The colour half of the same pairing, for the reason set out above
+  // `assertBrandColorIntegrity`: the raster comparison below is measurably
+  // blind to a whole-app recolour, so no named baseline is captured without
+  // a deterministic statement about what colour it is. Runs BEFORE the
+  // capture so a rebrand reports as a named colour failure rather than as a
+  // diff image someone has to go and look at. Costs one `page.evaluate`.
+  await assertBrandColorIntegrity(page, `screenshot "${name}"`);
   await waitForStableHeight(target, name);
   await resetPaneScroll(target);
   await expect(target).toHaveScreenshot(name, screenshotOptions);

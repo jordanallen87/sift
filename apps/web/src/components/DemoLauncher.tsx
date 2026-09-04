@@ -110,7 +110,57 @@ export function DemoLauncher({ onDemoStarted, onCompareVehicles }: DemoLauncherP
         aria-labelledby="demo-launcher-heading"
         className="pane-shell page-enter flex flex-col gap-[var(--space-4)]"
       >
-        <div className="flex items-start justify-between gap-[var(--space-2)]">
+        <div className="flex flex-col gap-[var(--space-3)]">
+          {/* The full horizontal lockup, and the only place in the product
+              that carries it. This is the first screen anyone -- a judge
+              included -- meets, and before a case exists there is no case
+              title, no app bar and no chrome of any kind saying whose
+              software this is; the heading below says "Sift" in passing, in
+              body copy. So the logo is doing identification work here that
+              nothing else is doing, which is what earns it the space.
+
+              `logo-horizontal-primary` (the `/brand/sift-logo.svg` build
+              already serves) rather than the one-colour `-green` variant:
+              its near-black `IFT` gives the wordmark materially more
+              contrast against `--color-background` than green-on-paper
+              does, and the green symbol beside it is the same
+              `--color-brand` (#1F5C52) the app was just recoloured to, so
+              it harmonises rather than competing.
+
+              40px (`--space-10`) is a floor, not a taste call.
+              docs/brand/BRAND-GUIDE.md "Small sizes" warns that "the
+              decorative sift particles can become visually dense" at small
+              scale, and rendering every candidate variant at 28/32/40/48/64
+              px and looking at them (see docs/build-log.md's dated entry)
+              puts the point where the particle field stops muddying at
+              ~40px. At the horizontal lockup's 748:276 ratio that is 108px
+              wide -- comfortably inside even the 390px pane, and the mark
+              still has its "width of the `I` stem" clear space, which the
+              `--space-3` gap below and the shell's own padding supply.
+
+              `alt=""`, deliberately: the `<h1>` directly below already reads
+              "Start a Sift case", so a screen-reader user is told the
+              product's name by real text. Giving this an accessible name
+              would announce "Sift" and then immediately "Start a Sift
+              case" -- noise, not information, and precisely the redundant
+              image labelling that makes people turn images off.
+
+              `width`/`height` are the artwork's own viewBox dimensions, not
+              a rendered size (`h-[...] w-auto` decides that). They are here
+              so the browser knows the aspect ratio before the SVG has
+              loaded and reserves the right box for it, rather than
+              collapsing to zero and then shoving the heading, the primary
+              action and both demo cards down the page on load. */}
+          <div className="flex items-center justify-between gap-[var(--space-2)]">
+            <img
+              src="/brand/sift-logo.svg"
+              alt=""
+              width={748}
+              height={276}
+              className="h-[var(--space-10)] w-auto"
+            />
+            <HelpButton />
+          </div>
           <div className="flex flex-col gap-[var(--space-1)]">
             <h1
               id="demo-launcher-heading"
@@ -122,7 +172,6 @@ export function DemoLauncher({ onDemoStarted, onCompareVehicles }: DemoLauncherP
               Compare real vehicles from the bundled catalog, or try a finished example.
             </p>
           </div>
-          <HelpButton />
         </div>
 
         {/* Primary, non-demo entry point (ADR 0003): a normal, useful

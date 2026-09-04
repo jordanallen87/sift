@@ -1,0 +1,40 @@
+{
+  "title": "Sift — WebMCP steering a real decision",
+  "targetLengthSeconds": 34,
+  "zoom": { "scale": 1.35, "easeMs": 500, "holdMs": 1400 },
+  "cursor": { "scale": 1.15 },
+  "scenes": [
+    {
+      "id": "cold-open",
+      "narration": "This is Sift: one live household decision that ChatGPT can steer without creating a second, conflicting copy.",
+      "actions": [
+        { "op": "goto", "url": "https://sift-hackathon-production.up.railway.app" },
+        { "op": "click", "target": { "selector": "[data-testid='demo-launcher-car-purchase']" } },
+        { "op": "waitFor", "target": { "selector": "[data-testid='case-workspace']" } },
+        { "op": "focus", "target": { "selector": "[data-testid='recommendation-hero']" }, "holdMs": 2200 }
+      ]
+    },
+    {
+      "id": "human-boundary",
+      "narration": "ChatGPT can investigate and revise the case, but it cannot approve it. There is no approval tool. The consequential decision stays here, with the human.",
+      "actions": [
+        { "op": "focus", "target": { "selector": "[data-testid='approval-card-pending']" }, "holdMs": 1400 },
+        { "op": "click", "target": { "selector": "[data-testid='approval-card-approve']" } },
+        { "op": "waitFor", "target": { "selector": "[data-testid='approval-card-stamp']" } },
+        { "op": "focus", "target": { "selector": "[data-testid='approval-card-stamp']" }, "holdMs": 1800 }
+      ]
+    },
+    {
+      "id": "trace-proof",
+      "narration": "And every tool call, handoff, intervention, and recommendation is tied to the same case and trace in Sift's Runtime Inspector.",
+      "actions": [
+        { "op": "click", "target": { "selector": "[data-testid='case-header-developer-view']" } },
+        { "op": "waitFor", "target": { "selector": "[data-testid='runtime-inspector']" } },
+        { "op": "focus", "target": { "selector": "[data-testid='runtime-inspector-trace-id']" }, "holdMs": 1400 },
+        { "op": "click", "target": { "selector": "[data-testid='runtime-inspector-tab-timeline']" } },
+        { "op": "waitFor", "target": { "selector": "[data-testid='runtime-inspector-timeline-list']" } },
+        { "op": "scrollBy", "dy": 520, "easing": "glide", "durationMs": 1500 }
+      ]
+    }
+  ]
+}

@@ -620,7 +620,7 @@ Mutating tools (WRITE, PRESENTATION, EXECUTION) return after command acceptance 
 
 - Each callback accepts the browser-provided abort signal and forwards it to fetch.
 - Cancellation produces `UNAVAILABLE` with `retryable: true` and does not apply a late response.
-- Mutations include `expectedSequence`. Conflicts return the latest sequence so ChatGPT can call `sift_get_case_context` before retrying. This applies to WRITE and PRESENTATION tools alike: `updateSelection()` honors the same optimistic-concurrency and idempotency-key mechanism `append()` uses (see `architecture.md`), even though it never advances `eventSequence` itself.
+- Mutations include `expectedSequence`. Conflicts return the latest sequence so ChatGPT can call `sift_get_case_context` before retrying. A host may never omit the field, and a sequence *ahead* of the case is always refused; a small, enumerated set of commands whose effect no other event can invalidate (`addNote`, `setCandidateDisposition`) accepts a caller that is merely *behind* — see architecture.md, "Bystander events and sequence-independent commands", for why and for the rule that keeps every other tool strict. This applies to WRITE and PRESENTATION tools alike: `updateSelection()` honors the same optimistic-concurrency and idempotency-key mechanism `append()` uses (see `architecture.md`), even though it never advances `eventSequence` itself.
 - Retried mutations reuse an idempotency key derived from the browser tool call ID.
 
 ## Automated contract requirements

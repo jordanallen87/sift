@@ -894,7 +894,17 @@ export class CommandService {
     const duplicate = this.checkIdempotent(commandId);
     if (duplicate !== undefined) return duplicate;
 
-    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
+    // Sequence-independent (see `loadForIndependentMutation`). A note is the
+    // author's own observation: it satisfies no obligation, invalidates no
+    // recommendation, links to no evidence, and -- as this method's own
+    // comment above already states in full -- has "no code path that reads or
+    // writes any of those fields". There is therefore no case state a
+    // bystander event could change that would make the note the person just
+    // wrote the wrong note. Its only references to the case, `optionIds` and
+    // `obligationId`, are validated immediately below against the snapshot
+    // handed back here, which is the CURRENT one -- so accepting a caller
+    // that is behind cannot let a dangling id through.
+    const loaded = this.loadForIndependentMutation(input.caseId, input.expectedSequence);
     if (loaded.status !== 'ok') return loaded;
     const snapshot = loaded.value;
 
@@ -941,7 +951,11 @@ export class CommandService {
       },
     ];
 
-    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
+    // `snapshot.eventSequence`, not `input.expectedSequence`: the caller is
+    // allowed to be behind here, and the event above is numbered off the
+    // current snapshot. `append` still does its own atomic check inside the
+    // transaction, so a genuine interleave is still refused.
+    const result = this.deps.caseStore.append(input.caseId, events, snapshot.eventSequence, {
       idempotency: { commandId, commandName: 'addNote' },
     });
     if (result.status === 'applied') {
@@ -2636,6 +2650,81 @@ export class CommandService {
     return ok(snapshot);
   }
 
+  /**
+   * `loadForMutation`'s counterpart for the few commands whose effect no other
+   * event can invalidate. Named for what it asserts, and used by exactly two
+   * commands today (`addNote`, `setCandidateDisposition`) -- each with its own
+   * justification recorded at its call site.
+   *
+   * --- Why a second rule exists at all ---
+   *
+   * `expectedSequence` "exists so a mutation can be rejected when it was
+   * written against a stale view" (docs/specs/webmcp.md "Cancellation and
+   * concurrency"). `loadForMutation` implements that as case-wide equality,
+   * which conflates two different things: a competing WRITE to what this
+   * command is changing, and a BYSTANDER event that merely moved the case's
+   * counter. That conflation was harmless while a run drained its events in
+   * one burst at the end. It is not harmless now: the runtime streams events
+   * as the graph progresses, so an ordinary investigation advances the case
+   * steadily for several seconds, and a person who presses a button during
+   * that window gets a hard refusal caused by work they were only watching.
+   *
+   * The client cannot close this window, and it is worth being precise about
+   * why rather than adding retries until it looks closed. A browser learns
+   * that the case moved from the SSE activity stream, whose `sequence` is "a
+   * wholly separate monotonic counter from `CaseEvent.sequence`"
+   * (`store/activity-store.ts`), so it must re-read the canonical snapshot to
+   * learn the real number -- and between that read and the command arriving
+   * here, the run can append again. `apps/web`'s `resolveEventSequence`
+   * narrows that window to network latency and removes the great majority of
+   * these refusals; it cannot remove the last of them, because no read
+   * performed before a request can describe the state at the moment the
+   * request lands. A guard that a correct client cannot satisfy is not
+   * protecting anything -- it is just intermittently failing.
+   *
+   * --- What this rule actually permits ---
+   *
+   * Only being BEHIND. A caller may present a sequence the case has already
+   * passed; it may never present one the case has not reached, which is not a
+   * stale read but a wrong one (a fabricated sequence, or a request aimed at a
+   * different case's history), and still conflicts.
+   *
+   * Everything else stays exactly as strict as it was. This is not a relaxed
+   * default: every other command still goes through `loadForMutation`, and
+   * adding a command here requires showing that its effect depends on no case
+   * state a bystander event could change. A command that reads the case to
+   * decide what to write -- `reviewProposal` acting on a proposal,
+   * `setEvidenceDisposition` judging a specific finding, `updateCriteria`
+   * reweighting a set it just read, `upsertOption`/`setOptionAttribute`
+   * writing a field another writer may also be writing -- does not qualify
+   * and must keep the strict check.
+   *
+   * The returned snapshot is the CURRENT one, so the handler validates and
+   * derives against present state; its caller must append at
+   * `snapshot.eventSequence` rather than at the caller's own stale
+   * `expectedSequence`. `CaseStore.append` still performs its own atomic
+   * check-and-write inside the transaction, so a genuine interleaving between
+   * this load and that append is still refused.
+   */
+  private loadForIndependentMutation(
+    caseId: string,
+    expectedSequence: number,
+  ): ServiceResult<CaseState> {
+    const snapshot = this.deps.caseStore.load(caseId);
+    if (snapshot === undefined) {
+      return notFound(`Case "${caseId}" was not found.`);
+    }
+    if (expectedSequence > snapshot.eventSequence) {
+      return conflict(
+        'expectedSequence is ahead of this case; refresh and retry.',
+        expectedSequence,
+        snapshot.eventSequence,
+        snapshot,
+      );
+    }
+    return ok(snapshot);
+  }
+
   private toReceipt(commandId: string, result: AppendResult): ServiceResult<CommandReceipt> {
     switch (result.status) {
       case 'applied':
@@ -3025,7 +3114,26 @@ export class CommandService {
     const duplicate = this.checkIdempotent(commandId);
     if (duplicate !== undefined) return duplicate;
 
-    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
+    // Sequence-independent (see `loadForIndependentMutation`), and the one
+    // command where the strict rule was actively harmful: Quick Pick triage
+    // is what a person does WHILE an investigation streams, and a refusal
+    // here is swallowed by design on the client (`App.tsx`'s
+    // `handleQuickPickDisposition`), so the strict check turned a bystander
+    // event into a judgment that silently vanished.
+    //
+    // It qualifies on its own terms, not merely because failing was ugly.
+    // The command carries the COMPLETE desired value of one entity's own
+    // disposition field rather than a delta, so nothing about it is computed
+    // from a view that could have gone stale; disposition is last-writer-wins
+    // per candidate by construction (undo is expressed as another forward
+    // command, `unreviewed`, precisely so the history of what someone
+    // considered survives); and a person saying "keep looking at this one" is
+    // an act of authority over their own triage, not a claim about facts that
+    // new evidence could contradict. `previousDisposition` below is derived
+    // from the snapshot handed back here -- the CURRENT one -- so a caller
+    // that is behind produces a MORE accurate record than a stale read would,
+    // not a less accurate one.
+    const loaded = this.loadForIndependentMutation(input.caseId, input.expectedSequence);
     if (loaded.status !== 'ok') return loaded;
     const snapshot = loaded.value;
 
@@ -3060,7 +3168,9 @@ export class CommandService {
       },
     ];
 
-    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
+    // See `addNote`'s matching comment: the caller may be behind, so the
+    // append is anchored to the snapshot these events were numbered from.
+    const result = this.deps.caseStore.append(input.caseId, events, snapshot.eventSequence, {
       idempotency: { commandId, commandName: 'setCandidateDisposition' },
     });
     if (result.status === 'applied') {

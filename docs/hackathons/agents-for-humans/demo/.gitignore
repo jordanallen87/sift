@@ -1,0 +1,8 @@
+audio/
+logs/
+output/
+recordings/
+generated/captions.*
+generated/timeline.json
+slides/rendered/
+

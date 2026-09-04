@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "id": "shared-decision-environment",
+  "title": "One shared decision environment",
+  "durationSeconds": 14,
+  "canvas": { "width": 1920, "height": 1080 },
+  "nodes": [
+    {
+      "id": "human",
+      "label": "Person",
+      "caption": "judgment + approval",
+      "bounds": { "x": 0.08, "y": 0.23, "width": 0.18, "height": 0.18 }
+    },
+    {
+      "id": "chatgpt",
+      "label": "ChatGPT",
+      "caption": "WebMCP participant",
+      "bounds": { "x": 0.08, "y": 0.59, "width": 0.18, "height": 0.18 }
+    },
+    {
+      "id": "case",
+      "label": "Shared decision case",
+      "caption": "criteria · evidence · state",
+      "bounds": { "x": 0.39, "y": 0.40, "width": 0.23, "height": 0.20 }
+    },
+    {
+      "id": "sift",
+      "label": "Sift",
+      "caption": "validates + computes",
+      "bounds": { "x": 0.74, "y": 0.23, "width": 0.18, "height": 0.18 }
+    },
+    {
+      "id": "strands",
+      "label": "Strands team",
+      "caption": "investigates bounded work",
+      "bounds": { "x": 0.74, "y": 0.59, "width": 0.18, "height": 0.18 }
+    }
+  ],
+  "edges": [
+    { "from": "human", "to": "case", "label": "answers + decides" },
+    { "from": "chatgpt", "to": "case", "label": "reads + configures" },
+    { "from": "case", "to": "sift", "label": "validates" },
+    { "from": "sift", "to": "strands", "label": "directs investigation" },
+    { "from": "strands", "to": "case", "label": "returns evidence" }
+  ],
+  "approvalBoundary": {
+    "from": "case",
+    "to": "human",
+    "label": "human-only approval",
+    "style": "one-way"
+  },
+  "revealSteps": [
+    { "atPhrase": "One shared case", "show": ["human", "chatgpt", "case"] },
+    { "atPhrase": "through WebMCP", "highlight": ["chatgpt", "case"] },
+    { "atPhrase": "decision engine", "show": ["sift"], "highlight": ["sift"] },
+    { "atPhrase": "Strands team", "show": ["strands"], "highlight": ["strands"] },
+    { "atPhrase": "what is valid", "highlight": ["sift", "case"] },
+    { "atPhrase": "person decides", "show": ["approvalBoundary"], "highlight": ["human", "approvalBoundary"] }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "title": "Sift — Home Energy Guardian",
+  "targetLengthSeconds": 113,
+  "zoom": { "scale": 1.35, "easeMs": 500, "holdMs": 1400 },
+  "cursor": { "scale": 1.15 },
+  "scenes": [
+    {
+      "id": "cold-open",
+      "narration": "This bill arrived forty-two percent above its weather-normalized baseline. Sift noticed before the household had to.",
+      "actions": [
+        { "op": "goto", "url": "https://sift-hackathon-production.up.railway.app" },
+        { "op": "click", "target": { "selector": "[data-testid='demo-launcher-home-energy-guardian']" } },
+        { "op": "waitFor", "target": { "selector": "[data-testid='case-workspace']" } },
+        { "op": "focus", "target": { "selector": "[data-testid='case-header']" }, "holdMs": 1800 }
+      ]
+    },
+    {
+      "id": "investigation",
+      "narration": "One bounded request starts real Strands work. Different specialists activate only the skills they need, and every tool result changes the same evidence and readiness state.",
+      "actions": [
+        { "op": "click", "target": { "selector": "[data-testid='request-investigation']" } },
+        { "op": "waitForChange", "target": { "selector": "[data-testid='recommendation-hero-status']" } },
+        { "op": "focus", "target": { "selector": "[data-testid='recommendation-hero']" }, "holdMs": 1800 },
+        { "op": "scrollTo", "target": { "selector": "[data-testid='readiness-panel']" }, "easing": "glide", "durationMs": 1400 },
+        { "op": "focus", "target": { "selector": "[data-testid='readiness-panel']" }, "holdMs": 1600 }
+      ]
+    },
+    {
+      "id": "runtime-proof",
+      "narration": "The Runtime Inspector ties skills, specialists, interventions, tools, and GoalLoop validation to one real case and trace.",
+      "actions": [
+        { "op": "click", "target": { "selector": "[data-testid='case-header-developer-view']" } },
+        { "op": "waitFor", "target": { "selector": "[data-testid='runtime-inspector']" } },
+        { "op": "focus", "target": { "selector": "[data-testid='runtime-inspector-trace-id']" }, "holdMs": 1300 },
+        { "op": "click", "target": { "selector": "[data-testid='runtime-inspector-tab-timeline']" } },
+        { "op": "waitFor", "target": { "selector": "[data-testid='runtime-inspector-timeline-list']" } },
+        { "op": "scrollBy", "dy": 750, "easing": "glide", "durationMs": 1800 }
+      ]
+    },
+    {
+      "id": "human-approval",
+      "narration": "The agent built the case. The final approval remains a deliberate human act, and the approved state survives a reload.",
+      "actions": [
+        { "op": "press", "key": "Escape" },
+        { "op": "scrollTo", "target": { "selector": "[data-testid='approval-card-pending']" }, "easing": "glide", "durationMs": 1400 },
+        { "op": "click", "target": { "selector": "[data-testid='approval-card-approve']" } },
+        { "op": "waitFor", "target": { "selector": "[data-testid='approval-card-stamp']" } },
+        { "op": "focus", "target": { "selector": "[data-testid='approval-card-stamp']" }, "holdMs": 1800 }
+      ]
+    }
+  ]
+}

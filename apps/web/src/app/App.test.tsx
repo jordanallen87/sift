@@ -2607,6 +2607,93 @@ describe('App', () => {
         note: { body: 'The seat position felt wrong on the test drive.' },
       });
     });
+
+    /**
+     * The regression: a visible control sent an `expectedSequence` read out
+     * of a snapshot that the client's own refresh schedule had allowed to
+     * fall behind, and the server correctly refused it.
+     *
+     * Two changes made the window reachable in ordinary use. The runtime now
+     * streams a run's events as the graph progresses rather than draining
+     * them at the end, so the case sequence climbs steadily during a run; and
+     * `use-case-events.ts` now coalesces snapshot refreshes (73 requests in
+     * 70 ms was a real defect), so the snapshot can legitimately trail by up
+     * to `snapshotRefreshIntervalMs`. A person pressing a button inside that
+     * window got a hard failure caused by nothing they did.
+     *
+     * This asserts the sequence actually put on the wire, not the end state:
+     * every end-state assertion in this file passes with the defect present,
+     * because a conflict here is refused server-side and the command simply
+     * never happens.
+     */
+    it('sends the sequence the server would accept when a server-originated event has advanced the case past the snapshot in hand', async () => {
+      const staleSnapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 41 });
+      const advancedSnapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 42 });
+      let reads = 0;
+      let releaseCoalescedRefresh: () => void = () => undefined;
+      const coalescedRefreshLanded = new Promise<void>((resolve) => {
+        releaseCoalescedRefresh = resolve;
+      });
+      let capturedBody: unknown;
+
+      renderLiveWorkspace(staleSnapshot);
+      server.use(
+        // The canonical-snapshot route, with the client's event-driven
+        // refresh held open so the pane is provably one behind the server at
+        // the moment of the click -- the deterministic stand-in for "the
+        // coalescing interval has not elapsed yet".
+        http.get(`/api/cases/${CASE_ID}/events`, async () => {
+          reads += 1;
+          if (reads === 1) {
+            return HttpResponse.json({ snapshot: staleSnapshot, events: [] });
+          }
+          if (reads === 2) await coalescedRefreshLanded;
+          return HttpResponse.json({ snapshot: advancedSnapshot, events: [] });
+        }),
+        commandHandler('addNote', buildFakeCommandReceipt({ caseId: CASE_ID }), (body) => {
+          capturedBody = body;
+        }),
+      );
+
+      const user = await startDemoAndWait();
+      await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+      const source = FakeEventSource.instances[0]!;
+      source.triggerOpen();
+
+      // The server advances the case on its own and says so over SSE. The
+      // event carries an ACTIVITY sequence, which is a different counter from
+      // `CaseState.eventSequence` -- it announces that the case moved without
+      // ever saying where it moved to.
+      act(() => {
+        source.emit({
+          schemaVersion: '1.0',
+          eventId: 'evt-server-originated',
+          sequence: 1,
+          timestamp: '2026-08-27T00:00:00.000Z',
+          caseId: CASE_ID,
+          type: 'specialist.completed',
+          phase: 'completed',
+          summary: 'Deal normalization finished.',
+        });
+      });
+      await waitFor(() => expect(reads).toBe(2));
+
+      await openCreateMenuItem(user, 'workspace-app-bar-add-note', 'workspace-notes-sheet');
+      await user.type(screen.getByLabelText('Note'), 'Ask about the roof rails.');
+      await user.click(screen.getByTestId('add-note-form-submit'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('add-note-form-success')).toBeInTheDocument();
+      });
+      expect(capturedBody).toEqual({
+        caseId: CASE_ID,
+        // 42, not the 41 the rendered snapshot still shows.
+        expectedSequence: advancedSnapshot.eventSequence,
+        note: { body: 'Ask about the roof rails.' },
+      });
+
+      releaseCoalescedRefresh();
+    });
   });
 
   // Task A11: the rendered workspace view must derive from the persisted

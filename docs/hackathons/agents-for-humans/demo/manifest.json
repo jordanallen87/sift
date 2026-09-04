@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "project": "Sift",
+  "hackathon": "Agents for Humans",
+  "track": "Everyday Agents / Home Energy Guardian",
+  "hardCapSeconds": 300,
+  "targetSeconds": 273,
+  "canvas": { "width": 1920, "height": 1080, "fps": 30 },
+  "liveUrl": "https://sift-hackathon-production.up.railway.app",
+  "mix": { "productAndProofSeconds": 225, "slideSeconds": 48, "slidePercent": 17.6 },
+  "audio": {
+    "paceWordsPerMinute": 145,
+    "policy": "Render one file per cue; preserve pauses over real agent work; shorten copy instead of speeding narration.",
+    "captions": "Generate SRT from final measured offsets and burn readable captions into the upload."
+  },
+  "segments": [
+    {
+      "id": "a1-cold-open",
+      "startSeconds": 0,
+      "targetSeconds": 15,
+      "sourceType": "browser",
+      "source": "generated/storyboard.json#cold-open",
+      "visual": "Working Home Energy Guardian on frame one. Show the bill and baseline; title appears as a lower third after the values are visible.",
+      "narration": "This household's energy bill arrived forty-two percent above its weather-normalized baseline. Sift noticed before the household had to, and opened one durable decision case.",
+      "acceptance": [
+        "Working product is visible on frame one.",
+        "The filmed values match the narration; otherwise the narration is regenerated."
+      ]
+    },
+    {
+      "id": "a2-problem",
+      "startSeconds": 15,
+      "targetSeconds": 15,
+      "sourceType": "slide",
+      "source": "slides/cards.json#problem",
+      "visual": "Problem card with the bill line and three unresolved causes revealing in sequence.",
+      "narration": "A family should not have to compare tariffs, weather, appliance history, and response options just to decide whether a surprising bill deserves action. Sift investigates quietly and interrupts only when the evidence earns it.",
+      "acceptance": ["The slide names the human burden, not the technology stack."]
+    },
+    {
+      "id": "a3-strands-work",
+      "startSeconds": 30,
+      "targetSeconds": 42,
+      "sourceType": "browser",
+      "source": "generated/storyboard.json#investigation",
+      "visual": "Click Request investigation. Follow the changing recommendation/readiness state, then use Runtime Inspector activity inserts to make skill and specialist names legible.",
+      "narration": "One bounded request starts real Strands work. The anomaly investigator normalizes the bill. The rate analyst activates rate-plan-analysis; the weather analyst activates weather-comparison. Each specialist loads only the AgentSkill it needs, calls real fixture tools, and returns sourced evidence to the same readiness graph. This is not one giant prompt wearing several labels.",
+      "requiredEvents": [
+        "skill.activated: bill-normalizer",
+        "skill.activated: rate-plan-analysis",
+        "skill.activated: weather-comparison",
+        "specialist activity for anomaly-investigator, rate-analyst, weather-analyst"
+      ],
+      "acceptance": [
+        "At least two skill names and two specialist names are readable on screen.",
+        "The run is triggered on camera."
+      ]
+    },
+    {
+      "id": "a4-goalloop",
+      "startSeconds": 72,
+      "targetSeconds": 28,
+      "sourceType": "browser",
+      "source": "generated/storyboard.json#runtime-proof",
+      "visual": "Runtime Inspector Overview to establish case/trace, then Timeline filtered or cropped to the real goal.validated event.",
+      "narration": "Every recommendation passes through GoalLoop, bounded at two attempts. In this filmed run the decision-synthesizer validates on attempt one because every required obligation is already resolved. The release suite separately proves the rejection path with an unsupported first draft. We show that as test evidence; we do not fake a Draft withheld card here.",
+      "requiredEvents": ["goal.validated: Recommendation draft validated on attempt 1"],
+      "acceptance": [
+        "The on-screen event says validated, not withheld.",
+        "Narration explicitly distinguishes filmed behavior from the test-proven rejection path."
+      ]
+    },
+    {
+      "id": "a5-steering-and-handoff",
+      "startSeconds": 100,
+      "targetSeconds": 42,
+      "sourceType": "browser",
+      "source": "recordings/aws-runtime-steering.mov",
+      "visual": "A tight Runtime Inspector sequence: repeated weather lookup, Agent redirected, home-systems specialist, home-event-correlation, thermostat evidence, source-challenger. Use freeze-and-callout only on real frames.",
+      "narration": "Weather repeats a lookup without a new angle. RetrySteering catches the no-progress pattern and issues a real Guide intervention. The Swarm hands the unresolved question to home-systems-analyst, which activates home-event-correlation and finds a thermostat sensor-drift event. Source-challenger checks that evidence before downstream reasoning can rely on it. Sift changes specialists because the evidence stopped moving, not because a scripted timer expired.",
+      "requiredEvents": [
+        "intervention.guide or Agent redirected",
+        "swarm handoff to home-systems-analyst",
+        "skill.activated: home-event-correlation",
+        "source-challenger activity"
+      ],
+      "acceptance": ["Every narrated event is readable in the captured trace or removed from narration."]
+    },
+    {
+      "id": "a6-reweight-confirm-recommend",
+      "startSeconds": 142,
+      "targetSeconds": 55,
+      "sourceType": "host",
+      "source": "recordings/aws-reweight-and-recommend.mov",
+      "visual": "Show the reweight prompt and `sift_update_criteria`, the stale state, targeted reconsideration, ConsequenceGuard confirmation, and the resulting recommendation with deterministic Facts and limitation.",
+      "hostPrompts": [
+        "Long-term waste matters more than the cheapest immediate option.",
+        "Ask Sift to reconsider the response options now that long-term waste matters more."
+      ],
+      "requiredTools": ["sift_update_criteria", "sift_request_investigation"],
+      "narration": "Now the human changes the actual decision: long-term waste matters more than the cheapest immediate option. The old recommendation becomes stale, and Sift reconsiders the response-options obligation. Before it can create an inspection proposal, ConsequenceGuard requires confirmation. After that boundary, the Swarm recommends an HVAC and thermostat inspection. The model reports point eight seven; Sift's deterministic scorer independently computes eighty-seven percent from the household's weights. The card also states the counterfactual: remove long-term waste from the weighting and the rate-plan option wins instead.",
+      "requiredEvents": [
+        "recommendation invalidated or stale",
+        "ConsequenceGuard confirmation for propose_inspection",
+        "request-hvac-inspection recommendation"
+      ],
+      "acceptance": [
+        "The filmed score and recommendation match the spoken values.",
+        "Confirmation is described as authorizing a consequential proposal, not scheduling an appointment.",
+        "If the counterfactual sentence is absent, its narration is removed."
+      ]
+    },
+    {
+      "id": "a7-durability-and-approval",
+      "startSeconds": 197,
+      "targetSeconds": 28,
+      "sourceType": "browser",
+      "source": "generated/storyboard.json#human-approval",
+      "visual": "Reload and hold on restored pending state, then visibly click Approve and hold on the stamp and Decided status.",
+      "narration": "Reloading restores the same case, recommendation, evidence, and pending decision. It is durable server state, not a client animation. And the last boundary remains human-only: the agent built the case, but I approve whether this proposal should exist.",
+      "acceptance": [
+        "Restoration is captured before approval, even if it must be recorded as a separate clip.",
+        "The human click is visible."
+      ]
+    },
+    {
+      "id": "a8-architecture",
+      "startSeconds": 225,
+      "targetSeconds": 25,
+      "sourceType": "slide",
+      "source": "slides/cards.json#architecture",
+      "visual": "Reveal watcher, Strands Swarm/AgentSkills, deterministic evidence/readiness, GoalLoop/guards, and human approval. Runtime Inspector grows as an audit rail below them.",
+      "narration": "The architecture separates responsibilities. A deterministic watcher opens the case. A Strands Swarm and AgentSkills investigate. Sift's evidence and readiness engine decides what counts. GoalLoop and consequence guards constrain proposals. The human owns approval. The Runtime Inspector correlates every stage. This submitted deployment runs Strands locally; AgentCore is not claimed unless a real AgentCore deployment replaces it before capture.",
+      "acceptance": ["The execution-target label reflects the submitted deployment. No conditional technology logo remains ambiguous."]
+    },
+    {
+      "id": "a9-trace-and-release-proof",
+      "startSeconds": 250,
+      "targetSeconds": 15,
+      "sourceType": "browser",
+      "source": "recordings/aws-release-proof.mov",
+      "visual": "Quick cut from Runtime Inspector case/trace IDs to the freshly generated release report showing passed status and submitted git SHA.",
+      "narration": "The trace makes the run inspectable, and the release report ties the tested behavior to the exact submitted commit, including the GoalLoop rejection scenario we described rather than staged.",
+      "acceptance": [
+        "The report status is passed.",
+        "The git SHA matches the submitted commit.",
+        "Only checks actually present in the report are named."
+      ]
+    },
+    {
+      "id": "a10-close",
+      "startSeconds": 265,
+      "targetSeconds": 8,
+      "sourceType": "slide",
+      "source": "slides/cards.json#close",
+      "visual": "Final card; no animation beyond a short fade.",
+      "narration": "Most agents are optimized to finish. Sift is optimized to know when it has earned the right to answer.",
+      "acceptance": ["Final runtime is 300 seconds or less after transitions."
+      ]
+    }
+  ]
+}

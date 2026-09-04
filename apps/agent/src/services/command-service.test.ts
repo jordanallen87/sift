@@ -1042,7 +1042,11 @@ describe('CommandService', () => {
       expect(result.status).toBe('not_found');
     });
 
-    it('returns conflict for a stale expectedSequence', () => {
+    // Renamed, not weakened: `+5` is a sequence this case has never reached,
+    // which is what the assertion below has always tested. "Stale" is the
+    // opposite direction and is now a separate, deliberate behaviour -- see
+    // the `sequence-independent commands` block at the end of this file.
+    it('returns conflict for an expectedSequence AHEAD of the case', () => {
       const snapshot = startDemo();
       const result = service.addNote('cmd-note-7', {
         caseId: snapshot.id,
@@ -4206,6 +4210,177 @@ describe('CommandService', () => {
           'confirmed',
         );
       });
+    });
+  });
+
+  /**
+   * The bystander-event rule (`CommandService.loadForIndependentMutation`).
+   *
+   * The defect these cover, in the shape it actually occurred: an
+   * investigation streams its events as the graph progresses, so the case's
+   * sequence climbs for several seconds; a person adds a note or marks a
+   * candidate during that window; and the command was refused for a
+   * `409 CONFLICT` caused entirely by work they were watching rather than
+   * competing with. It reproduced as an intermittent failure of the §61
+   * Playwright journey (`addNote`, expected 41 against an actual 42) and is
+   * not closable from the browser: the SSE stream carries a separate activity
+   * counter, so a client must re-read the canonical snapshot to learn the case
+   * sequence at all, and the run can append again between that read and the
+   * request landing.
+   *
+   * These tests fix the boundary in both directions -- what the rule permits,
+   * and what it must still refuse -- so a later change cannot quietly widen it
+   * into "the sequence check does not apply".
+   */
+  describe('sequence-independent commands (bystander events must not refuse a human action)', () => {
+    /**
+     * Appends the shape of event a streaming run actually produces while a
+     * person is watching -- nothing a note or a triage judgment depends on.
+     */
+    function advanceCaseByBystanderEvent(snapshot: CaseState): CaseState {
+      const appended = caseStore.append(
+        snapshot.id,
+        [
+          {
+            eventId: `ev-bystander-${String(snapshot.eventSequence + 1)}`,
+            caseId: snapshot.id,
+            sequence: snapshot.eventSequence + 1,
+            timestamp: FIXED_NOW,
+            type: 'recommendation.ready',
+            payload: {
+              recommendation: {
+                id: 'rec-bystander-1',
+                status: 'ready',
+                favoredOptionId: null,
+                rationale: 'the run finished while the person was reading',
+                facts: [],
+                hypotheses: [],
+                confidence: 0.5,
+                limitations: [],
+                sourceIds: [],
+                resolvedObligationIds: [],
+                acceptedUncertaintyObligationIds: [],
+                generatedAt: FIXED_NOW,
+              },
+            },
+          },
+        ],
+        snapshot.eventSequence,
+      );
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+      return appended.snapshot;
+    }
+
+    it('addNote accepts a caller whose expectedSequence the case has already passed, and appends at the real sequence', () => {
+      const snapshot = startDemo();
+      const staleSequence = snapshot.eventSequence;
+      const advanced = advanceCaseByBystanderEvent(snapshot);
+      expect(advanced.eventSequence).toBe(staleSequence + 1);
+
+      const result = service.addNote('cmd-independent-note', {
+        caseId: snapshot.id,
+        // Exactly the shape of the real failure: the client read this before
+        // the run appended, and the run appended before the click landed.
+        expectedSequence: staleSequence,
+        note: { body: 'Ask the dealer about the roof rails.' },
+      });
+
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.notes).toHaveLength(1);
+      // Appended ON TOP of the bystander event, never in place of it: the
+      // recommendation the run had just produced survives untouched, and a
+      // note is still not allowed to invalidate it.
+      expect(updated.eventSequence).toBe(staleSequence + 2);
+      expect(updated.recommendation?.id).toBe('rec-bystander-1');
+      expect(updated.recommendation?.status).toBe('ready');
+      expect(result.value.acceptedSequence).toBe(staleSequence + 2);
+    });
+
+    it('setCandidateDisposition accepts a stale caller and records what it replaced from the CURRENT state, not the stale one', () => {
+      const started = startDemo();
+      const withOption = service.upsertOption('cmd-independent-option', {
+        caseId: started.id,
+        expectedSequence: started.eventSequence,
+        option: { label: 'Honda CR-V', kind: 'car', attributes: [] },
+      });
+      requireOk(withOption);
+      const snapshot = requireSnapshot(withOption.value);
+      const entityId = snapshot.entities[0]?.id;
+      if (entityId === undefined) throw new Error('expected candidate');
+
+      // A first judgment lands, and the caller below never sees it.
+      const first = service.setCandidateDisposition('cmd-independent-keep', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        actor: 'human',
+        entityId,
+        disposition: 'keep',
+      });
+      requireOk(first);
+
+      const second = service.setCandidateDisposition('cmd-independent-pass', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        actor: 'human',
+        entityId,
+        disposition: 'pass',
+      });
+
+      requireOk(second);
+      const record = requireSnapshot(second.value).discovery?.dispositions.find(
+        (entry) => entry.entityId === entityId,
+      );
+      expect(record?.disposition).toBe('pass');
+      // The point of deriving from the current snapshot: the history stays
+      // truthful. A stale read would have claimed this replaced 'unreviewed'.
+      expect(record?.previousDisposition).toBe('keep');
+    });
+
+    it('still refuses an expectedSequence AHEAD of the case, for both independent commands', () => {
+      const snapshot = startDemo();
+
+      expect(
+        service.addNote('cmd-independent-ahead-note', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence + 1,
+          note: { body: 'x' },
+        }).status,
+      ).toBe('conflict');
+
+      expect(
+        service.setCandidateDisposition('cmd-independent-ahead-disposition', {
+          caseId: snapshot.id,
+          expectedSequence: snapshot.eventSequence + 1,
+          actor: 'human',
+          entityId: 'candidate-nonexistent',
+          disposition: 'keep',
+        }).status,
+      ).toBe('conflict');
+    });
+
+    it('leaves every other command exactly as strict as it was -- this is an opt-in, not a relaxed default', () => {
+      const snapshot = startDemo();
+      const staleSequence = snapshot.eventSequence;
+      advanceCaseByBystanderEvent(snapshot);
+
+      // Each of these decides what to write by reading the case, so a stale
+      // view is a real hazard and the refusal is the correct answer.
+      expect(
+        service.upsertOption('cmd-strict-option', {
+          caseId: snapshot.id,
+          expectedSequence: staleSequence,
+          option: { label: 'Mazda CX-5', kind: 'car', attributes: [] },
+        }).status,
+      ).toBe('conflict');
+
+      expect(
+        service.updateCriteria('cmd-strict-criteria', {
+          caseId: snapshot.id,
+          expectedSequence: staleSequence,
+          operations: [{ op: 'reweight', criterionId: 'price', weight: 5 }],
+        }).status,
+      ).toBe('conflict');
     });
   });
 });

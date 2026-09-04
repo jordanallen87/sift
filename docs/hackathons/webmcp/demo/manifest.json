@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "project": "Sift",
+  "hackathon": "The WebMCP Challenge",
+  "hardCapSeconds": 180,
+  "targetSeconds": 170,
+  "canvas": { "width": 1920, "height": 1080, "fps": 30 },
+  "liveUrl": "https://sift-hackathon-production.up.railway.app",
+  "mix": { "productSeconds": 132, "slideSeconds": 38, "slidePercent": 22.4 },
+  "audio": {
+    "paceWordsPerMinute": 145,
+    "policy": "Render one file per cue; shorten copy instead of speeding narration.",
+    "captions": "Generate SRT from the final measured cue offsets and burn readable captions into the upload."
+  },
+  "segments": [
+    {
+      "id": "w1-cold-open",
+      "startSeconds": 0,
+      "targetSeconds": 12,
+      "sourceType": "browser",
+      "source": "generated/storyboard.json#cold-open",
+      "visual": "Open directly on the live car case and push in on the recommendation hero. Overlay the title 'Sift + WebMCP' only after the app is visible.",
+      "narration": "This is Sift: one live household decision that ChatGPT can steer without creating a second, conflicting copy.",
+      "acceptance": [
+        "Working product is visible on frame one.",
+        "Case title and recommendation state are legible by second five."
+      ]
+    },
+    {
+      "id": "w2-problem",
+      "startSeconds": 12,
+      "targetSeconds": 10,
+      "sourceType": "slide",
+      "source": "slides/cards.json#problem",
+      "visual": "Problem card; one gentle 3% push-in.",
+      "narration": "The hard part is not finding four cars. It is keeping one decision truthful when the household introduces something the original workflow never anticipated.",
+      "acceptance": ["No more than two text levels appear on screen."]
+    },
+    {
+      "id": "w3-shared-context",
+      "startSeconds": 22,
+      "targetSeconds": 28,
+      "sourceType": "host",
+      "source": "recordings/host-shared-context.mov",
+      "visual": "ChatGPT prompt, visible WebMCP tool chips, and Sift's focused RAV4/ranking in the same capture. Crop changes may alternate host and page, but the interaction remains one continuous take.",
+      "hostPrompt": "Select the RAV4 as my current pick, then tell me why it is ahead.",
+      "requiredTools": ["sift_focus_option", "sift_get_case_context", "sift_explain_ranking"],
+      "narration": "ChatGPT selects the RAV4, reads the page's active case context, and asks Sift to explain the ranking. It did not scrape the screen or invent the arithmetic. The option, score, evidence coverage, and reasons all come from the same deterministic board the household sees.",
+      "acceptance": [
+        "At least one required tool name is readable; the remaining calls are readable in the host transcript or tool detail.",
+        "The selected option and ranking shown by Sift agree with the host response."
+      ],
+      "fallback": "If host calls differ, update narration to the actual valid call sequence. If no page tool is called, discard the take."
+    },
+    {
+      "id": "w4-new-concern",
+      "startSeconds": 50,
+      "targetSeconds": 28,
+      "sourceType": "host",
+      "source": "recordings/host-new-concern.mov",
+      "visual": "Show both prompts and their tool calls; cut to the recommendation becoming stale and the new concern appearing in case state.",
+      "hostPrompts": [
+        "Driving comfort matters more to us than fuel economy.",
+        "We also need two dog crates to fit behind the second row without folding the seats."
+      ],
+      "requiredTools": ["sift_update_criteria", "sift_define_case_attribute"],
+      "narration": "Now the household changes what matters and adds a requirement this Decision Pack never had: two dog crates behind the second row. WebMCP updates the weights and defines a typed, case-specific attribute. Sift invalidates the old answer instead of pretending it still applies.",
+      "acceptance": [
+        "The recommendation visibly becomes stale or recomputes after the reweight.",
+        "No narration claims that defining the attribute immediately creates a comparison row."
+      ]
+    },
+    {
+      "id": "w5-investigate",
+      "startSeconds": 78,
+      "targetSeconds": 42,
+      "sourceType": "host",
+      "source": "recordings/host-investigate.mov",
+      "visual": "Prompt and `sift_request_investigation`, followed by Sift activity, revised recommendation, deterministic facts, and the unresolved crate-fit limitation. Favor the product pane after the call fires.",
+      "hostPrompt": "Go ahead and have Sift investigate that concern.",
+      "requiredTools": ["sift_request_investigation"],
+      "narration": "That request redirects real Strands work. Household-fit and deal specialists re-check the case, the shortlist changes, and Sift preserves the uncomfortable part: cargo dimensions are evidence, but whether these two crates actually fit is still unknown. It becomes a test-drive question, not a fabricated score. The model may favor one option while Sift's deterministic scoring favors another; Sift states that disagreement and lowers confidence instead of hiding it.",
+      "acceptance": [
+        "A real post-concern run is shown, not a prerecorded animation.",
+        "The revised shortlist shown matches the deployed fixture at capture time.",
+        "An explicit unknown, limitation, or test-drive question is legible."
+      ],
+      "fallback": "If the deployed fixture no longer yields a ranking disagreement, remove that sentence; never manufacture it."
+    },
+    {
+      "id": "w6-human-boundary",
+      "startSeconds": 120,
+      "targetSeconds": 22,
+      "sourceType": "browser",
+      "source": "generated/storyboard.json#human-boundary,trace-proof",
+      "visual": "Begin with the host refusing the approval request, then cut to the Sift approval card and the presenter's real click. Hold on the Approved stamp, then open Runtime Inspector and land on the correlated trace.",
+      "hostPrompt": "Can you approve this shortlist for me?",
+      "requiredTools": [],
+      "narration": "Then I ask ChatGPT to approve it. It cannot. There is no approval tool by design. Only my click stamps the consequential decision, and Runtime Inspector ties that action back to the same case and trace.",
+      "acceptance": [
+        "No tool call changes approval state after the host prompt.",
+        "The human click and Approved stamp are both visible.",
+        "A real correlated case or trace ID is legible in Runtime Inspector."
+      ]
+    },
+    {
+      "id": "w7-architecture",
+      "startSeconds": 142,
+      "targetSeconds": 18,
+      "sourceType": "slide",
+      "source": "slides/cards.json#architecture",
+      "visual": "Reveal the four nodes left-to-right, then the shared-state rail, then the human-only approval boundary.",
+      "narration": "Underneath, visible controls and WebMCP tools use one command layer. The human, ChatGPT, page, and supervised Strands team share one durable case, one evidence graph, and one audit trail.",
+      "acceptance": ["Architecture labels match the implementation and do not imply an unbuilt service."]
+    },
+    {
+      "id": "w8-close",
+      "startSeconds": 160,
+      "targetSeconds": 10,
+      "sourceType": "slide",
+      "source": "slides/cards.json#close",
+      "visual": "Close card; bring in Unknown first, then Approved.",
+      "narration": "Same state, no copies, and the human still decides. This is Sift: decisions that know what remains unknown.",
+      "acceptance": ["Final runtime remains below 180 seconds after transitions."]
+    }
+  ]
+}

@@ -11,7 +11,7 @@ function renderForm(commandsOverrides: Parameters<typeof createFakeSiftCommands>
   const commands = createFakeSiftCommands(commandsOverrides);
   const utils = render(
     <AppProviders commandsClient={commands}>
-      <AddNoteForm caseId="case-1" expectedSequence={7} />
+      <AddNoteForm caseId="case-1" resolveExpectedSequence={() => Promise.resolve(7)} />
     </AppProviders>,
   );
   return { ...utils, commands };
@@ -148,7 +148,7 @@ describe('AddNoteForm', () => {
     const commands = createFakeSiftCommands();
     const { overflowRisks } = renderAtNarrowWidth(
       <AppProviders commandsClient={commands}>
-        <AddNoteForm caseId="case-1" expectedSequence={1} />
+        <AddNoteForm caseId="case-1" resolveExpectedSequence={() => Promise.resolve(1)} />
       </AppProviders>,
     );
     expect(overflowRisks).toEqual([]);

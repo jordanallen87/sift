@@ -20,7 +20,10 @@ import { expect, test, type Page } from '@playwright/test';
 import { SiftPage } from './pages/sift-page.js';
 import { assertNoSeriousAxeViolations } from './helpers/axe.js';
 import { installConsoleGuard } from './helpers/console-guard.js';
-import { assertNoHorizontalOverflow } from './helpers/layout-assertions.js';
+import {
+  assertNoHorizontalOverflow,
+  assertScrollIntoViewClearsStickyChrome,
+} from './helpers/layout-assertions.js';
 
 /**
  * The four widths the canonical experience must hold. The three narrow ones
@@ -244,6 +247,44 @@ test.describe('the adaptive vehicle journey', () => {
         expect(shellBox).not.toBeNull();
         // The dock never overlaps the orientation shell at the top.
         expect((dockBox?.y ?? 0) >= (shellBox?.y ?? 0) + (shellBox?.height ?? 0)).toBe(true);
+      }
+    });
+
+    test(`a region the product scrolls to lands clear of the sticky frame at ${String(width)}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      const sift = new SiftPage(page);
+      await sift.open();
+      await sift.launchCarPurchase();
+      await expect(page.getByTestId('decision-orientation-shell')).toBeVisible();
+
+      // The sibling test above proves the two pieces of chrome do not
+      // overlap each other *at rest*. This one covers the case that only
+      // exists once something scrolls, which is where the defect actually
+      // was: `App.tsx`'s `review_question` and `confirm_shortlist` dock
+      // moves both call `scrollIntoView({block: 'start'})` on these two
+      // regions, and `block: 'start'` aims at precisely the edge the
+      // orientation shell is pinned to. Before `case-workspace-scroll`
+      // carried a measured `scroll-padding-top`, that put the hero's first
+      // 134px -- its entire heading -- behind the shell, and moved focus
+      // there. See `assertScrollIntoViewClearsStickyChrome`.
+      await assertScrollIntoViewClearsStickyChrome(page, ['recommendation-hero', 'approval-card']);
+
+      // ...and again with the shell's disclosure open. That used to change
+      // the pinned height (measured: 134px -> 184px at 430px); since the
+      // detail and the two qualification lines moved out of the sticky box
+      // it does not, and the second run proves that rather than assuming it.
+      // Either way a fix that hard-coded one state's height would pass the
+      // assertion above and fail here, which is the point of asserting both.
+      const details = page.getByTestId('orientation-details-toggle');
+      if (await details.count()) {
+        await details.click();
+        await expect(details).toHaveAttribute('aria-expanded', 'true');
+        await assertScrollIntoViewClearsStickyChrome(page, [
+          'recommendation-hero',
+          'approval-card',
+        ]);
       }
     });
   }

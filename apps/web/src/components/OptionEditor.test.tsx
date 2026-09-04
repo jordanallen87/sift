@@ -63,7 +63,7 @@ function renderEditor(
     <AppProviders commandsClient={commands}>
       <OptionEditor
         caseId="case-1"
-        expectedSequence={4}
+        resolveExpectedSequence={() => Promise.resolve(4)}
         optionKind="car"
         optionLabel="car"
         attributeDefinitions={ATTRIBUTE_DEFINITIONS}
@@ -265,7 +265,7 @@ describe('OptionEditor', () => {
       <AppProviders commandsClient={commands}>
         <OptionEditor
           caseId="case-1"
-          expectedSequence={1}
+          resolveExpectedSequence={() => Promise.resolve(1)}
           optionKind="car"
           optionLabel="car"
           attributeDefinitions={ATTRIBUTE_DEFINITIONS}

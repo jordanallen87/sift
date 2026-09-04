@@ -235,6 +235,21 @@ All timestamps in deterministic tests come from an injected `Clock`. IDs come fr
 
 Commands use optimistic concurrency. A stale `eventSequence` produces HTTP `409` with the latest snapshot; clients refresh rather than replaying an unexamined mutation.
 
+#### Bystander events and sequence-independent commands
+
+`expectedSequence` exists to refuse a mutation "written against a stale view" (`webmcp.md`, "Cancellation and concurrency"). Case-wide equality is a proxy for that question, and it is not a perfect one: it cannot tell a competing **write** apart from a **bystander** event that merely moved the case's counter. Since the runtime streams a run's events as the graph progresses, an ordinary investigation advances the sequence steadily for seconds at a time, and a person acting during that window was being refused for work they were only watching.
+
+No client can close that window. The SSE activity stream carries its own separate counter (`activity_events.sequence` is unrelated to `case_events.sequence`), so a browser must re-read the canonical snapshot to learn the case sequence at all, and the run can append again between that read and the request landing. `apps/web`'s `useCaseEvents().resolveEventSequence()` performs exactly that read in the window where the client knows it is behind, which removes the great majority of these refusals; the remainder is structural.
+
+So a small, explicitly enumerated set of commands is **sequence-independent**: their effect depends on no case state a bystander event could change, so a caller that is *behind* is accepted and the append is anchored to the case's current sequence. A caller that is *ahead* — a sequence the case has never reached — is still refused, and `CaseStore.append()` still performs its own atomic check inside the transaction, so a genuine interleave is still refused.
+
+Two commands qualify today (`CommandService.loadForIndependentMutation`, which carries the per-command justification):
+
+- **`addNote`** — a note satisfies no obligation, links to no evidence, and never invalidates a recommendation, so no event can make the note someone just wrote the wrong note. Its only case references (`optionIds`, `obligationId`) are validated against the current snapshot.
+- **`setCandidateDisposition`** — carries the complete desired value of one candidate's own disposition rather than a delta, is last-writer-wins per candidate by construction (undo is the forward command `unreviewed`), and derives `previousDisposition` from the current snapshot, so a behind caller produces a *more* accurate record than a stale read would.
+
+Every other command keeps strict equality. This is an opt-in, not a relaxed default: a command that reads the case to decide what to write — `reviewProposal`, `setEvidenceDisposition`, `updateCriteria`, `upsertOption`, `setOptionAttribute`, `defineCaseAttribute` — does not qualify.
+
 ### Two persistence paths: `append()` versus `updateSelection()`
 
 Sift has exactly two ways to durably change a case, and which one a command handler calls is what makes change-set §54's rule ("presentation filtering ≠ criterion mutation") true by construction rather than by convention (ADR 0005 decision 1):
@@ -390,6 +405,18 @@ either. The case workspace is a fixed-height pane shell: the root is exactly
 `overflow-y: auto` region between them is the only thing that scrolls.
 `DecisionOrientationShell` stays `sticky top-0` and now pins against that
 region. Both bands carry safe-area padding.
+
+Only the shell's compact row (phase · coverage · next step, and the
+disclosure trigger it doubles as) is that sticky element. Its two
+qualification lines — the answer is provisional, and a concern the person
+raised has nothing Sift can check — plus the expanded detail render
+immediately beneath it in normal flow: unconditionally visible, in the same
+reading order, behind no control, but scrolling with the content they
+qualify instead of holding 133.56px (183.94px expanded) of a 390px pane for
+the whole session. Pinned chrome measures 72px in both states after the
+split. `case-workspace-scroll`'s `scroll-padding-top` is measured from that
+sticky element alone, so a `scrollIntoView({block: 'start'})` still lands
+clear of it (`assertScrollIntoViewClearsStickyChrome`).
 
 This replaces an earlier rule — "both use `position: sticky`, not `fixed`,
 because Sift renders inside an iframe in the companion case and a `fixed`

@@ -41,7 +41,7 @@ function renderCard(
     <AppProviders commandsClient={commands}>
       <CaseExtensionReviewCard
         caseId="case-1"
-        expectedSequence={3}
+        resolveExpectedSequence={() => Promise.resolve(3)}
         extension={buildExtension()}
         {...props}
       />
@@ -212,7 +212,7 @@ describe('CaseExtensionReviewCard', () => {
       <AppProviders commandsClient={commands}>
         <CaseExtensionReviewCard
           caseId="case-1"
-          expectedSequence={1}
+          resolveExpectedSequence={() => Promise.resolve(1)}
           extension={buildExtension()}
         />
       </AppProviders>,

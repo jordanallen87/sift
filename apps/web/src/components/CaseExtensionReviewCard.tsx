@@ -26,7 +26,20 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export interface CaseExtensionReviewCardProps {
   caseId: string;
-  expectedSequence: number;
+  /**
+   * Resolves the `expectedSequence` this write must carry, at SUBMIT time.
+   *
+   * A plain `expectedSequence: number` prop was a render-time value used for
+   * a submit-time decision, and the gap between the two is real: the pane's
+   * canonical snapshot refreshes on a coalescing throttle, so between the
+   * events of a live run it is legitimately behind the server and this form
+   * would send a sequence the case had already moved past -- a visible,
+   * unexplainable failure for the person, on a write nothing had actually
+   * invalidated. `App.tsx`'s `resolveExpectedSequence` answers with the
+   * sequence the server confirms, reading it only when the client knows it
+   * is behind.
+   */
+  resolveExpectedSequence: () => Promise<number>;
   /** `null` when no agent-proposed extension is pending review. */
   extension: CaseExtension | null;
 }
@@ -39,7 +52,7 @@ const CONFIRMATION_LABEL: Record<CaseExtension['definition']['confirmation'], st
 
 export function CaseExtensionReviewCard({
   caseId,
-  expectedSequence,
+  resolveExpectedSequence,
   extension,
 }: CaseExtensionReviewCardProps) {
   const commands = useSiftCommands();
@@ -53,14 +66,16 @@ export function CaseExtensionReviewCard({
     setError(null);
     const reason = note.trim();
 
-    commands
-      .reviewCaseExtension({
-        caseId,
-        extensionId: extension.id,
-        decision,
-        expectedSequence,
-        ...(reason.length > 0 ? { reason } : {}),
-      })
+    resolveExpectedSequence()
+      .then((expectedSequence) =>
+        commands.reviewCaseExtension({
+          caseId,
+          extensionId: extension.id,
+          decision,
+          expectedSequence,
+          ...(reason.length > 0 ? { reason } : {}),
+        }),
+      )
       .then(() => {
         setPending(false);
         setNote('');

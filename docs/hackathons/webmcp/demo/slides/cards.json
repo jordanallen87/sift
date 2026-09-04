@@ -1,0 +1,33 @@
+{
+  "canvas": { "width": 1920, "height": 1080, "safeMargin": 120 },
+  "style": {
+    "background": "#F4F0E8",
+    "foreground": "#14231D",
+    "accent": "#D8673B",
+    "type": "editorial, restrained, high contrast; no stock photography"
+  },
+  "cards": [
+    {
+      "id": "problem",
+      "headline": "The hard part isn't finding options.",
+      "subhead": "It's keeping one decision truthful while the human changes what matters.",
+      "visual": "Four vehicle cards converge into one shared decision state; one new concern enters from the human side.",
+      "durationSeconds": 10
+    },
+    {
+      "id": "architecture",
+      "headline": "One case. One command layer. Four participants.",
+      "subhead": "Human ↔ ChatGPT/WebMCP ↔ Sift page ↔ supervised Strands team",
+      "visual": "A single horizontal flow with Shared case state beneath all four nodes. Mark approval as a one-way human-only boundary.",
+      "durationSeconds": 18
+    },
+    {
+      "id": "close",
+      "headline": "Same state. No copies. Human decides.",
+      "subhead": "Sift — decisions that know what remains unknown.",
+      "visual": "Approved stamp beside an explicit Unknown chip; small WebMCP and Strands labels only.",
+      "durationSeconds": 10
+    }
+  ]
+}
+

@@ -15,9 +15,21 @@
  *    `sift_record_discovery` has no `actor` and no `op` field, so there is
  *    nowhere in the request to ask for confirmation. The capability is
  *    absent, not guarded.
- * 3. A write against a stale `expectedSequence` is refused, and the refusal
+ * 3. A write whose DECISION depends on the view it read -- reweighting a
+ *    criteria set -- is refused when that view has moved on, and the refusal
  *    names the sequence the case is actually at, so the caller can recover
  *    rather than guess.
+ *
+ *    This step used to make the same point with `sift_add_note`, and it was
+ *    retargeted rather than deleted when `addNote` became one of the two
+ *    commands the server treats as sequence-independent (see
+ *    `CommandService.loadForIndependentMutation`). A note depends on nothing
+ *    a bystander event can change, so refusing one proved only that a counter
+ *    had moved -- and, on a real case with a run streaming events, refused
+ *    writes that were never in conflict with anything. `sift_update_criteria`
+ *    is the honest subject: it decides what to write by reading the criteria
+ *    set, so a stale view is a real hazard and the refusal is real
+ *    protection.
  * 4. A person can confirm or reject what the assistant proposed, and the
  *    result carries whose judgment it was.
  */
@@ -44,7 +56,7 @@ export const sharedControl: Journey = {
   id: 'shared-control',
   title: 'Shared control — a person and an assistant on one case',
   proves:
-    "A person and a WebMCP host alternate on the same case: the person's answer is readable by the host, the host can only propose, a stale write is refused with the real sequence, and the person decides.",
+    "A person and a WebMCP host alternate on the same case: the person's answer is readable by the host, the host can only propose, a view-dependent write against a stale sequence is refused with the real sequence, and the person decides.",
   turns: [
     {
       id: 'launch',
@@ -191,15 +203,19 @@ export const sharedControl: Journey = {
     {
       id: 'a-stale-write-is-refused',
       actor: 'assistant',
-      intent: 'Writes using a sequence it read a moment ago, after the case moved',
+      intent: 'Reweights a criterion using a sequence it read a moment ago, after the case moved',
       async act(ctx) {
         const before = await ctx.state();
         const stale = ((before['eventSequence'] as number | undefined) ?? 1) - 1;
-        // Deliberately stale by one: the shape of a real race, not a wild value.
-        const result = await ctx.host.call('sift_add_note', {
+        const criterionId =
+          (before['criteria'] as { id?: string }[] | undefined)?.[0]?.id ?? 'pref.ownership_cost';
+        // Deliberately stale by one: the shape of a real race, not a wild
+        // value. Reweighting is decided by reading the criteria set, so this
+        // is a write the guard genuinely protects.
+        const result = await ctx.host.call('sift_update_criteria', {
           caseId: ctx.caseId,
           expectedSequence: Math.max(0, stale),
-          note: { body: 'written against a sequence that has moved on' },
+          operations: [{ op: 'reweight', criterionId, weight: 5 }],
         });
         (ctx as unknown as { staleResult?: unknown }).staleResult = result;
       },

@@ -22,7 +22,20 @@ import { Label } from '@/components/ui/label';
 
 export interface OptionEditorProps {
   caseId: string;
-  expectedSequence: number;
+  /**
+   * Resolves the `expectedSequence` this write must carry, at SUBMIT time.
+   *
+   * A plain `expectedSequence: number` prop was a render-time value used for
+   * a submit-time decision, and the gap between the two is real: the pane's
+   * canonical snapshot refreshes on a coalescing throttle, so between the
+   * events of a live run it is legitimately behind the server and this form
+   * would send a sequence the case had already moved past -- a visible,
+   * unexplainable failure for the person, on a write nothing had actually
+   * invalidated. `App.tsx`'s `resolveExpectedSequence` answers with the
+   * sequence the server confirms, reading it only when the client knows it
+   * is behind.
+   */
+  resolveExpectedSequence: () => Promise<number>;
   /** The `EntityRecord.kind` this editor manages, e.g. `"car"`. */
   optionKind: string;
   /** Singular pack presentation label, e.g. `"car"` (`CompiledDecisionPack.presentation.optionLabel`). */
@@ -52,7 +65,7 @@ function formFromEntity(entity: EntityRecord): FormState {
 
 export function OptionEditor({
   caseId,
-  expectedSequence,
+  resolveExpectedSequence,
   optionKind,
   optionLabel,
   attributeDefinitions,
@@ -89,13 +102,15 @@ export function OptionEditor({
       .filter((entry): entry is [string, AttributeValue] => entry[1] !== undefined)
       .map(([definitionId, value]) => ({ definitionId, value }));
 
-    commands
-      .upsertOption({
-        caseId,
-        expectedSequence,
-        ...(form.optionId !== null ? { optionId: form.optionId } : {}),
-        option: { label: form.label.trim(), kind: optionKind, attributes },
-      })
+    resolveExpectedSequence()
+      .then((expectedSequence) =>
+        commands.upsertOption({
+          caseId,
+          expectedSequence,
+          ...(form.optionId !== null ? { optionId: form.optionId } : {}),
+          option: { label: form.label.trim(), kind: optionKind, attributes },
+        }),
+      )
       .then(() => {
         setSaving(false);
         setForm(blankForm());

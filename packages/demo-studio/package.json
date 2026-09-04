@@ -1,9 +1,10 @@
 {
   "name": "@sift/demo-studio",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
-  "description": "Portable, narration-led demo manifest validation and timing utilities.",
+  "description": "Portable, narration-led demo authoring (manifest validation, timing) and recording review (probe, beat frames, audio, narration claims).",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {

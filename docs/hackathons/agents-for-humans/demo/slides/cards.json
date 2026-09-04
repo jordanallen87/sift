@@ -1,0 +1,32 @@
+{
+  "canvas": { "width": 1920, "height": 1080, "safeMargin": 120 },
+  "style": {
+    "background": "#F4F0E8",
+    "foreground": "#14231D",
+    "accent": "#D8673B",
+    "type": "editorial, restrained, high contrast; no stock photography"
+  },
+  "cards": [
+    {
+      "id": "problem",
+      "headline": "A 42% bill increase should not become a second job.",
+      "subhead": "Investigate quietly. Interrupt only when there is something worth deciding.",
+      "visual": "A small bill line rises 42%; beneath it, rate, weather, and household causes remain unresolved.",
+      "durationSeconds": 15
+    },
+    {
+      "id": "architecture",
+      "headline": "The model proposes. Deterministic gates decide what counts.",
+      "subhead": "Watcher → Strands Swarm + AgentSkills → evidence/readiness → GoalLoop + guards → human approval",
+      "visual": "Five-stage horizontal architecture. Place Runtime Inspector as an audit rail beneath every stage. Label execution target 'local Strands' unless AgentCore is truly deployed.",
+      "durationSeconds": 25
+    },
+    {
+      "id": "close",
+      "headline": "Most agents are optimized to finish.",
+      "subhead": "Sift is optimized to know when it has earned the right to answer.",
+      "visual": "A restrained final card with Sift wordmark and Approved stamp; no extra feature list.",
+      "durationSeconds": 8
+    }
+  ]
+}

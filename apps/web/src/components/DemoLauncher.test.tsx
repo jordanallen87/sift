@@ -31,6 +31,31 @@ describe('DemoLauncher', () => {
     expect(screen.getAllByRole('button')).toHaveLength(4);
   });
 
+  it('renders the Sift logo as decoration, leaving the heading to name the product', () => {
+    const { container } = renderLauncher();
+
+    // The asset actually shipped, at the path the production build serves it
+    // from -- `apps/web/public/brand/sift-logo.svg` -> `/brand/sift-logo.svg`,
+    // the same static-asset convention index.html documents for the favicons.
+    // Asserting the path is what would catch the logo silently 404ing.
+    const logo = container.querySelector('img[src="/brand/sift-logo.svg"]');
+    expect(logo).toBeInTheDocument();
+
+    // Decorative, deliberately: `<h1>Start a Sift case</h1>` below it already
+    // names the product in real text, so an accessible name here would make a
+    // screen reader announce "Sift" and then "Start a Sift case". `alt=""` is
+    // what keeps it out of the accessibility tree entirely.
+    expect(logo).toHaveAttribute('alt', '');
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Start a Sift case' })).toBeInTheDocument();
+
+    // Intrinsic dimensions, so the browser reserves the box before the SVG
+    // loads instead of collapsing to zero and then shoving the heading and
+    // both demo cards down the page. The rendered size is CSS's job.
+    expect(logo).toHaveAttribute('width', '748');
+    expect(logo).toHaveAttribute('height', '276');
+  });
+
   it('renders the primary "Compare vehicles" action and calls onCompareVehicles when clicked', async () => {
     const onCompareVehicles = vi.fn();
     const user = userEvent.setup();

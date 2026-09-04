@@ -68,12 +68,25 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export interface AddNoteFormProps {
   caseId: string;
-  expectedSequence: number;
+  /**
+   * Resolves the `expectedSequence` this write must carry, at SUBMIT time.
+   *
+   * A plain `expectedSequence: number` prop was a render-time value used for
+   * a submit-time decision, and the gap between the two is real: the pane's
+   * canonical snapshot refreshes on a coalescing throttle, so between the
+   * events of a live run it is legitimately behind the server and this form
+   * would send a sequence the case had already moved past -- a visible,
+   * unexplainable failure for the person, on a write nothing had actually
+   * invalidated. `App.tsx`'s `resolveExpectedSequence` answers with the
+   * sequence the server confirms, reading it only when the client knows it
+   * is behind.
+   */
+  resolveExpectedSequence: () => Promise<number>;
 }
 
 const neutralTone = STATUS_TONE_META.neutral;
 
-export function AddNoteForm({ caseId, expectedSequence }: AddNoteFormProps) {
+export function AddNoteForm({ caseId, resolveExpectedSequence }: AddNoteFormProps) {
   const commands = useSiftCommands();
   const [body, setBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -89,12 +102,14 @@ export function AddNoteForm({ caseId, expectedSequence }: AddNoteFormProps) {
     setSuccess(false);
 
     // Deliberately no `origin` key here -- see this file's header comment.
-    commands
-      .addNote({
-        caseId,
-        expectedSequence,
-        note: { body: body.trim() },
-      })
+    resolveExpectedSequence()
+      .then((expectedSequence) =>
+        commands.addNote({
+          caseId,
+          expectedSequence,
+          note: { body: body.trim() },
+        }),
+      )
       .then(() => {
         setSubmitting(false);
         setSuccess(true);

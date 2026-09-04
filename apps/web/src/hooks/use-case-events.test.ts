@@ -890,4 +890,153 @@ describe('useCaseEvents', () => {
     expect(refreshCount).toBe(1);
   });
 
+  /**
+   * The regression these two tests exist for, in one sentence: coalescing the
+   * snapshot refresh made `snapshot.eventSequence` a value that can be
+   * legitimately behind the server, and every mutation in the app was reading
+   * `expectedSequence` straight out of it.
+   *
+   * Nothing in the live stream can substitute for that read.
+   * `PublicActivityEvent.sequence` -- the number the SSE `id:` field carries
+   * -- is "a wholly separate monotonic counter from `CaseEvent.sequence`"
+   * (`apps/agent/src/store/activity-store.ts`), so an event tells this hook
+   * THAT the case moved and never what its sequence became. The only honest
+   * answer is to read the canonical snapshot, and the only question worth
+   * arguing about is when.
+   */
+  describe('resolveEventSequence (the sequence a mutation must carry)', () => {
+    it('answers with the sequence the server would accept while the coalesced refresh is still behind, not the stale snapshot in hand', async () => {
+      // The real shape, in order: the server advances the case on its own
+      // (a run streaming events as the graph progresses, or another writer),
+      // the event reaches this client, and the refresh that would reconcile
+      // it has not landed when the person presses a button.
+      const staleSnapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 41 });
+      const advancedSnapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 42 });
+      let reads = 0;
+      let releaseCoalescedRefresh: () => void = () => undefined;
+      const coalescedRefreshLanded = new Promise<void>((resolve) => {
+        releaseCoalescedRefresh = resolve;
+      });
+      server.use(
+        http.get(`${BASE_URL}/api/cases/${CASE_ID}/events`, async () => {
+          reads += 1;
+          if (reads === 1) {
+            return HttpResponse.json({
+              snapshot: staleSnapshot,
+              events: [] as PublicActivityEvent[],
+            });
+          }
+          if (reads === 2) {
+            // The event-driven refresh, held open for the whole assertion
+            // window. This is what "the snapshot lags by up to
+            // `snapshotRefreshIntervalMs`" looks like when made
+            // deterministic: the client has seen the case move and has not
+            // yet read the result.
+            await coalescedRefreshLanded;
+          }
+          return HttpResponse.json({
+            snapshot: advancedSnapshot,
+            events: [] as PublicActivityEvent[],
+          });
+        }),
+      );
+
+      const { result } = renderHook(() =>
+        useCaseEvents({
+          caseId: CASE_ID,
+          baseUrl: BASE_URL,
+          createEventSource: createFakeEventSource,
+        }),
+      );
+
+      await waitFor(() => expect(result.current.snapshot).toEqual(staleSnapshot));
+      await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+      const source = FakeEventSource.instances[0]!;
+      source.triggerOpen();
+      await waitFor(() => expect(result.current.connectionState).toBe('live'));
+
+      act(() => {
+        source.emit(buildEvent({ eventId: 'evt-server-originated', sequence: 1 }));
+      });
+      await waitFor(() => expect(reads).toBe(2));
+
+      // The precondition this test is about: the rendered snapshot is
+      // genuinely one behind the server right now.
+      expect(result.current.snapshot?.eventSequence).toBe(41);
+
+      // ...and the resolver still answers with what the server would accept.
+      // Reading `snapshot.eventSequence` here -- what every call site used to
+      // do -- yields 41 and earns a 409.
+      await expect(result.current.resolveEventSequence()).resolves.toBe(42);
+      expect(reads).toBe(3);
+
+      releaseCoalescedRefresh();
+      await waitFor(() => expect(result.current.snapshot).toEqual(advancedSnapshot));
+    });
+
+    it('costs no request at all once every event this client has seen is already reconciled', async () => {
+      // The other half of the bargain: this is a read in the window where the
+      // client KNOWS it is behind, not a read before every command. A client
+      // that is caught up answers from the snapshot in hand, so ordinary
+      // clicking adds no traffic and a genuine conflict is still a conflict.
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 7 });
+      let reads = 0;
+      server.use(
+        http.get(`${BASE_URL}/api/cases/${CASE_ID}/events`, () => {
+          reads += 1;
+          return HttpResponse.json({ snapshot, events: [] as PublicActivityEvent[] });
+        }),
+      );
+
+      const { result } = renderHook(() =>
+        useCaseEvents({
+          caseId: CASE_ID,
+          baseUrl: BASE_URL,
+          createEventSource: createFakeEventSource,
+        }),
+      );
+
+      await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+      const readsAfterLoad = reads;
+
+      await expect(result.current.resolveEventSequence()).resolves.toBe(7);
+      await expect(result.current.resolveEventSequence()).resolves.toBe(7);
+      expect(reads).toBe(readsAfterLoad);
+    });
+
+    it('falls back to the last known sequence rather than throwing when the read itself fails', async () => {
+      const snapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 3 });
+      let reads = 0;
+      server.use(
+        http.get(`${BASE_URL}/api/cases/${CASE_ID}/events`, () => {
+          reads += 1;
+          if (reads === 1) {
+            return HttpResponse.json({ snapshot, events: [] as PublicActivityEvent[] });
+          }
+          return new HttpResponse(null, { status: 500 });
+        }),
+      );
+
+      const { result } = renderHook(() =>
+        useCaseEvents({
+          caseId: CASE_ID,
+          baseUrl: BASE_URL,
+          createEventSource: createFakeEventSource,
+        }),
+      );
+
+      await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+      await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+      const source = FakeEventSource.instances[0]!;
+      source.triggerOpen();
+      act(() => {
+        source.emit(buildEvent({ eventId: 'evt-unreconciled', sequence: 4 }));
+      });
+
+      // A failed read leaves the caller exactly where it stood before this
+      // resolver existed -- the last sequence the server confirmed -- rather
+      // than rejecting a command the person actually asked for.
+      await expect(result.current.resolveEventSequence()).resolves.toBe(3);
+    });
+  });
 });
