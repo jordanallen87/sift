@@ -764,7 +764,7 @@ describe('createAttributeRecord', () => {
   });
 
   // --- Honesty boundary: a model may not certify its own inference as
-  // "verified" (plan task F5 / change-set §25-§26). CLAUDE.md: "The
+  // "verified" (plan task F5 / change-set §25-§26). docs/engineering-principles.md: "The
   // deterministic core, not an LLM, owns case state, evidence validity,
   // readiness, and human authority." `status: 'verified'` is this protocol's
   // strongest claim -- it asserts a human confirmed the value, not merely

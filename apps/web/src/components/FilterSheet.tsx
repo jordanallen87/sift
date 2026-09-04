@@ -535,7 +535,7 @@ function FilterControl({
 
 /**
  * The three genuinely different reasons this sheet can have nothing to
- * show, each with its own honest sentence (CLAUDE.md "Never fabricate") --
+ * show, each with its own honest sentence (docs/engineering-principles.md "Never fabricate") --
  * `null` means there IS something to render.
  *
  * Order matters. "No filterable details yet" comes first because it is the

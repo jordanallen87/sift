@@ -73,7 +73,7 @@ const CREDENTIAL_ASSIGNMENT =
 const PLACEHOLDER_VALUE =
   /^(your[-_ ]?|change[-_]?me|example|placeholder|xxx+|\*+|<.*>|\$\{.*\}|process\.env|undefined$|null$|redacted|fake|dummy|sample|test[-_]?key)/i;
 // Deliberately excludes `/`: bare text (comments, prose) commonly contains
-// doc/URL paths like `docs/superpowers/plans/2026-...-build.md`, and `/` lets
+// doc/URL paths like `docs/planning/plans/2026-...-build.md`, and `/` lets
 // those slash-joined segments look like one long high-entropy token. `/` is
 // still allowed inside quoted string literals via STRING_LITERAL below,
 // where a real base64-with-slashes secret would actually appear.
@@ -286,7 +286,7 @@ function printReport(result: CheckSourceResult): void {
   console.error(
     '\nRepair the causal defect (finish the work, unfocus/unskip the test, or remove the secret).',
   );
-  console.error('Never delete or weaken this scanner to make it pass — see CLAUDE.md.');
+  console.error('Never delete or weaken this scanner to make it pass — see docs/engineering-principles.md.');
 }
 
 function isMain(): boolean {

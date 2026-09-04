@@ -24,7 +24,7 @@ Decisions: ADR 0004 (workspace IA), ADR 0005 (view state and option views), ADR 
 
 ## Context
 
-`docs/superpowers/plans/2026-08-26-pax-hackathon-build.md` is 178/179 complete and closed; its one
+`docs/planning/plans/2026-08-26-pax-hackathon-build.md` is 178/179 complete and closed; its one
 open item is a human-only demo recording. This is a **new plan**, not a continuation of that one.
 
 It exists because the project owner reported the shipped workspace as "virtually unusable" and
@@ -56,7 +56,7 @@ These bind every task. A task that violates one is not done, regardless of its o
    Note the coupling risk: `home-energy-guardian-scenario.ts:113-119` imports helpers from
    `car-purchase-scenario.ts` and inherits changes made there.
 8. **The canonical viewport is 390–480px**, designed natively, not a shrunk desktop.
-9. **Specs are updated before acceptance behavior changes** (CLAUDE.md). This rule was violated
+9. **Specs are updated before acceptance behavior changes** (docs/engineering-principles.md). This rule was violated
    once already and is the direct cause of the regression this plan repairs.
 
 ## Sequencing rationale
@@ -399,7 +399,7 @@ The audit found this pipeline incomplete end-to-end; each item below closes a sp
       *Done 2026-08-30.* `X-Sift-Command-Origin` header (mirroring the existing `Idempotency-Key`
       pattern, since body schemas are `.strict()`), validated against a closed one-member
       `COMMAND_ORIGINS` enum, threaded through the **unchanged** dispatch switch into
-      `PublicActivityEvent.safeDetails.origin`. No second command path, per CLAUDE.md's requirement
+      `PublicActivityEvent.safeDetails.origin`. No second command path, per docs/engineering-principles.md's requirement
       that visible controls and WebMCP callbacks share one implementation — a command with and
       without the header produces identical case state and an identical `eventSequence` advance,
       which is asserted rather than assumed.

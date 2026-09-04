@@ -77,7 +77,7 @@
  *
  * ## Authority boundary: this route can never approve anything
  *
- * CLAUDE.md: "The model may propose candidate events and recommendations.
+ * docs/engineering-principles.md: "The model may propose candidate events and recommendations.
  * It may never approve a consequential decision." `packages/core/src/policy.ts`'s
  * `reviewProposal` already rejects any `decision.actor !== 'human'` -- but
  * that check inspects a client-supplied JSON field, not an authenticated

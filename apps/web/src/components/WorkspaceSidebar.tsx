@@ -57,7 +57,7 @@
  * file's own narrow-mode `null` already avoids for priorities and open
  * questions.
  *
- * ## Priorities (CLAUDE.md/product.md "Decision Profile" -- §42)
+ * ## Priorities (docs/specs/product.md "Decision Profile" -- §42)
  *
  * Takes the already-derived `DecisionProfile` (`decision-profile.ts`,
  * `deriveDecisionProfile`) as a prop rather than re-deriving anything from
@@ -97,7 +97,7 @@
  * the row, was losing the space race to the band text and getting cut to
  * "S...". `PriorityRow` therefore stacks two lines instead of one row:
  * the label owns the full row width on its own line and is never
- * `truncate`d (long labels wrap instead of clipping -- CLAUDE.md "Never
+ * `truncate`d (long labels wrap instead of clipping -- docs/engineering-principles.md "Never
  * fabricate"/never hide real content), and the band + bar move to a second,
  * visually de-emphasised line (smaller, `--color-ink-muted` "tertiary text"
  * per design-system.md, no `label-caps` shout treatment) underneath. The

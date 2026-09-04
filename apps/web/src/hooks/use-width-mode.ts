@@ -7,7 +7,7 @@
  * `testing.md` already treats as canonical) is new surface area this ADR
  * authorizes." This is that hook.
  *
- * The narrow/expanded split is CLAUDE.md's own canonical boundary: "the
+ * The narrow/expanded split is docs/engineering-principles.md's own canonical boundary: "the
  * canonical viewport is a 390-480 px ChatGPT right pane." `narrow` covers
  * that whole range (and anything smaller); `expanded` is everything wider.
  *
@@ -20,7 +20,7 @@
  * consumer, in every existing test file, which is unacceptable for a hook
  * this task requires other components to actually adopt. Both the initial
  * render and the effect below check for its existence first and fall back
- * to a fixed default (`narrow`, CLAUDE.md's own canonical width) rather
+ * to a fixed default (`narrow`, docs/engineering-principles.md's own canonical width) rather
  * than throwing -- consumers always get a real, renderable `WidthMode`.
  */
 import { useEffect, useState } from 'react';

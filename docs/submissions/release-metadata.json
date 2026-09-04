@@ -49,7 +49,7 @@
     "tests/e2e/home-energy-guardian-journey.spec.ts-snapshots/ (24 PNGs: 6 named states x 4 viewport projects)",
     "States: initial-launcher, seeded-case, recommendation-ready, recommendation-stale, awaiting-approval, decided",
     "Viewports: right-pane-390 (390x844), right-pane-430 (430x900), right-pane-480 (480x900), desktop-1440 (1440x1000)",
-    "Visually inspected as a set on 2026-08-28: legible and structurally sound at all viewports; desktop-1440 correctly renders the canonical right-pane content capped at 480px max-width per CLAUDE.md, not a stretched dashboard; no overlap/overflow observed. Visual polish (shadcn/ui redesign) remains queued -- see known limitations."
+    "Visually inspected as a set on 2026-08-28: legible and structurally sound at all viewports; desktop-1440 correctly renders the canonical right-pane content capped at 480px max-width per docs/engineering-principles.md, not a stretched dashboard; no overlap/overflow observed. Visual polish (shadcn/ui redesign) remains queued -- see known limitations."
   ],
   "_todo": [
     "Record the WebMCP demo video (docs/submissions/webmcp/demo-script.md) and set webmcpVideoUrl once uploaded (must be under 3:00).",

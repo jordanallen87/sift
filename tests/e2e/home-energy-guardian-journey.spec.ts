@@ -43,7 +43,7 @@
  * `POST /api/cases/:caseId/run` route and `RequestInvestigationInput`
  * contract (including its real, documented `obligationId` field) the
  * visible control itself calls -- genuinely the same command
- * implementation, not a bypass of it (CLAUDE.md "Visible UI controls and
+ * implementation, not a bypass of it (docs/engineering-principles.md "Visible UI controls and
  * WebMCP callbacks use the same command implementation") -- see
  * `sift-page.ts`'s `postRunRequest`/`waitForRecommendationRationaleContains`
  * for the full mechanics.
@@ -133,7 +133,7 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
 
     // Real WebMCP is genuinely unavailable in this browser -- the page must
     // say so and stay fully usable through visible controls (webmcp.md
-    // "Browser adapter"; CLAUDE.md "Non-negotiable product truths").
+    // "Browser adapter"; docs/engineering-principles.md "Non-negotiable product truths").
     await expect(page.getByTestId('webmcp-status-unsupported')).toBeVisible();
 
     // --- 4 seeded response options (ADR 0004: "Manage options" -- renamed

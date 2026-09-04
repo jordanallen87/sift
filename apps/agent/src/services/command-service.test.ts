@@ -191,7 +191,7 @@ describe('CommandService', () => {
       // manual smoke test (docs/build-log.md). upsertOption cannot be used
       // to seed these instead: OptionAttributeInputSchema.value is required
       // and the handler hardcodes status: 'asserted', so an entity carrying
-      // a legitimately unknown-status attribute (no value; CLAUDE.md "never
+      // a legitimately unknown-status attribute (no value; docs/engineering-principles.md "never
       // fabricate") can only be expressed as a direct option.upserted event
       // -- exactly what demoSeedEntities lets a pack-boot wiring supply.
       const unknownAttributeEntity: EntityRecord = {
@@ -304,7 +304,7 @@ describe('CommandService', () => {
     });
   });
 
-  // I1 (docs/superpowers/plans/2026-08-30-generic-decision-workspace.md
+  // I1 (docs/planning/plans/2026-08-30-generic-decision-workspace.md
   // "Phase I"; ADR 0006 decision 8): `commandOrigin` is a trailing optional
   // parameter on the command envelope, threaded straight through to
   // `emitActivity` -- never a branch that changes what the command does.
@@ -1071,7 +1071,7 @@ describe('CommandService', () => {
       expect(requireSnapshot(second.value).notes).toHaveLength(1);
     });
 
-    // The central rule of this concept (CLAUDE.md "The deterministic core,
+    // The central rule of this concept (docs/engineering-principles.md "The deterministic core,
     // not an LLM, owns case state, evidence validity, readiness, and human
     // authority"): a note is an observation that has not earned evidence
     // status. Adding one to a case that already has a ready recommendation

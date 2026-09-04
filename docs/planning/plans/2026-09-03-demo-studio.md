@@ -1,6 +1,5 @@
 # Reusable Demo Studio Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn the proven one-off demo pipeline into a reusable package with validated manifests, animated architecture flows, timed annotations, and deterministic composition inputs.
 
@@ -8,7 +7,7 @@
 
 **Tech Stack:** TypeScript 6, Zod 4, Vitest 4, HTML/CSS/SVG, FFmpeg/ffprobe, aidemo v0.8.0.
 
-**Spec:** `docs/superpowers/specs/2026-09-03-demo-studio-run-map-design.md`
+**Spec:** `docs/planning/specs/2026-09-03-demo-studio-run-map-design.md`
 
 ## Global Constraints
 

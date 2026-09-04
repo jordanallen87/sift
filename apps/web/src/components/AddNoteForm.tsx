@@ -6,7 +6,7 @@
  * (`register-sift-tools.ts`) were all already built before this component
  * existed -- ChatGPT could add a note, but a person at the keyboard had no
  * way to. This form closes that gap by calling the exact same
- * `commands.addNote` a WebMCP call reaches (CLAUDE.md "Visible UI controls
+ * `commands.addNote` a WebMCP call reaches (docs/engineering-principles.md "Visible UI controls
  * and WebMCP callbacks use the same command implementation").
  *
  * A separate component, not folded into `CaseNotes.tsx`: `CaseNotes` renders

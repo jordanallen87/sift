@@ -48,7 +48,7 @@
  * exercises the identical command contract a WebMCP tool call would use via
  * `postCommand` (see `pages/sift-page.ts`'s header comment) and then proves
  * the browser reflects that external mutation live over SSE, with no click
- * and no reload -- the concrete, observable meaning of CLAUDE.md's "shared
+ * and no reload -- the concrete, observable meaning of docs/engineering-principles.md's "shared
  * human-agent control".
  */
 import { expect, test } from '@playwright/test';
@@ -124,7 +124,7 @@ test.describe('Choose our next car -- full demo journey', () => {
 
     // Real WebMCP is genuinely unavailable in this browser -- the page must
     // say so and stay fully usable through visible controls (webmcp.md
-    // "Browser adapter"; CLAUDE.md "Non-negotiable product truths").
+    // "Browser adapter"; docs/engineering-principles.md "Non-negotiable product truths").
     await expect(page.getByTestId('webmcp-status-unsupported')).toBeVisible();
 
     // --- 4 seeded candidates. "Manage options" (ADR 0004's rename of
@@ -636,7 +636,7 @@ test.describe('Choose our next car -- full demo journey', () => {
     // before React has rendered a single card and returns 0. That is
     // exactly how the first version of this test failed -- green in
     // isolation, red every time the full spec ran -- and it is the failure
-    // mode CLAUDE.md's "avoid fixed sleeps" rule exists to prevent.
+    // mode docs/engineering-principles.md's "avoid fixed sleeps" rule exists to prevent.
     const seededCount = Number(/^(\d+)/.exec((await resultCount.textContent()) ?? '')?.[1]);
     expect(seededCount).toBeGreaterThan(1);
     await expect(optionCards).toHaveCount(seededCount);

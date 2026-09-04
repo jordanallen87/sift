@@ -19,7 +19,7 @@
  * active, re-registering its case-scoped tools whenever the active case
  * changes; every visible control calls through the one shared
  * `SiftCommands` instance from `useSiftCommands()` -- there is no parallel
- * mutation path (CLAUDE.md "Visible UI controls and WebMCP callbacks use
+ * mutation path (docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use
  * the same command implementation").
  *
  * TWO-MODE LAYOUT (rewritten this task per `docs/decisions/
@@ -212,7 +212,7 @@
  *
  * `readiness` is computed by calling the REAL `evaluateReadiness` from
  * `@sift/core` directly. This app never re-implements readiness, satisfying
- * CLAUDE.md's "The deterministic core, not an LLM, owns ... readiness."
+ * docs/engineering-principles.md's "The deterministic core, not an LLM, owns ... readiness."
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
@@ -346,7 +346,7 @@ const InstalledPacksResponseSchema = z
  * has nothing to derive from -- a genuinely fresh case must still show the
  * real empty state, not a fabricated receipt.
  *
- * Task A9 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`
+ * Task A9 (`docs/planning/plans/2026-08-30-generic-decision-workspace.md`
  * Phase A): the commandId-only fallback above must NOT surface fixture/demo
  * seeding as if it were a real completed command the human asked for. Live
  * inspection at 430px caught the hero rendering "Nothing's been looked into
@@ -1746,7 +1746,7 @@ export function App() {
 
   // Real WebMCP-parity focus wiring (change-set §30 "WebMCP should control
   // focus"): the same `focusOption` command a `sift_focus_option` tool call
-  // uses (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same
+  // uses (docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use the same
   // command implementation"). Deliberately fire-and-forget with no pending/
   // error UI state of its own: ADR 0005 designed `focusOption` to route
   // through `updateSelection()` specifically so a presentation-only action
@@ -1939,7 +1939,7 @@ export function App() {
    *
    * It navigates. It does not act. The controls this move points at
    * (`ApprovalCard`'s Approve / Reject / Request revision) are already on
-   * the page whenever this move exists, and CLAUDE.md is explicit that no
+   * the page whenever this move exists, and docs/engineering-principles.md is explicit that no
    * automatic path may approve a consequential decision: "The model may
    * propose candidate events and recommendations. It may never approve a
    * consequential decision." A dock button that pressed Approve on the

@@ -1,6 +1,5 @@
 # Trace Map and Runtime Inspector Run Map Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a reusable event-to-run-map projector and a real trace-backed Run Map tab to Sift's Runtime Inspector.
 
@@ -8,7 +7,7 @@
 
 **Tech Stack:** TypeScript 6, Vitest 4, React 19, Testing Library, existing Sift tokens.
 
-**Spec:** `docs/superpowers/specs/2026-09-03-demo-studio-run-map-design.md`
+**Spec:** `docs/planning/specs/2026-09-03-demo-studio-run-map-design.md`
 
 ## Global Constraints
 

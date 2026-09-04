@@ -5,7 +5,7 @@
  * store, and API in process") and proves every required assertion from
  * docs/specs/demos-and-submission.md "Choose Our Next Car scenario" ->
  * "Required final assertions" genuinely passes against the real causal
- * trajectory -- not a scripted final-result shortcut (CLAUDE.md).
+ * trajectory -- not a scripted final-result shortcut (docs/engineering-principles.md).
  *
  * Writes the final snapshot, event log, trajectory, and assertion report to
  * `artifacts/verification/scenarios/car-purchase/` (testing.md "Scenario
@@ -174,7 +174,7 @@ describe('Choose Our Next Car scenario: real causal trajectory', () => {
 
     // --- The ranking is the deterministic core's, not the model's ---
     //
-    // CLAUDE.md gives the core "case state, evidence validity, readiness,
+    // docs/engineering-principles.md gives the core "case state, evidence validity, readiness,
     // and human authority", and a ranking is a claim about a case. Until
     // `scoreCase` existed, the persisted recommendation carried
     // `confidence: 0.85` and `facts: []` -- a constant and an empty list,

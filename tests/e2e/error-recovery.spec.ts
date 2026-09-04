@@ -1,5 +1,5 @@
 /**
- * Real error-path coverage (CLAUDE.md "Playwright visual verification":
+ * Real error-path coverage (docs/engineering-principles.md "Playwright visual verification":
  * "errors"; docs/specs/testing.md "network interruption and recovery").
  *
  * A conflict is deterministically manufactured, not raced: `page.route`
@@ -10,7 +10,7 @@
  * real `.catch()` -> `setError(...)` rendering path
  * (`CustomConcernForm.tsx`) -- only the *input* (a stale sequence number)
  * is engineered, which is the only way to hit this path deterministically;
- * a genuine two-actor race would be flaky by construction and CLAUDE.md
+ * a genuine two-actor race would be flaky by construction and docs/engineering-principles.md
  * prohibits flaky release-gate tests.
  */
 import { expect, test } from '@playwright/test';

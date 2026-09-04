@@ -3,7 +3,7 @@
  * plugins (`AgentSkills`, `ContextInjector`), the six ordered
  * `InterventionHandler`s, and the event normalizer.
  *
- * Scope for this pass (docs/superpowers/plans/2026-08-26-pax-hackathon-build.md
+ * Scope for this pass (docs/planning/plans/2026-08-26-pax-hackathon-build.md
  * Task 6, distinct from Task 7's real car-purchase Graph): `execute()` runs
  * a single real Strands `Agent` -- not yet a full Graph -- configured with
  * every plugin/intervention below against either a real `BedrockModel` or

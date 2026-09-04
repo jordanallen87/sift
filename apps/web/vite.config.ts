@@ -1,7 +1,7 @@
 /**
  * Vite configuration for `@sift/web` (docs/specs/architecture.md "Runtime
  * components" -> "Browser application"; the locked file map calls this out
- * explicitly in docs/superpowers/plans/2026-08-26-pax-hackathon-build.md
+ * explicitly in docs/planning/plans/2026-08-26-pax-hackathon-build.md
  * Task 9).
  *
  * Two responsibilities beyond the React plugin:

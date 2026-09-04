@@ -16,7 +16,7 @@
  * secondary, matching product.md's requirement for "explicit
  * approve/revise/reject controls" while keeping one clear default. The
  * settled-state stamp is a solid tinted fill rather than a bordered
- * signature element -- CLAUDE.md's flat-design mandate applies even to this
+ * signature element -- docs/engineering-principles.md's flat-design mandate applies even to this
  * "a human stamps the case; the agent never does" moment
  * (docs/design-system.md); background-color contrast alone carries the
  * weight a border used to.
@@ -67,7 +67,7 @@ export interface ApprovalCardProps {
    * `confirm_shortlist` dock action -- the one `humanOnly` move Sift derives
    * -- does exactly that in `App.tsx`'s `handleDockAction`: it brings the
    * person to these controls and stops, because no automatic path may
-   * approve a consequential decision (CLAUDE.md). This ref grants no new
+   * approve a consequential decision (docs/engineering-principles.md). This ref grants no new
    * power to do so; `ApprovalCardProps` still has no `actor` field, and
    * `submit()` below is still the only place `actor: 'human'` is
    * constructed.

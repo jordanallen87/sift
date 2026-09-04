@@ -448,7 +448,7 @@ export type WorkspaceViewState = z.infer<typeof WorkspaceViewStateSchema>;
 // evidence (`submitSource`, a separate, explicit command) -- nothing about
 // `CaseNote` itself can silently become evidence, which is exactly what
 // keeps the deterministic core (not an LLM) the sole owner of evidence
-// validity and readiness (CLAUDE.md "Non-negotiable product truths").
+// validity and readiness (docs/engineering-principles.md "Non-negotiable product truths").
 //
 // `origin`/`authoredBy` reuse `CaseAttributeDefinition`'s exact
 // origin-vocabulary pattern (`CASE_ATTRIBUTE_ORIGINS`, `proposedBy`) rather

@@ -7,7 +7,7 @@
  * case-defined (`custom.*`) attribute applicable to this option kind.
  *
  * Calls `commands.upsertOption` on the exact same `SiftCommands` instance the
- * `sift_upsert_option` WebMCP tool calls (CLAUDE.md "Visible UI controls and
+ * `sift_upsert_option` WebMCP tool calls (docs/engineering-principles.md "Visible UI controls and
  * WebMCP callbacks use the same command implementation") -- there is no
  * parallel save path.
  */

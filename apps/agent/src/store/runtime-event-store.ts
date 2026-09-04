@@ -47,7 +47,7 @@
  * `payload` -- every event reaching this store today came from
  * `event-normalizer.ts`, which already redacted the one field genuinely
  * capable of carrying arbitrary tool/model content -- but it is the one
- * place this codebase can honestly claim CLAUDE.md's "Never persist
+ * place this codebase can honestly claim docs/engineering-principles.md's "Never persist
  * credentials, authorization headers, cookies, secret canaries, raw private
  * reasoning, or unredacted user-entered notes in runtime telemetry" for
  * *every* field that reaches durable `runtime_events` storage, including

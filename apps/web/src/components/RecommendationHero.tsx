@@ -23,7 +23,7 @@
  * correctly render their own populated states, and `ApprovalCard` in
  * particular has NO `actor` prop at all -- reusing it here, rather than
  * hand-rolling new approve/reject/revise controls, is what keeps
- * CLAUDE.md's "human approval stays human-only" guarantee intact without
+ * docs/engineering-principles.md's "human approval stays human-only" guarantee intact without
  * this file needing to re-earn it. Per change-set §5 ("Do not render an
  * empty conceptual region merely because CaseState contains a corresponding
  * field"), this component mounts each of the four real Sift regions it
@@ -90,7 +90,7 @@ export interface RecommendationHeroProps {
    * Approve/Reject/Request-revision controls specifically, which can sit
    * well below the fold of this region in a 390px pane. It moves focus
    * there and does nothing else; no automatic path may approve a
-   * consequential decision (CLAUDE.md), and `ApprovalCard` has no `actor`
+   * consequential decision (docs/engineering-principles.md), and `ApprovalCard` has no `actor`
    * prop through which one could try.
    *
    * `undefined` whenever `proposal` is `null`, since no `ApprovalCard`

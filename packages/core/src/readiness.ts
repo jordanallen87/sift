@@ -1,6 +1,6 @@
 /**
  * `evaluateReadiness(caseState): ReadinessResult` -- the single most
- * safety-critical function this task produces (CLAUDE.md: "The deterministic
+ * safety-critical function this task produces (docs/engineering-principles.md: "The deterministic
  * core, not an LLM, owns case state, evidence validity, readiness, and human
  * authority.").
  *

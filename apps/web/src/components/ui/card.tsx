@@ -7,7 +7,7 @@ function Card({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="card"
       className={cn(
-        // Flat by design (CLAUDE.md-adjacent product direction, recorded in
+        // Flat by design (docs/engineering-principles.md-adjacent product direction, recorded in
         // docs/build-log.md): no border, no shadow -- a card reads as a
         // card purely through its bg-card fill contrasting against the
         // page's bg-background (tokens.css), the same mechanism Notion/

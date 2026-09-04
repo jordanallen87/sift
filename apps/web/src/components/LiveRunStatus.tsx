@@ -35,7 +35,7 @@
  * or `commandId` (fallback, for the brief window before a run-starting
  * command has an established `runId` on its own events).
  *
- * **Heading text (Task A9, `docs/superpowers/plans/
+ * **Heading text (Task A9, `docs/planning/plans/
  * 2026-08-30-generic-decision-workspace.md` Phase A).** A prior revision of
  * this component renamed the heading from "Latest command" to
  * "Investigation status," reasoning that "command" was engine vocabulary.

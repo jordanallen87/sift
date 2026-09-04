@@ -5,7 +5,7 @@
  *
  *  1. **The `status: null` / `status: 'unknown'` distinction.** `option-
  *     profile.ts` deliberately keeps them apart ("no record at all" versus
- *     "a record that says nobody knows"), and CLAUDE.md's "never fabricate"
+ *     "a record that says nobody knows"), and docs/engineering-principles.md's "never fabricate"
  *     makes conflating them a real defect, not a copy nit. Both exact
  *     sentences are asserted here, in both directions, so a future edit that
  *     collapses them into one string fails loudly.

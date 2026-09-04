@@ -536,7 +536,7 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     expect(asJson<HttpErrorBody>(approved.body).error.code).toBe('VALIDATION');
   });
 
-  // I1 (docs/superpowers/plans/2026-08-30-generic-decision-workspace.md
+  // I1 (docs/planning/plans/2026-08-30-generic-decision-workspace.md
   // "Phase I"; ADR 0006 decision 8; debugging-and-observability.md "WebMCP
   // tool calls"): the `X-Sift-Command-Origin` request header tags a command
   // as WebMCP-issued for the developer trail, without ever forking the

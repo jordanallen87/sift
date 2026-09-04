@@ -318,7 +318,7 @@ export const webmcpHero: Journey = {
         }[];
         const derived = obligations.filter((o) => o.id.includes('dog_crate'));
 
-        // CLAUDE.md: an unanticipated typed concern must "create a case
+        // docs/engineering-principles.md: an unanticipated typed concern must "create a case
         // obligation when evidence is needed". The concern is confirmed the
         // moment it is defined, but the obligation is derived by the
         // engine on the next run -- which is why this is its own turn

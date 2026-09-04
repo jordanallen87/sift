@@ -8,7 +8,7 @@
  * from `@sift/catalog/browser` -- the exact same mapping any future
  * server-side caller would use, per that ADR's "one adaptation boundary")
  * -- the same shared `SiftCommands` instance every other visible control and
- * WebMCP callback already uses (CLAUDE.md "Visible UI controls and WebMCP
+ * WebMCP callback already uses (docs/engineering-principles.md "Visible UI controls and WebMCP
  * callbacks use the same command implementation").
  *
  * ## Layout: the list is the page
@@ -180,7 +180,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
   );
 
   // Debounced search -- a real network debounce, not a fabricated loading
-  // timer (CLAUDE.md "Do not create fake loading timers"): the fetch itself
+  // timer (docs/engineering-principles.md "Do not create fake loading timers"): the fetch itself
   // still drives `searchStatus`.
   useEffect(() => {
     const signal = { cancelled: false };

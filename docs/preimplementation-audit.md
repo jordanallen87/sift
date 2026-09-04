@@ -7,7 +7,7 @@ Date: 2026-08-27.
 
 ## Method
 
-Read completely, in the order `CLAUDE.md` prescribes: `docs/specs/README.md`,
+Read completely, in the order `docs/engineering-principles.md` prescribes: `docs/specs/README.md`,
 `value-proposition.md`, `product.md`, `architecture.md`, `packs-and-routing.md`,
 `pack-authoring.md`, `webmcp.md`, `strands-runtime.md`, `testing.md`,
 `debugging-and-observability.md`, `demos-and-submission.md`, ADR 0001, both
@@ -62,7 +62,7 @@ AgentSkills/Interventions/ContextInjector/GoalLoop/session integration, a
 migrated-SQLite command service with replayable SSE, a complete React right-pane
 UI with a 6-view OpenTelemetry-correlated Runtime Inspector, Playwright visual
 regression across 4 viewports, mutation testing, and a Docker/Railway/AgentCore
-deployment — realistically several weeks of senior-team engineering. `CLAUDE.md`
+deployment — realistically several weeks of senior-team engineering. `docs/engineering-principles.md`
 forbids "turning a required item into a stretch goal" without user approval, but
 no document defines what ships first if the full scope cannot land by 2026-09-03.
 
@@ -75,7 +75,7 @@ in time.
 than pushing all scope in parallel. The plan now carries an explicit "Delivery
 tiers" section (see below).
 
-**Resolution applied:** `docs/superpowers/plans/2026-08-26-pax-hackathon-build.md`
+**Resolution applied:** `docs/planning/plans/2026-08-26-pax-hackathon-build.md`
 now has a "Delivery tiers" section splitting every task into Tier 1
 (WebMCP-submission-critical, target ~2026-09-01), Tier 2 (continues through
 2026-09-14 for the AWS submission — Energy Swarm, pack-authoring skill, the full
@@ -84,12 +84,12 @@ Runtime Inspector, mutation testing, the AWS submission packet), and Tier 3
 or silently demoted from the approved requirement set; only sequencing changed.
 Clarified during this exchange: AgentCore is irrelevant to the WebMCP submission
 (not mentioned in its requirements at all) and is explicitly optional/bonus for
-the AWS submission per its own official judging description and per `CLAUDE.md`'s
+the AWS submission per its own official judging description and per `docs/engineering-principles.md`'s
 existing "missing AWS credentials are an honest external blocker" framing — it
 was never a hard gate for either deadline, which is why it sits in Tier 3.
 
 **Owning task:** plan resequencing in
-`docs/superpowers/plans/2026-08-26-pax-hackathon-build.md` (applied).
+`docs/planning/plans/2026-08-26-pax-hackathon-build.md` (applied).
 **Verification method:** Tier 1 scope reaching submission-ready state by
 ~2026-09-01, tracked in `docs/build-log.md`.
 
@@ -234,7 +234,7 @@ stream indefinitely; `railway volume add` should pass `--service <name>`
 explicitly rather than relying on single-service inference once more than one
 service could plausibly exist in the project.
 
-**Disposition:** `resolved` — amend the deployment commands in `CLAUDE.md` /
+**Disposition:** `resolved` — amend the deployment commands in `docs/engineering-principles.md` /
 `architecture.md` to `railway up --new --name pax-hackathon --json -y --detach`
 and `railway volume add --service pax --mount-path /data --json`.
 **Owning task:** Task 14 (Railway/AgentCore deployment).
@@ -295,7 +295,7 @@ gate checklist.
 
 The following precise, non-architectural corrections should be folded into the
 named specs before Task 6 begins (tracked here rather than silently made, per
-`CLAUDE_CODE_PROMPT.md`'s instruction to record dispositions):
+`docs/engineering-principles.md`'s instruction to record dispositions):
 
 - `strands-runtime.md`: pin `LocalFileStorage` import path
   (`@strands-agents/sdk/storage`); require `ConsequenceGuard`'s `Confirm` to gate
@@ -305,7 +305,7 @@ named specs before Task 6 begins (tracked here rather than silently made, per
   `repetitiveHandoffDetectionWindow`.
 - `packs-and-routing.md`: one sentence noting router weights are tuned constants
   for the two-pack catalog.
-- `CLAUDE.md` / `architecture.md`: Railway command flags (`-y --detach`,
+- `docs/engineering-principles.md` / `architecture.md`: Railway command flags (`-y --detach`,
   explicit `--service`).
 
 ## Phase-zero gate result

@@ -1,5 +1,5 @@
 /**
- * A component-test-level heuristic for CLAUDE.md's non-negotiable "the
+ * A component-test-level heuristic for docs/engineering-principles.md's non-negotiable "the
  * canonical UI is a 390-480 px ChatGPT right pane" constraint and
  * product.md's "no region introduces horizontal page scrolling" rule at
  * that width.

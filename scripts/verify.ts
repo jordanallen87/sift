@@ -211,7 +211,7 @@ export async function runVerification(
         finishedAt: stageStartedAt,
         durationMs: 0,
         exitCode: null,
-        note: 'Declared, not yet implemented. Not silently reported as passed — see docs/superpowers/plans/2026-08-26-pax-hackathon-build.md.',
+        note: 'Declared, not yet implemented. Not silently reported as passed — see docs/planning/plans/2026-08-26-pax-hackathon-build.md.',
       });
       continue;
     }

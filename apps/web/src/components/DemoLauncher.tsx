@@ -11,7 +11,7 @@
  * completely unchanged by that ADR.
  *
  * Both demo options call `startDemo` on the one shared `SiftCommands` client
- * from `useSiftCommands()` (CLAUDE.md "Visible UI controls and WebMCP
+ * from `useSiftCommands()` (docs/engineering-principles.md "Visible UI controls and WebMCP
  * callbacks use the same command implementation") -- there is no separate
  * launcher-only fetch call.
  *
@@ -98,7 +98,7 @@ export function DemoLauncher({ onDemoStarted, onCompareVehicles }: DemoLauncherP
 
   return (
     // The standalone-browser page shell (docs/build-log.md's dated entry):
-    // the canonical surface is a 390-480px right pane (CLAUDE.md), which
+    // the canonical surface is a 390-480px right pane (docs/engineering-principles.md), which
     // reads correctly once embedded in ChatGPT's own chrome, but a judge
     // opening the deployed URL directly in a full desktop tab has no such
     // chrome to dock inside -- min-h-screen + centered flex here gives that

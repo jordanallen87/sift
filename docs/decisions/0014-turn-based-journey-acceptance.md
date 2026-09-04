@@ -26,7 +26,7 @@ Both hero demo scripts describe assistant actions (`sift_update_criteria`, `sift
 
 The third kind is the contribution. A journey can pass `data` and `ui` independently while showing a person a number the server disagrees with.
 
-**2. Turns have an actor.** A turn is taken by the **person**, through visible controls, or by the **assistant**, through a real WebMCP tool call. Both reach the same command implementation (CLAUDE.md), and interleaving them in one case is the only way to test that claim rather than assert it.
+**2. Turns have an actor.** A turn is taken by the **person**, through visible controls, or by the **assistant**, through a real WebMCP tool call. Both reach the same command implementation (docs/engineering-principles.md), and interleaving them in one case is the only way to test that claim rather than assert it.
 
 **3. Four journeys**, 92 checks:
 

@@ -72,7 +72,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
-    // Deterministic release evidence (CLAUDE.md "Playwright visual
+    // Deterministic release evidence (docs/engineering-principles.md "Playwright visual
     // verification": "Capture named visual baselines with deterministic
     // fonts, clocks, IDs, and animations disabled"). CSS animations/
     // transitions are additionally force-disabled per-page in

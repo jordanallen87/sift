@@ -18,7 +18,7 @@ import type { Claim, EvidenceLevel, EvidenceLink, ObligationState, Source } from
 
 /**
  * Minimal injected time port. `packages/core` may never call `Date.now()`
- * directly (CLAUDE.md "Hard constraint"); every timestamp in this file comes
+ * directly (docs/engineering-principles.md "Hard constraint"); every timestamp in this file comes
  * from an implementation of this port supplied by the caller.
  *
  * Note for the later integration pass: a sibling agent building
@@ -38,7 +38,7 @@ export interface Clock {
 
 /**
  * Minimal injected ID-generation port, declared for the same reason as
- * `Clock` above and for the same CLAUDE.md hard constraint (no
+ * `Clock` above and for the same docs/engineering-principles.md hard constraint (no
  * `crypto.randomUUID()`). Nothing in this file currently needs to mint a new
  * ID -- `markStale` transforms an existing `EvidenceLink`, it does not create
  * one -- but the port is declared here so any future function in this module
@@ -322,7 +322,7 @@ export interface StalenessContext {
  *   depends on an already-invalidated obligation is invalidated too (its own
  *   conclusion may have relied on a dependency that is no longer certain),
  *   and its evidence links go stale as well. This is intentionally
- *   conservative -- CLAUDE.md requires the deterministic core to fail closed
+ *   conservative -- docs/engineering-principles.md requires the deterministic core to fail closed
  *   -- rather than trying to guess which of a dependent obligation's own
  *   evidence links are still safe to keep.
  */

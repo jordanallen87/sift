@@ -184,7 +184,7 @@ export interface CommandServiceDeps {
    * `upsertOption` cannot be reused to seed these instead:
    * `OptionAttributeInputSchema.value` is required and the handler
    * hardcodes `status: 'asserted'`, so an entity carrying a legitimately
-   * `status: 'unknown'` attribute (no value -- CLAUDE.md "never fabricate")
+   * `status: 'unknown'` attribute (no value -- docs/engineering-principles.md "never fabricate")
    * can only be expressed as a direct `option.upserted` event, which is
    * exactly what `startDemo` appends here.
    */
@@ -856,7 +856,7 @@ export class CommandService {
    * `setOptionAttribute`/`updateCriteria`/`setEvidenceDisposition`/
    * `reviewCaseExtension`) never appends a `recommendation.invalidated`
    * event either. This absence is the concrete mechanism behind "notes
-   * never auto-promote to evidence" (CLAUDE.md's deterministic-core
+   * never auto-promote to evidence" (docs/engineering-principles.md's deterministic-core
    * ownership of evidence validity/readiness/human authority): adding a
    * note can never satisfy an obligation, invalidate a `ready`
    * recommendation, or appear as a `Source`, because the command that
@@ -2586,7 +2586,7 @@ export class CommandService {
    *    the weakest level that still requires an actual source --
    *    appropriate for a concern the pack never anticipated and has no
    *    specialist wired to investigate.
-   *  - `maxAttempts: 2`: CLAUDE.md's own canonical GoalLoop bound
+   *  - `maxAttempts: 2`: docs/engineering-principles.md's own canonical GoalLoop bound
    *    ("GoalLoop with a callable recommendation validator and
    *    `maxAttempts: 2`"), and the same value every existing
    *    case-extension template in this codebase already uses

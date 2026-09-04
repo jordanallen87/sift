@@ -63,7 +63,7 @@
  * from spending a card's budget on restatements, and has no business overriding a caller that
  * explicitly asked for a field by id.
  *
- * **Honest unknowns (§10, CLAUDE.md).** A prominent attribute with no value renders "Unknown",
+ * **Honest unknowns (§10, docs/engineering-principles.md).** A prominent attribute with no value renders "Unknown",
  * muted the same way `OptionCompareView`'s cells and `QuickPickView`'s highlight row do -- never
  * blank, never invented. A `string_list` long enough to blow out the card is capped at
  * `MAX_LIST_VALUES_SHOWN` entries plus an explicit "+N more", never silently truncated.
@@ -210,7 +210,7 @@ interface CardFact {
   /**
    * Count of additional `string_list` entries beyond `display`'s capped preview, rendered as an
    * explicit "+N more" suffix. Zero for every non-list value and for a list at or under the cap.
-   * CLAUDE.md's "an unknown stays explicitly unknown; never invent a value or a placeholder"
+   * docs/engineering-principles.md's "an unknown stays explicitly unknown; never invent a value or a placeholder"
    * extends naturally to "never silently truncate without saying so".
    */
   overflowCount: number;
@@ -222,7 +222,7 @@ interface CardFact {
 // across several lines and undo the entire point of the focused card.
 const MAX_LIST_VALUES_SHOWN = 4;
 
-/** Every selected attribute id becomes exactly one fact -- known values format through the shared formatter, missing values render the explicit "Unknown" string (§10, CLAUDE.md), never blank or invented. A selected id with no matching definition is dropped rather than rendered as an empty row. */
+/** Every selected attribute id becomes exactly one fact -- known values format through the shared formatter, missing values render the explicit "Unknown" string (§10, docs/engineering-principles.md), never blank or invented. A selected id with no matching definition is dropped rather than rendered as an empty row. */
 function buildFacts(
   option: EntityRecord,
   attributeIds: string[],

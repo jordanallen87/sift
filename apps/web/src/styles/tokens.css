@@ -471,7 +471,7 @@
 
   /* ---------------------------------------------------------------------
    * Layout
-   * The canonical viewport per CLAUDE.md's "non-negotiable product truths":
+   * The canonical viewport per docs/engineering-principles.md's "non-negotiable product truths":
    * a ChatGPT right pane, not a desktop dashboard shrunk down after the
    * fact. Desktop is a secondary, wider projection of the same layout.
    * ------------------------------------------------------------------- */

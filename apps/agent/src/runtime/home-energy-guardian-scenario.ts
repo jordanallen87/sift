@@ -56,7 +56,7 @@
  * (`home-energy-swarm.test.ts`, describe block "intervention integrity",
  * test "rejects a decision-synthesizer draft with no source citation, then
  * accepts a corrected retry (GoalLoop maxAttempts: 2)"), but does not fire
- * on the standard scripted pass. Per CLAUDE.md's honesty discipline, this
+ * on the standard scripted pass. Per docs/engineering-principles.md's honesty discipline, this
  * scenario does not fake a "Draft withheld" label -- it genuinely
  * *constructs* the rejection, reusing that exact same proven mechanism: a
  * one-node-patched `modelFor` (`round1ModelFor` below, mirroring that test's

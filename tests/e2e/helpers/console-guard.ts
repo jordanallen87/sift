@@ -1,6 +1,6 @@
 /**
  * Fails a test on any uncaught page exception, unexpected console error, or
- * failed same-origin `/api/*` request (CLAUDE.md "Playwright visual
+ * failed same-origin `/api/*` request (docs/engineering-principles.md "Playwright visual
  * verification": "Fail on page exceptions, unexpected console errors,
  * failed API calls, or hydration warnings").
  *

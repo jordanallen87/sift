@@ -139,7 +139,7 @@ describe('buildRunPlan: what it plans, and when', () => {
   });
 
   it('records a concern no pack capability can answer as an explicit unknown', () => {
-    // CLAUDE.md's rule for an unanticipated concern: it "remains an explicit
+    // docs/engineering-principles.md's rule for an unanticipated concern: it "remains an explicit
     // unknown when no capability can verify it." Planning a plausible-looking
     // task for it would be the fabrication that rule exists to prevent.
     const pack = packWithCapabilities({ specialistIds: ['specialist.reliability'] });

@@ -1497,7 +1497,7 @@ describe('App', () => {
       expect(screen.queryByTestId('live-run-status-empty')).not.toBeInTheDocument();
     });
 
-    // Task A9 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`
+    // Task A9 (`docs/planning/plans/2026-08-30-generic-decision-workspace.md`
     // Phase A; brief w1b-ui-refinement.md): found by live inspection at
     // 430px -- the hero rendered "Nothing's been looked into yet." directly
     // above a "Investigation status -- Completed -- Added option ..." block,
@@ -2294,7 +2294,7 @@ describe('App', () => {
       expect(screen.queryByTestId('disclosure-view')).not.toBeInTheDocument();
     });
 
-    // Task A10 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`
+    // Task A10 (`docs/planning/plans/2026-08-30-generic-decision-workspace.md`
     // Phase A): the regenerated 390px baseline measured ~3379px tall, driven
     // largely by Compare's always-fully-expanded attribute table rendering
     // as the *default* view on a freshly opened case -- directly against
@@ -3750,7 +3750,7 @@ describe('App', () => {
         });
         expect(screen.getByTestId('approval-card-approve')).toBeInTheDocument();
 
-        // And it approves NOTHING. CLAUDE.md: "The model may propose
+        // And it approves NOTHING. docs/engineering-principles.md: "The model may propose
         // candidate events and recommendations. It may never approve a
         // consequential decision" -- a dock button that pressed Approve on
         // the person's behalf would be a worse defect than the dead button

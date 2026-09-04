@@ -48,7 +48,7 @@
  *     does not exist yet; populating it (repository/deploy/video URLs,
  *     Builder ID, AgentCore identifiers) is the later, distinct "Task 14"
  *     submission-packaging work in
- *     docs/superpowers/plans/2026-08-26-pax-hackathon-build.md, not this
+ *     docs/planning/plans/2026-08-26-pax-hackathon-build.md, not this
  *     tooling task.
  */
 import { execFileSync } from 'node:child_process';

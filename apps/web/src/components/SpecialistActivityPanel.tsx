@@ -85,7 +85,7 @@
  * event stream rather than from a pack id, so it stays true if either
  * topology ever changes.
  *
- * **7. No private chain-of-thought, ever.** CLAUDE.md: "Do not display
+ * **7. No private chain-of-thought, ever.** docs/engineering-principles.md: "Do not display
  * private chain-of-thought. Display actions, source-linked outputs,
  * validation reasons, handoffs, intervention reasons, and state changes."
  * Nothing here renders or invents reasoning text. There is deliberately no
@@ -183,7 +183,7 @@ interface SpecialistIdentity {
  *
  * `decision-synthesizer` is deliberately "Recommendation", never "Decision"
  * or "Final call": the deterministic core and the human own the decision
- * (CLAUDE.md: "The model may propose candidate events and recommendations.
+ * (docs/engineering-principles.md: "The model may propose candidate events and recommendations.
  * It may never approve a consequential decision."), so a row title claiming
  * otherwise would be a false claim about authority, not just a wording
  * choice.

@@ -2,7 +2,7 @@
  * Registers the full imperative WebMCP tool catalog (docs/specs/webmcp.md
  * "Tool catalog") against a `ModelContextAdapter`. Every command-backed
  * tool's `execute` calls through the exact same `SiftCommands` client
- * visible controls will later use (CLAUDE.md "Non-negotiable product
+ * visible controls will later use (docs/engineering-principles.md "Non-negotiable product
  * truths": "Visible UI controls and WebMCP callbacks use the same command
  * implementation") -- there is no parallel fetch path anywhere in this
  * module for any WRITE/EXECUTION/PRESENTATION tool.

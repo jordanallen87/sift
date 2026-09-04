@@ -5,7 +5,7 @@
  * "`VehicleCatalogRecord` -> Sift candidate entity / option"). Both
  * `apps/web`'s catalog/shortlist UI and any future server-side caller
  * import this single function rather than each re-deriving the mapping,
- * satisfying CLAUDE.md's "same command implementation" principle by
+ * satisfying docs/engineering-principles.md's "same command implementation" principle by
  * construction -- there is exactly one mapping, not a client copy and a
  * server copy.
  *
@@ -42,7 +42,7 @@
  * A catalog value that does not map cleanly onto one of those allowed
  * values (e.g. a combined "AWD/4WD" drivetrain string, or a "Flex-fuel"
  * powertrain the pack's enum does not include) is left unmapped rather than
- * guessed -- CLAUDE.md "never fabricate a value."
+ * guessed -- docs/engineering-principles.md "never fabricate a value."
  */
 import type { AttributeValue } from '@sift/contracts';
 import type { VehicleCatalogRecord } from './schema.js';

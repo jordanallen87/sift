@@ -317,7 +317,7 @@ required beyond the license text carried in the font files themselves.
 
 ### Font-loading strategy (network-independent)
 
-CLAUDE.md requires fixture mode to run "without network access after
+docs/engineering-principles.md requires fixture mode to run "without network access after
 installation," which rules out a Google Fonts `<link>` in the deployed and
 test-time HTML. `global.css` instead declares `@font-face` rules pointing
 at self-hosted files under `apps/web/public/fonts/**` (Vite serves
@@ -395,7 +395,7 @@ only values that support Sift's calm narrow-pane identity."
 
 ## How this holds up at 390px specifically
 
-"Responsive" is not the requirement — CLAUDE.md is explicit that 390-480px
+"Responsive" is not the requirement — docs/engineering-principles.md is explicit that 390-480px
 *is* the canonical viewport, not a breakpoint reached by shrinking a
 desktop layout. Concrete decisions this token system makes for that width:
 
@@ -432,7 +432,7 @@ desktop layout. Concrete decisions this token system makes for that width:
 
   Above 480px the shell widens to `--shell-width-max` (1280px) and individual
   views adopt their expanded information architecture — a card grid, a
-  multi-column comparison table, a wider board. CLAUDE.md's "not a desktop
+  multi-column comparison table, a wider board. docs/engineering-principles.md's "not a desktop
   dashboard shrunk after the fact" remains binding and is a statement about
   *design order* — the narrow pane is designed first and natively, and is
   never a compressed desktop layout. It is not a licence to leave desktop
@@ -460,4 +460,4 @@ desktop layout. Concrete decisions this token system makes for that width:
 - No React components exist yet; wiring these into the app entry point and
   building the region components (`ReadinessPanel`, `CurrentFocusCard`,
   the stamp/`ApprovalCard`, etc.) is later work per
-  `docs/superpowers/plans/2026-08-26-pax-hackathon-build.md`.
+  `docs/planning/plans/2026-08-26-pax-hackathon-build.md`.

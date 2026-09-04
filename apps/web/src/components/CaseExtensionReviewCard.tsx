@@ -10,7 +10,7 @@
  * until a human accepts them").
  *
  * Calls `commands.reviewCaseExtension` on the shared `SiftCommands` instance
- * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
+ * (docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation"). There is no separate agent-side confirmation path --
  * `docs/specs/architecture.md`'s human-only authority boundary applies here
  * exactly as it does to `ApprovalCard.tsx`'s proposal review.

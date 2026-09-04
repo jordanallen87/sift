@@ -3,7 +3,7 @@
  * pattern `packages/scenarios/src/tools/fixture-loader.ts` already
  * establishes for this codebase: read once, defensively size-bound, Zod
  * validate, cache in memory. No network access at any point
- * (CLAUDE.md "Fixture mode must execute the complete product without
+ * (docs/engineering-principles.md "Fixture mode must execute the complete product without
  * network access after installation") -- see
  * `docs/reuse-attribution.md` for how this file was produced (a one-time,
  * offline transform of the EPA fueleconomy.gov bulk CSV export, not fetched

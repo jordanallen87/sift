@@ -456,7 +456,7 @@ export function VehicleFilterSheet({
                 drafted facet would match without running the catalog query
                 this component does not own. Stating the number it can
                 actually stand behind beats predicting one it cannot
-                (CLAUDE.md "Never fabricate"); `aria-busy` marks it while the
+                (docs/engineering-principles.md "Never fabricate"); `aria-busy` marks it while the
                 caller's search is recomputing it.
               */}
               <Button

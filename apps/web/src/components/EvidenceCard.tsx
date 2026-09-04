@@ -6,7 +6,7 @@
  * optional `Claim` and `Source` (all three real `@sift/contracts` shapes --
  * see `packages/contracts/src/case.ts`). Purely presentational: it never
  * decides verdict, staleness, or conflict -- those are canonical, core-owned
- * facts (CLAUDE.md "The deterministic core ... owns ... evidence
+ * facts (docs/engineering-principles.md "The deterministic core ... owns ... evidence
  * validity"); this component only renders what it is given.
  *
  * `onSetDisposition` (added in the live-wiring pass, docs/build-log.md's

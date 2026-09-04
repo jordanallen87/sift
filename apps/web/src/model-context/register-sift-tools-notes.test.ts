@@ -13,7 +13,7 @@
  * `CASE_TOOL_FIXTURES` table instead of being duplicated here -- this file
  * only covers what is genuinely specific to notes.
  *
- * The central correctness proof this file exists to carry (CLAUDE.md "notes
+ * The central correctness proof this file exists to carry (docs/engineering-principles.md "notes
  * never auto-promote to evidence" / this task's own brief constraint 4):
  * adding a note through the WebMCP tool path must never satisfy an
  * obligation, change readiness, or invalidate a recommendation. The

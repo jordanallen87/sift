@@ -4,7 +4,7 @@
  *
  * Font-loading strategy
  * ----------------------
- * CLAUDE.md requires the fixture build to run "without network access
+ * docs/engineering-principles.md requires the fixture build to run "without network access
  * after installation." A <link> to Google Fonts (or any CDN) would violate
  * that in fixture/CI mode, so every non-system family is self-hosted via
  * @font-face pointing at /fonts/** (served from apps/web/public/fonts/,
@@ -572,7 +572,7 @@
 /* A gentle opacity breathe for a short, indeterminate "waiting on the
    server" text state ("Searching…", "Restoring your case…", "Loading
    case…") -- confirms the page is genuinely working without borrowing a
-   spinner or progress-bar metaphor CLAUDE.md's "no fabricated progress"
+   spinner or progress-bar metaphor docs/engineering-principles.md's "no fabricated progress"
    rule would otherwise flag. Infinite by design (the element unmounts
    once the real wait ends -- there is no fixed duration to time this
    against). */

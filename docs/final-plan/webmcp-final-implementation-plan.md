@@ -2,7 +2,6 @@
 
 Status: superseded as an execution control document by [Sift Final Hackathon Execution Plan](./final-hackathon-execution-plan.md). Retained for detailed file-level research only. If this appendix conflicts with the canonical plan or [experience specification](./final-approved-experience.md), the canonical documents win.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:executing-plans` to execute this plan task by task. Use `superpowers:test-driven-development` for each behavior change and `superpowers:verification-before-completion` before marking any task complete.
 
 **Goal:** Ship one coherent, conversation-led vehicle-selection journey, a judge-visible WebMCP proof, and a turn-by-turn UX evaluation harness before the September 3, 2026 deadline.
 

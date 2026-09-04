@@ -92,7 +92,7 @@ function requireSnapshot(receipt: CommandReceipt): CaseState {
  * close this gap either: its `OptionAttributeInputSchema.value` is
  * required, but two of the real seeded attributes
  * (`car.rear_cargo_crate_fit`/`car.driving_comfort_rating`) are
- * legitimately `status: 'unknown'` with no value (CLAUDE.md: "never...
+ * legitimately `status: 'unknown'` with no value (docs/engineering-principles.md: "never...
  * fabricate"), so only a direct `option.upserted` event append -- exactly
  * what this helper does, and exactly what a real future fix belongs doing
  * too -- can express them.

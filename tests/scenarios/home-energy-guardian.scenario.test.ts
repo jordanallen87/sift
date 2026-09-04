@@ -5,7 +5,7 @@
  * store, and API in process") and proves every required assertion from
  * docs/specs/demos-and-submission.md "Home Energy Guardian scenario" ->
  * "Required final assertions" genuinely passes against the real causal
- * trajectory -- not a scripted final-result shortcut (CLAUDE.md).
+ * trajectory -- not a scripted final-result shortcut (docs/engineering-principles.md).
  *
  * Writes the final snapshot, event log, trajectory, and assertion report to
  * `artifacts/verification/scenarios/home-energy-guardian/` (testing.md

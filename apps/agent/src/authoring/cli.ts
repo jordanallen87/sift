@@ -4,7 +4,7 @@
  * arbitrary composition, and multi-tenant publishing are not part of the
  * hackathon build."
  *
- * Judgment call (documented per CLAUDE.md's instruction to make the
+ * Judgment call (documented per docs/engineering-principles.md's instruction to make the
  * smallest reasonable call on a genuine spec ambiguity rather than guess
  * silently or over-build): the spec does not say how interactive this entry
  * point must be. A real interactive terminal prompt loop (readline,

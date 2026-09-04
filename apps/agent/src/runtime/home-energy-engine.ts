@@ -38,7 +38,7 @@
  *     handle). Neither file may be edited to generalize the other (this
  *     task's scope explicitly excludes touching `car-purchase-engine.ts`),
  *     so this is the documented "genuinely pack-specific, parallel
- *     implementation" case CLAUDE.md's task brief for this file
+ *     implementation" case docs/engineering-principles.md's task brief for this file
  *     anticipated;
  *  4. folds every specialist's validated context/final synthesis into real
  *     `CaseEvent`s via `car-purchase-scenario.ts`'s own exported, fully
@@ -71,7 +71,7 @@
  * `energy.conservation`'s weight now exceeds `energy.cost`'s -- the direct,
  * persisted trace of that reweight, independent of which caller performed
  * it (visible UI control or a WebMCP `sift_update_criteria` call, per
- * CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
+ * docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation"). A freshly started case (pack defaults: both weighted 50)
  * is `round1`.
  *

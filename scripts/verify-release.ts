@@ -20,7 +20,7 @@
  *     genuinely composed rather than one silently reimplementing the other.
  *  2. The Docker stage needs a dynamic "is the tool even installed"
  *     pre-check with an honest skip-not-fail outcome
- *     (CLAUDE.md/this task: "check if docker is available ... report an
+ *     (docs/engineering-principles.md, this task: "check if docker is available ... report an
  *     honest skip with reason if not, don't fail the whole gate over an
  *     environment limitation, but don't silently pass either"). `verify.ts`'s
  *     `StageDefinition.kind` is a static `'real' | 'not-implemented'`

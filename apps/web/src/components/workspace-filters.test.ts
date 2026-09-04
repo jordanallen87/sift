@@ -321,7 +321,7 @@ describe('buildFacetOptions', () => {
   it('reads only values actually present on saved options, never attribute.allowedValues', () => {
     // `allowedValues` lists 'RWD' but no saved option ever asserted it -- a
     // pack author's anticipated value that turned out to be unused must not
-    // become a fabricated, always-zero facet choice (CLAUDE.md "Never
+    // become a fabricated, always-zero facet choice (docs/engineering-principles.md "Never
     // fabricate a value").
     const attribute = buildAttribute({
       id: 'drivetrain',

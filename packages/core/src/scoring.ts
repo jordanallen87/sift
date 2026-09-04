@@ -7,7 +7,7 @@
  *
  * Before this module, the "recommended" option was whatever the Strands
  * graph put first in `proposedRecommendation.candidateIds`. That is a model
- * asserting a conclusion, and CLAUDE.md is explicit that the deterministic
+ * asserting a conclusion, and docs/engineering-principles.md is explicit that the deterministic
  * core — not an LLM — owns case state, evidence validity, and readiness.
  * The ranking is part of that: a person deciding how to spend forty
  * thousand dollars is entitled to know *why* something came first, and to

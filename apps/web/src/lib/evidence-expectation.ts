@@ -8,7 +8,7 @@
  * `AttributeRecord.status` (`packages/contracts/src/attributes.ts`) clears
  * its `AttributeDefinition`'s declared `evidenceExpectation` -- i.e. whether
  * a value reads as "well supported" versus "needs checking" (Phase C, Task
- * C6, `docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`).
+ * C6, `docs/planning/plans/2026-08-30-generic-decision-workspace.md`).
  *
  * This used to be written once, in `QuickPickView.tsx`, and then copied
  * verbatim into `OptionListView.tsx`. Two copies of the single judgment

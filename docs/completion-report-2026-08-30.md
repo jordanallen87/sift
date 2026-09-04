@@ -1,7 +1,7 @@
 # Completion report — Generic Decision Workspace (2026-08-30)
 
 Covers the work driven by `docs/change-sets/2026-08-30-generic-decision-workspace.md` and planned in
-`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`. The earlier build's report is
+`docs/planning/plans/2026-08-30-generic-decision-workspace.md`. The earlier build's report is
 `docs/completion-report.md` and remains accurate for the work it describes; this is the follow-on.
 
 **Final verified git SHA:** `0b82c6b6cdfa7da1c6a0255b7607c6021af2bc7f` — the tree the passing
@@ -19,7 +19,7 @@ generic decision workspace where ChatGPT is a first-class collaborator.
 The pre-implementation audit (`docs/audits/2026-08-30-...`) found the engine sound and the
 presentation broken. Its headline finding was a process failure, not a coding one: `product.md`
 specified **nine** UI regions, **eleven** shipped, and two of those appeared in no spec and no ADR.
-CLAUDE.md's rule — *specs are updated before acceptance behavior changes* — had been violated, and
+docs/engineering-principles.md's rule — *specs are updated before acceptance behavior changes* — had been violated, and
 that is what let the interface drift until the answer sat ~950px down a 2040px page.
 
 ---

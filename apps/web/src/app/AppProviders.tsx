@@ -6,7 +6,7 @@
  * A single shared `SiftCommands` client, reachable from any descendant via
  * `useSiftCommands()`, with a `commandsClient` override prop so component
  * tests (and later Playwright tests through the same seam) can substitute
- * a fake client without hitting the network (CLAUDE.md "Non-negotiable
+ * a fake client without hitting the network (docs/engineering-principles.md "Non-negotiable
  * product truths": "Visible UI controls and WebMCP callbacks use the same
  * command implementation" -- every control below this provider resolves the
  * exact same instance).

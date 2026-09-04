@@ -11,8 +11,14 @@ build/
 .pax-data/
 .strands/
 
-# Generated verification/test artifacts
+# Generated verification/test artifacts. The demo deliverables under
+# artifacts/demo/ are submission output, not build output, so they are
+# deliberately kept.
 artifacts/
+!artifacts/demo/
+artifacts/demo/*
+!artifacts/demo/sift-webmcp-demo-FINAL.mp4
+!artifacts/demo/screenshots/
 coverage/
 playwright-report/
 test-results/
@@ -37,24 +43,12 @@ reports/mutation/
 npm-debug.log*
 pnpm-debug.log*
 
-# Local tool state (Strata19 project index, not source)
-.strata19/
-
-# Local Claude Code session state, not source
-.claude/
-
 # Docker
 .docker/
 
-# Local runtime database (CLAUDE.md: `.sift-data/sift.sqlite` locally, `/data` on Railway).
+# Local runtime database (`.sift-data/sift.sqlite` locally, `/data` in deployment).
 # Runtime state, not a fixture -- it was tracked, so every local run dirtied the tree.
 .sift-data/
 
-# Agent-tooling operating instructions and the internal engineering log.
-# Kept on disk (they are this project's own working record) but deliberately
-# not published: they are build-process scaffolding, not part of the product
-# a reader of this repository needs.
-CLAUDE.md
-CLAUDE_CODE_PROMPT.md
-docs/final-plan/claude-code-implementation-prompt.md
-docs/build-log.md
+# Stray local capture files (screenshots dropped at the repo root).
+/*.png

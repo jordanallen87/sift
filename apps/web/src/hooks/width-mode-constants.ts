@@ -16,7 +16,7 @@
  * `tests/e2e/helpers/test-server.ts` imports the real `startServer`)
  * without pulling React into the test process.
  *
- * Why 800 rather than CLAUDE.md's canonical 480: 480 describes the width
+ * Why 800 rather than docs/engineering-principles.md's canonical 480: 480 describes the width
  * Sift is *designed for*; this constant has to describe the width the
  * *expanded* layout actually needs, and those are different questions.
  * Measured against the running product, walking every element and comparing

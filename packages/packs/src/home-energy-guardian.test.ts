@@ -5,7 +5,7 @@
  * capability catalog covering every declared skill/specialist/tool, that
  * `compiledHash` is deterministic, that the compiled pack passes the exact
  * same shared conformance suite `conformance.ts` runs for every built-in
- * pack (per docs/CLAUDE.md: "Every built-in or authoring-fixture pack must
+ * pack (per docs/engineering-principles.md: "Every built-in or authoring-fixture pack must
  * pass the shared compiler/conformance suite"), that every required
  * obligation from docs/specs/packs-and-routing.md "Home Energy Guardian
  * Decision Pack" -> "Required obligations" is present with the exact

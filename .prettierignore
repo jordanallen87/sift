@@ -8,7 +8,6 @@ playwright-report
 test-results
 .playwright-mcp
 .stryker-tmp
-.superpowers
 reports
 pnpm-lock.yaml
 *.sqlite
@@ -24,5 +23,3 @@ drizzle
 # repo's code-formatting gate; reformatting them is unrelated churn to any
 # implementation task. Code fences inside them are unaffected either way.
 docs/
-CLAUDE.md
-CLAUDE_CODE_PROMPT.md

@@ -43,7 +43,7 @@ const ATTRIBUTES: AttributeDefinition[] = [
     valueType: 'enum',
     allowedValues: ['FWD', 'AWD', 'RWD'],
   }),
-  // No `allowedValues` -- must render NO control (CLAUDE.md "Never
+  // No `allowedValues` -- must render NO control (docs/engineering-principles.md "Never
   // fabricate": nothing here will invent a set of options).
   buildAttribute({ id: 'trim', label: 'Trim', valueType: 'enum' }),
   buildAttribute({ id: 'price', label: 'Price', valueType: 'number', unit: 'USD' }),

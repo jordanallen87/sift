@@ -1,6 +1,6 @@
 /**
  * Captures the OpenTelemetry spans the Strands TypeScript SDK **already
- * emits** into Sift's own `runtime_events` store, closing CLAUDE.md's
+ * emits** into Sift's own `runtime_events` store, closing docs/engineering-principles.md's
  * "native Strands OpenTelemetry tracing ... feeding the Sift Runtime
  * Inspector" requirement and docs/specs/debugging-and-observability.md's
  * "OpenTelemetry and AgentCore" section.

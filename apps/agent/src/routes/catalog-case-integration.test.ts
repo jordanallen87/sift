@@ -349,7 +349,7 @@ describe('PAX-P28: a catalog-built car-purchase case works end to end through th
       }
 
       // Attributes a vehicle catalog can never know stay genuinely absent --
-      // never fabricated (CLAUDE.md; ADR 0003 "Context" point 1).
+      // never fabricated (docs/engineering-principles.md; ADR 0003 "Context" point 1).
       expect(entity.attributes['car.advertised_price']).toBeUndefined();
       expect(entity.attributes['car.mileage']).toBeUndefined();
       expect(entity.attributes['car.crash_safety_rating']).toBeUndefined();

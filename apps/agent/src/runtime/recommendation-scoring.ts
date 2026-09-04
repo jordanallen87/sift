@@ -11,7 +11,7 @@
  * numbers and lists was the model's word, or a constant, presented to a
  * person as if it were a finding.
  *
- * CLAUDE.md is explicit that the model "may propose candidate events and
+ * docs/engineering-principles.md is explicit that the model "may propose candidate events and
  * recommendations" but that the deterministic core owns state and
  * readiness. A ranking is a claim about a case, so it belongs to the core.
  * This module is the seam: the model still proposes, and its rationale is

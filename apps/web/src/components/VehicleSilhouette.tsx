@@ -6,7 +6,7 @@
  * The catalog is 853 vehicles built from the EPA's public fueleconomy.gov
  * dataset (`docs/reuse-attribution.md`), which carries specifications and
  * no imagery. Photographs would mean either bundling licensed images for
- * 853 vehicles, or fetching them at runtime — and CLAUDE.md requires
+ * 853 vehicles, or fetching them at runtime — and docs/engineering-principles.md requires
  * fixture mode to "execute the complete product without network access
  * after installation". A silhouette drawn here is offline by construction,
  * costs no request, and carries no licence.

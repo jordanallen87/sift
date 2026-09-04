@@ -3,11 +3,11 @@
 // filesystem, or ambient Date.now()/Math.random()/crypto.randomUUID() calls;
 // see docs/specs/architecture.md ("No file in packages/core may import
 // React, Express, Strands, a model provider, or filesystem storage") and
-// CLAUDE.md's Clock/IdGenerator port requirement.
+// docs/engineering-principles.md's Clock/IdGenerator port requirement.
 //
 // This file is built up incrementally by several parallel build tasks; each
 // adds only its own module's re-exports here rather than overwriting
-// others'. See docs/superpowers/plans/2026-08-26-pax-hackathon-build.md for
+// others'. See docs/planning/plans/2026-08-26-pax-hackathon-build.md for
 // the task map.
 
 // Shared domain error taxonomy (errors.ts).
@@ -173,7 +173,7 @@ export type { PackSelection } from './create-case.js';
 
 // Deterministic scoring and derived insights (scoring.ts). This is the
 // module that moves ranking authority out of the model and into the core,
-// per CLAUDE.md's "the deterministic core, not an LLM, owns case state,
+// per docs/engineering-principles.md's "the deterministic core, not an LLM, owns case state,
 // evidence validity, readiness, and human authority" — a ranking is a claim
 // about a case, and the model may narrate it but not author it. See that
 // file's header for the five honesty rules it is built around.

@@ -117,7 +117,7 @@ export interface BuildAppDeps {
   runtimeEventStore: RuntimeEventStore;
   /** `SIFT_DEBUG_ENABLED` (config.ts). Defaults to `true`; `false` makes every `/api/debug/*` route respond `404`. */
   debugEnabled?: boolean;
-  /** Sources `GET /ping`'s `time_of_last_update` (`routes/agentcore.ts`) -- every Sift timestamp comes from an injected `Clock`, never `Date.now()` directly (CLAUDE.md). */
+  /** Sources `GET /ping`'s `time_of_last_update` (`routes/agentcore.ts`) -- every Sift timestamp comes from an injected `Clock`, never `Date.now()` directly (docs/engineering-principles.md). */
   clock: Clock;
   /** Passed through to `createEventsRouter` — overridable in tests so an SSE test does not need to wait out a real 15s heartbeat interval. */
   sseHeartbeatIntervalMs?: number;

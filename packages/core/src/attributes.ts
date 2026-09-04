@@ -362,7 +362,7 @@ export function attributeValueStatusInvariantError(
 }
 
 /**
- * Enforces the honesty boundary CLAUDE.md's central claim depends on: "The
+ * Enforces the honesty boundary docs/engineering-principles.md's central claim depends on: "The
  * deterministic core, not an LLM, owns case state, evidence validity,
  * readiness, and human authority." (plan task F5 / change-set §25-§26:
  * "Specification research may support 'likely'; it may not assert

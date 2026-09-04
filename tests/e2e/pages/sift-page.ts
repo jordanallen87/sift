@@ -1,6 +1,6 @@
 /**
  * Semantic page-object wrapper over the real right-pane workspace
- * (docs/superpowers/plans/2026-08-26-pax-hackathon-build.md Task 12:
+ * (docs/planning/plans/2026-08-26-pax-hackathon-build.md Task 12:
  * "`SiftPage` exposes semantic methods for launch, investigate, ... review
  * proposal, ..., and read case context"). Every method drives the exact
  * same visible controls a real user clicks -- there is no shortcut that
@@ -10,7 +10,7 @@
  * hit the exact same `/api/cases/:caseId/commands/:commandName` route
  * `apps/web/src/api/sift-client.ts` (and therefore every visible control and
  * every WebMCP tool callback) sends every command through
- * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
+ * (docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation") -- used for the two real product beats that currently
  * have no dedicated visible control (`updateCriteria` -- there is no
  * criteria-editing UI yet, only the WebMCP tool and this same HTTP route)

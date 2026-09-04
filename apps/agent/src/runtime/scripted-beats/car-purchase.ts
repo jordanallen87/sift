@@ -57,7 +57,7 @@
  * features, so true out-the-door price against the household's $32,000
  * maximum is the sole differentiator -- is a plain deterministic filter the
  * scenario engine (`../car-purchase-scenario.js`) computes directly over the
- * seeded entity data, matching CLAUDE.md's "the deterministic core, not an
+ * seeded entity data, matching docs/engineering-principles.md's "the deterministic core, not an
  * LLM, owns ... readiness."
  */
 import type { ExecutionResult } from '@sift/contracts';

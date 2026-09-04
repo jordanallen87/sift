@@ -58,7 +58,7 @@
  * against each candidate's true out-the-door price is the only
  * discriminating fact -- a plain deterministic filter this engine computes
  * directly, once the final normalized prices are known (after round 2),
- * matching CLAUDE.md's "the deterministic core, not an LLM, owns ...
+ * matching docs/engineering-principles.md's "the deterministic core, not an LLM, owns ...
  * readiness."
  */
 import {
@@ -178,7 +178,7 @@ export function publisherFor(sourceId: string): string {
  * `Source` record in `caseState.sources`, via the real `CaseStore.
  * updateSelection` (the same non-event-sourced path `submitSource` uses).
  * Every constructed source is `verification: 'verified'` -- deterministic
- * fixture-mode sources are pre-vetted for this demo (CLAUDE.md's "fixture
+ * fixture-mode sources are pre-vetted for this demo (docs/engineering-principles.md's "fixture
  * mode must execute the complete product" posture), which also makes E1-\>E2
  * evidence synthesis (`achievedEvidenceLevel`'s "one authoritative source"
  * rule, `@sift/core` `evidence.ts`) deterministic and independent of whether

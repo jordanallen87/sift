@@ -686,7 +686,7 @@ export type RequestRevisionInput = z.infer<typeof RequestRevisionInputSchema>;
 // and webmcp.md's `sift_request_revision` (which webmcp exposes as a
 // standalone, narrower tool -- see `RequestRevisionInputSchema` above -- but
 // which a later task's command-service implementation is expected to route
-// through this same `reviewProposal` command, per CLAUDE.md's "Visible UI
+// through this same `reviewProposal` command, per docs/engineering-principles.md's "Visible UI
 // controls and WebMCP callbacks use the same command implementation").
 // `actor` deliberately allows `'agent'` structurally, matching
 // `DecisionProposalSchema`'s `ActorSchema`: the human-only rule is a

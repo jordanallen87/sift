@@ -5,7 +5,7 @@
  *
  * `evaluateReadiness(caseState): ReadinessResult`
  * (`packages/core/src/readiness.ts`) is "the single most safety-critical
- * function" in Sift -- CLAUDE.md: "The deterministic core, not an LLM, owns
+ * function" in Sift -- docs/engineering-principles.md: "The deterministic core, not an LLM, owns
  * case state, evidence validity, readiness, and human authority." This
  * component only ever *renders* an already-computed `ReadinessResult`-shaped
  * prop; it recomputes nothing and owns no readiness logic of its own.

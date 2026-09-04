@@ -28,7 +28,7 @@ written to close, reopened by later, unspecced work.
 
 The root cause the audit identifies is process, not a single bad implementation choice: "Two
 regions were added to the primary workspace without updating `product.md`'s region list, violating
-`CLAUDE.md`'s rule 'update the affected spec before changing acceptance behavior'" (audit §1).
+`docs/engineering-principles.md`'s rule 'update the affected spec before changing acceptance behavior'" (audit §1).
 Nothing in the test suite measured whether the answer stayed above the fold, so no gate caught the
 regression when it happened. We are honest about this: the property was specified once, correctly,
 and lost once, silently, because the spec update and the test that would have enforced it were both

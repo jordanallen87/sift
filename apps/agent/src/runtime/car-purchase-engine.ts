@@ -51,7 +51,7 @@
  *     round2 (superseding stale round-1 evidence, resolving
  *     `car.hard_constraints`/`car.shortlist` deterministically, a revised
  *     `recommendation.ready`, and a pending `proposal.proposed` --
- *     deliberately never auto-approved: CLAUDE.md "The model may propose
+ *     deliberately never auto-approved: docs/engineering-principles.md "The model may propose
  *     candidate events and recommendations. It may never approve a
  *     consequential decision." -- `reviewProposal` is a separate command a
  *     human issues through the normal UI, wholly outside this engine);
@@ -301,7 +301,7 @@ function attributeLabelFor(
  * engine never checked, named one hardcoded concern, and -- because
  * `mergeLimitations` puts engine-authored lines ahead of derived ones --
  * rendered first, so populating either column produced a flat contradiction
- * on the first line a person read. CLAUDE.md: a limitation must be true when
+ * on the first line a person read. docs/engineering-principles.md: a limitation must be true when
  * it is stated.
  *
  * "Established" is `status !== 'unknown'`, i.e. the record carries a real
@@ -426,7 +426,7 @@ function appendActivity(
  * Runtime Inspector-only detail. Persisting the full `RuntimeDebugEvent`
  * stream itself (the `runtime_events` table `db/schema.ts` already
  * declares) is the separate, not-yet-built Runtime Inspector persistence
- * task CLAUDE.md names -- genuinely out of this task's scope; see the dated
+ * task docs/engineering-principles.md names -- genuinely out of this task's scope; see the dated
  * `docs/build-log.md` entry.
  */
 function appendActivityForRuntimeEvent(
@@ -1297,7 +1297,7 @@ async function runOneInvestigation(
     // Logged unconditionally first (the same last-resort pattern app.ts's
     // own top-level error middleware uses) -- the run must never silently
     // stay "running"/"queued" forever, and there must always be a real,
-    // inspectable trace of what happened (CLAUDE.md "never hang forever or
+    // inspectable trace of what happened (docs/engineering-principles.md "never hang forever or
     // silently swallow the failure"). The two durable writes below are
     // still attempted best-effort (most failures leave both perfectly
     // writable), but neither is guaranteed: a case that no longer exists at

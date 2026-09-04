@@ -67,7 +67,7 @@ interface RuntimeEvent {
  * The detailed runtime stream, which is deliberately a different stream
  * from the one above.
  *
- * CLAUDE.md: "Persist a replayable sanitized public activity stream and
+ * docs/engineering-principles.md: "Persist a replayable sanitized public activity stream and
  * detailed runtime events separately from canonical case events." So
  * `context.injected` — the Context Injector proof the demo script names —
  * is a runtime fact and is *not* in the public feed, and a check that

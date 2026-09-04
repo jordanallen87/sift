@@ -97,7 +97,7 @@ export type HttpConflictResponse = z.infer<typeof HttpConflictResponseSchema>;
  *
  * `CommandService`/`routes/commands.ts` thread this marker through as a
  * plain field on the command envelope -- never a branch in command logic
- * (CLAUDE.md: "Visible UI controls and WebMCP callbacks use the same
+ * (docs/engineering-principles.md: "Visible UI controls and WebMCP callbacks use the same
  * command implementation"). It changes only what gets *recorded* about a
  * command (the developer/runtime trail), never what the command *does*: a
  * command with and without this header produces byte-identical case state

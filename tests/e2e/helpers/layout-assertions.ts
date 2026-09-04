@@ -1,5 +1,5 @@
 /**
- * Right-pane geometry assertions (CLAUDE.md "Playwright visual
+ * Right-pane geometry assertions (docs/engineering-principles.md "Playwright visual
  * verification"; docs/specs/testing.md's identical requirements): no
  * horizontal overflow, no fixed/sticky control overlapping a focused
  * card/approval controls/WebMCP status, primary controls stay inside the
@@ -357,7 +357,7 @@ export async function assertScrollIntoViewClearsStickyChrome(
   }
 }
 
-/** Disables CSS animations/transitions for deterministic, non-flaky assertions and screenshots (CLAUDE.md "deterministic ... animations disabled"). Call before navigation; persists across reloads on the same `page`. */
+/** Disables CSS animations/transitions for deterministic, non-flaky assertions and screenshots (docs/engineering-principles.md "deterministic ... animations disabled"). Call before navigation; persists across reloads on the same `page`. */
 export async function disableAnimations(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const apply = () => {
@@ -382,7 +382,7 @@ export async function disableAnimations(page: Page): Promise<void> {
 }
 
 /**
- * The full right-pane integrity check for one state (CLAUDE.md "Playwright
+ * The full right-pane integrity check for one state (docs/engineering-principles.md "Playwright
  * visual verification"). Combines overflow, sticky-overlap, and
  * touch-target assertions in one call.
  */
@@ -487,7 +487,7 @@ export async function assertRecommendationHeroAboveTheFold(page: Page): Promise<
 }
 
 /**
- * A8 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`):
+ * A8 (`docs/planning/plans/2026-08-30-generic-decision-workspace.md`):
  * `maxDiffPixelRatio: 0.01` alone let a whole product rename (Pax -> Sift)
  * pass with stale baselines -- every named screenshot still rendered
  * "Start a Pax case," and the suite stayed green throughout, because a

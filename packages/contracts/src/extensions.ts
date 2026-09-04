@@ -2,7 +2,7 @@
  * Case-extension-specific schemas built on top of attributes.ts.
  *
  * `CaseExtension` and `CaseExtensionSummary` are named in the Task 2 plan
- * interfaces (`docs/superpowers/plans/2026-08-26-pax-hackathon-build.md`)
+ * interfaces (`docs/planning/plans/2026-08-26-pax-hackathon-build.md`)
  * and in `docs/specs/strands-runtime.md`'s `ExecutionRequest.
  * caseExtensions: CaseExtensionSummary[]`, but neither has an explicit field
  * list anywhere in the spec set. Both are inferred here, grounded in

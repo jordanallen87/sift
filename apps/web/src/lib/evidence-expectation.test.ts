@@ -19,7 +19,7 @@ function definition(overrides: Partial<AttributeDefinition>): AttributeDefinitio
 const STATUSES: AttributeStatus[] = ['asserted', 'supported', 'verified', 'conflicted', 'unknown'];
 
 describe('meetsEvidenceExpectation', () => {
-  // Task C6 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`
+  // Task C6 (`docs/planning/plans/2026-08-30-generic-decision-workspace.md`
   // Phase C): this is the single judgment that decides whether a value reads
   // as "well supported" or "needs checking" across every option view. It was
   // written once in `QuickPickView.tsx` and copied verbatim into

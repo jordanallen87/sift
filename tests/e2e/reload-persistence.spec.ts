@@ -1,5 +1,5 @@
 /**
- * Reload persistence (CLAUDE.md "Playwright visual verification": "reload
+ * Reload persistence (docs/engineering-principles.md "Playwright visual verification": "reload
  * persistence"; docs/specs/testing.md "persistence after reload").
  *
  * `App.tsx` only ever remembers a *pointer* to the active case id

@@ -68,7 +68,7 @@ never passes `confidence` at all. The code's own comment on this exact bottlenec
 (`command-service.ts:135-140`) says it directly: "`upsertOption` cannot be reused to seed these
 instead: `OptionAttributeInputSchema.value` is required and the handler hardcodes
 `status: 'asserted'`, so an entity carrying a legitimately `status: 'unknown'` attribute (no value —
-CLAUDE.md 'never fabricate') can only be expressed as a direct `option.upserted` event." Meanwhile
+docs/engineering-principles.md 'never fabricate') can only be expressed as a direct `option.upserted` event." Meanwhile
 `AttributeRecordSchema` (`packages/contracts/src/attributes.ts:162-201`) already supports
 `status: 'asserted' | 'supported' | 'verified' | 'conflicted' | 'unknown'` (`ATTRIBUTE_STATUSES`,
 line 158), `confidence: z.number().min(0).max(1).optional()` (line 171), and
@@ -114,7 +114,7 @@ tool calls; registered tools; tool inputs/results" among other runtime detail
 (`change-sets/2026-08-30-generic-decision-workspace.md:726-736`), but nothing records this anywhere.
 Every case-scoped tool's `call` closure invokes a `SiftCommands` method directly (e.g.
 `register-sift-tools.ts:229`, `call: (input) => commands.upsertOption(input)`) — the identical HTTP
-client the UI's own controls call, which is correct under CLAUDE.md's "Visible UI controls and
+client the UI's own controls call, which is correct under docs/engineering-principles.md's "Visible UI controls and
 WebMCP callbacks use the same command implementation" rule, but it means there is only one code path
 and nothing on it says which caller triggered a given command. `WebMcpToolCallContext`
 (`apps/web/src/model-context/adapter.ts:56-59`) carries only `signal`. `CommandCallOptions`
@@ -201,7 +201,7 @@ mechanism (`sift-client.ts:38-48`).
    `CommandCallOptions` and `WebMcpToolCallContext`) records that a given command was issued by a
    registered WebMCP tool rather than a direct UI action. This does not create a second command path
    — every case-scoped tool still calls the identical `SiftCommands` method the matching UI control
-   calls, satisfying CLAUDE.md's shared-command-implementation rule — it only tags the existing path
+   calls, satisfying docs/engineering-principles.md's shared-command-implementation rule — it only tags the existing path
    so the server-side activity/runtime event stores, and therefore the Runtime Inspector's developer
    view (§34), can distinguish and display WebMCP-originated commands.
 

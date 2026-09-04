@@ -6,7 +6,7 @@
  * restore) into the normalized `RuntimeDebugEvent` shape defined in
  * docs/specs/debugging-and-observability.md ("Runtime event contract").
  *
- * `RuntimeEvent` (docs/superpowers/plans/2026-08-26-pax-hackathon-build.md
+ * `RuntimeEvent` (docs/planning/plans/2026-08-26-pax-hackathon-build.md
  * Task 6: `execute(...): AsyncIterable<RuntimeEvent | ExecutionResult>`) is
  * not separately defined anywhere in the spec set beyond that one signature
  * reference. debugging-and-observability.md's "Required captured behavior"
@@ -208,7 +208,7 @@ function buildEvent(
  * carries no pricing configuration, and Bedrock's own per-model rates are
  * neither installed nor reachable from a fixture-mode run. Multiplying a
  * real token count by a remembered rate would produce a number that *looks*
- * sourced and is not, which CLAUDE.md's "Never fabricate telemetry" rule
+ * sourced and is not, which docs/engineering-principles.md's "Never fabricate telemetry" rule
  * forbids more strongly than it minds a blank field.
  *
  * `routes/debug.ts` already treats the field as genuinely optional -- its

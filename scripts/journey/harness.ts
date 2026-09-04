@@ -37,7 +37,7 @@
  * A turn is taken either by the **person**, acting through visible controls
  * in the pane, or by the **assistant**, acting through a real WebMCP tool
  * call in a real host. Both routes reach the same command implementation
- * (CLAUDE.md), and running them in one interleaved journey is the only way
+ * (docs/engineering-principles.md), and running them in one interleaved journey is the only way
  * to test that claim rather than assert it.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';

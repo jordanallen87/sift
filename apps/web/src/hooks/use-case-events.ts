@@ -24,7 +24,7 @@
  *   route that can answer "what does the case look like now."
  *
  * Canonical-snapshot-freshness judgment call (recorded here and in
- * docs/build-log.md, per CLAUDE.md's "record judgment calls" instruction):
+ * docs/build-log.md, per docs/engineering-principles.md's "record judgment calls" instruction):
  * ordinary `PublicActivityEvent`s narrate activity (`summary`, bounded
  * `safeDetails`) but never carry the full updated `CaseState` a case-affecting
  * event produced. Rather than hand-maintaining a second, web-side copy of

@@ -55,7 +55,7 @@ export interface PendingHumanAction {
   proposalId: string;
 }
 
-// --- Bounding helpers (CLAUDE.md "Keep it BOUNDED... Bound every array.") ---
+// --- Bounding helpers (docs/engineering-principles.md "Keep it BOUNDED... Bound every array.") ---
 //
 // Every collection below is capped to a small, named maximum and reports its
 // true `total` alongside the (possibly truncated) `items` -- so a caller can

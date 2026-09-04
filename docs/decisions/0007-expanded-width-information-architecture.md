@@ -33,7 +33,7 @@ structurally unreachable.
 
 The failure has three distinct causes, and only one of them is a coding mistake:
 
-1. **The plan under-decomposed the requirement.** `docs/superpowers/plans/2026-08-30-generic-
+1. **The plan under-decomposed the requirement.** `docs/planning/plans/2026-08-30-generic-
    decision-workspace.md` turned §7 — an app-wide information-architecture requirement — into
    exactly two tasks: **B3** (a width-detection hook) and **C3** (Compare's narrow/expanded
    switch). No task existed for the shell width cap, for the catalog browse's expanded IA, or for
@@ -75,7 +75,7 @@ for product/UI experience. `product.md` §69 therefore governs, and `design-syst
 "single-column at every width" paragraph is updated rather than preserved — it cites a superseded
 ADR and describes a region order that no longer exists.
 
-CLAUDE.md requires the affected spec be updated *before* acceptance behaviour changes, which is
+docs/engineering-principles.md requires the affected spec be updated *before* acceptance behaviour changes, which is
 why this ADR and that edit land together with the shell change rather than after the views.
 
 **2. One shared shell, not a per-component width.**

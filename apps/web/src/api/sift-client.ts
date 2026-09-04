@@ -4,7 +4,7 @@
  * names this file directly:
  * `apps/web/src/api/sift-client.ts   Same-origin typed HTTP client`).
  *
- * CLAUDE.md's "Non-negotiable product truths" requires that "Visible UI
+ * docs/engineering-principles.md's "Non-negotiable product truths" requires that "Visible UI
  * controls and WebMCP callbacks use the same command implementation." This
  * module is that one implementation: every method validates its input
  * against the real `@sift/contracts` Zod schema *before* sending anything

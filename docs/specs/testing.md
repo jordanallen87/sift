@@ -273,7 +273,7 @@ The canonical path is `artifacts/verification/latest/report.json`. On failure, `
 
 ## Bounded Claude repair protocol
 
-`CLAUDE.md` and the implementation plan must instruct Claude Code to use this loop:
+`docs/engineering-principles.md` and the implementation plan must instruct Claude Code to use this loop:
 
 1. Run the narrowest required verification command for the current task.
 2. On failure, read the complete error and `report.json` before editing.

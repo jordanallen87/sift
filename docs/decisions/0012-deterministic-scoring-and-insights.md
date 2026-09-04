@@ -5,7 +5,7 @@ Date: 2026-09-01
 
 ## Context
 
-CLAUDE.md's non-negotiable product truths include:
+docs/engineering-principles.md's non-negotiable product truths include:
 
 > The deterministic core, not an LLM, owns case state, evidence validity, readiness, and human
 > authority.

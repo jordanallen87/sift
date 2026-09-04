@@ -344,7 +344,7 @@ describe('an enum is only ordinal when a pack says so', () => {
 });
 
 describe('a hard constraint flags, it never silently eliminates', () => {
-  // product.md and CLAUDE.md: the deterministic core owns state, but the
+  // product.md and docs/engineering-principles.md: the deterministic core owns state, but the
   // HUMAN owns the decision. A constraint violation that quietly drove the
   // total to zero would remove an option from consideration through the
   // back door of a ranking, with no visible statement that it happened.

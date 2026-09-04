@@ -30,7 +30,7 @@
  *    raw enum names (`asserted`, `agent_proposed`) the contract uses.
  *  - `status: null` and `status: 'unknown'` read as two clearly different
  *    facts. They ARE two different facts -- no entry at all, versus an entry
- *    that records that nobody knows -- and CLAUDE.md's "never fabricate"
+ *    that records that nobody knows -- and docs/engineering-principles.md's "never fabricate"
  *    makes flattening them into one "Unknown" a defect, not a copy nit. See
  *    `NO_RECORD_SENTENCE`/`UNKNOWN_SENTENCE` below.
  *  - `confidence` renders only where a record actually carries one. A
@@ -185,7 +185,7 @@ const NO_VALUE_TEXT = 'No value recorded';
  * here?". One means nobody has looked; the other means the case looked and
  * wrote down that it does not know. Rendering both as "Unknown" would throw
  * away the distinction the contract went to the trouble of preserving, which
- * is exactly the fabrication CLAUDE.md forbids.
+ * is exactly the fabrication docs/engineering-principles.md forbids.
  */
 const NO_RECORD_SENTENCE = 'Not recorded — this case has no entry for this detail at all.';
 const UNKNOWN_SENTENCE =

@@ -3,7 +3,7 @@
  * tool (docs/specs/webmcp.md "`sift_define_case_attribute`") -- lets the user
  * define a typed `custom.*` case concern the installed pack did not
  * anticipate, directly from the page rather than only through ChatGPT
- * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
+ * (docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation": both paths call `commands.defineCaseAttribute` on the
  * exact same `SiftCommands` instance).
  *

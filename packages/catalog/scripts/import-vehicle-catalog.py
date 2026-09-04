@@ -6,7 +6,7 @@ Sec. 105 -- no license restriction on reuse or redistribution. See
 docs/reuse-attribution.md for the full attribution entry.
 
 This is a one-time, offline transform, not part of the Sift build or a
-runtime dependency of the product (CLAUDE.md "Fixture mode must execute the
+runtime dependency of the product (docs/engineering-principles.md "Fixture mode must execute the
 complete product without network access after installation"). It is checked
 in for reproducibility and transparency about how the checked-in
 `packages/catalog/data/vehicle-catalog.json` was produced, not wired into

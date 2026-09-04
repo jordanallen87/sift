@@ -1,17 +1,17 @@
 /**
- * Accessibility scanning helper (CLAUDE.md "Playwright visual
+ * Accessibility scanning helper (docs/engineering-principles.md "Playwright visual
  * verification": "Run axe in every required state").
  *
  * Uses the real `@axe-core/playwright` `AxeBuilder` (not a hand-rolled
  * subset) against WCAG 2.0/2.1 A+AA rule tags. `critical`/`serious`
  * violations fail the test outright; `moderate`/`minor` findings are
  * printed (so they stay visible in CI output/build-log review) but do not
- * fail the release gate on their own -- CLAUDE.md does not specify a
+ * fail the release gate on their own -- docs/engineering-principles.md does not specify a
  * numeric axe threshold, and treating every axe-core heuristic (including
  * ones with a nontrivial false-positive rate, e.g. some color-contrast
  * checks against custom properties) as release-blocking would create
  * exactly the kind of "weaken the test to dodge a real finding" pressure
- * CLAUDE.md warns against; failing hard on `critical`/`serious` keeps this
+ * docs/engineering-principles.md warns against; failing hard on `critical`/`serious` keeps this
  * a genuine, enforced gate rather than a report nobody reads.
  */
 import { AxeBuilder } from '@axe-core/playwright';

@@ -44,7 +44,7 @@ identified directly against the live product."* The fix was specified, then sile
 later additions.
 
 **Root cause is process, not code.** Two regions were added to the primary workspace without
-updating `product.md`'s region list, violating `CLAUDE.md`'s rule *"update the affected spec before
+updating `product.md`'s region list, violating `docs/engineering-principles.md`'s rule *"update the affected spec before
 changing acceptance behavior."* Nothing in the test suite measures whether the answer is above the
 fold, so no gate caught it.
 
@@ -317,7 +317,7 @@ Swarm events *are* emitted with real category literals, but have no visualizatio
 
 Most importantly for §34: **no WebMCP tool call is recorded anywhere.** Tool registration is
 entirely client-side and calls the same `PaxCommands` HTTP client the UI uses — which correctly
-satisfies CLAUDE.md's "same command implementation" rule, but means the server cannot distinguish a
+satisfies docs/engineering-principles.md's "same command implementation" rule, but means the server cannot distinguish a
 WebMCP-originated call from a UI click. `runtimeEventStore.append` is invoked only from the two
 Strands engines. Since "showing WebMCP calls" is an explicit §34 requirement and a hackathon
 judging asset, this needs deliberate design — most likely an origin marker on the command envelope.
@@ -394,5 +394,5 @@ existence check. It must be **verified against the live deployment**, not assume
    Every generic workspace change must be checked against the Swarm demo, whose scenario reuses
    `car-purchase-scenario.ts`'s helpers directly (`home-energy-guardian-scenario.ts:113-119`) and
    will therefore inherit changes made there.
-4. **`docs/superpowers/plans/2026-08-26-pax-hackathon-build.md` is 178/179 complete and closed.**
+4. **`docs/planning/plans/2026-08-26-pax-hackathon-build.md` is 178/179 complete and closed.**
    This change set needs its own plan; it is not a continuation of that one.

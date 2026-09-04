@@ -1,5 +1,5 @@
 /**
- * Keyboard operation and accessibility coverage (CLAUDE.md "Playwright
+ * Keyboard operation and accessibility coverage (docs/engineering-principles.md "Playwright
  * visual verification": "keyboard use", "valid focus order"; "Run axe in
  * every required state" -- covers the launcher and mid-investigation
  * states in addition to `car-purchase-journey.spec.ts`'s own scans).

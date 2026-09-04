@@ -1,6 +1,5 @@
 # Sift Final Hackathon Execution Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to execute this plan. Use `superpowers:test-driven-development` for every behavior change and `superpowers:verification-before-completion` before claiming a task complete.
 
 Status: approved by the user on September 2, 2026 for implementation by Claude Code, followed by an independent Codex review and test pass. This plan and [the canonical experience specification](./final-approved-experience.md) supersede older planning documents when they conflict.
 

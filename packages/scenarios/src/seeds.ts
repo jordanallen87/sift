@@ -50,7 +50,7 @@
  * `car.rear_cargo_crate_fit` and `car.driving_comfort_rating` are seeded
  * `status: 'unknown'` with no `value` for every candidate, translated from
  * `household-fit-matrix`'s own `unknown.rear_cargo_crate_compatibility` /
- * `unknown.driving_comfort` -- CLAUDE.md: "It may never ... fabricate."
+ * `unknown.driving_comfort` -- docs/engineering-principles.md: "It may never ... fabricate."
  */
 import type { Clock, IdGenerator } from '@sift/core';
 import { createAttributeRecord, instantiateCase, type PackSelection } from '@sift/core';

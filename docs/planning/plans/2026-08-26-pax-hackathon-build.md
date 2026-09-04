@@ -1,6 +1,5 @@
 # Pax Dual-Hackathon Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **2026-08-28 correction:** Tasks 1-14 were fully implemented, tested, committed, and deployed by prior sessions (see `docs/build-log.md` and `docs/completion-report.md`), but their checkboxes here were never ticked — a tracking gap, not an implementation gap. Checkboxes below were corrected to match the verified state of the repository at commit `d1335cf`, except the one genuinely open, human-only item (demo video recording) called out explicitly in Task 14. Task 15 was added the same day to close a real gap found during a fresh evaluation: the shadcn/ui redesign (commit `b45d39e`) landed after the last recorded `pnpm verify` pass, so it was never verified end-to-end, and the automated e2e suite had not been supplemented with a live, human-style Playwright pass.
 
@@ -46,7 +45,7 @@ Everything the Choose Our Next Car / WebMCP submission actually requires:
   fixture tools need to be real for Tier 1. The `home-energy-guardian` manifest
   and the `apartment-hunt` authoring fixture land in Tier 2.
 - Task 4 (pack-authoring skill) — **Tier 2 entirely.** Not a Devpost submission
-  gate for either competition; still required by `CLAUDE.md`'s full completion
+  gate for either competition; still required by `docs/engineering-principles.md`'s full completion
   contract, so it ships in Tier 2, not dropped.
 - Task 5 (SQLite store, command service, HTTP/SSE) — full task.
 - Task 6 (Strands adapter, plugins, interventions) — the AgentSkills /
@@ -85,13 +84,13 @@ video).
 
 **Tier 3 — best-effort, contingent on credentials/time.** AgentCore deployment
 and AgentCore/CloudWatch correlation. Per `docs/specs/architecture.md` and
-`CLAUDE.md`, missing AWS credentials are an honest external blocker, not a
+`docs/engineering-principles.md`, missing AWS credentials are an honest external blocker, not a
 required deliverable — AgentCore is a score-strengthening bonus for the AWS
 submission, not a gate for either deadline (see audit Finding 1 discussion).
 
 ### Judge-visibility reweighting (2026-08-27)
 
-Discussed with the project owner: CLAUDE.md's completion bar (100% branch
+Discussed with the project owner: docs/engineering-principles.md's completion bar (100% branch
 coverage on core, mutation testing, a 6-view Runtime Inspector, a full
 pack-authoring agent/skill/CLI, Playwright at 4 viewports) is a rigorous
 engineering bar, but it is not the same thing as maximizing chance of actually
@@ -111,7 +110,7 @@ trade-off — do both. Two changes to Tier 1 sequencing:
   in Task 14 — so build and polish decisions serve the video's actual beats
   instead of being reverse-engineered from whatever got built.
 - Run a first-class visual design pass (tokens, typography, motion, the "calm
-  right-pane identity" CLAUDE.md requires) as an explicit early Tier 1 step in
+  right-pane identity" docs/engineering-principles.md requires) as an explicit early Tier 1 step in
   parallel with Task 2, not a bullet buried inside Task 9.
 
 If the calendar does get tight against 2026-09-03, mutation testing, Inspector
@@ -569,7 +568,7 @@ scripts/check-submission.ts           Submission artifact verifier
 
 **Interfaces:** None new. This task verifies existing contracts; it does not add or change any.
 
-- [x] Run `pnpm verify` fresh at current `HEAD`; if any stage fails, treat it as a real defect (classify per CLAUDE.md's implementation/contract/fixture/environment/flake/spec-conflict taxonomy) and repair the causal defect, not the symptom, then rerun to green. Record the resulting `artifacts/verification/<runId>/report.json` run id.
+- [x] Run `pnpm verify` fresh at current `HEAD`; if any stage fails, treat it as a real defect (classify per docs/engineering-principles.md's implementation/contract/fixture/environment/flake/spec-conflict taxonomy) and repair the causal defect, not the symptom, then rerun to green. Record the resulting `artifacts/verification/<runId>/report.json` run id.
 - [x] Run `pnpm verify:release` fresh at current `HEAD`; confirm mutation testing, build, and Docker stages still pass against the redesigned components, and that `test:submission` fails only on the pre-existing human-only gates (video URLs, repo visibility) — not on anything new.
 - [x] Start the real local Express + Vite production build (not `pnpm dev`) and drive both hero flows live with the Playwright MCP/browser tool as an actual user would, at minimum at `390x844` and `1440x1000`: launch → seed a case → drive evidence/tool/specialist activity to a ready recommendation → exercise the approval/decision step → open the Runtime Inspector → reload and confirm persistence. Do this for both car-purchase and home-energy-guardian.
 - [x] While driving the live app, specifically hunt for the defect class the redesign already produced once: any control with no visible background/border where one is expected, any focus ring or hover state lost in the shadcn conversion, any touch target under 44px, any horizontal overflow, any layout shift between the four required viewports. Check both light and dark rendering if the app supports a theme toggle; if it does not, confirm that is intentional (not an accidental regression) against `docs/design-system.md`. (Confirmed light-only rendering is intentional: no `prefers-color-scheme`/`.dark`/`data-theme` anywhere in `apps/web/src/styles/`.)

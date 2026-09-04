@@ -1,6 +1,6 @@
 /**
  * The genuinely-dynamic-content mask list for `toHaveScreenshot()` calls
- * (CLAUDE.md "Playwright visual verification": "Capture named visual
+ * (docs/engineering-principles.md "Playwright visual verification": "Capture named visual
  * baselines with deterministic fonts, clocks, IDs, and animations
  * disabled").
  *

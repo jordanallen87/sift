@@ -11,7 +11,7 @@
  * the timing belt was done at 90k") but it is not a `Source`, not a `Claim`,
  * not an `EvidenceLink` -- it never satisfies an obligation, never moves
  * readiness, and never invalidates the recommendation (`CaseNoteSchema`'s
- * own doc comment; CLAUDE.md "The deterministic core, not an LLM, owns ...
+ * own doc comment; docs/engineering-principles.md "The deterministic core, not an LLM, owns ...
  * evidence validity"). This component only renders what the canonical
  * `CaseState.notes` array already says; it has no code path that could turn
  * a note into evidence even by accident.

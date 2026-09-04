@@ -4,7 +4,7 @@
  * predicate (docs/specs/pack-authoring.md).
  *
  * This is the single most safety-critical rule in the product
- * (CLAUDE.md: "The model may propose candidate events and recommendations.
+ * (docs/engineering-principles.md: "The model may propose candidate events and recommendations.
  * It may never approve a consequential decision."). Every branch below is
  * covered by both example-based and property-based tests in
  * `policy.test.ts`.
@@ -19,7 +19,7 @@
  *    `{ actor, proposalId, outcome, instructions }` shape sketched in the
  *    task description. This module is grounded in the real contract.
  * 2. Every timestamp (`DecisionProposal.reviewedAt`, `CaseState.updatedAt`)
- *    comes from an injected `Clock`, per CLAUDE.md's non-negotiable rule.
+ *    comes from an injected `Clock`, per docs/engineering-principles.md's non-negotiable rule.
  *    `IdGenerator` is still defined below (no other module had defined it
  *    yet) so sibling `packages/core` modules and the later reducer
  *    integration layer share one minimal port shape -- but `reviewProposal`
