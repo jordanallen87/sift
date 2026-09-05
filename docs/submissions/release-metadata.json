@@ -26,9 +26,15 @@
     "buildLog": "docs/build-log.md"
   },
   "videoDurationsSeconds": {
-    "webmcp": null,
+    "webmcp": 173.5,
+    "webmcpFile": "artifacts/demo/sift-webmcp-demo-FINAL.mp4",
+    "webmcpStatus": "final",
     "agentsForHumans": null,
-    "note": "Measured by scripts/test-submission.ts with ffprobe once the recorded files are present. Limits: WebMCP under 3:00, Agents for Humans 5:00 or under."
+    "agentsForHumansDraft": 154.907,
+    "agentsForHumansDraftFile": "artifacts/demo/sift-aws-energy-demo-DRAFT.mp4",
+    "agentsForHumansStatus": "draft only; pending re-voicing per rec/energy/REVOICE.md, so no final duration exists yet",
+    "measuredWith": "ffprobe -v error -show_entries format=duration, run directly against the files on 2026-09-05",
+    "note": "Limits: WebMCP under 3:00 (180s), Agents for Humans 5:00 or under (300s). Both measured values are inside their limits, but neither file sits at the default path scripts/test-submission.ts probes (docs/demo/webmcp-recording.mp4, docs/demo/aws-recording.mp4), so that script still reports both video-duration checks as SKIP rather than PASS. Point SIFT_WEBMCP_VIDEO_PATH / SIFT_AWS_VIDEO_PATH at the files above to have the gate measure them itself."
   },
   "webmcpVideoUrl": "",
   "agentsForHumansVideoUrl": "",

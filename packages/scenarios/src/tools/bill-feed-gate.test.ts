@@ -15,6 +15,14 @@ describe('evaluateBillFeed', () => {
     expect(decision.baselineAmount).toEqual({ amount: 175.0, currency: 'USD' });
     expect(decision.reason).toMatch(/42%/);
     expect(decision.reason).toMatch(/abnormal/i);
+    // The reason string is shown to a person verbatim (DemoLauncher renders
+    // it), so the figures the decision rests on have to actually appear in
+    // it. Asserting only /42%/ let `formatMoney` be mutated to return ""
+    // -- dropping both dollar amounts from the sentence -- with every test
+    // still green. Pinning the rendered amounts, including the two-decimal
+    // formatting, is what makes that regression fail here.
+    expect(decision.reason).toContain('$248.50 USD');
+    expect(decision.reason).toContain('$175.00 USD');
   });
 
   it('does NOT open a case for the real, checked-in within-threshold bill (current-bill-normal.json)', () => {
@@ -25,6 +33,8 @@ describe('evaluateBillFeed', () => {
     expect(decision.percentAboveBaseline).toBeLessThan(15);
     expect(decision.thresholdPercent).toBe(DEFAULT_ANOMALY_THRESHOLD_PERCENT);
     expect(decision.reason).toMatch(/normal|no case/i);
+    expect(decision.reason).toContain('$177.25 USD');
+    expect(decision.reason).toContain('$169.75 USD');
   });
 
   it('is a pure function of its bill argument -- no disk I/O, works on a hand-built bill object, no cast needed', () => {

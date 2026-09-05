@@ -388,7 +388,9 @@ sift/
     packs/       Decision Pack compiler, registry, built-in manifests, authoring tools
     catalog/     Bundled EPA vehicle dataset and bounded query functions
     scenarios/   Fixture data, scripted tools and model, scenario runner, trajectory assertions
-    demo-studio/ Narration-led demo manifest validation and timing
+    demo-studio/ Narration-led demo manifest validation and timing (demo tooling, not product runtime)
+    trace-map/   Dependency-free projection of safe runtime signals into a run map; built and
+                 tested, but not yet consumed by the Runtime Inspector UI
   tests/         contract, integration, scenario, e2e (Playwright), and opt-in live suites
   scripts/       verification orchestration, the sift CLI, report generation
   docs/          specs, ADRs, architecture diagram, submission materials

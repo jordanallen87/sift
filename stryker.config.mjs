@@ -4,7 +4,10 @@
  * docs/specs/testing.md, the targeted mutation gate covers router
  * thresholds, human-only approval, fail-closed evidence, staleness, and
  * readiness — all of which live in packages/core/src and packages/packs/src.
- * Mutation testing is not required for React presentation code.
+ * Mutation testing is not required for React presentation code. One
+ * further decision rule -- the Home Energy Guardian case-creation gate --
+ * lives outside those two packages and is named explicitly in `mutate`
+ * below; see the comment there.
  *
  * @type {import('@stryker-mutator/api/core').PartialStrykerOptions}
  */
@@ -33,6 +36,18 @@ const config = {
   mutate: [
     'packages/core/src/**/*.ts',
     'packages/packs/src/**/*.ts',
+    // The Home Energy Guardian case-creation gate is a decision rule of
+    // exactly the kind named above -- it decides whether a case is opened
+    // at all -- but it lives in packages/scenarios, so the two globs above
+    // never covered it. Scoping Stryker at this one file on 2026-09-05
+    // scored it 71.43% (under the break threshold of 80): `formatMoney`
+    // could be mutated to return "" and every test still passed, because
+    // nothing asserted that the dollar amounts a person actually reads
+    // appear in the decision's `reason` string. The tests were strengthened
+    // to pin those amounts (100%, 7/7 killed). Naming the file here is what
+    // keeps `pnpm test:mutation` covering it from now on, rather than
+    // relying on someone remembering to scope a run by hand.
+    'packages/scenarios/src/tools/bill-feed-gate.ts',
     '!packages/core/src/**/*.test.ts',
     '!packages/packs/src/**/*.test.ts',
   ],

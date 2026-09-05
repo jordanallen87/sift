@@ -313,3 +313,5 @@ Any intentional acceptance change requires a specification edit and explicit use
 ## Mutation testing
 
 A targeted mutation gate covers router thresholds, human-only approval, fail-closed evidence, staleness, and readiness. Surviving mutations in those modules fail `verify:release`. Mutation testing is not required for React presentation code.
+
+Scope is defined by `stryker.config.mjs`'s `mutate` globs: `packages/core/src` and `packages/packs/src` in full, plus any individually named decision rule that lives outside them. As of 2026-09-05 there is one such file — `packages/scenarios/src/tools/bill-feed-gate.ts`, the Home Energy Guardian case-creation gate, which decides whether a case is opened at all and therefore belongs in this gate despite its package. **A decision rule added outside `core`/`packs` must be named in `mutate` explicitly**; the globs will not find it, and a rule that is never mutated can be pinned by tests that would not fail if it broke. The break threshold is 80.
