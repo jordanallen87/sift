@@ -189,6 +189,13 @@ curl -s -X POST https://sift-hackathon-production.up.railway.app/invocations \
 **Narration:**
 > "This isn't a sanitized trace. That one real error and one real warning are the exact RetrySteering redirect and the withheld draft you just watched happen. Both genuinely occurred, both are visible right here, and the run still finished and produced a sourced recommendation. Nothing here is cleaned up after the fact."
 
+**Optional 10s aside, only if the rebalance above left room — Context Injector:** set the Timeline's category filter to **`context`**. Nineteen **"Injected case context (5 field(s))."** entries appear on a round-1 run.
+
+**Narration (if included):**
+> "Every specialist starts from the case as it stands right now — injected, not carried along in a prompt someone wrote earlier. That's why raising a new concern revises a run already under way instead of restarting it."
+
+*(This is the one required Strands capability the video otherwise never points at, though it has always been real and is asserted in the scenario report's `contextInjections`. Verified live: 19 `context.injected` events on a single deployed run.)*
+
 **On-screen action — release report:** in a terminal, show `artifacts/verification/latest/report.json` (or run `pnpm verify` fresh if time allows) — point at `"status": "passed"` and the real `gitSha` matching your submitted commit.
 
 **Narration:**
