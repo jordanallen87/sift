@@ -6,11 +6,13 @@
  * "Required adaptive moments"), the analogous file to
  * `scripted-beats/car-purchase.ts` for the Swarm-hero pack.
  *
- * - `round1`: the initial investigation under the pack's default 50/50
- *   cost/conservation criteria, reweighted here to 80/20 (cost-heavy) so the
- *   scripted synthesis genuinely favors the cheapest response option --
- *   `monitor-one-cycle` -- rather than coincidentally landing on the
- *   root-cause fix regardless of weighting (see the arithmetic note below).
+ * - `round1`: the initial investigation under the pack's default 80/20
+ *   cost-heavy cost/conservation criteria, where the scripted synthesis
+ *   genuinely favors the cheapest response option -- `monitor-one-cycle` --
+ *   rather than coincidentally landing on the root-cause fix regardless of
+ *   weighting (see the arithmetic note below). The pack's default and this
+ *   beat's narration are the same weighting on purpose, and
+ *   `home-energy-guardian.test.ts` fails if they diverge.
  *   Exercises: anomaly-first ordering, the weather steering-then-handoff
  *   moment, and a cost-favoring synthesis that does not propose an
  *   inspection.
@@ -430,6 +432,22 @@ function buildDecisionSynthesizerProvider(): ScriptedModelProvider {
   return new ScriptedModelProvider({
     beats: {
       round1: [
+        // A first draft that sounds entirely reasonable and cites nothing.
+        //
+        // This is not padding. `decision-synthesizer`'s real `GoalLoop`
+        // validator requires a `source-` id, so this attempt is genuinely
+        // rejected by the same validator the release gate exercises, and
+        // the corrected attempt below is what actually reaches the case.
+        // Before this, round 1 validated on attempt 1 and the whole
+        // rejection path -- the product's clearest demonstration that it
+        // will not ship an unsupported answer -- existed only inside a unit
+        // test, while the UI built to display it sat unreachable.
+        //
+        // `maxAttempts: 2` means there is exactly one retry, so a second
+        // failure would surface as a real failure rather than loop.
+        structuredOutputTurn({
+          message: 'Monitoring for one more billing cycle looks like the sensible call here.',
+        }),
         structuredOutputTurn({
           message: DECISION_TEXT_ROUND1,
         }),

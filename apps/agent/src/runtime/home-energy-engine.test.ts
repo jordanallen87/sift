@@ -184,10 +184,10 @@ describe('determineHomeEnergyRound', () => {
     expect(determineHomeEnergyRound(stateWithCriteria([]))).toBe('round1');
   });
 
-  it('is round1 at the pack default 50/50 weighting', () => {
+  it('is round1 at the pack default cost-heavy 80/20 weighting', () => {
     const state = stateWithCriteria([
-      { id: 'energy.cost', weight: 50 },
-      { id: 'energy.conservation', weight: 50 },
+      { id: 'energy.cost', weight: 80 },
+      { id: 'energy.conservation', weight: 20 },
     ]);
     expect(determineHomeEnergyRound(state)).toBe('round1');
   });
@@ -420,6 +420,57 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
         .replayFrom(caseId, 0)
         .some((event) => event.type === 'intervention.confirmation_required'),
     ).toBe(true);
+  }, 30_000);
+
+  it('withholds an uncited first draft on the live path, and lands the corrected one', async () => {
+    // The product refusing a plausible-sounding answer that cannot cite a
+    // source is its clearest single argument, and for the whole life of the
+    // feature it happened only inside a unit test. `draft.withheld` had a
+    // label, a tone, a `RecommendationCard` state, a
+    // `SpecialistActivityPanel` branch and `workspace-status` handling --
+    // all tested, all unreachable, because the `goal` category never
+    // reached the consumer stream and round 1's scripted draft passed on
+    // its first attempt anyway.
+    //
+    // This asserts the whole path: a real GoalLoop rejection, surfaced as a
+    // real consumer event, followed by a recommendation that still arrives.
+    const { caseStore, activityStore, runStore, commandService, runService } = buildLiveStack();
+
+    const startResult = commandService.startDemo('cmd-start', { demoId: 'home-energy-guardian' });
+    requireOkCommand(startResult);
+    const snapshot = startResult.value.snapshot!;
+    const caseId = snapshot.id;
+
+    const runResult = runService.requestInvestigation('cmd-run-1', {
+      caseId,
+      expectedSequence: snapshot.eventSequence,
+    });
+    requireOkRun(runResult);
+    const record = await waitForRunSettled(runStore, runResult.value.runId);
+    expect(record.status).toBe('completed');
+
+    const activity = activityStore.replayFrom(caseId, 0);
+    const withheld = activity.filter((event) => event.type === 'draft.withheld');
+    expect(withheld).toHaveLength(1);
+    expect(withheld[0]?.phase).toBe('failed');
+    // Correlated back to the specialist whose draft was rejected, so the
+    // event is inspectable rather than a bare banner.
+    expect(withheld[0]?.agentId).toBe('decision-synthesizer');
+    expect(withheld[0]?.debugEventId).toBeTruthy();
+
+    // The rejection is not the end state: the retry cites its sources and
+    // the case ends up with a real recommendation.
+    const finalSnapshot = caseStore.load(caseId);
+    expect(finalSnapshot).not.toBeNull();
+    expect(finalSnapshot?.recommendation?.status).toBe('ready');
+    expect(finalSnapshot?.recommendation?.rationale).toMatch(/source-/);
+
+    // Ordering matters for anyone watching: the withheld draft precedes the
+    // recommendation it was replaced by.
+    const withheldIndex = activity.findIndex((event) => event.type === 'draft.withheld');
+    const readyIndex = activity.findIndex((event) => event.type === 'recommendation.ready');
+    expect(withheldIndex).toBeGreaterThanOrEqual(0);
+    expect(readyIndex).toBeGreaterThan(withheldIndex);
   }, 30_000);
 
   it("publishes each specialist's real duration onto the consumer activity stream, not only the Runtime Inspector", async () => {

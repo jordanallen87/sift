@@ -72,28 +72,26 @@
  * persisted trace of that reweight, independent of which caller performed
  * it (visible UI control or a WebMCP `sift_update_criteria` call, per
  * docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use the same command
- * implementation"). A freshly started case (pack defaults: both weighted 50)
- * is `round1`.
+ * implementation"). A freshly started case (pack defaults: cost 80, conservation 20)
+ * is `round1` (pack defaults are cost-heavy, so conservation never exceeds cost there).
  *
- * One honest, documented cosmetic limitation this round split inherits from
- * the already-built, already-tested `scripted-beats/home-energy-guardian.ts`
- * (not modified here -- out of this task's scope, and doing so would risk
- * destabilizing `home-energy-swarm.test.ts`'s own passing assertions against
- * it): that file's `round1` scripted beat narrates its cost/conservation
- * weighting as "80/20" in `decision-synthesizer`'s fixed response text,
- * matching the arithmetic that file's own module header documents (a
- * genuinely cost-heavy weighting is needed to make `monitor-one-cycle`
- * outscore `request-hvac-inspection` under `evaluateResponseOptions`'
- * real formula). A freshly started live case actually carries the pack's
- * *default* 50/50 weights at that point, not 80/20 -- so round 1's
- * recommendation rationale text names a specific weighting that does not
- * exactly match the case's true criteria at that moment, even though the
- * *system prompt* `decision-synthesizer` actually received does honestly
- * carry the case's real weights (`buildDecisionSynthesizerSystemPrompt` in
- * `home-energy-swarm.ts` bakes in `request.caseSummary.criteria` from the
- * live snapshot, unchanged). This is scripted-fixture flavor text, not a
- * correctness defect in this engine's own round detection, folding, or
- * event correlation -- recorded here rather than silently accepted.
+ * A freshly started case carries the pack's cost-heavy 80/20 default, which
+ * is both what round 1's narration says and what the deterministic scorer
+ * agrees with. That agreement used to be absent: the pack shipped 50/50
+ * while the scripted round-1 text narrated 80/20, so the recommendation card
+ * printed the scripted "0.80 versus 0.47" directly above the computed "67%
+ * to 50%" and recommended an option its own criteria ranked second. The
+ * default is now 80/20 and
+ * `scripted-beats/home-energy-guardian.test.ts` fails if the two ever drift
+ * apart again.
+ *
+ * Round 1 also genuinely exercises the `GoalLoop` rejection path: the
+ * scripted `decision-synthesizer` offers an uncited draft first, the real
+ * validator refuses it for citing no source, and the corrected retry is what
+ * reaches the case. That rejection surfaces as a `draft.withheld` consumer
+ * event -- the one `goal`-category event promoted out of Runtime
+ * Inspector-only detail, because a product refusing an unsupported answer is
+ * exactly what a person watching it work should see.
  */
 import type {
   CaseEvent,
@@ -353,6 +351,35 @@ function appendActivityForSwarmEvent(
           ...shared,
           type: 'intervention.confirmation_required',
           phase: 'waiting',
+          summary: event.summary,
+        });
+      }
+      return;
+    }
+    // The `goal` category is otherwise Runtime Inspector detail, and
+    // `goal.validated` stays there: "the model got it right first time" is
+    // not news to anyone. A *rejection* is the opposite. It is the moment
+    // the product refuses a plausible-sounding answer that could not cite a
+    // source, and a person watching an agent work has every reason to see
+    // that happen rather than have it summarized afterwards.
+    //
+    // `draft.withheld` was a fully-built dead end before this: the label,
+    // the `blocked` tone, `RecommendationCard`'s withheld state,
+    // `SpecialistActivityPanel`'s branch and `workspace-status`'s handling
+    // all existed and were tested, and nothing in the product ever emitted
+    // the event they render.
+    case 'goal': {
+      if (event.name === 'goal.validation_failed') {
+        appendActivity(activityStore, clock, ctx.caseId, {
+          ...shared,
+          type: 'draft.withheld',
+          // `failed` is this attempt's real outcome. The *run* is not
+          // failing -- GoalLoop retries and the corrected draft lands --
+          // but the withheld attempt genuinely did not pass, and labelling
+          // it `active` or `waiting` would understate what happened. The
+          // `blocked` styling a reader sees comes from
+          // `activity-labels.ts`'s tone for this event type, not the phase.
+          phase: 'failed',
           summary: event.summary,
         });
       }

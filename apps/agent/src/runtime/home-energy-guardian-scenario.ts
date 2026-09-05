@@ -30,7 +30,7 @@
  *
  * `runHomeEnergyGuardianScenario` runs the real six-node Swarm exactly
  * twice: `round1` (the initial investigation, starting at
- * `anomaly-investigator`, under the pack's own default 50/50 cost/
+ * `anomaly-investigator`, under the pack's own default 80/20 cost/
  * conservation weighting) and `round2` (after the household reweights
  * toward long-term waste reduction, starting directly at
  * `decision-synthesizer` -- nothing about the already-confirmed anomaly/
@@ -395,7 +395,7 @@ export async function runHomeEnergyGuardianScenario(
   // mirroring `car-purchase-scenario.ts`'s own `candidateLabels`.
   const optionLabels = entityLabelsById(snapshot.entities);
 
-  // --- 3-9. Round 1: the real six-node Swarm, starting at anomaly-investigator, at the pack's own default 50/50 cost/conservation weighting ---
+  // --- 3-9. Round 1: the real six-node Swarm, starting at anomaly-investigator, at the pack's own default 80/20 cost/conservation weighting ---
   const providers = buildHomeEnergySwarmScriptedProviders();
   setScenarioBeat(providers, 'round1');
 
