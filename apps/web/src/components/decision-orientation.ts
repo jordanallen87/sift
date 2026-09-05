@@ -56,8 +56,14 @@ export const PHASE_LABELS: Record<string, string> = {
 };
 
 export const ROUTE_TO_OUTCOME: Record<string, string> = {
-  discovery: 'Then one quick check for anything missed, and Sift searches the catalog.',
-  blind_spot_review: 'Then Sift searches the catalog and you triage what it finds.',
+  // Pack-neutral for the same reason `investigating` below is, and missed
+  // when that fix was made: the catalog is the *vehicle* catalog, so a
+  // freshly-opened Home Energy Guardian case read "Sift searches the
+  // catalog" about a thermostat fault, with its four response options
+  // already listed on the same screen. "Looks into your options" is true
+  // whether the options were searched for or shipped with the pack.
+  discovery: 'Then one quick check for anything missed, and Sift looks into your options.',
+  blind_spot_review: 'Then Sift looks into your options and you triage what it finds.',
   discovering_candidates: 'Then you keep or pass on each one, and Sift digs into what you keep.',
   triage: 'Then Sift investigates what you kept and shows you where things stand.',
   // Pack-neutral: this shell renders for every pack, and Home Energy
@@ -204,21 +210,29 @@ function provisionalityOf(
     coverage.requiredResolved < coverage.requiredTotal;
 
   if (askedNothing) {
-    return {
-      provisional: true,
-      provisionalReason:
-        'Sift has not asked you everything yet, so this is based on the catalog rather than on what matters to you. Answering the questions above will change it.',
-    };
+    return { provisional: true, provisionalReason: PROVISIONAL_REASONS.asked_nothing };
   }
   if (deferred) {
-    return {
-      provisional: true,
-      provisionalReason:
-        'Provisional — something was deferred, so this is not the whole picture yet.',
-    };
+    return { provisional: true, provisionalReason: PROVISIONAL_REASONS.deferred };
   }
   return { provisional: false, provisionalReason: null };
 }
+
+/**
+ * Why a ranking is being shown as provisional.
+ *
+ * Exported as a table for the same reason `PHASE_LABELS`/`ROUTE_TO_OUTCOME`
+ * are: this shell renders for every pack, so every sentence it can produce
+ * has to be checkable for one pack's vocabulary in one place. Inline string
+ * literals are exactly how "based on the catalog" reached Home Energy
+ * Guardian -- a pack with no catalog, whose four response options ship with
+ * it -- while the neutrality test asserted only the two tables above.
+ */
+export const PROVISIONAL_REASONS = {
+  asked_nothing:
+    'Sift has not asked you everything yet, so this is based on the options themselves rather than on what matters to you. Answering the questions above will change it.',
+  deferred: 'Provisional — something was deferred, so this is not the whole picture yet.',
+} as const;
 
 /** Phases that assert a person is past answering questions. */
 const PAST_DISCOVERY_PHASES = new Set([

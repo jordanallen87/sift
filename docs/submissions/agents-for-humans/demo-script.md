@@ -14,8 +14,8 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 2. **Fresh case.** Click **"Investigate my energy bill"** on the launcher (label verbatim from `apps/web/src/components/DemoLauncher.tsx`). This resets to the checked-in fixture and mints a fresh case ID.
 3. **This deployment runs `SIFT_EXECUTION_TARGET=local`, not AgentCore.** No AWS credentials were available at deploy time (documented in `README.md`). This is an honest external blocker, not a missing feature — the beat that mentions AgentCore/CloudWatch below is explicitly conditional and only recorded if you have since deployed to AgentCore with real credentials. Do not fabricate an AgentCore screen.
 4. **`pnpm verify:release` is real now — this note is stale and describes an earlier state of the repository.** Per the current `README.md`, `pnpm verify:release` runs `pnpm verify` plus real Stryker-based `test:mutation`, a production build check, a Docker build contract check, and `pnpm test:submission`, writing its own report to `artifacts/verification/release-latest/report.json`. `test:observability` and `test:live` remain honest declared stubs (they print "not yet implemented" and exit 0) — confirm which specific stage you are showing on screen and describe it accurately; do not claim `verify:release` itself is a stub. Regenerate whichever report you show fresh (`pnpm verify` and/or `pnpm verify:release`) shortly before recording so its `gitSha` matches the commit you're submitting.
-5. **Flagged gap #1 — "Draft withheld" does not fire in the standard click-through run.** The required sequence step 5 and this video's required beat 3 both describe a premature `monitor-one-cycle` draft being rejected with a visible `Draft withheld` card because household-change evidence is still unresolved. This mechanism is real and is proven by an automated test (`apps/agent/src/runtime/home-energy-swarm.test.ts`, describe block "intervention integrity", test "rejects a decision-synthesizer draft with no source citation, then accepts a corrected retry (GoalLoop maxAttempts: 2)") — but it is **not** part of the scripted round-1 pass that runs when you click "Request investigation" on the live product. Live-verified twice: the decision-synthesizer's structured output validates on attempt 1 both times (`goal.validated`, "Recommendation draft validated on attempt 1"), because by the time synthesis runs, all five obligations — including household-change — are already resolved. Beat 3 below is written honestly around this: it shows the real, live `goal.validated` proof that GoalLoop genuinely runs, and states plainly, on camera, that the rejection path is proven by the automated suite rather than reproduced live here. Do not re-cut this into a fake "Draft withheld" moment.
-6. **Flagged gap #2 — reweighting a criterion has no page form.** There is no visible criteria-editor control anywhere in `apps/web/src/components` (confirmed by source search) — `sift_update_criteria` is reachable only through WebMCP (asking ChatGPT, in a WebMCP-capable browser) or a direct authenticated API call. The required sequence for this scenario explicitly allows either "the user or ChatGPT" to do the reweight, so using ChatGPT here is fully spec-compliant, not a workaround. **Recommended:** record this beat in the same WebMCP-capable browser/ChatGPT in-app browser you used for the WebMCP video (see that script's "Before you record" for setup) and literally ask ChatGPT to do it, on camera. **Fallback**, if you are recording this video in isolation without a WebMCP client: use your browser's DevTools console and call the identical REST command Sift's own command layer and WebMCP tool both dispatch to (`POST /api/cases/:caseId/commands/updateCriteria`) — narrate this openly as "the same command endpoint the page and ChatGPT both use," not as a hidden trick. Either way, **rehearse this exact moment once before recording**: after the reweight, plainly asking Sift to "investigate again" can fail with `"No open obligation remains to select."` once round 1 has already resolved every obligation (live-verified) — you must ask specifically for the response-options recommendation to be revisited (e.g., "ask Sift to reconsider the response options now that long-term waste matters more" / a targeted `sift_request_investigation` call naming the `energy.response_options` obligation). Confirm your exact phrasing works before you hit record.
+5. **"Draft withheld" now fires in the standard click-through run — this was a gap and is fixed.** Round 1's `decision-synthesizer` offers an uncited first draft, the real `GoalLoop` validator refuses it for citing no source, and the corrected retry is what reaches the case. The rejection surfaces as a real consumer event: **"Recommendation draft rejected on attempt 1."**, correlated to `decision-synthesizer`, immediately followed by the recommendation that replaced it. Nothing needs to be narrated around this any more — record what the page does. (Previously the `goal` category never reached the consumer stream and round 1 validated on attempt 1, so the whole rejection path lived only in `home-energy-swarm.test.ts` and beat 3 had to apologise for it on camera.)
+6. **Reweighting has a real control now — this was a gap and is fixed.** The app bar's **"Add or adjust"** menu has an **"Adjust priorities"** item that opens a Priorities sheet: one weight per criterion, a running total, and protected criteria stated rather than offered. Change the weights, press **Save weights**, then press **"Ask Sift to look into this"** again — the reweight reopens the response-options obligation, so the re-run works without any special phrasing. DevTools and ChatGPT are no longer needed for this beat; do it on camera in the UI. (Previously there was no criteria control anywhere in the product, and a plain re-run failed outright with `"No open obligation remains to select."`)
 7. Keep the browser window narrow (390–480px) so the right pane reads as the real product.
 
 ---
@@ -26,7 +26,9 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 *(Required beat 1: "Establish the household energy problem and background anomaly trigger.")*
 
-**On screen:** the freshly-started case, loaded but not yet investigated. Case header reads **"Home Energy Guardian"**. Scroll the comparison table — it lists the four real response options (**"Monitor for one more billing cycle," "Switch to a different rate plan," "Request a home energy audit," "Request an HVAC / thermostat inspection"**) — and the Readiness panel, which already lists five real open questions: **Anomaly detection, Rate-change attribution, Weather-normalized usage attribution, Household or appliance event correlation, Response options synthesis.**
+**On screen:** the freshly-started case, loaded but not yet investigated. Case header reads **"Home Energy Guardian"**, with **"4 options"** beside it. The card below reads **"Nothing's been looked into yet."** Scroll to the option list — it carries the four real response options (**"Monitor for one more billing cycle," "Switch to a different rate plan," "Request a home energy audit," "Request an HVAC / thermostat inspection"**).
+
+**Do not go looking for a "Readiness panel" listing five named questions** — that was this script's pre-redesign wording and no such region exists. The five obligations are real and still drive the run; what the pane shows is the orientation strip (**"Understanding what you need · Next: Check for anything missed"**) and the **"Check for anything missed"** action at the foot. Show those instead.
 
 **Narration:**
 > "A household's energy bill just came in 42 percent over its normal baseline — $248.50 against a weather-normalized $175.00. Nobody should have to notice that, dig through eighteen months of usage history, and guess why. Sift already flagged it as a case the moment the bill posted — quietly, in the background, before asking anyone anything."
@@ -37,7 +39,7 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 *(Required beat 2: "Show real AgentSkills, rate/weather work, and Swarm activity.")*
 
-**On-screen action:** click **"Request investigation"** (`data-testid="request-investigation"`) live, on camera. Let the page update in real time — this is a real bounded Strands Swarm, not a canned animation, and it genuinely completes in a few seconds.
+**On-screen action:** click **"Ask Sift to look into this"** (`data-testid="request-investigation"` — the testid still says `request-investigation`, the visible label does not) live, on camera. Let the page update in real time — this is a real bounded Strands Swarm, not a canned animation, and it genuinely completes in a few seconds.
 
 **Point out, live, as the Activity ledger appends (real event labels, live-verified, in this exact order):**
 - **"Specialist started working" — "Swarm node \"anomaly-investigator\" started."**
@@ -54,7 +56,7 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 ### Beat 3 — GoalLoop is real, honestly shown (1:15–1:45, 30s)
 
-*(Required beat 3: "Show the premature monitoring draft rejected as `Draft withheld`." — see gap #1 above; shown honestly rather than faked.)*
+*(Required beat 3: "Show the premature monitoring draft rejected as `Draft withheld`." — this now happens live; see note 5 above.)*
 
 **On-screen action:** once the run completes, click **"Inspect run"** to open the Runtime Inspector. On the **Overview** tab, point at the real correlated `trace` and `case` IDs. Switch to **Timeline**, filter category to **goal**, and point at the one real entry: **"Recommendation draft validated on attempt 1"** (`goal.validated`, agent: `decision-synthesizer`).
 
@@ -96,14 +98,14 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 *(Required beat 5: "Show confirmation, snapshot restoration, and human-only proposal approval." Sequence steps 10–13.)*
 
-**On-screen action (see gap #2 above for exact mechanics):** ask ChatGPT (or use the documented API fallback) to reweight the case:
+**On-screen action (see note 6 above):** open **Add or adjust -> Adjust priorities** and reweight the case in the UI, on camera:
 
 **Say to ChatGPT (matches the "WebMCP demo moments — energy moment" line in `docs/specs/webmcp.md`-adjacent spec, exact):**
 > "Long-term waste matters more than the cheapest immediate option."
 
 This calls `sift_update_criteria`. Point out: the Recommendation card's status flips to **"Stale — needs investigation."** Nothing is running yet — `updateCriteria` appends `recommendation.invalidated` and revises the run plan (`apps/agent/src/services/run-plan-service.ts`), it does not start an engine run — which is exactly why the next line on camera is you asking for one.
 
-**Say next, to target the re-investigation correctly (see gap #2 rehearsal note):**
+**Say next:**
 > "Ask Sift to reconsider the response options now that long-term waste matters more."
 
 **What happens (live-verified):** a genuinely revised run fires. Point at the ledger:

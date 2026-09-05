@@ -12,6 +12,7 @@ import type { CaseState, CompiledDecisionPack } from '@sift/contracts';
 import {
   buildDecisionOrientation,
   PHASE_LABELS,
+  PROVISIONAL_REASONS,
   ROUTE_TO_OUTCOME,
 } from './decision-orientation.js';
 import { buildFixtureCaseState, buildFixtureCompiledPack } from '../test/fixtures.js';
@@ -119,10 +120,28 @@ describe('buildDecisionOrientation', () => {
     // This shell renders for every pack. Home Energy Guardian — a case
     // about an HVAC inspection — was told "then you confirm which models
     // are worth going to see" (ADR 0014).
+    //
+    // "catalog" belongs in this list too, and was missed when ADR 0014 was
+    // applied: the catalog is the *vehicle* catalog (`/api/catalog/vehicles`),
+    // and Home Energy Guardian's freshly-opened case sat in the `discovery`
+    // route reading "Sift searches the catalog" for a decision about a
+    // thermostat, with its four response options already on screen.
     for (const phase of Object.keys(PHASE_LABELS)) {
       expect(`${PHASE_LABELS[phase] ?? ''} ${ROUTE_TO_OUTCOME[phase] ?? ''}`).not.toMatch(
-        /test-drive|models are worth|vehicles?\b|cars?\b/i,
+        /test-drive|models are worth|vehicles?\b|cars?\b|catalog/i,
       );
+    }
+  });
+
+  it('never states a provisionality reason in one pack`s vocabulary either', () => {
+    // The two tables above are not the only pack-specific copy this file
+    // produces. `provisionalityOf` told every pack that an under-informed
+    // ranking "is based on the catalog", and Home Energy Guardian has no
+    // catalog -- its four response options ship with it. The sentences now
+    // live in a table for the same reason the labels do: so one assertion
+    // covers every sentence this shell can put on screen.
+    for (const reason of Object.values(PROVISIONAL_REASONS)) {
+      expect(reason).not.toMatch(/test-drive|models are worth|vehicles?\b|cars?\b|catalog/i);
     }
   });
 
