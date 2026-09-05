@@ -1,7 +1,7 @@
 {
   "repositoryUrl": "https://github.com/jordanallen87/sift",
   "deployedUrl": "https://sift-hackathon-production.up.railway.app",
-  "submittedCommitSha": "1833f483da7789dea9517acd8600f175853d0fe3",
+  "submittedCommitSha": "73d60b1ccbff3278ad07010d36614beba69a1cd0",
   "submittedCommitShaNote": "Refreshed immediately before submission; must match the tagged release commit on origin/main.",
   "releaseTag": "",
   "releaseTagNote": "Submitter action: tag the submitted commit so the judged tree is immutable.",
@@ -43,8 +43,8 @@
     "volumeName": "pax-hackathon-volume",
     "volumeId": "477985d7-abfe-4216-8281-fa01b3e7b508",
     "volumeMountPath": "/data",
-    "latestDeploymentId": "3757d76f-e868-4361-bed5-24f19a5bf2b1",
-    "latestDeploymentGitSha": "1833f48",
+    "latestDeploymentId": "2ba75462-76fe-424f-beae-d80091bcbf88",
+    "latestDeploymentGitSha": "73d60b1",
     "latestDeploymentStatus": "SUCCESS"
   },
   "agentCore": {
