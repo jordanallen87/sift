@@ -126,6 +126,16 @@ import { STATUS_TONE_META, type StatusTone } from './activity-labels.js';
 export type SpecialistState =
   'running' | 'completed' | 'awaiting-approval' | 'denied' | 'skipped' | 'error';
 
+/**
+ * This live region is the whole of what a screen-reader user is told about
+ * the panel, so "All 1 specialists finished." is not a cosmetic slip -- it
+ * is the entire sentence, wrong. Home Energy Guardian's round 2 re-runs a
+ * single specialist after a reweight and hit it every time.
+ */
+function pluraliseSpecialists(count: number): string {
+  return count === 1 ? 'specialist' : 'specialists';
+}
+
 /** The always-rendered word for each state (design rule 5). */
 const STATE_LABEL: Record<SpecialistState, string> = {
   running: 'Running',
@@ -757,8 +767,8 @@ export function SpecialistActivityPanel({
         className="visually-hidden"
       >
         {runningCount > 0
-          ? `${finishedCount} specialists finished, ${runningCount} still working.`
-          : `All ${finishedCount} specialists finished.`}
+          ? `${finishedCount} ${pluraliseSpecialists(finishedCount)} finished, ${runningCount} still working.`
+          : `All ${finishedCount} ${pluraliseSpecialists(finishedCount)} finished.`}
       </p>
 
       <ol

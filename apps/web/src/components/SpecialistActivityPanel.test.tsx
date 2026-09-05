@@ -584,7 +584,9 @@ describe('SpecialistActivityPanel', () => {
 
     const live = screen.getByTestId('specialist-activity-live');
     expect(live).toHaveAttribute('aria-live', 'polite');
-    expect(live).toHaveTextContent('1 specialists finished, 1 still working.');
+    // Was asserting the ungrammatical original; "1 specialists" is the
+    // whole sentence a screen-reader user hears, so it is worth getting right.
+    expect(live).toHaveTextContent('1 specialist finished, 1 still working.');
     // Six rows finishing inside 300ms must not each be their own live region.
     expect(document.querySelectorAll('[aria-live]')).toHaveLength(1);
   });
@@ -790,5 +792,60 @@ describe('a withheld draft that was replaced is not a denied specialist', () => 
     expect(
       within(rowFor('decision-synthesizer')).getByTestId('specialist-row-state'),
     ).toHaveTextContent('Denied');
+  });
+});
+
+/**
+ * The live region is the only description of this panel a screen-reader user
+ * gets, so its grammar is the whole of its quality.
+ *
+ * It read "All 1 specialists finished." on Home Energy Guardian's round 2,
+ * where a single specialist re-runs after a reweight -- and would have read
+ * "1 specialists finished, 1 still working." mid-run.
+ */
+describe('the live region counts in real English', () => {
+  it('says "specialist" when one finished', () => {
+    render(
+      <SpecialistActivityPanel
+        events={[
+          swarmStarted('decision-synthesizer', 1, 0),
+          swarmFinished('decision-synthesizer', 2, 19),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId('specialist-activity-live')).toHaveTextContent(
+      'All 1 specialist finished.',
+    );
+  });
+
+  it('says "specialists" when several finished', () => {
+    render(
+      <SpecialistActivityPanel
+        events={[
+          swarmStarted('anomaly-investigator', 1, 0),
+          swarmFinished('anomaly-investigator', 2, 10),
+          swarmStarted('rate-analyst', 3, 10),
+          swarmFinished('rate-analyst', 4, 20),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId('specialist-activity-live')).toHaveTextContent(
+      'All 2 specialists finished.',
+    );
+  });
+
+  it('pluralises both halves independently while work is still running', () => {
+    render(
+      <SpecialistActivityPanel
+        events={[
+          swarmStarted('anomaly-investigator', 1, 0),
+          swarmFinished('anomaly-investigator', 2, 10),
+          swarmStarted('rate-analyst', 3, 10),
+        ]}
+      />,
+    );
+    expect(screen.getByTestId('specialist-activity-live')).toHaveTextContent(
+      '1 specialist finished, 1 still working.',
+    );
   });
 });
