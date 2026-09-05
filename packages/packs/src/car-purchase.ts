@@ -761,6 +761,13 @@ export const CAR_PURCHASE_MANIFEST: DecisionPackManifest = {
         acceptedUncertaintyAllowed: false,
       },
       origin: 'pack',
+      // Which candidate should advance is an answer *about* the criteria,
+      // so reweighting them makes it stale and it has to be re-synthesized;
+      // the five measurement obligations above it stay satisfied, because a
+      // normalized deal or a safety record does not change when the
+      // household decides ownership cost matters more. See the field's own
+      // comment in contracts/packs.ts.
+      dependsOnCriteria: true,
     },
   ],
 

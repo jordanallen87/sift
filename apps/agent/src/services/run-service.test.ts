@@ -338,8 +338,7 @@ describe('SqliteRunStore', () => {
       store.create(runRecord());
 
       const row = test?.sqlite.prepare('SELECT origin FROM runs WHERE id = ?').get('run-1') as
-        | { origin: string | null }
-        | undefined;
+        { origin: string | null } | undefined;
       expect(row?.origin).toBeNull();
 
       const loaded = store.load('run-1');

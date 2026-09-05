@@ -216,9 +216,7 @@ describe('deriveWorkspaceStatus', () => {
 });
 
 describe('deriveActiveRunId', () => {
-  function buildActivityEvent(
-    overrides: Partial<PublicActivityEvent> = {},
-  ): PublicActivityEvent {
+  function buildActivityEvent(overrides: Partial<PublicActivityEvent> = {}): PublicActivityEvent {
     return {
       schemaVersion: '1.0',
       eventId: 'evt-1',

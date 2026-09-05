@@ -398,6 +398,18 @@ function buildSourceChallengerProvider(): ScriptedModelProvider {
 export const ROUND1_COST_WEIGHT = 80;
 export const ROUND1_CONSERVATION_WEIGHT = 20;
 
+/**
+ * The option round 1 recommends.
+ *
+ * Exported so `home-energy-guardian.test.ts` can assert the thing that
+ * actually matters and was not previously checked anywhere: that the option
+ * this beat recommends is the option the *pack's shipped default weighting*
+ * ranks first. Round 1's narration only tells the truth if the case a person
+ * starts is weighted the way the narration says it is, and nothing tied those
+ * two facts together until that test did.
+ */
+export const ROUND1_RECOMMENDED_OPTION_ID = 'monitor-one-cycle';
+
 /** Round 2's fit scores at conservation-heavy 20/80 weighting: the root-cause fix wins. */
 export const ROUND2_COST_WEIGHT = 20;
 export const ROUND2_CONSERVATION_WEIGHT = 80;

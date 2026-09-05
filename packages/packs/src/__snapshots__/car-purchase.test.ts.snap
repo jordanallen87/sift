@@ -1513,6 +1513,7 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
         "car.safety_reliability",
         "car.household_fit",
       ],
+      "dependsOnCriteria": true,
       "id": "car.shortlist",
       "label": "Shortlist recommendation",
       "maxAttempts": 2,

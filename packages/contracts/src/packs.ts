@@ -118,6 +118,30 @@ export const ObligationTemplateSchema = z
     preferredSpecialists: z.array(idString()).max(50),
     completionRule: CompletionRuleSchema,
     origin: z.enum(OBLIGATION_ORIGINS),
+    /**
+     * True when this obligation's answer is a *synthesis over the case's
+     * criteria* rather than a measurement of the world.
+     *
+     * The distinction decides what survives a reweight. "How much of the
+     * increase came from tariff changes?" is a measurement: it is just as
+     * true after the household decides conservation matters more. "Which
+     * actions fit the user's cost and conservation criteria?" is not — it is
+     * an answer *about* the criteria, so changing their weights makes the
+     * previous answer stale by definition.
+     *
+     * Without this flag the two were treated identically, and since
+     * `selectNextObligation` only considers `open` obligations, a case whose
+     * every obligation had been satisfied had nothing left to investigate.
+     * Reweighting therefore marked the recommendation stale and left no way
+     * to produce a new one: the run request failed with "No open obligation
+     * remains to select." That made the reweight-changes-the-ranking
+     * moment — the thing these packs exist to demonstrate — unreachable
+     * through the product's own controls.
+     *
+     * Optional, defaulting to false, because a measurement obligation is
+     * overwhelmingly the common case and should not have to say so.
+     */
+    dependsOnCriteria: z.boolean().optional(),
   })
   .strict();
 export type ObligationTemplate = z.infer<typeof ObligationTemplateSchema>;

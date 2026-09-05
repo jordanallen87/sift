@@ -634,10 +634,33 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
   // conservation criteria?", and the required adaptive moment "Changing the
   // criterion from lowest immediate cost to long-term waste reduction
   // changes option ranking" describes exactly these two criteria being
-  // reweighted against each other. Default weight is a 50/50 split (a
-  // judgment call: the spec grounds *that* these two criteria exist and
-  // that reweighting between them changes the ranking, not a specific
-  // starting split).
+  // reweighted against each other.
+  //
+  // The default is cost-heavy, 80/20, for two reasons.
+  //
+  // The first is the household. A case opens because a bill arrived 42% over
+  // baseline; the person reading it wants the number to be smaller. Starting
+  // them at a balanced 50/50 assumes a settled view about long-term waste
+  // that nobody holds in the first thirty seconds of a surprise bill. The
+  // reweight toward conservation is something they arrive at *after* the
+  // investigation finds a root cause, which is exactly the adaptive moment
+  // the spec asks this pack to demonstrate.
+  //
+  // The second is that 50/50 made the product contradict itself. At 50/50 the
+  // deterministic scorer ranks `request-hvac-inspection` first (0.67) over
+  // `monitor-one-cycle` (0.50), while the round-1 investigation recommends
+  // monitoring -- so a freshly started case recommended the option its own
+  // criteria ranked second, and the recommendation card showed the scripted
+  // "0.80 versus 0.47" in its rationale directly above the computed "67% to
+  // 50%" in its limitation. Two sets of numbers for one comparison, in the
+  // hero card of a tool whose entire argument is that it does not overstate
+  // what it knows. `home-energy-guardian.test.ts` ("the pack default
+  // weighting and round 1 narration agree") now fails if these two facts
+  // ever drift apart again.
+  //
+  // 80/20 is also what makes the crossover real rather than asserted: cheap
+  // options win at 80/20 (0.80 vs 0.47) and the root-cause fix wins once the
+  // household reweights to 20/80 (0.87 vs 0.20).
   //
   // `energy.no_emergency_risk` is the declarative half of
   // packs-and-routing.md's "Exclusion: electrical danger, gas leak, fire,
@@ -673,7 +696,7 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
         id: 'energy.cost',
         label: 'Lowest immediate cost',
         kind: 'preference',
-        weight: 50,
+        weight: 80,
         direction: 'lower_better',
         appliesToAttribute: 'energy.rough_cost',
         origin: 'pack',
@@ -683,7 +706,7 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
         id: 'energy.conservation',
         label: 'Long-term waste reduction',
         kind: 'preference',
-        weight: 50,
+        weight: 20,
         direction: 'higher_better',
         // The attribute that answers this criterion's own `question`
         // verbatim. Its absence made the pack's heaviest criterion after
@@ -878,6 +901,15 @@ export const HOME_ENERGY_GUARDIAN_MANIFEST: DecisionPackManifest = {
         acceptedUncertaintyAllowed: false,
       },
       origin: 'pack',
+      // This obligation's own question names the criteria, so reweighting
+      // them is exactly what makes its previous answer stale -- unlike the
+      // four measurement obligations it depends on, whose findings about
+      // tariffs, weather, and household events are just as true afterwards.
+      // Flagging it is what lets the household reweight toward conservation
+      // and get a genuinely re-synthesized answer; without it the re-run had
+      // no open obligation to select and failed. See the field's own comment
+      // in contracts/packs.ts.
+      dependsOnCriteria: true,
     },
   ],
 

@@ -515,5 +515,4 @@ describe('VehicleCatalogFlow', () => {
       expect(params.get('limit')).toBe('20');
     });
   });
-
 });

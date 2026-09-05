@@ -286,7 +286,9 @@ function printReport(result: CheckSourceResult): void {
   console.error(
     '\nRepair the causal defect (finish the work, unfocus/unskip the test, or remove the secret).',
   );
-  console.error('Never delete or weaken this scanner to make it pass — see docs/engineering-principles.md.');
+  console.error(
+    'Never delete or weaken this scanner to make it pass — see docs/engineering-principles.md.',
+  );
 }
 
 function isMain(): boolean {

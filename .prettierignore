@@ -23,3 +23,11 @@ drizzle
 # repo's code-formatting gate; reformatting them is unrelated churn to any
 # implementation task. Code fences inside them are unaffected either way.
 docs/
+
+# Machine-local agent-tooling state, not source. Git ignores these via
+# .git/info/exclude; Prettier needs telling separately, and a generated
+# index file failing `format:check` should never be able to redden a
+# release gate.
+.strata19
+.claude
+.superpowers

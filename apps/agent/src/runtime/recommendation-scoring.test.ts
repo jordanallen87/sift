@@ -388,3 +388,51 @@ describe('when the recommendation rests on shaky ground', () => {
     expect(result.limitations.join(' ')).toContain('what puts');
   });
 });
+
+/**
+ * The comparison fact exists to give a person a second number to judge the
+ * first one against. It is worthless if that second number belongs to the
+ * option they were already reading about.
+ *
+ * That is what shipped. `comparisonPeer` was `agrees ? runnerUp : leader`,
+ * and `runnerUp` is positional -- the second entry on the board. When the
+ * model favours an option that ties for the lead but sorts second, `agrees`
+ * is correctly true (agreement is about score, not identity) and `runnerUp`
+ * is the favoured option itself, so the card rendered the same sentence
+ * twice: "Monitor for one more billing cycle scores 80%..." followed by
+ * "Monitor for one more billing cycle scores 80% on the same criteria."
+ *
+ * Home Energy Guardian hits this on every run, because `monitor-one-cycle`
+ * and `change-rate-plan` genuinely tie at 0.80 under the pack's cost-heavy
+ * default weighting.
+ */
+describe('the comparison fact names a different option than the favoured one', () => {
+  it('compares against the best *other* option when the favoured one ties for the lead but sorts second', () => {
+    const tied = scorableCase({
+      entities: [
+        option('alpha', { 'a.score': 90, 'a.space': 90 }),
+        option('beta', { 'a.score': 90, 'a.space': 90 }),
+        option('gamma', { 'a.score': 40, 'a.space': 40 }),
+      ],
+    });
+
+    // `beta` ties `alpha` exactly, so whichever one the tiebreak sorts
+    // first, favouring the other is agreement, not divergence.
+    const derived = deriveScoredRecommendationFields(tied, 'beta');
+
+    const comparisonFacts = derived.facts.filter((fact) => fact.includes('on the same criteria'));
+    expect(comparisonFacts).toHaveLength(1);
+    expect(comparisonFacts[0]).not.toContain('BETA');
+    expect(comparisonFacts[0]).toContain('ALPHA');
+  });
+
+  it('never repeats the favoured option across its own facts', () => {
+    for (const favouredId of ['winner', 'runner-up']) {
+      const derived = deriveScoredRecommendationFields(scorableCase(), favouredId);
+      const comparisonFacts = derived.facts.filter((fact) => fact.includes('on the same criteria'));
+      for (const fact of comparisonFacts) {
+        expect(fact).not.toContain(favouredId.toUpperCase());
+      }
+    }
+  });
+});

@@ -497,7 +497,7 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
         "label": "Lowest immediate cost",
         "origin": "pack",
         "status": "active",
-        "weight": 50,
+        "weight": 80,
       },
       {
         "appliesToAttribute": "energy.addresses_root_cause",
@@ -508,7 +508,7 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
         "origin": "pack",
         "question": "Does this action address the root cause of the elevated usage rather than only monitor or defer it?",
         "status": "active",
-        "weight": 50,
+        "weight": 20,
       },
       {
         "appliesToAttribute": "energy.emergency_risk_present",
@@ -736,6 +736,7 @@ exports[`full manifest fidelity > matches its full manifest snapshot 1`] = `
         "energy.weather",
         "energy.household_change",
       ],
+      "dependsOnCriteria": true,
       "id": "energy.response_options",
       "label": "Response options synthesis",
       "maxAttempts": 2,

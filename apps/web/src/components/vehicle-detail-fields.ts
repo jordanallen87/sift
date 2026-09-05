@@ -50,11 +50,7 @@ const hours = (value: number): string => `${String(value)} hr`;
 const yesNo = (value: boolean): string => (value ? 'Yes' : 'No');
 
 /** Builds one row, or `null` when the catalog has nothing to report. */
-function row<T>(
-  label: string,
-  value: T | null,
-  format: (value: T) => string,
-): DetailField | null {
+function row<T>(label: string, value: T | null, format: (value: T) => string): DetailField | null {
   return value === null ? null : { label, value: format(value) };
 }
 

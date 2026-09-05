@@ -110,6 +110,32 @@ export function syntheticCarPurchaseManifest(
         },
         origin: 'pack',
       },
+      // A synthesis obligation, so tests can exercise the reweight path the
+      // real packs rely on: `updateCriteria` reopens a satisfied obligation
+      // marked `dependsOnCriteria` (and leaves measurement obligations like
+      // `hard-constraints` above alone), which is what makes a re-run
+      // possible after the criteria change that invalidated its answer.
+      {
+        id: 'synthesis',
+        label: 'Shortlist synthesis',
+        question: 'Which car best fits the criteria as currently weighted?',
+        category: 'shortlist',
+        required: true,
+        priority: 5,
+        requiredEvidenceLevel: 'E1',
+        maxAttempts: 2,
+        acceptedUncertaintyAllowed: false,
+        dependsOn: ['hard-constraints'],
+        preferredSkills: ['listing-normalizer'],
+        preferredSpecialists: ['deal-analyst'],
+        completionRule: {
+          minimumEvidenceLevel: 'E1',
+          minimumIndependentSources: 1,
+          acceptedUncertaintyAllowed: false,
+        },
+        origin: 'pack',
+        dependsOnCriteria: true,
+      },
     ],
     extensionPolicy: {
       allowCaseAttributes: true,

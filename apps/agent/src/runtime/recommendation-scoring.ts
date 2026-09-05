@@ -119,7 +119,6 @@ export function deriveScoredRecommendationFields(
   const ranked = board.options.filter((option) => option.total !== null);
   const compliant = ranked.filter((option) => option.violatedConstraintIds.length === 0);
   const leader = compliant[0];
-  const runnerUp = compliant[1];
 
   const favored =
     proposedFavoredOptionId === null
@@ -157,7 +156,14 @@ export function deriveScoredRecommendationFields(
     leader !== undefined &&
     (leader.optionId === favored.optionId ||
       (leader.total !== null && favored.total >= leader.total - 1e-9));
-  const comparisonPeer = agrees ? runnerUp : leader;
+  // The peer has to be a *different* option, which positional `runnerUp`
+  // does not guarantee: when the favoured option ties for the lead but sorts
+  // second, `runnerUp` is the favoured option itself and the card compares it
+  // to itself. `compliant` is already sorted best-first, so the best option
+  // that is not the favoured one is the honest comparison in both branches.
+  const comparisonPeer = agrees
+    ? compliant.find((option) => option.optionId !== favored.optionId)
+    : leader;
 
   facts.push(
     `${favored.optionLabel} scores ${percent(favored.total)} against the criteria on this case, measured across ${percent(favored.coverage)} of the weight assigned to them.`,

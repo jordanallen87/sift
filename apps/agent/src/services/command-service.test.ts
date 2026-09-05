@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { CaseState, CommandReceipt, EntityRecord } from '@sift/contracts';
+import type { CaseEvent, CaseState, CommandReceipt, EntityRecord } from '@sift/contracts';
 import { compilePack, PackRegistry } from '@sift/packs';
 import { evaluateReadiness } from '@sift/core';
 import {
@@ -86,7 +86,9 @@ describe('CommandService', () => {
       expect(snapshot.pack.selectedBy).toBe('user');
       expect(snapshot.title).toBe('Choose Our Next Car (test fixture)');
       expect(snapshot.criteria).toHaveLength(1);
-      expect(snapshot.obligations).toHaveLength(1);
+      // Two: the measurement obligation and the `dependsOnCriteria`
+      // synthesis one the reweight tests need.
+      expect(snapshot.obligations).toHaveLength(2);
       // The real gap `seedSnapshot` closes: attributeDefinitions must come
       // from the pack, not be left empty by applyCaseEvent's minimal skeleton.
       expect(snapshot.attributeDefinitions).toHaveLength(1);
@@ -1080,11 +1082,11 @@ describe('CommandService', () => {
     it('never touches obligations, readiness, or a ready recommendation (notes never auto-promote to evidence)', () => {
       const snapshot = startDemo();
       const withRecommendation = withReadyRecommendation(snapshot);
-      // The synthetic pack's one seeded obligation ("hard-constraints") is
-      // `required: true` and starts `open` -- exactly the "open obligations"
-      // precondition this test needs, with no extra setup.
-      expect(withRecommendation.obligations).toHaveLength(1);
-      expect(withRecommendation.obligations[0]?.status).toBe('open');
+      // The synthetic pack's seeded obligations are `required: true` and
+      // start `open` -- exactly the "open obligations" precondition this
+      // test needs, with no extra setup.
+      expect(withRecommendation.obligations).toHaveLength(2);
+      expect(withRecommendation.obligations.every((o) => o.status === 'open')).toBe(true);
       const readinessBefore = evaluateReadiness(withRecommendation);
       expect(readinessBefore.ready).toBe(false);
 
@@ -2306,6 +2308,138 @@ describe('CommandService', () => {
   });
 
   describe('updateCriteria', () => {
+    /**
+     * Marking a recommendation stale says the old answer is wrong. It does
+     * not, by itself, make a new one reachable.
+     *
+     * `selectNextObligation` only considers `open` obligations, so on a case
+     * whose obligations had all been satisfied, reweighting left nothing to
+     * investigate and the follow-up run failed outright with "No open
+     * obligation remains to select." Reweighting-changes-the-ranking is the
+     * adaptive moment both shipped packs are built around, and it was
+     * unreachable through the product's own controls -- the demo scripts
+     * routed around it via DevTools rather than the UI.
+     *
+     * The distinction that fixes it is between a measurement and a
+     * synthesis. What the tariff change cost is just as true after the
+     * household decides conservation matters more; which option best fits
+     * the criteria is not. Only obligations marked `dependsOnCriteria`
+     * reopen.
+     */
+    /**
+     * Adds an unprotected preference criterion this block can actually
+     * reweight. Deliberately created here rather than added to the shared
+     * synthetic pack: a second scoring criterion in that fixture silently
+     * re-ranks every other test's options.
+     */
+    function withReweightableCriterion(snapshot: CaseState): CaseState {
+      const added = service.updateCriteria('cmd-add-reweightable', {
+        caseId: snapshot.id,
+        expectedSequence: snapshot.eventSequence,
+        operations: [
+          {
+            op: 'add',
+            criterion: {
+              id: 'value',
+              label: 'Value',
+              kind: 'preference',
+              weight: 40,
+              direction: 'higher_better',
+            },
+          },
+        ],
+      });
+      requireOk(added);
+      return requireSnapshot(added.value);
+    }
+
+    function satisfiedCaseWithRecommendation(snapshot: CaseState): CaseState {
+      const events: CaseEvent[] = snapshot.obligations.map((obligation, index) => ({
+        eventId: `ev-sat-${String(index)}`,
+        caseId: snapshot.id,
+        sequence: snapshot.eventSequence + index + 1,
+        timestamp: FIXED_NOW,
+        type: 'obligation.updated',
+        payload: {
+          obligation: { ...obligation, status: 'satisfied', attemptsUsed: 1 },
+        },
+      }));
+      events.push({
+        eventId: 'ev-rec-reweight',
+        caseId: snapshot.id,
+        sequence: snapshot.eventSequence + events.length + 1,
+        timestamp: FIXED_NOW,
+        type: 'recommendation.ready',
+        payload: {
+          recommendation: {
+            id: 'rec-reweight',
+            status: 'ready',
+            favoredOptionId: null,
+            rationale: 'because',
+            facts: [],
+            hypotheses: [],
+            confidence: 0.5,
+            limitations: [],
+            sourceIds: [],
+            resolvedObligationIds: [],
+            acceptedUncertaintyObligationIds: [],
+            generatedAt: FIXED_NOW,
+          },
+        },
+      });
+      const appended = caseStore.append(snapshot.id, events, snapshot.eventSequence);
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+      return appended.snapshot;
+    }
+
+    it('reopens a satisfied synthesis obligation so the invalidated recommendation can actually be replaced', () => {
+      const satisfied = satisfiedCaseWithRecommendation(withReweightableCriterion(startDemo()));
+      expect(satisfied.obligations.every((o) => o.status === 'satisfied')).toBe(true);
+
+      const result = service.updateCriteria('cmd-reweight', {
+        caseId: satisfied.id,
+        expectedSequence: satisfied.eventSequence,
+        operations: [{ op: 'reweight', criterionId: 'value', weight: 90 }],
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+
+      const synthesis = updated.obligations.find((o) => o.id === 'synthesis');
+      const measurement = updated.obligations.find((o) => o.id === 'hard-constraints');
+      expect(synthesis?.status).toBe('open');
+      // The measurement stands. Reweighting did not un-measure anything.
+      expect(measurement?.status).toBe('satisfied');
+      // Reopening restores the remaining budget rather than granting a new
+      // one, so repeated reweights cannot loop forever.
+      expect(synthesis?.attemptsUsed).toBe(1);
+    });
+
+    it('leaves obligations alone when no ready recommendation was invalidated', () => {
+      const base = withReweightableCriterion(startDemo());
+      const appended = caseStore.append(
+        base.id,
+        base.obligations.map((obligation, index) => ({
+          eventId: `ev-only-sat-${String(index)}`,
+          caseId: base.id,
+          sequence: base.eventSequence + index + 1,
+          timestamp: FIXED_NOW,
+          type: 'obligation.updated' as const,
+          payload: { obligation: { ...obligation, status: 'satisfied' as const, attemptsUsed: 1 } },
+        })),
+        base.eventSequence,
+      );
+      if (appended.status !== 'applied') throw new Error('test setup failed');
+      const satisfied = appended.snapshot;
+      const result = service.updateCriteria('cmd-reweight-2', {
+        caseId: satisfied.id,
+        expectedSequence: satisfied.eventSequence,
+        operations: [{ op: 'reweight', criterionId: 'value', weight: 70 }],
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.obligations.every((o) => o.status === 'satisfied')).toBe(true);
+    });
+
     it('adds a new user-defined criterion (success)', () => {
       const snapshot = startDemo();
       const result = service.updateCriteria('cmd-2', {

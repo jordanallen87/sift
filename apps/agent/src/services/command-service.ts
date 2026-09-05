@@ -1941,6 +1941,47 @@ export class CommandService {
       });
     }
 
+    // Marking the recommendation stale says the old answer is wrong. It does
+    // not, on its own, give anything the ability to produce a new one:
+    // `selectNextObligation` only considers `open` obligations, so a case
+    // whose obligations were all satisfied had nothing left to investigate
+    // and a re-run failed outright with "No open obligation remains to
+    // select."
+    //
+    // A criteria change does not invalidate a *measurement* -- how much of
+    // the bill came from a tariff change is unaffected by how much the
+    // household now cares about long-term waste. It does invalidate an
+    // answer that was a synthesis over those criteria, which is exactly what
+    // `dependsOnCriteria` marks. Those obligations, and only those, reopen,
+    // so the re-run re-synthesizes against the new weights while every
+    // measured finding stands.
+    //
+    // `attemptsUsed` is deliberately NOT reset: reopening restores the
+    // ability to try again within the budget the pack already granted, and
+    // resetting it would let repeated reweights loop forever.
+    const reopenedObligations = !invalidatesRecommendation
+      ? []
+      : snapshot.obligations.filter(
+          (obligation) =>
+            obligation.dependsOnCriteria === true &&
+            (obligation.status === 'satisfied' || obligation.status === 'accepted_uncertainty') &&
+            obligation.attemptsUsed < obligation.maxAttempts,
+        );
+    for (const obligation of reopenedObligations) {
+      nextSequence += 1;
+      events.push({
+        eventId: this.deps.idGenerator.next('event'),
+        caseId: input.caseId,
+        sequence: nextSequence,
+        timestamp: now,
+        commandId,
+        type: 'obligation.updated',
+        payload: {
+          obligation: { ...obligation, status: 'open', updatedAt: now },
+        },
+      });
+    }
+
     const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
       idempotency: { commandId, commandName: 'updateCriteria' },
     });

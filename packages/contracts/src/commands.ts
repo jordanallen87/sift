@@ -352,15 +352,21 @@ const CaseAttributeDraftSchema = z
       ctx.addIssue({ code: 'custom', path: ['orderedValues'], message });
     };
     if (draft.valueType !== 'enum') {
-      issue('orderedValues only applies to an enum attribute; every other type already ranks itself');
+      issue(
+        'orderedValues only applies to an enum attribute; every other type already ranks itself',
+      );
       return;
     }
     if (draft.allowedValues === undefined) {
-      issue('orderedValues requires allowedValues: a grade must be selectable before it can be ranked');
+      issue(
+        'orderedValues requires allowedValues: a grade must be selectable before it can be ranked',
+      );
       return;
     }
     if (new Set(draft.orderedValues).size !== draft.orderedValues.length) {
-      issue('orderedValues must not repeat a grade, which would give it two positions on the scale');
+      issue(
+        'orderedValues must not repeat a grade, which would give it two positions on the scale',
+      );
       return;
     }
     // Same set, not merely a subset. A grade that is selectable but

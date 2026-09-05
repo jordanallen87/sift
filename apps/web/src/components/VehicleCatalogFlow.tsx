@@ -228,7 +228,11 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
   }
 
   async function handleStartComparison() {
-    if (shortlist.length < MIN_SHORTLIST_SIZE || shortlist.length > MAX_SHORTLIST_SIZE || creating) {
+    if (
+      shortlist.length < MIN_SHORTLIST_SIZE ||
+      shortlist.length > MAX_SHORTLIST_SIZE ||
+      creating
+    ) {
       return;
     }
     setCreating(true);
@@ -382,8 +386,7 @@ export function VehicleCatalogFlow({ onCaseCreated, onCancel }: VehicleCatalogFl
             className="text-[length:var(--font-size-sm)] text-muted-foreground tabular-nums"
             aria-live="polite"
           >
-            {resultsTotal.toLocaleString('en-US')}{' '}
-            {resultsTotal === 1 ? 'vehicle' : 'vehicles'}
+            {resultsTotal.toLocaleString('en-US')} {resultsTotal === 1 ? 'vehicle' : 'vehicles'}
           </p>
         ) : null}
 
