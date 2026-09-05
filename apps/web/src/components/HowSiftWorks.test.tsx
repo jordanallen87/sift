@@ -59,10 +59,10 @@ describe('HowSiftWorks shared content', () => {
     const controls = screen.getByTestId('how-sift-works-controls');
     // Every string below is a live label: RecommendationHero.tsx ("Ask Sift
     // to look into this", "Inspect run"), WorkspaceAppBar.tsx ("Findings",
-    // CREATE_MENU_LABEL "Add to this case"), DemoLauncher.tsx.
+    // CREATE_MENU_LABEL "Add or adjust"), DemoLauncher.tsx.
     expect(within(controls).getByText('Ask Sift to look into this')).toBeInTheDocument();
     expect(within(controls).getByText('Findings')).toBeInTheDocument();
-    expect(within(controls).getByText('Add to this case')).toBeInTheDocument();
+    expect(within(controls).getByText('Add or adjust')).toBeInTheDocument();
     expect(within(controls).getByText('Inspect run')).toBeInTheDocument();
   });
 

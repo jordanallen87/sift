@@ -495,13 +495,20 @@ export function deriveSpecialistActivity(
       // is the authority on whether that node failed.
       const nodeFailed = statusState === 'error';
       const unresolvedToolFailure = row.errored && row.finished === undefined;
+      // A withheld draft is recoverable in exactly the way a failed tool
+      // call is: `GoalLoop` refuses an unsupported draft, the specialist
+      // retries with citations, and the corrected one is accepted. Leaving
+      // the row on "Denied" afterwards described the specialist by the
+      // attempt it abandoned rather than the answer it delivered -- with
+      // the accepted recommendation rendered directly above it.
+      const unresolvedDenial = row.denied && row.finished === undefined;
 
       let state: SpecialistState;
       if (nodeFailed || unresolvedToolFailure) {
         state = 'error';
       } else if (approvalOutstanding) {
         state = 'awaiting-approval';
-      } else if (row.denied || statusState === 'denied') {
+      } else if (unresolvedDenial || statusState === 'denied') {
         state = 'denied';
       } else if (statusState === 'skipped') {
         state = 'skipped';

@@ -104,7 +104,7 @@ describe('WorkspaceAppBar', () => {
       render(<WorkspaceAppBar {...buildProps()} />);
 
       const trigger = screen.getByTestId('workspace-app-bar-create-menu');
-      expect(trigger).toHaveAccessibleName('Add to this case');
+      expect(trigger).toHaveAccessibleName('Add or adjust');
       expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
       expect(trigger).toHaveAttribute('aria-expanded', 'false');
     });
@@ -156,7 +156,7 @@ describe('WorkspaceAppBar', () => {
       render(<WorkspaceAppBar {...buildProps({ layout: 'narrow' })} />);
       const control = screen.getByTestId('workspace-app-bar-create-menu');
       expect(control).not.toHaveTextContent('Add');
-      expect(control).toHaveAccessibleName('Add to this case');
+      expect(control).toHaveAccessibleName('Add or adjust');
     });
 
     it('is fully operable with the keyboard alone, arrow keys included', async () => {
@@ -332,7 +332,7 @@ describe('WorkspaceAppBar', () => {
    */
   describe('tooltips on the collapsed icon controls', () => {
     it.each([
-      ['workspace-app-bar-create-menu', 'Add to this case'],
+      ['workspace-app-bar-create-menu', 'Add or adjust'],
       ['workspace-app-bar-findings', 'Findings, 0'],
       ['workspace-app-bar-references', 'References, 0'],
       ['workspace-app-bar-reset-demo', 'Reset demo'],
@@ -388,7 +388,7 @@ describe('WorkspaceAppBar', () => {
       // The create control is now a menu button, so its own name opens the
       // menu and the item inside it carries the action's name -- both still
       // found by accessible name, with no tooltip involved.
-      await user.click(screen.getByRole('button', { name: 'Add to this case' }));
+      await user.click(screen.getByRole('button', { name: 'Add or adjust' }));
       await user.click(await screen.findByRole('menuitem', { name: 'Add option' }));
       await user.click(screen.getByRole('button', { name: 'Developer view' }));
 

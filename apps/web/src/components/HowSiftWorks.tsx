@@ -188,7 +188,7 @@ export function HowSiftWorksContent({ webMcpSupported }: HowSiftWorksContentProp
           <ControlRow name="Findings">
             what came back, with the source behind each claim.
           </ControlRow>
-          <ControlRow name="Add to this case">
+          <ControlRow name="Add or adjust">
             an option, a note, or a question of your own.
           </ControlRow>
           <ControlRow name="Inspect run">

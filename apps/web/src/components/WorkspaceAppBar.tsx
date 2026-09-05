@@ -188,7 +188,7 @@
  * Those two pull in opposite directions -- three create actions cannot each
  * take a slot in a row that is already tight at 390px -- and a menu is what
  * resolves them, which is also what was asked for by name. The single "Add
- * option" button is now a `DropdownMenu` trigger ("Add to this case") over
+ * option" button is now a `DropdownMenu` trigger ("Add or adjust") over
  * three items: **Add option**, **Add a note**, and **Add a question**. Each
  * item calls a plain callback prop, exactly as the button did; this component
  * still owns no state and still fetches nothing. The pane gets *shorter*
@@ -233,6 +233,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
@@ -321,7 +322,7 @@ const TOUCH_TARGET_ICON = `${TOUCH_TARGET} min-w-[var(--size-touch-target-min)]`
  * requires the visible text to be CONTAINED in the accessible name, which
  * "Add" is.
  */
-const CREATE_MENU_LABEL = 'Add to this case';
+const CREATE_MENU_LABEL = 'Add or adjust';
 const PRIORITIES_LABEL = 'Adjust priorities';
 
 /**
@@ -563,25 +564,28 @@ export function WorkspaceAppBar({
                 <CircleQuestionMarkIcon aria-hidden="true" />
                 Add a question
               </DropdownMenuItem>
+              {/* Not a create action, which is why the menu is named "Add or
+                  adjust" rather than "Add to this case". It lives here
+                  because the bar is genuinely full at 390px -- see the
+                  header's note on crowding -- and a seventh always-mounted
+                  icon overflowed the pane by 34px. This is a new capability
+                  arriving behind a menu, not an existing one being moved
+                  there, so ADR 0008's "no capability moves behind a menu"
+                  rule is untouched. */}
+              {onAdjustPriorities !== undefined ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    data-testid="workspace-app-bar-priorities"
+                    onSelect={onAdjustPriorities}
+                  >
+                    <SlidersHorizontalIcon aria-hidden="true" />
+                    {PRIORITIES_LABEL}
+                  </DropdownMenuItem>
+                </>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {onAdjustPriorities !== undefined ? (
-            <GlyphTooltip label={PRIORITIES_LABEL} enabled={!isExpanded}>
-              <Button
-                type="button"
-                data-testid="workspace-app-bar-priorities"
-                aria-label={PRIORITIES_LABEL}
-                onClick={onAdjustPriorities}
-                variant="ghost"
-                size="sm"
-                className={`gap-[var(--space-1)] ${TOUCH_TARGET} ${isExpanded ? '' : 'px-[var(--space-2)]'}`}
-              >
-                <SlidersHorizontalIcon aria-hidden="true" className="size-4" />
-                {isExpanded ? 'Priorities' : null}
-              </Button>
-            </GlyphTooltip>
-          ) : null}
 
           <GlyphTooltip label={`Findings, ${String(findingsCount)}`} enabled={!isExpanded}>
             <Button

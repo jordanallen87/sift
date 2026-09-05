@@ -732,3 +732,63 @@ describe('a recovered tool failure is not a failed specialist', () => {
     );
   });
 });
+
+/**
+ * A withheld draft that was then replaced is a recovered state too.
+ *
+ * `draft.withheld` set `row.denied`, and nothing ever cleared it, so once
+ * `decision-synthesizer`'s first draft was refused for citing no source the
+ * row read "Denied -- Draft withheld" for the rest of the run -- including
+ * after the corrected, cited draft had been accepted and the recommendation
+ * was on screen directly above it.
+ *
+ * It also made the panel genuinely nondeterministic: whether a screenshot
+ * caught "Denied" or "Completed" depended on whether the node's completion
+ * event had been delivered yet, which is what surfaced this at all.
+ *
+ * Same rule as a recovered tool failure: the node's own final status decides.
+ */
+describe('a withheld draft that was replaced is not a denied specialist', () => {
+  it('reports the synthesizer as completed once its node finished, despite the earlier withheld draft', () => {
+    render(
+      <SpecialistActivityPanel
+        events={[
+          swarmStarted('decision-synthesizer', 1, 0),
+          buildEvent({
+            sequence: 2,
+            agentId: 'decision-synthesizer',
+            type: 'draft.withheld',
+            phase: 'failed',
+            summary: 'Recommendation draft rejected on attempt 1.',
+          }),
+          swarmFinished('decision-synthesizer', 3, 15),
+        ]}
+      />,
+    );
+
+    const row = rowFor('decision-synthesizer');
+    expect(within(row).getByTestId('specialist-row-state')).toHaveTextContent('Completed');
+    expect(within(row).queryByText(/Draft withheld/)).toBeNull();
+  });
+
+  it('still reports a withheld draft as denied while the specialist has not finished', () => {
+    render(
+      <SpecialistActivityPanel
+        events={[
+          swarmStarted('decision-synthesizer', 1, 0),
+          buildEvent({
+            sequence: 2,
+            agentId: 'decision-synthesizer',
+            type: 'draft.withheld',
+            phase: 'failed',
+            summary: 'Recommendation draft rejected on attempt 1.',
+          }),
+        ]}
+      />,
+    );
+
+    expect(
+      within(rowFor('decision-synthesizer')).getByTestId('specialist-row-state'),
+    ).toHaveTextContent('Denied');
+  });
+});
