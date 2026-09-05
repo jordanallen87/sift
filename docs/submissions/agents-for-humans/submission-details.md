@@ -112,6 +112,8 @@ The distinguishing claim below is implemented literally rather than asserted. Ev
 
 ### Why Strands is essential
 
+> **Every claim in this list is mapped to a log record a judge can pull themselves** — see [`claim-evidence-matrix.md`](./claim-evidence-matrix.md), which gives the implementing file, the test that fails if the claim stops being true, and the exact event name and count in an exported run. The shortest version: every OpenTelemetry span in that export carries `"otel.scope": "strands-agents"`, the instrumentation scope of the SDK's own tracer, which a local class named after Strands cannot produce.
+
 - AgentSkills progressively load the technique required by the active obligation.
 - A real bounded Swarm moves among anomaly, rate, weather, home-systems, source-challenge, and synthesis specialists.
 - Interventions use `Guide`, `Confirm`, and `Deny` to redirect work and preserve authority.
