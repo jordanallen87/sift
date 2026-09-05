@@ -7939,3 +7939,87 @@ collapsed and expanded states — the two-state assertion in
   which is the intended rendering change. Baselines regenerated and
   inspected separately as a set.
 - `pnpm --filter @sift/web typecheck`, `build`, `prettier --check` → clean.
+
+---
+
+## 2026-09-05 — Home Energy Guardian: driving it instead of reading it
+
+Task: a deep pass on the AWS/Strands hero before its submission. Everything
+below was found by running the pack through the real HTTP API and a real
+browser at 430px, not by reading the code — the unit suite was green
+throughout and stayed green while every one of these was live.
+
+### What was wrong
+
+**1. The hero card disagreed with itself about arithmetic.** The pack shipped
+50/50 cost/conservation defaults while round 1's narration said "energy.cost
+weight 80, energy.conservation weight 20" and quoted the scores that
+weighting produces. At the real 50/50 the deterministic scorer put
+`request-hvac-inspection` first (0.67) over `monitor-one-cycle` (0.50), so a
+freshly started case recommended the option its own criteria ranked second,
+and the card rendered the scripted "0.80 versus 0.47" directly above the
+computed "67% to 50%".
+
+The arithmetic was never wrong; the default was. It is 80/20 now, which is
+also the honest starting point for a household that has just opened a bill
+42% over baseline. Nothing had tied the narration and the default together,
+because each was asserted separately and each was internally consistent.
+
+**2. The comparison fact compared an option to itself.** `comparisonPeer` was
+`agrees ? runnerUp : leader`, and `runnerUp` is positional — so when the
+favoured option ties for the lead but sorts second, it *is* the runner-up.
+Energy hits this every run: monitoring and switching rate plans tie at 0.80.
+
+**3. The adaptive moment was unreachable.** `updateCriteria` marked the
+recommendation stale and reopened nothing, and `selectNextObligation` only
+considers `open` obligations — so on a case where everything was satisfied,
+the re-run failed outright with "No open obligation remains to select." The
+demo script worked around it through DevTools. `ObligationTemplate.
+dependsOnCriteria` now distinguishes a synthesis from a measurement: only the
+synthesis reopens, so the tariff and weather findings stand.
+
+**4. `draft.withheld` was a fully-built dead end.** Label, tone,
+`RecommendationCard` state, `SpecialistActivityPanel` branch and
+`workspace-status` handling all existed and were tested. Nothing emitted the
+event. The `goal` category was excluded wholesale from the consumer stream,
+and round 1's scripted draft cited its sources on the first attempt so the
+validator had nothing to reject. Both fixed; `goal.validated` stays internal.
+
+**5. The best moment in the demo rendered as a crash.** A `RetrySteering`
+intervention redirects `weather-analyst` and the redirected lookup fails as a
+direct result; the node then recovers and completes. The panel reported
+"Weather — Error — Stopped before it finished", because any `tool.failed` set
+`row.errored` and that outranked the node's own COMPLETED status. Same bug in
+a second place: a withheld draft set `row.denied` permanently, so the
+synthesizer read "Denied" beside the accepted recommendation it produced.
+
+**6. Nothing on the page could change what the decision weighs.**
+`sift_update_criteria` existed as a WebMCP tool; no UI did. `CriteriaEditor`
+is that control. Adding it as a seventh app-bar icon overflowed the 390px
+pane by 34px, which `assertRightPaneIntegrity` caught, so it lives in the
+menu — renamed "Add or adjust" to cover what it now holds.
+
+**7. An energy case was told Sift would search the vehicle catalog.** ADR 0014
+had already fixed this class of leak for one route; two siblings kept it, and
+the neutrality test's pattern did not include "catalog". A third instance was
+an inline string in `provisionalityOf`, now a table so the same assertion
+covers it.
+
+**8. A screen-reader user was told "All 1 specialists finished."**
+
+**9. A one-in-three e2e flake, and the blind timeout hiding it.**
+`submitCustomConcern` filtered its wait on `response.ok()`, so a rejected
+write matched nothing and burned 30s reporting a latency problem that did not
+exist. It was a 409: the journey reweighted by POSTing directly, which left
+the page's snapshot behind the case it was about to write to. It drives
+`CriteriaEditor` now, so the divergence is gone rather than waited out.
+
+### Gate
+
+- `pnpm verify` → **PASSED**, all ten stages.
+- `pnpm test:unit` → **4650 passed / 231 files**, repeatedly.
+- `npx playwright test` → **192 passed** across six viewports, four
+  consecutive clean runs (previously ~1 failure in 3).
+- Baselines regenerated only after each cause was fixed, and only for content
+  that genuinely changed: the 80/20 comparison copy, and the masked duration
+  column. Actual/expected/diff inspected for each before updating.

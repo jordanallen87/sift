@@ -162,11 +162,28 @@ You can edit criteria and candidates and review the resulting recommendation as 
 
 ### Home Energy Guardian (the AWS/Strands hero)
 
-Click **"Investigate my energy bill"**. This runs a real bounded Strands Swarm across six
-specialists rather than a Graph, and demonstrates two human-authority mechanisms that are easy to
-claim and hard to fake: a real steering intervention when the swarm loops on evidence gathering,
-and a real `ConsequenceGuard` confirmation gate before it will ever propose booking a home
-inspection.
+Click **"Investigate my energy bill"**. A bill has posted at $248.50 against a weather-normalized
+baseline of $175.00 — 42% over — and the case is already open before anyone is asked anything.
+
+This runs a real bounded Strands Swarm across six specialists rather than a Graph. Four things in
+it are easy to claim and hard to fake, and all four happen on every run:
+
+- **A draft is refused.** `decision-synthesizer`'s first recommendation cites no source, the real
+  `GoalLoop` validator rejects it, and the corrected retry is what reaches the case. You will see
+  _"Recommendation draft rejected on attempt 1."_ in the activity stream, followed by the
+  recommendation that replaced it.
+- **An agent is redirected mid-run.** `weather-analyst` repeats a query family, a real
+  `RetrySteering` intervention catches it, and the specialist row reports _"Redirected once"_.
+- **The ranking changes when you change what matters.** Open **Add or adjust → Adjust priorities**,
+  move the weights from cost-heavy toward long-term waste reduction, save, and ask Sift to look
+  again. Round 1 recommends monitoring for one more cycle at 80%; round 2 recommends the HVAC
+  inspection at 87%, and says which criterion decided it.
+- **A consequential action stops for a human.** A real `ConsequenceGuard` gate means Sift will
+  propose booking an inspection and never book one.
+
+The reweight is worth doing yourself: it is the whole argument. The measured findings — tariff
+attribution, weather normalization, the thermostat sensor-drift event — stay satisfied, because
+changing what you value does not un-measure anything. Only the synthesis is redone.
 
 ### The Runtime Inspector
 
@@ -186,9 +203,14 @@ with `SIFT_TRACING_ENABLED=false`), so the spans the SDK already emits are persi
 roughly 75 spans for one car run. Setting `OTEL_EXPORTER_OTLP_ENDPOINT` additionally exports them
 onward; unset, nothing opens a socket and a fixture run stays fully offline.
 
-This currently ships as an Overview + Timeline + Activity slice. The fuller Execution / State /
-Context / Errors views described in [`docs/specs/debugging-and-observability.md`](docs/specs/debugging-and-observability.md)
-are tracked follow-on work, not yet built, and `setupMeter()` / OTEL metrics and W3C `traceparent`
+This ships as Overview + Timeline + **Execution** + Activity. The Execution tab (`RunGraphView`)
+derives the run's stages from the recorded runtime events rather than drawing a fixed picture, so
+it shows what that particular investigation actually did — for the car Graph, six nodes across
+three stages with the first four genuinely concurrent.
+
+The State / Context / Errors views described in
+[`docs/specs/debugging-and-observability.md`](docs/specs/debugging-and-observability.md) are
+tracked follow-on work, not yet built, and `setupMeter()` / OTEL metrics and W3C `traceparent`
 propagation remain unbuilt.
 
 ### Beyond the demos: the vehicle catalog
