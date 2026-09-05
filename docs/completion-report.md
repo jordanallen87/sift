@@ -27,15 +27,17 @@ This report is written per docs/engineering-principles.md's completion contract.
 
 ## Verification commands and counts
 
-All commands below were run independently by the orchestrating session (not only trusted from a subagent's self-report) at the final commit `6edf2d1a53f54ac731b3b462b888b5f8ed69cc99`.
+**Regenerated 2026-09-05 at commit `7fd62c71e796d0ad9c6a88798f7016101d0ad3cf`** by one complete `pnpm verify:release` run (`artifacts/verification/release-latest/report.json`, runId `release-2026-09-05T19-08-08-805Z-4b870467`, 19:08:08Z-19:24:08Z). Every number in the two tables below comes from that run's own stage logs, not from a subagent's report and not carried forward from an earlier checkpoint. The previous revision of this section described commit `6edf2d1a…` and is superseded.
+
+The run's honest outcome: **four of five stages passed; `test:submission` failed on one check**, `release-metadata-public-urls`, because `webmcpVideoUrl`/`agentsForHumansVideoUrl` are empty. That is the only failing check in the entire release gate, and it cannot pass until a human uploads the two recordings. `release-verification-sha` now passes — `artifacts/verification/latest/report.json`'s `gitSha` matches `HEAD`.
 
 | Command | Result |
 |---|---|
 | `pnpm install --frozen-lockfile` | Succeeds from a clean checkout |
 | `pnpm verify` | **PASSED** — all 10 stages: `format:check`, `lint`, `typecheck`, `test:unit`, `test:coverage`, `test:pack`, `test:integration`, `test:contract`, `test:scenario`, `test:e2e` |
-| `pnpm test:unit` (via `test:coverage`) | 2094/2094 tests passed, 130 files |
-| `pnpm test:e2e` | 32/32 tests passed, across 4 Playwright viewport projects x 5 spec files |
-| `pnpm verify:release` | verify + mutation + build + docker all **PASSED**; `test:submission` fails only on the two genuinely human-only video-URL fields (see below) |
+| `pnpm test:unit` (via `test:coverage`) | **4706/4706 tests passed, 232 files** |
+| `pnpm test:e2e` | **192/192 tests passed**, across 6 Playwright viewport projects |
+| `pnpm verify:release` | verify (415s), test:mutation (460s), release:build (1.4s), release:docker (82s) all **PASSED**; `test:submission` fails only on the two genuinely human-only video-URL fields (see below) |
 | `pnpm test:submission` | 9 passed, 2 skipped (video-duration checks — structurally cannot pass without a recorded file, by design), 1 failed (`release-metadata-public-urls`: `webmcpVideoUrl`/`agentsForHumansVideoUrl` — human-only, see Known limitations) |
 | `pnpm test:deployed` (`PAX_DEPLOYED_URL=https://sift-hackathon-production.up.railway.app`) | **11 passed, 1 skipped, 0 failed** against the live deployment as of the pre-Task-15 deploy (see Deployed checks — not re-run tonight, no deploy has happened since) |
 
@@ -47,14 +49,23 @@ Coverage is a real, enforced release-gate stage (`test:coverage` = `vitest run -
 
 | Metric | Result | Threshold |
 |---|---|---|
-| Statements | 97.7% | 95% |
-| Branches | 95.71% | 90% |
-| Functions | 98.02% | 95% |
-| Lines | 97.88% | 95% |
+| Statements | 96.27% | 95% |
+| Branches | 92.4% (7889/8537) | 90% |
+| Functions | 96.42% | 95% |
+| Lines | 97.1% (10626/10943) | 95% |
 
 Residual uncovered branches are documented in code rather than silently accepted: real Strands-SDK-adjacent "no result for node X" defensive guards (not reached without invasive SDK-internal mocking, a deliberate tradeoff), a few provably-dead duplicate guards and unset-field fallbacks, and `home-energy-swarm.ts`'s repetitive-handoff/wall-clock-timeout safety nets.
 
-**Mutation testing** (Stryker, `packages/core/src` + `packages/packs/src`): **90.84%**, against a break threshold of 80% (high/low targets 90/70).
+**Mutation testing** (Stryker): **85.06% aggregate**, against a break threshold of 80% (high/low targets 90/70) — 5,078 mutants killed, 752 survived, 7 timed out, 141 with no coverage. Run to completion in 7m36s on an otherwise-idle machine; an earlier attempt under heavy contention was killed partway and is not counted.
+
+Scope was **corrected on 2026-09-05** and is now `packages/core/src` + `packages/packs/src` **plus two individually named decision rules in `packages/scenarios`** that the globs had never covered:
+
+| File | Score | Why it was added |
+|---|---|---|
+| `tools/bill-feed-gate.ts` | **100.00%** (7/7 killed) | Decides whether a case is opened at all. Scored 71.43% when first measured — under the break threshold — because `formatMoney` could return `""` and drop both dollar amounts from the decision's user-visible `reason` with every test still green. |
+| `tools/energy-calculator.ts` | **88.65%** (164 killed, 21 survived) | Owns the Home Energy hero's arithmetic. Scored 81.62% when first measured: the weighted fit score's `/ totalWeight` could become `* totalWeight`, `findPriorTariff`'s date filter could be deleted outright, a `<=` budget bound could become `<`, and every evidence-item summary could be emptied to `""` — including the "$248.50 is 42% above the normalized baseline" sentence the demo turns on. |
+
+Both were fixed by strengthening assertions, never by weakening a threshold. `docs/specs/testing.md` now records the rule that a decision rule outside `core`/`packs` must be named in `mutate` explicitly, because the globs will not find it and an unmutated rule can be pinned by tests that would not fail if it broke. `packs/src/manifests/home-energy-guardian.ts` scores 100.00% (794 killed).
 
 ## Playwright projects and screenshot inventory
 

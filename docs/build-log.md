@@ -8133,3 +8133,75 @@ against the live DOM) with burned-in captions, but its voice track is macOS
 `say` and is marked DRAFT on the face of the video — it needs a real voice
 before it is submittable. `rec/energy/REVOICE.md` documents the one-command
 ElevenLabs path.
+
+## 2026-09-05 (later) — what the mutation gate was not covering
+
+Three findings, all from running things rather than reading them.
+
+### The mutation gate had a hole shaped like the energy hero
+
+`stryker.config.mjs` mutated `packages/core/src` and `packages/packs/src`. Both
+of Home Energy Guardian's decision rules live in `packages/scenarios`, so
+`pnpm test:mutation` had never touched either. Scoped runs found real defects
+in both:
+
+- `tools/bill-feed-gate.ts` — **71.43%**, under the break threshold of 80.
+  `formatMoney` could be mutated to return `""`, dropping both dollar amounts
+  from the decision's `reason`, which is rendered to a person verbatim. Tests
+  asserted only `/42%/` and `/abnormal/i`. Now **100%** (7/7 killed).
+- `tools/energy-calculator.ts` — **81.62%**, 34 survivors, four of them real:
+  the weighted fit score's `/ totalWeight` could become `* totalWeight` (every
+  existing weight test used weights summing to exactly 1, which makes the two
+  operators indistinguishable); `findPriorTariff`'s date filter could be
+  deleted outright despite its comment claiming it generalizes past two
+  tariffs; a `<=` budget bound could become `<`; and every evidence-item
+  summary could be emptied to `""`. Now **88.65%**.
+
+Both files are now named in `mutate`. `docs/specs/testing.md` records the rule:
+a decision rule outside `core`/`packs` must be named explicitly, because the
+globs will not find it and an unmutated rule can be pinned by tests that would
+not fail if it broke. Nothing was fixed by weakening a threshold.
+
+### No production code path reaches a real model
+
+`createBedrockModel`/`resolveModelProvider` build and select a real
+`BedrockModel`, and `model-provider.ts` describes itself as "for live runs" —
+but neither has a caller outside `model-provider.test.ts`. Both hero engines
+construct their scripted provider unconditionally. Every run, local and
+deployed, is scripted.
+
+The orchestration claim survives (the scripted provider is a real Strands
+`Model` subclass driving the genuine agent loop, tool-calling and
+structured-output validation, which is what CLAUDE.md permits). The paperwork
+did not: `docs/specs/strands-runtime.md` said "Default runtime provider: Amazon
+Bedrock" and the Agents for Humans Built-with list said "Amazon Bedrock" flat.
+Corrected at all three sites plus a Known limitations entry. Wiring the live
+path is genuinely unfinished work blocked on absent credentials, and is not
+written up as done.
+
+### The WebMCP deadline has passed
+
+`docs/submissions/webmcp/submission-details.md` records it as
+`2026-09-03T20:00:00Z`; the session clock reads `2026-09-05T19:04Z`. Nothing
+was submitted. Recorded plainly at the top of the WebMCP checklist and on the
+"submitted before the deadline" item, rather than left looking like an ordinary
+open checkbox. The date was fetched from Devpost on 2026-08-27, so an extension
+cannot be ruled out from here. Agents for Humans remains open until
+2026-09-14.
+
+### Checklists
+
+The WebMCP (103 items) and shared release (76 items) checklists had never been
+audited — both were 0 ticked. Audited both against real evidence: **164 ticked
+across all three checklists**, up from 75, each tick citing a file, line, or
+command output. Human, legal, and Devpost-form attestations stay unticked and
+explicitly assigned to the submitter.
+
+### Gate result at `7fd62c7`
+
+`pnpm verify:release` — verify **PASSED** (all 10 stages), test:mutation
+**PASSED** (85.06% aggregate, 5,078 killed / 752 survived / 7 timeout / 141 no
+coverage, 7m36s), release:build **PASSED**, release:docker **PASSED**,
+test:submission **FAILED** on exactly one check: `release-metadata-public-urls`,
+the two empty video URLs. 4,706 unit tests across 232 files; 192 Playwright
+tests; coverage 96.27 / 92.4 / 96.42 / 97.1 against 95 / 90 / 95 / 95.
