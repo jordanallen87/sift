@@ -224,6 +224,7 @@ import {
   PlusIcon,
   RotateCcwIcon,
   SearchCheckIcon,
+  SlidersHorizontalIcon,
   TerminalIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -258,6 +259,16 @@ export interface WorkspaceAppBarProps {
   onAddNote: () => void;
   /** The create menu's third item -- opens the caller's "add a question" surface (formerly a bottom-of-stack disclosure row). */
   onAddConcern: () => void;
+  /**
+   * Opens the weights surface. Optional, and rendered as nothing rather
+   * than as a disabled control when a caller has not wired it -- the same
+   * rule `onOpenReferenceLibrary` follows.
+   *
+   * It lives in the bar rather than in `WorkspaceSidebar`'s Priorities
+   * region because the sidebar does not render at all in the narrow pane,
+   * and the narrow pane is where this product is actually used.
+   */
+  onAdjustPriorities?: (() => void) | undefined;
   onReviewFindings: () => void;
   onOpenDeveloperView: () => void;
   /** Omitted entirely (not merely disabled) when the caller has no reset affordance to offer -- matches `docs/specs/product.md`'s "Empty regions" rule against rendering a control with nothing behind it. */
@@ -311,6 +322,7 @@ const TOUCH_TARGET_ICON = `${TOUCH_TARGET} min-w-[var(--size-touch-target-min)]`
  * "Add" is.
  */
 const CREATE_MENU_LABEL = 'Add to this case';
+const PRIORITIES_LABEL = 'Adjust priorities';
 
 /**
  * A pointer-only label for a control that is currently rendering as a bare
@@ -365,6 +377,7 @@ export function WorkspaceAppBar({
   onAddOption,
   onAddNote,
   onAddConcern,
+  onAdjustPriorities,
   onReviewFindings,
   onOpenDeveloperView,
   onResetDemo,
@@ -552,6 +565,23 @@ export function WorkspaceAppBar({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {onAdjustPriorities !== undefined ? (
+            <GlyphTooltip label={PRIORITIES_LABEL} enabled={!isExpanded}>
+              <Button
+                type="button"
+                data-testid="workspace-app-bar-priorities"
+                aria-label={PRIORITIES_LABEL}
+                onClick={onAdjustPriorities}
+                variant="ghost"
+                size="sm"
+                className={`gap-[var(--space-1)] ${TOUCH_TARGET} ${isExpanded ? '' : 'px-[var(--space-2)]'}`}
+              >
+                <SlidersHorizontalIcon aria-hidden="true" className="size-4" />
+                {isExpanded ? 'Priorities' : null}
+              </Button>
+            </GlyphTooltip>
+          ) : null}
 
           <GlyphTooltip label={`Findings, ${String(findingsCount)}`} enabled={!isExpanded}>
             <Button

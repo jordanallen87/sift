@@ -259,6 +259,7 @@ import { deriveDecisionProfile } from '../components/decision-profile.js';
 import { CaseNotes } from '../components/CaseNotes.js';
 import { AddNoteForm } from '../components/AddNoteForm.js';
 import { CustomConcernForm } from '../components/CustomConcernForm.js';
+import { CriteriaEditor } from '../components/CriteriaEditor.js';
 import { CaseExtensionReviewCard } from '../components/CaseExtensionReviewCard.js';
 import type { LiveRunStatusReceipt } from '../components/LiveRunStatus.js';
 import { WebMcpStatus } from '../components/WebMcpStatus.js';
@@ -545,6 +546,7 @@ export function App() {
   // and its DOM ids. The inline copy is gone now (see the note where it used
   // to render), so one sheet is the whole story at every width.
   const [addConcernSheetOpen, setAddConcernSheetOpen] = useState(false);
+  const [prioritiesSheetOpen, setPrioritiesSheetOpen] = useState(false);
   // Filters live in a sheet reachable from BOTH layouts, not in the
   // expanded-only sidebar they used to occupy (ADR 0009). That placement is
   // what makes filtering exist at all in pane/WebMCP mode, where
@@ -2420,6 +2422,7 @@ export function App() {
               setNotesSheetOpen(true);
             }}
             onAddConcern={() => setAddConcernSheetOpen(true)}
+            onAdjustPriorities={() => setPrioritiesSheetOpen(true)}
             onReviewFindings={() => setFindingsSheetOpen(true)}
             onOpenReferenceLibrary={() => setReferenceLibraryOpen(true)}
             referenceCount={snapshot?.sources.length ?? 0}
@@ -2942,6 +2945,37 @@ export function App() {
               would put two `case-notes` sections and two identical
               `id="case-notes-heading"` values in the document at once. */}
             <AddNoteForm caseId={activeCaseId} resolveExpectedSequence={resolveExpectedSequence} />
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+
+      {/*
+        Weights. The only surface in the product that can change what the
+        decision actually optimises for -- before this existed, the reweight
+        both demo scripts turn on was reachable only through WebMCP or a
+        console call against the same command endpoint.
+      */}
+      <Sheet open={prioritiesSheetOpen} onOpenChange={setPrioritiesSheetOpen}>
+        <SheetContent data-testid="workspace-priorities-sheet">
+          <SheetHeader>
+            <SheetTitle>Priorities</SheetTitle>
+          </SheetHeader>
+          <SheetBody className="flex flex-col gap-[var(--space-4)]">
+            <CriteriaEditor
+              caseId={activeCaseId}
+              criteria={snapshot?.criteria ?? []}
+              // The pack's protected-criterion list is not projected into
+              // `CaseState`, and it does not need to be: a protected
+              // criterion is a hard constraint, which `CriteriaEditor`
+              // already refuses to offer as a weight. Anything the server
+              // still rejects surfaces as a real error on the form rather
+              // than being predicted here from a second source of truth.
+              protectedCriterionIds={[]}
+              resolveExpectedSequence={resolveExpectedSequence}
+              onDone={() => {
+                setPrioritiesSheetOpen(false);
+              }}
+            />
           </SheetBody>
         </SheetContent>
       </Sheet>
