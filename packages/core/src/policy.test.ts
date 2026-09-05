@@ -291,7 +291,18 @@ describe('reviewProposal: human rejection', () => {
       makeClock('2026-03-01T00:00:00.000Z'),
     );
 
-    expect(result.proposal?.reviewReason).toBeUndefined();
+    // `toBeUndefined()` alone is not enough here, and mutation testing proved
+    // it: Stryker replaced the guard in `reviewProposal` with `true ?`, so the
+    // key was spread in as an explicit `reviewReason: undefined` -- and this
+    // assertion still passed, because `toBeUndefined()` cannot tell an absent
+    // key from a present one holding `undefined`. The mutant survived. Asserting
+    // the key is genuinely absent is what pins "never fabricates one", and it is
+    // the difference that matters downstream: `DecisionProposalSchema` is
+    // `.strict()`, this state is persisted as a JSON blob, and `JSON.stringify`
+    // silently drops an explicit `undefined` -- so a round-trip would quietly
+    // disagree with the object the reducer just produced.
+    expect(result.proposal).toBeDefined();
+    expect(Object.hasOwn(result.proposal as object, 'reviewReason')).toBe(false);
   });
 });
 
