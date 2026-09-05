@@ -625,9 +625,24 @@ export class SiftPage {
     const menu = this.page.getByTestId('workspace-app-bar-create-menu-content');
     await expect(async () => {
       if (!(await menu.isVisible().catch(() => false))) {
+        // Settle to a known-closed state before clicking. Without this, a
+        // menu that was merely SLOW to open (contended machine, 2s inner
+        // timeout) is misread as "did not open", and the retry's click
+        // toggles shut the menu the first click had just opened -- leaving
+        // the open/closed state a function of how many retries happened to
+        // run. That is the race behind the intermittent
+        // `awaiting-approval` screenshot failures, where the dropdown is
+        // captured hanging open over the recommendation: the assertion that
+        // the menu is hidden after the reweight genuinely passes, and a
+        // still-in-flight toggle from an earlier retry reopens it
+        // afterwards. Escape on an already-closed menu is a no-op.
+        await this.page.keyboard.press('Escape');
+        await expect(menu).toBeHidden({ timeout: 2_000 });
         await trigger.click();
       }
-      await expect(menu).toBeVisible({ timeout: 2_000 });
+      // 5s, not 2s: long enough that a slow open is waited out rather than
+      // retried into a toggle.
+      await expect(menu).toBeVisible({ timeout: 5_000 });
     }).toPass({ timeout: 20_000 });
     await this.page.getByTestId(itemTestId).click();
     await expect(sheet).toBeVisible();
