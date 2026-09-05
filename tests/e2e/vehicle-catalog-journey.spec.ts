@@ -28,12 +28,7 @@ import {
   disableAnimations,
   expectNamedScreenshot,
 } from './helpers/layout-assertions.js';
-import {
-  CAR_PURCHASE_CRITERION_IDS,
-  getCaseState,
-  SiftPage,
-  postCommand,
-} from './pages/sift-page.js';
+import { CAR_PURCHASE_CRITERION_IDS, getCaseState, SiftPage } from './pages/sift-page.js';
 
 test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
   test('browse, shortlist, create case, enrich a candidate, reweight criteria, add a concern, reload', async ({
@@ -150,21 +145,19 @@ test.describe('Compare vehicles -- normal, non-demo catalog journey', () => {
       })
       .toBe(28500);
 
-    // --- Change a criterion -- the same real command
-    // `car-purchase-journey.spec.ts` exercises via HTTP (no dedicated
-    // criteria-editing UI exists yet). ---
-    const beforeSequence = (await getCaseState(request, caseId))['eventSequence'] as number;
-    const reweight = await postCommand(request, caseId, 'updateCriteria', {
-      expectedSequence: beforeSequence,
-      operations: [
-        {
-          op: 'reweight',
-          criterionId: CAR_PURCHASE_CRITERION_IDS.ownershipCost,
-          weight: 45,
-        },
-      ],
-    });
-    expect(reweight.ok()).toBe(true);
+    // --- Change a criterion, through the control a person actually uses ---
+    //
+    // This was a direct `POST /commands/updateCriteria`, because no criteria
+    // UI existed when the journey was written. That mutated the case behind
+    // the page's back and left its cached snapshot behind the case, so the
+    // very next UI write -- the custom concern below -- raced it and this
+    // test failed about one run in three with a 409 on `defineCaseAttribute`
+    // and a misleading 30s "the server never answered" timeout.
+    //
+    // Driving the reweight through `CriteriaEditor` removes the divergence
+    // rather than waiting it out, and covers the real control at the same
+    // time.
+    await sift.reweightCriteria({ [CAR_PURCHASE_CRITERION_IDS.ownershipCost]: 45 });
 
     // --- Add a custom concern absent from the installed pack (spec brief
     // "A concern absent from the pack can still become a typed custom.*

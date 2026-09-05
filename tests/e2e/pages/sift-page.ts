@@ -736,6 +736,45 @@ export class SiftPage {
     await this.openViaCreateMenu('workspace-app-bar-add-concern', 'workspace-add-concern-sheet');
   }
 
+  /** Opens the "Adjust priorities" Sheet (`CriteriaEditor`) via the app bar's create menu, identically at every viewport. */
+  async openPriorities(): Promise<void> {
+    await this.openViaCreateMenu('workspace-app-bar-priorities', 'workspace-priorities-sheet');
+  }
+
+  /**
+   * Reweights criteria through the real control a person uses, and waits for
+   * the command the page itself issues.
+   *
+   * Specs used to reweight by POSTing `updateCriteria` out of band, because
+   * no criteria UI existed. That left the page's cached snapshot behind the
+   * case it was about to write to, and the next UI write raced it: the
+   * catalog journey failed roughly one run in three with a 409 on an
+   * unrelated `defineCaseAttribute`. Driving the reweight through the page
+   * removes the out-of-band mutation, so there is no divergence to race.
+   */
+  async reweightCriteria(weights: Record<string, number>): Promise<void> {
+    await this.openPriorities();
+    for (const [criterionId, weight] of Object.entries(weights)) {
+      await this.page.getByTestId(`criteria-editor-weight-${criterionId}`).fill(String(weight));
+    }
+    const responsePromise = this.page.waitForResponse(
+      (response) =>
+        response.url().includes('/commands/updateCriteria') &&
+        response.request().method() === 'POST',
+      { timeout: 30_000 },
+    );
+    await this.page.getByTestId('criteria-editor-save').click();
+    const response = await responsePromise;
+    if (!response.ok()) {
+      throw new Error(
+        `updateCriteria was rejected with ${String(response.status())}: ${(
+          await response.text()
+        ).slice(0, 400)}`,
+      );
+    }
+    await expect(this.page.getByTestId('workspace-priorities-sheet')).toBeHidden();
+  }
+
   /** The `openAddConcern` counterpart -- see `closeNotes` above for why closing is no longer optional in pane mode. */
   async closeAddConcern(): Promise<void> {
     await this.closeSheet('workspace-add-concern-sheet');
@@ -791,15 +830,33 @@ export class SiftPage {
    * longer bound to match -- neither wait replaces or weakens the other.
    */
   async submitCustomConcern(input: CustomConcernInput): Promise<void> {
+    // Deliberately NOT filtered on `response.ok()`.
+    //
+    // Requiring a 2xx here meant a REJECTED write matched nothing, so the
+    // wait ran its full 30s and reported "the server never answered" about a
+    // server that had answered immediately and said no. That is the single
+    // most misleading shape a test failure can take: it sends whoever reads
+    // it looking at latency when the actual answer is a status code, and it
+    // costs 30 seconds per occurrence to say nothing.
+    //
+    // Matching any response to this endpoint and asserting the status
+    // afterwards keeps exactly the same guarantee and turns a blind timeout
+    // into the real reason.
     const responsePromise = this.page.waitForResponse(
       (response) =>
         response.url().includes('/commands/defineCaseAttribute') &&
-        response.request().method() === 'POST' &&
-        response.ok(),
+        response.request().method() === 'POST',
       { timeout: 30_000 },
     );
     await this.fillAndSubmitCustomConcern(input);
-    await responsePromise;
+    const response = await responsePromise;
+    if (!response.ok()) {
+      throw new Error(
+        `defineCaseAttribute was rejected with ${String(response.status())}: ${(
+          await response.text()
+        ).slice(0, 400)}`,
+      );
+    }
     await expect(
       this.page.getByTestId('custom-concern-form').getByTestId('custom-concern-form-success'),
     ).toBeVisible({ timeout: 30_000 });
