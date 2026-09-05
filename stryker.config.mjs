@@ -48,6 +48,16 @@ const config = {
     // keeps `pnpm test:mutation` covering it from now on, rather than
     // relying on someone remembering to scope a run by hand.
     'packages/scenarios/src/tools/bill-feed-gate.ts',
+    // Same reasoning, same day: `energy-calculator.ts` owns the Home Energy
+    // hero's actual arithmetic -- baseline/anomaly, weather attribution,
+    // rate-change attribution, and response-option scoring -- and was
+    // likewise never mutated. Scoped it scored 81.62%: the weighted
+    // fit-score's `/ totalWeight` could become `* totalWeight`,
+    // `findPriorTariff`'s date filter could be deleted outright, a
+    // `<=` budget bound could become `<`, and every evidence-item summary
+    // could be emptied to "" -- all with the suite green. Tests were
+    // strengthened for each; the file now scores 88.65%.
+    'packages/scenarios/src/tools/energy-calculator.ts',
     '!packages/core/src/**/*.test.ts',
     '!packages/packs/src/**/*.test.ts',
   ],
