@@ -363,6 +363,8 @@ interface SpecialistAccumulator {
   errored: boolean;
   foundConflict: boolean;
   lookupCount: number;
+  /** How many `Guide` interventions redirected this specialist mid-run. */
+  redirectCount: number;
   firstSequence: number;
 }
 
@@ -408,6 +410,7 @@ export function deriveSpecialistActivity(
       errored: false,
       foundConflict: false,
       lookupCount: 0,
+      redirectCount: 0,
       firstSequence: sequence,
     };
     byAgent.set(agentId, created);
@@ -445,6 +448,9 @@ export function deriveSpecialistActivity(
       case 'intervention.confirmation_required':
         row.lastConfirmationSequence = event.sequence;
         break;
+      case 'intervention.guided':
+        row.redirectCount += 1;
+        break;
       case 'draft.withheld':
         row.denied = true;
         break;
@@ -471,9 +477,27 @@ export function deriveSpecialistActivity(
         (row.finished === undefined || row.lastConfirmationSequence > row.finished.sequence);
 
       // Worst news first, so a row never reports a milder state than the
-      // real events support.
+      // real events support -- with one exception, which the node itself
+      // settles.
+      //
+      // A `tool.failed` inside a specialist that then finished is a
+      // RECOVERED failure, not a broken specialist. Home Energy Guardian
+      // does this on every run: a `RetrySteering` intervention catches
+      // `weather-analyst` repeating a query family, the redirected lookup
+      // fails as a direct result, and the node then recovers and completes.
+      // Reporting that as "Error -- Stopped before it finished" told a
+      // viewer the product had fallen over at the exact moment it was
+      // demonstrating governance working, and it was also just false: the
+      // specialist did finish.
+      //
+      // So a failed tool only decides the row's state while the node has
+      // not reported one of its own. Once it has, Strands' own `ResultStatus`
+      // is the authority on whether that node failed.
+      const nodeFailed = statusState === 'error';
+      const unresolvedToolFailure = row.errored && row.finished === undefined;
+
       let state: SpecialistState;
-      if (row.errored || statusState === 'error') {
+      if (nodeFailed || unresolvedToolFailure) {
         state = 'error';
       } else if (approvalOutstanding) {
         state = 'awaiting-approval';
@@ -497,6 +521,16 @@ export function deriveSpecialistActivity(
       }
       if (row.foundConflict) {
         detailParts.push('Sources disagree');
+      } else if (exception === undefined && row.redirectCount > 0) {
+        // A `Guide` intervention redirected this specialist mid-run. That is
+        // strictly more interesting than how many lookups it made, and
+        // saying it plainly is what turns a recovered failure from something
+        // that looks like a fault into what it is: the supervision working.
+        detailParts.push(
+          row.redirectCount === 1
+            ? 'Redirected once'
+            : `Redirected ${String(row.redirectCount)} times`,
+        );
       } else if (exception === undefined && row.lookupCount > 0) {
         // Only on an otherwise unremarkable row: on an exceptional one the
         // reason matters more than the tally, and three clauses do not fit

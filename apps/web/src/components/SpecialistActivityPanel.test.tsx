@@ -631,3 +631,104 @@ describe('SpecialistActivityPanel', () => {
     expect(overflowRisks).toEqual([]);
   });
 });
+
+/**
+ * A tool call that fails inside a specialist which then finishes is not a
+ * specialist that broke.
+ *
+ * Home Energy Guardian produces this on every single run and it is the best
+ * thing in the demo: `weather-analyst` repeats a query family, a real
+ * `RetrySteering` intervention catches it and redirects, and the redirected
+ * `weather-lookup` call fails as a result. The node recovers, calls
+ * `calculator`, emits its structured output and completes with status
+ * `COMPLETED`.
+ *
+ * The panel reported "Weather -- Error -- Stopped before it finished",
+ * because any `tool.failed` set `row.errored` and `row.errored` outranked
+ * everything, including the node's own COMPLETED status. So the product's
+ * clearest demonstration of governance working rendered as the product
+ * falling over, in the consumer-facing panel, in the hero demo.
+ *
+ * The node's own final status is the authority on whether the node failed.
+ */
+describe('a recovered tool failure is not a failed specialist', () => {
+  it('reports a specialist that finished COMPLETED as completed, even though a tool call failed inside it', () => {
+    render(
+      <SpecialistActivityPanel
+        events={[
+          swarmStarted('weather-analyst', 1, 0),
+          buildEvent({
+            sequence: 2,
+            agentId: 'weather-analyst',
+            type: 'tool.started',
+            phase: 'active',
+            summary: 'Calling tool "weather-lookup"',
+          }),
+          buildEvent({
+            sequence: 3,
+            agentId: 'weather-analyst',
+            type: 'intervention.guided',
+            phase: 'completed',
+            summary:
+              'RetrySteering: this search repeats a prior query family without explaining a new angle',
+          }),
+          buildEvent({
+            sequence: 4,
+            agentId: 'weather-analyst',
+            type: 'tool.failed',
+            phase: 'failed',
+            summary: 'Tool "weather-lookup" failed.',
+          }),
+          swarmFinished('weather-analyst', 5, 46),
+        ]}
+      />,
+    );
+
+    const row = rowFor('weather-analyst');
+    expect(within(row).getByTestId('specialist-row-state')).toHaveTextContent('Completed');
+    expect(within(row).queryByText(/Stopped before it finished/)).toBeNull();
+  });
+
+  it('still reports a specialist whose node genuinely FAILED as an error', () => {
+    render(
+      <SpecialistActivityPanel
+        events={[
+          swarmStarted('weather-analyst', 1, 0),
+          buildEvent({
+            sequence: 2,
+            agentId: 'weather-analyst',
+            type: 'tool.failed',
+            phase: 'failed',
+            summary: 'Tool "weather-lookup" failed.',
+          }),
+          graphFinished('weather-analyst', 3, 40, 'FAILED'),
+        ]}
+      />,
+    );
+
+    expect(within(rowFor('weather-analyst')).getByTestId('specialist-row-state')).toHaveTextContent(
+      'Error',
+    );
+  });
+
+  it('reports an unfinished specialist with a failed tool as an error, since nothing has cleared it', () => {
+    render(
+      <SpecialistActivityPanel
+        events={[
+          swarmStarted('weather-analyst', 1, 0),
+          buildEvent({
+            sequence: 2,
+            agentId: 'weather-analyst',
+            type: 'tool.failed',
+            phase: 'failed',
+            summary: 'Tool "weather-lookup" failed.',
+          }),
+        ]}
+      />,
+    );
+
+    expect(within(rowFor('weather-analyst')).getByTestId('specialist-row-state')).toHaveTextContent(
+      'Error',
+    );
+  });
+});
