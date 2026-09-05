@@ -85,6 +85,41 @@ import {
   postRunRequest,
 } from './pages/sift-page.js';
 
+test.describe('switching between decisions', () => {
+  // The demo script's closing beat asks the recorder to "switch demos --
+  // reset to Choose our next car", and until 2026-09-05 the product could
+  // not do it: "Reset demo" restarts the *same* pack, the launcher renders
+  // only when no case is active, and the active case id is restored from
+  // localStorage on every load. Anyone evaluating the deployed app saw
+  // whichever pack they opened first and no other, for the life of that
+  // browser profile.
+  test('a person can leave one decision and start the other, without clearing site data', async ({
+    page,
+  }) => {
+    const sift = new SiftPage(page);
+
+    await sift.openAsFirstTimeVisitor();
+    await sift.launchHomeEnergyGuardian();
+    // The first-run guide is a modal over the bar on a first visit.
+    await sift.dismissFirstRunGuide();
+    await expect(page.getByTestId('workspace-app-bar')).toBeVisible();
+
+    await page.getByTestId('workspace-app-bar-create-menu').click();
+    await page.getByTestId('workspace-app-bar-switch-decision').click();
+
+    // Back at the launcher, with both packs offered again.
+    await expect(page.getByTestId('demo-launcher')).toBeVisible();
+
+    // And the other pack genuinely starts, rather than the launcher being a
+    // dead end that reopens the case we just left.
+    await sift.launchCarPurchase();
+    await expect(page.getByTestId('workspace-app-bar')).toBeVisible();
+    // "Choose our next car" is the launcher's button label; the case it
+    // creates is titled from the pack identity, "Vehicle Selection".
+    await expect(page.getByTestId('workspace-app-bar')).toContainText('Vehicle Selection');
+  });
+});
+
 test.describe('Home Energy Guardian -- full demo journey', () => {
   test('launch, investigate, recommend, reweight, revise, approve', async ({ page }) => {
     test.setTimeout(120_000);

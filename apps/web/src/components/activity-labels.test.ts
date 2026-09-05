@@ -56,6 +56,7 @@ describe('activity-labels', () => {
     'intervention.guided': { label: 'Agent redirected', tone: 'active' },
     // product.md terminology table, verbatim: `Confirm` -> "Your approval needed".
     'intervention.confirmation_required': { label: 'Your approval needed', tone: 'ready' },
+    'intervention.denied': { label: 'Action blocked', tone: 'blocked' },
     // change-set §4: `Evidence` -> "Research/Source/Fact".
     'evidence.accepted': { label: 'Finding accepted', tone: 'satisfied' },
     // The literal change-set §48 example pair: "Research disagrees" <->
@@ -92,13 +93,18 @@ describe('activity-labels', () => {
     expect(getActivityLabel('draft.withheld').label).toBe('Draft withheld');
   });
 
-  it('maps intervention.guided and intervention.confirmation_required to the exact terminology-table labels', () => {
+  it('maps all three intervention outcomes to the exact terminology-table labels', () => {
     // docs/specs/product.md "User-facing terminology": Guide -> "Agent
-    // redirected", Confirm -> "Your approval needed".
+    // redirected", Confirm -> "Your approval needed", Deny -> "Action
+    // blocked". The third row was specified there from the start; until
+    // 2026-09-05 no public activity type carried it, so a denial reached a
+    // person only as the denied call's own "Couldn't complete that lookup".
     expect(getActivityLabel('intervention.guided').label).toBe('Agent redirected');
     expect(getActivityLabel('intervention.confirmation_required').label).toBe(
       'Your approval needed',
     );
+    expect(getActivityLabel('intervention.denied').label).toBe('Action blocked');
+    expect(getActivityLabel('intervention.denied').tone).toBe('blocked');
   });
 
   it('maps obligation.updated to the "Question to resolve" terminology, never "obligation"', () => {

@@ -436,6 +436,8 @@ function appendActivityForRuntimeEvent(
   clock: Clock,
   /** The synthetic id `runtimeEventStore.append` minted for this exact `event` (I2). Every `appendActivity` call below stamps it, so the resulting `PublicActivityEvent` resolves back to this precise `runtime_events` row. */
   debugEventId: string,
+  /** Tool names this run has already denied, so the denied call's own error-status `AfterToolCall` is not republished as a tool failure. Owned by the drain loop: one set per run, mutated here as denials are seen. */
+  deniedTools: Set<string>,
 ): void {
   const shared = {
     runId: ctx.runId,
@@ -481,6 +483,19 @@ function appendActivityForRuntimeEvent(
       return;
     }
     case 'tool': {
+      // A tool the run refused is not a tool that failed. ScopeAuthorization
+      // denies the call in `beforeToolCall`, but the SDK still delivers an
+      // `AfterToolCall` carrying an error status, which would otherwise be
+      // published as "Couldn't complete that lookup" -- telling a person a
+      // lookup broke when in fact a boundary held. The denial has already
+      // been published as "Action blocked"; publishing this too would be
+      // both redundant and false.
+      if (
+        typeof event.attributes['toolName'] === 'string' &&
+        deniedTools.has(event.attributes['toolName'])
+      ) {
+        return;
+      }
       const type =
         event.phase === 'start'
           ? 'tool.started'
@@ -510,6 +525,27 @@ function appendActivityForRuntimeEvent(
           ...shared,
           type: 'intervention.confirmation_required',
           phase: 'waiting',
+          summary: event.summary,
+        });
+      } else if (event.name === 'intervention.deny') {
+        // `Deny` -> "Action blocked" (docs/specs/product.md terminology
+        // table). The denied tool's own `AfterToolCall` still arrives with
+        // an error status, which the `tool` case above would otherwise
+        // publish as "Couldn't complete that lookup" -- so `deniedTools`
+        // records the subject here and suppresses that misleading line.
+        const deniedTool = event.attributes['subject'];
+        if (typeof deniedTool === 'string') {
+          deniedTools.add(deniedTool);
+        }
+        appendActivity(activityStore, clock, ctx.caseId, {
+          ...shared,
+          type: 'intervention.denied',
+          // The guard ran to completion; it is the *action* that was
+          // blocked. `intervention.guided` records itself the same way, and
+          // "blocked" is not a `PUBLIC_ACTIVITY_PHASES` member. The reader
+          // gets the meaning from the label ("Action blocked") and its
+          // `blocked` tone, not from the lifecycle phase.
+          phase: 'completed',
           summary: event.summary,
         });
       }
@@ -584,6 +620,8 @@ async function drainGraphToActivity(
 ): Promise<DrainResult> {
   let next = await gen.next();
   let lastSequence = -1;
+  // One per run: a tool denied once stays denied for this drain's lifetime.
+  const deniedTools = new Set<string>();
   while (!next.done) {
     const persisted = runtimeEventStore.append({
       ...next.value,
@@ -591,7 +629,7 @@ async function drainGraphToActivity(
       runId: ctx.runId,
     });
     onTraceId(persisted.traceId);
-    appendActivityForRuntimeEvent(next.value, ctx, activityStore, clock, persisted.id);
+    appendActivityForRuntimeEvent(next.value, ctx, activityStore, clock, persisted.id, deniedTools);
     lastSequence = persisted.sequence;
     next = await gen.next();
   }

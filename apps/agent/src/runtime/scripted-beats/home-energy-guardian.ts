@@ -149,6 +149,25 @@ function buildAnomalyInvestigatorProvider(): ScriptedModelProvider {
         { toolCalls: [{ name: 'skills', input: { skill_name: 'bill-normalizer' } }] },
         { toolCalls: [{ name: 'bill-reader', input: {} }] },
         { toolCalls: [{ name: 'calculator', input: {} }] },
+        // Deliberate overreach, and the only scripted turn here that is
+        // *meant* to fail. Having measured a 42% spike, the bill specialist
+        // reaches for the household device log to explain it -- a tool the
+        // compiled pack grants to `home-systems-analyst`, not to this node
+        // (`allowedTools` here is bill-reader / usage-history-query /
+        // calculator). The real `ScopeAuthorization` intervention denies it
+        // before it executes.
+        //
+        // This is scripted because the guard cannot be demonstrated
+        // otherwise: a scripted provider only ever asks for what it is told
+        // to ask for, so with every turn inside the grant, `Deny` -- one of
+        // the three intervention outcomes docs/engineering-principles.md
+        // requires to be *visible* -- would never fire outside a unit test
+        // that patches this provider on purpose. What is scripted is the
+        // model's overreach, which is an ordinary real-world failure mode;
+        // what does the denying is real code reading the real compiled pack.
+        // It is also the honest answer to "why hand off at all instead of
+        // letting one agent do everything": it cannot.
+        { toolCalls: [{ name: 'household-event-lookup', input: {} }] },
         structuredOutputTurn({
           agentId: 'rate-analyst',
           message:

@@ -8205,3 +8205,79 @@ coverage, 7m36s), release:build **PASSED**, release:docker **PASSED**,
 test:submission **FAILED** on exactly one check: `release-metadata-public-urls`,
 the two empty video URLs. 4,706 unit tests across 232 files; 192 Playwright
 tests; coverage 96.27 / 92.4 / 96.42 / 97.1 against 95 / 90 / 95 / 95.
+
+## 2026-09-05 (later still) — making the demo show what Strands actually does
+
+Driven by one question: what can the AWS video actually put on screen?
+
+### `Deny` was implemented, wired, unit-tested, and invisible
+
+`docs/engineering-principles.md` requires visible `Guide`, `Confirm` and `Deny`
+outcomes. Checked against a real run on the deployed URL rather than against
+the code: 308 runtime events, interventions were 104 `proceed` + 1 `guide`,
+zero `deny`. `ScopeAuthorization` was registered in both the Swarm and the
+Graph, but no specialist in either trajectory ever reached outside its grant,
+so the third outcome fired only in a unit test that patched a provider on
+purpose — visible in no report and on no screen.
+
+Made reachable honestly: `anomaly-investigator`, having measured the 42%
+spike, reaches for `household-event-lookup` — a tool the compiled pack grants
+to `home-systems-analyst` — and the real guard refuses it before execution.
+What is scripted is the model's overreach, an ordinary failure mode; what does
+the denying is real code reading the real compiled pack. It is also the honest
+answer to "why a Swarm rather than one agent": it cannot be one agent.
+
+### Which exposed a product bug: the guard looked like a broken tool
+
+With the deny firing, the pane rendered it **"Couldn't complete that lookup"**
+in an error tone — the denied call's own `AfterToolCall` error status,
+republished. The lookup did not fail; it was refused, and the difference
+between a broken tool and an enforced boundary is the entire point of having
+the boundary.
+
+`docs/specs/product.md`'s terminology table has mapped `Deny` → **"Action
+blocked"** from the start; no `PublicActivityEventType` ever carried it. Added
+`intervention.denied`, projected in both engines, with the spec's exact label
+and a `blocked` tone, and suppressed the false failure line. The *attempt*
+line is deliberately kept: "Looking something up" → "Action blocked" is the
+truthful sequence, and suppressing the first would need lookahead a streaming
+projection does not have.
+
+### There was no way out of a case
+
+Beat 7 of the demo script asks the recorder to switch demos. The product could
+not. "Reset demo" restarts the same pack, `setActiveCaseId(null)` appeared
+nowhere, and the active case id is restored from `localStorage` on every load
+— so anyone evaluating the deployed app saw whichever pack they opened first
+and no other, for the life of the browser profile. The storage effect's own
+comment already described a "return-to-launcher transition"; only the control
+was missing. Added **"Start a different decision"** to the "Add or adjust"
+menu, covered end to end at all six viewports.
+
+### Demo script audit
+
+Every quoted label, testid, event string, navigation step and number in
+`demo-script.md` was checked against the source that renders it. Two would
+have broken a take: the demo switch above, and beat 4 offering "set the
+category filter to `tool`" as an alternative — RetrySteering's guide is
+category `intervention`, so that option hides the exact entry the beat points
+at. Four smaller drifts fixed (the Weather row is
+`Completed · How much the weather explains · Redirected once`, not the
+shortened quote; "Your approval needed" carries no trailing period; the
+limitation sentence runs one sentence longer than quoted; clearing the
+category filter needs the level filter at `info` to suppress three
+`debug`-level `proceed` rows). Everything else — the 0.87/0.20 scores, the
+80/20 weights, the $248.50/$175.00/42% figures, all four Inspector tabs, every
+testid — matched exactly.
+
+### The AgentCore contract, proved live
+
+`POST /invocations` with `commandName: "reviewProposal"` returns
+`400 VALIDATION` on the deployed service and enumerates the 17 verbs it does
+accept; neither approval verb is among them. Not a permission check — the enum
+member does not exist. A full investigation driven through that same route
+produced 308 runtime events, 76 carrying real OpenTelemetry span ids, 19
+Context Injector injections, 4 skill activations, both GoalLoop events and the
+handoff chain. Added to beat 6 as the strongest single moment available, with
+an explicit note that the additions push past 300s and must be rebalanced
+before recording.

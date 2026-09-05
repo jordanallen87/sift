@@ -101,6 +101,13 @@ export const HOME_ENERGY_GUARDIAN_DEMO_SCENARIO: DemoScenario = {
     { kind: 'tool_called', toolId: 'propose_inspection', count: 1 },
     { kind: 'intervention', action: 'guide', handler: 'RetrySteering' },
     { kind: 'intervention', action: 'confirm', handler: 'ConsequenceGuard' },
+    // The third of the three intervention outcomes docs/engineering-principles.md
+    // requires to be visible. `anomaly-investigator` reaches for
+    // `household-event-lookup` -- granted to `home-systems-analyst`, not to
+    // it -- and ScopeAuthorization denies the call before it executes. Until
+    // 2026-09-05 this was proven only by a unit test that patched the
+    // provider on purpose, so `deny` appeared in no report a judge reads.
+    { kind: 'intervention', action: 'deny', handler: 'ScopeAuthorization' },
     { kind: 'swarm_handoff', from: 'weather-analyst', to: 'home-systems-analyst' },
     { kind: 'goal_validation_failed', reasonIncludes: 'cite at least one source' },
     { kind: 'goal_recovered', reasonIncludes: 'cite at least one source' },

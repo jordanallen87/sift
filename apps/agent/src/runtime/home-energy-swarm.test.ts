@@ -596,6 +596,69 @@ describe('executeHomeEnergySwarm: intervention integrity', () => {
     expect(denyEvent).toBeDefined();
   });
 
+  // The test above proves the guard works when a provider is patched to
+  // misbehave. This one proves the *shipped* trajectory exercises it, which
+  // is a different claim and the one the demo recording depends on: without
+  // it, `Deny` is the one intervention outcome of the three
+  // (Guide/Confirm/Deny) that never appears anywhere a viewer or a judge can
+  // see it, however well unit-tested it is. `anomaly-investigator` is granted
+  // 'bill-reader', 'usage-history-query' and 'calculator' by the compiled
+  // pack -- 'household-event-lookup' belongs to home-systems-analyst -- so a
+  // bill specialist reaching for the household device log to explain the
+  // spike is exactly the overreach least-privilege tool grants exist to stop,
+  // and it is why this pack hands off rather than letting one agent do
+  // everything.
+  it('the shipped round1 trajectory has anomaly-investigator reach outside its grant, so a real Deny is visible on every run', async () => {
+    const { deps } = buildDeps({ beat: 'round1' });
+    const { events } = await drain(executeHomeEnergySwarm(deps));
+
+    const denyEvent = events.find(
+      (event) =>
+        event.category === 'intervention' &&
+        event.name === 'intervention.deny' &&
+        event.agentId === 'anomaly-investigator',
+    );
+    expect(denyEvent).toBeDefined();
+    expect(denyEvent?.attributes['handler']).toBe('ScopeAuthorization');
+    expect(denyEvent?.attributes['subject']).toBe('household-event-lookup');
+
+    // The deny must not derail the run: the specialist recovers within its
+    // grant and the causal chain still reaches the synthesizer.
+    const completedNodes = events
+      .filter((event) => event.name === 'swarm.node_completed')
+      .map((event) => event.agentId);
+    expect(completedNodes).toContain('anomaly-investigator');
+    expect(completedNodes).toContain('decision-synthesizer');
+
+    // And the denial actually stopped the call rather than merely logging
+    // it: the denied tool is the only one of this node's tools that never
+    // reaches `status: 'success'`. Asserting "no tool event mentions it at
+    // all" would be wrong -- the attempt is correctly recorded, with an
+    // error status -- and would have hidden whether the guard blocks
+    // execution or just annotates it.
+    const householdLookupStatuses = events
+      .filter(
+        (event) =>
+          event.category === 'tool' &&
+          event.agentId === 'anomaly-investigator' &&
+          event.attributes['toolName'] === 'household-event-lookup',
+      )
+      .map((event) => event.attributes['status'])
+      .filter((status) => status !== undefined);
+    expect(householdLookupStatuses).toEqual(['error']);
+
+    const grantedToolStatuses = events
+      .filter(
+        (event) =>
+          event.category === 'tool' &&
+          event.agentId === 'anomaly-investigator' &&
+          ['bill-reader', 'calculator'].includes(String(event.attributes['toolName'])) &&
+          event.attributes['status'] !== undefined,
+      )
+      .map((event) => event.attributes['status']);
+    expect(grantedToolStatuses).toEqual(['success', 'success']);
+  });
+
   it('rejects a decision-synthesizer draft with no source citation, then accepts a corrected retry (GoalLoop maxAttempts: 2)', async () => {
     const { deps } = buildDeps({ start: 'decision-synthesizer', beat: 'round1' });
     const provider = new ScriptedModelProvider({

@@ -229,6 +229,8 @@ const ACTIVITY_LABELS = {
   'intervention.guided': { label: 'Agent redirected', tone: 'active' },
   // `Confirm` -> "Your approval needed" (product.md terminology table, verbatim).
   'intervention.confirmation_required': { label: 'Your approval needed', tone: 'ready' },
+  // `Deny` -> "Action blocked" (product.md terminology table, verbatim).
+  'intervention.denied': { label: 'Action blocked', tone: 'blocked' },
   // `Evidence` -> "Research/Source/Fact" (change-set §4 terminology table).
   'evidence.accepted': { label: 'Finding accepted', tone: 'satisfied' },
   // Task A6: the literal change-set §48 example pair -- "Research

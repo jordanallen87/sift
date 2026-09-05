@@ -105,6 +105,15 @@ export const PUBLIC_ACTIVITY_EVENT_TYPES = [
   'tool.failed',
   'intervention.guided',
   'intervention.confirmation_required',
+  // `Deny` -> "Action blocked" (docs/specs/product.md's terminology table,
+  // line 265). The other two intervention outcomes have been public since
+  // the stream existed; this one was specified there and never
+  // implemented, so a denial reached a person only as the tool call's own
+  // `tool.failed` -- rendered "Couldn't complete that lookup", which is
+  // false. The lookup did not fail; it was refused before it ran, and the
+  // difference between a broken tool and an enforced boundary is the whole
+  // point of having the boundary.
+  'intervention.denied',
   'evidence.accepted',
   'evidence.conflicted',
   'obligation.updated',

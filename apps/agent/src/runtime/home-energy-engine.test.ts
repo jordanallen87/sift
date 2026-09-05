@@ -313,6 +313,37 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
     expect(activityAfterRound1.some((event) => event.type === 'skill.activated')).toBe(true);
     expect(activityAfterRound1.some((event) => event.type === 'specialist.started')).toBe(true);
     expect(activityAfterRound1.some((event) => event.type === 'specialist.completed')).toBe(true);
+
+    // --- The denial is visible to a person, and is not dressed up as a
+    // broken tool. `anomaly-investigator` reaches for
+    // `household-event-lookup`, which the compiled pack grants only to
+    // `home-systems-analyst`; ScopeAuthorization refuses it before it runs.
+    // Before this was projected, the only thing a reader saw was the denied
+    // call's own error status, rendered "Couldn't complete that lookup" --
+    // which describes a broken lookup rather than an enforced boundary, and
+    // is the opposite of the reassurance the moment should carry.
+    const denials = activityAfterRound1.filter((event) => event.type === 'intervention.denied');
+    expect(denials).toHaveLength(1);
+    expect(denials[0]?.summary).toContain('household-event-lookup');
+
+    const householdLookupActivity = activityAfterRound1.filter((event) =>
+      event.summary.includes('household-event-lookup'),
+    );
+    // The attempt itself is kept. `tool.started` is published before the
+    // guard runs, and suppressing it would need lookahead a streaming
+    // projection does not have -- but it is also the honest sequence, and it
+    // reads correctly: "Looking something up" immediately followed by
+    // "Action blocked". What must never appear is the *third* line, the
+    // denied call's error status republished as a tool failure.
+    expect(householdLookupActivity.map((event) => event.type)).toEqual([
+      'tool.started',
+      'intervention.denied',
+    ]);
+    expect(
+      activityAfterRound1.some(
+        (event) => event.type === 'tool.failed' && event.summary.includes('household-event-lookup'),
+      ),
+    ).toBe(false);
     expect(activityAfterRound1.some((event) => event.type === 'evidence.accepted')).toBe(true);
 
     const anomalyObligation = snapshot.obligations.find((o) => o.id === 'energy.anomaly');

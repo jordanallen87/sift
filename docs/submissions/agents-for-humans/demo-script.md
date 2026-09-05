@@ -4,6 +4,8 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 **Total runtime budget: 5:00.** Beats below sum to exactly 300 seconds; land under it, not on it.
 
+> **The 2026-09-05 additions push past 300s and you must rebalance before recording.** Three new moments were added that did not exist when the timings were set: the `Deny` / "Action blocked" pair in beat 4 (~20s), the live AgentCore `/invocations` refusal in beat 6 (~30s), and the corrected demo-switch path in beat 7. If you keep all three — and the AgentCore refusal is the strongest single moment in this video for an "Agents for Humans" judge, because it is the authority boundary proved on the one transport an autonomous agent would actually use — take the time back from beat 6's release-report sub-beat (the `report.json` walkthrough narrates what the repository already documents) and from beat 2, which can lose ~15s without losing the Swarm-filling-in shot. **A run over five minutes is disqualifying; the rules cap it, not the taste.** Time a full rehearsal with a stopwatch before the real take.
+
 **This script's "(live-verified …)" claims predate the 2026-08-30 workspace redesign (ADR 0004) and are now stale for on-screen positions.** The former separate "Recommendation" and "Approval" cards this script scrolls to are now composed inside one merged hero region (`RecommendationHero`) rather than being independently scrolled-to cards; the required beats and event names below are unchanged, but re-verify exact scroll targets and card boundaries against the live build before recording.
 
 **2026-09-05 pass.** Nine commits landed the same week that changed what this pack does: the default criteria weights moved from 50/50 to 80/20 (`energy.cost`/`energy.conservation` in `packages/packs/src/home-energy-guardian.ts`), a criteria reweight now genuinely reopens and re-runs the response-options synthesis (`ObligationTemplate.dependsOnCriteria`), the premature draft is now actually rejected and shown as `Draft withheld` rather than only proven by a unit test, and a real **Adjust priorities** control now exists in the app bar. Every beat below was rewritten against the current source (`packages/packs/src/home-energy-guardian.ts`, `apps/agent/src/runtime/home-energy-engine.ts`, `apps/agent/src/runtime/recommendation-scoring.ts`, `apps/agent/src/runtime/scripted-beats/home-energy-guardian.ts`, `apps/web/src/components/CriteriaEditor.tsx`, `apps/web/src/components/SpecialistActivityPanel.tsx`, `apps/web/src/components/RuntimeInspector.tsx`) rather than against a fresh browser recording — **rehearse the whole script once in a real browser before you record**, the same way the rest of this document already asks you to.
@@ -73,7 +75,9 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 *(Required beat 4: "Show no-progress steering, specialist handoff, skill switch, thermostat evidence, and source challenge.")*
 
-**On-screen action:** still in the Runtime Inspector **Timeline** from beat 3 (clear the category filter, or set it to **tool**), scroll to the weather-analyst entries.
+**On-screen action:** still in the Runtime Inspector **Timeline** from beat 3, **clear the category filter and set the level filter to `info`**, then scroll to the weather-analyst entries.
+
+> **Do not set the category filter to `tool` here.** An earlier revision of this script offered that as an equivalent option; it is not. RetrySteering's guide is normalized as category **`intervention`**, not `tool`, so filtering to `tool` hides the very entry this beat exists to point at. Setting the level filter to `info` suppresses the three `debug`-level `intervention.proceed` rows (ScopeAuthorization, ConsequenceGuard, BudgetGuard all record one before RetrySteering runs) that would otherwise sit between the entries below and break up the sequence.
 
 **Point out (exact Timeline entry text, in order):**
 - **"Calling tool \"weather-lookup\"."** — a second time, immediately followed by
@@ -83,7 +87,16 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 **Narration:**
 > "Weather-analyst tried the same weather lookup twice with nothing new to say for itself. Watch — Sift's RetrySteering intervention catches that immediately and redirects it, live. That's a real `Guide` intervention, not a retry counter quietly incrementing somewhere."
 
-**On-screen action:** close the Runtime Inspector and point at the **Investigation team** panel's **Weather** row: it reads **Completed · Redirected once**. The lookup genuinely failed — you just watched it in the Timeline — but the specialist recovered and finished, and the row says so plainly rather than reporting it as broken.
+**On-screen action:** close the Runtime Inspector and point at the **Investigation team** panel's **Weather** row: it reads **Completed · How much the weather explains · Redirected once** (the role description sits between the two, so read the screen, not a shortened quote). The lookup genuinely failed — you just watched it in the Timeline — but the specialist recovered and finished, and the row says so plainly rather than reporting it as broken.
+
+**On-screen action — the third intervention outcome (new 2026-09-05):** scroll the activity list back to the start of round 1, to `anomaly-investigator`'s entries. Two consecutive lines read:
+- **"Looking something up"** — the attempt.
+- **"Action blocked"** — `ScopeAuthorization` refusing it.
+
+**Narration:**
+> "The bill specialist just measured a 42% spike and reached for the household device log to explain it — a tool this pack grants to the home-systems specialist, not to this one. Sift denied the call before it ran. That's the third of Strands' three intervention outcomes: you've now seen Guide redirect a specialist, you'll see Confirm gate the proposal in a moment, and that's Deny. It's also the honest answer to why this is a Swarm and not one agent doing everything — it can't be."
+
+*(Until 2026-09-05 this moment did not exist on camera: `Deny` was implemented, wired, and unit-tested, but nothing in either demo trajectory ever triggered it, so it appeared in no report and on no screen. Worse, when it was first made to fire, the pane rendered it as **"Couldn't complete that lookup"** — the denied call's own error status — which describes a broken tool rather than a boundary holding. `intervention.denied` is now a real public activity type carrying `product.md`'s own terminology-table label, "Action blocked".)*
 
 **Continue, pointing at the panel's remaining rows:**
 - **Home systems — Completed** (a real handoff, and a real skill switch to `home-event-correlation`, which found the thermostat sensor-drift event).
@@ -113,7 +126,7 @@ This calls `updateCriteria` — the exact same command a ChatGPT `sift_update_cr
 
 **On-screen action:** press **"Ask Sift to look into this"** again — no special phrasing, no targeted obligation ID needed. The reweight reopens the `energy.response_options` obligation (`ObligationTemplate.dependsOnCriteria`, `packages/packs/src/home-energy-guardian.ts`), which is now the only open obligation on the case, so the plain re-run finds it on its own.
 
-**What happens (verified against source):** a genuinely revised run fires, starting directly at `decision-synthesizer` — the four measured findings (the anomaly, the rate-change attribution, the weather attribution, the thermostat event) stand unchanged; only the synthesis is redone. Watch the **Investigation team** panel's **Recommendation** row run again and complete, then watch the **Approval** card itself appear, reading **"Your approval needed."** That heading exists at all only because `decision-synthesizer` called `propose_inspection` and a real `ConsequenceGuard` `Confirm` intervention gated it on human review before the proposal was ever recorded.
+**What happens (verified against source):** a genuinely revised run fires, starting directly at `decision-synthesizer` — the four measured findings (the anomaly, the rate-change attribution, the weather attribution, the thermostat event) stand unchanged; only the synthesis is redone. Watch the **Investigation team** panel's **Recommendation** row run again and complete, then watch the **Approval** card itself appear, reading **"Your approval needed"** (no trailing period on the badge itself) That heading exists at all only because `decision-synthesizer` called `propose_inspection` and a real `ConsequenceGuard` `Confirm` intervention gated it on human review before the proposal was ever recorded.
 
 **Narration:**
 > "Watch this exactly — before Sift will even record a proposal to inspect anything in this household, ConsequenceGuard stops it and requires confirmation. That's a real ConsequenceGuard `Confirm` intervention, not a courtesy dialog bolted on afterward."
@@ -153,6 +166,24 @@ This calls `updateCriteria` — the exact same command a ChatGPT `sift_update_cr
 **Narration (if skipping):**
 > "This deployment runs its Strands execution locally — no AWS credentials were available at deploy time. That's an honest, documented limitation, not a missing feature: the same code path talks to Bedrock AgentCore's `/ping` and `/invocations` contract the moment credentials exist."
 
+**On-screen action — the AgentCore contract, live and unstaged (new 2026-09-05; record this whether or not AgentCore itself is deployed):** in a terminal, run these two against the public deployment:
+
+```bash
+curl -s https://sift-hackathon-production.up.railway.app/ping
+# {"status":"Healthy","time_of_last_update":...}
+
+curl -s -X POST https://sift-hackathon-production.up.railway.app/invocations \
+  -H 'Content-Type: application/json' \
+  -d '{"caseId":"<the case on screen>","commandName":"reviewProposal",
+       "input":{"proposalId":"p1","decision":{"actor":"human","outcome":"approved"}}}'
+# 400 VALIDATION — and the error enumerates the 17 verbs it *does* accept.
+```
+
+**Narration:**
+> "This is the AgentCore runtime contract — the same `/ping` and `/invocations` AWS documents — live on the deployed service. Now watch an autonomous caller try to approve the inspection through it, claiming to be a human. It doesn't get refused by a permission check it might have talked its way past. `reviewProposal` is not in the enum this transport accepts at all — the request fails schema validation before any engine sees it, and the error politely lists the seventeen things it *can* do. The agent cannot approve, structurally, on the one transport an autonomous agent would use."
+
+*(Verified live on 2026-09-05: both approval verbs, `reviewProposal` and `reviewCaseExtension`, return `400 VALIDATION` with the accepted-verb enumeration. A full investigation driven through this same `/invocations` route produced 308 runtime events — 76 carrying real OpenTelemetry span ids, 19 Context Injector injections, 4 AgentSkill activations, both GoalLoop events, and the swarm handoff chain. Every Strands feature this video claims is observable in one run triggered through the AgentCore transport.)*
+
 **On-screen action (always record this part):** open the Runtime Inspector on round 1's run (from beats 2–4 — that is the more interesting one to show here) and point at its **Overview** tab's real category and level counts and the real `trace` ID. **Read what is actually on screen rather than reciting a fixed list.** For round 1 specifically, expect a genuine `error`-level entry (the recovered `weather-lookup` failure from beat 4) and a genuine `warn`-level entry (the withheld draft from beat 3), alongside everything that completed cleanly — this is not a defect to explain away.
 
 **Narration:**
@@ -167,7 +198,9 @@ This calls `updateCriteria` — the exact same command a ChatGPT `sift_update_cr
 
 ### Beat 7 (platform proof, then close) — 4:15–5:00 (45s)
 
-**On-screen action (brief platform proof — not one of the seven required beats on its own, but explicitly requested framing from `docs/submissions/agents-for-humans/submission-details.md`):** switch demos — reset to **"Choose our next car."**
+**On-screen action (brief platform proof — not one of the seven required beats on its own, but explicitly requested framing from `docs/submissions/agents-for-humans/submission-details.md`):** open the app bar's **"Add or adjust"** menu and choose **"Start a different decision"**, then launch **"Choose our next car."** The workspace title will read **Vehicle Selection** (the pack's own name; "Choose our next car" is the launcher's button label).
+
+> **This path is new as of 2026-09-05 and did not exist when this beat was first written.** "Reset demo" restarts the *same* pack, the launcher renders only when no case is active, and the active case id is restored from `localStorage` on every load — so there was genuinely no way to reach the other demo without clearing site data, and an earlier revision of this script asked the recorder to do something the product could not do. Covered end to end now by `home-energy-guardian-journey.spec.ts`'s "a person can leave one decision and start the other, without clearing site data", at all six viewports.
 
 **Narration:**
 > "This same engine also runs Choose Our Next Car — a different Decision Pack, a compiled Strands Graph instead of a Swarm, four real specialists instead of six. Same deterministic core owns readiness and evidence either way. A typed, case-specific concern — like needing two dog crates to fit in the back — adapts a live run without ever rewriting the installed pack."

@@ -222,6 +222,7 @@ import {
   LibraryIcon,
   NotebookPenIcon,
   PlusIcon,
+  ArrowLeftIcon,
   RotateCcwIcon,
   SearchCheckIcon,
   SlidersHorizontalIcon,
@@ -270,6 +271,8 @@ export interface WorkspaceAppBarProps {
    * and the narrow pane is where this product is actually used.
    */
   onAdjustPriorities?: (() => void) | undefined;
+  /** Returns to the demo launcher so a different decision can be started. Omitted (and the item unrendered) when there is nowhere to go back to. */
+  onSwitchDecision?: (() => void) | undefined;
   onReviewFindings: () => void;
   onOpenDeveloperView: () => void;
   /** Omitted entirely (not merely disabled) when the caller has no reset affordance to offer -- matches `docs/specs/product.md`'s "Empty regions" rule against rendering a control with nothing behind it. */
@@ -324,6 +327,7 @@ const TOUCH_TARGET_ICON = `${TOUCH_TARGET} min-w-[var(--size-touch-target-min)]`
  */
 const CREATE_MENU_LABEL = 'Add or adjust';
 const PRIORITIES_LABEL = 'Adjust priorities';
+const SWITCH_DECISION_LABEL = 'Start a different decision';
 
 /**
  * A pointer-only label for a control that is currently rendering as a bare
@@ -379,6 +383,7 @@ export function WorkspaceAppBar({
   onAddNote,
   onAddConcern,
   onAdjustPriorities,
+  onSwitchDecision,
   onReviewFindings,
   onOpenDeveloperView,
   onResetDemo,
@@ -581,6 +586,26 @@ export function WorkspaceAppBar({
                   >
                     <SlidersHorizontalIcon aria-hidden="true" />
                     {PRIORITIES_LABEL}
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+              {/* Same placement reasoning as Adjust priorities directly
+                  above: a new capability arriving behind an already-full
+                  bar, not an existing one being demoted, so ADR 0008's "no
+                  capability moves behind a menu" rule is untouched.
+                  Without it there is no way out of a case at all -- "Reset
+                  demo" restarts the same pack, and the launcher only renders
+                  when no case is active, whose id survives reloads in
+                  localStorage. */}
+              {onSwitchDecision !== undefined ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    data-testid="workspace-app-bar-switch-decision"
+                    onSelect={onSwitchDecision}
+                  >
+                    <ArrowLeftIcon aria-hidden="true" />
+                    {SWITCH_DECISION_LABEL}
                   </DropdownMenuItem>
                 </>
               ) : null}

@@ -398,3 +398,31 @@ describe('WorkspaceAppBar', () => {
     });
   });
 });
+
+describe('WorkspaceAppBar switch-decision control', () => {
+  // Until 2026-09-05 there was no way out of a case. "Reset demo" restarts
+  // the *same* pack (App.tsx's `handleResetDemo` reads `snapshot.pack.id`),
+  // the launcher only renders when there is no active case, and that case id
+  // is restored from localStorage on every load -- so a person who opened
+  // one demo could never reach the other without clearing site data. That is
+  // a dead end for anyone evaluating the deployed product, not just for the
+  // demo recording.
+  it('offers a way back to the launcher, and calls it on select', async () => {
+    const user = userEvent.setup();
+    const onSwitchDecision = vi.fn();
+    render(<WorkspaceAppBar {...buildProps({ onSwitchDecision })} />);
+
+    await user.click(screen.getByTestId('workspace-app-bar-create-menu'));
+    await user.click(screen.getByTestId('workspace-app-bar-switch-decision'));
+
+    expect(onSwitchDecision).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits the control entirely when no handler is supplied, rather than rendering a dead item', async () => {
+    const user = userEvent.setup();
+    render(<WorkspaceAppBar {...buildProps()} />);
+
+    await user.click(screen.getByTestId('workspace-app-bar-create-menu'));
+    expect(screen.queryByTestId('workspace-app-bar-switch-decision')).toBeNull();
+  });
+});

@@ -1612,6 +1612,16 @@ export function App() {
     [events, activeCaseId],
   );
 
+  // Returns to the launcher. The storage effect above already handles the
+  // pointer ("Also fires on a reset-demo/return-to-launcher transition") --
+  // that transition simply had no control to trigger it until now, so a
+  // person who opened one demo was stuck in it for the life of the browser
+  // profile.
+  const handleSwitchDecision = useCallback(() => {
+    setActiveCaseId(null);
+    setLastRunReceipt(null);
+  }, []);
+
   const handleResetDemo = useCallback(() => {
     if (snapshot === null) return;
     const demoId = DEMO_IDS.find((id) => id === snapshot.pack.id);
@@ -2423,6 +2433,7 @@ export function App() {
             }}
             onAddConcern={() => setAddConcernSheetOpen(true)}
             onAdjustPriorities={() => setPrioritiesSheetOpen(true)}
+            onSwitchDecision={handleSwitchDecision}
             onReviewFindings={() => setFindingsSheetOpen(true)}
             onOpenReferenceLibrary={() => setReferenceLibraryOpen(true)}
             referenceCount={snapshot?.sources.length ?? 0}
