@@ -89,6 +89,69 @@ describe('createSiftClient', () => {
     });
   });
 
+  it('posts checkEnergyBillFeed to /api/cases/energy-bill-feed-check and returns a validated EnergyBillFeedCheckResult ("no case opened")', async () => {
+    let capturedBody: unknown;
+    const noCaseResult = {
+      commandId: 'cmd-1',
+      billFeedId: 'normal',
+      caseOpened: false,
+      percentAboveBaseline: 4.42,
+      thresholdPercent: 15,
+      reason: 'Your bill looks normal this month; no case opened.',
+    };
+    server.use(
+      http.post(`${BASE_URL}/api/cases/energy-bill-feed-check`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(noCaseResult);
+      }),
+    );
+
+    const client = createSiftClient({ baseUrl: BASE_URL });
+    const result = await client.checkEnergyBillFeed({ billFeedId: 'normal' });
+
+    expect(result).toEqual(noCaseResult);
+    expect(capturedBody).toMatchObject({ billFeedId: 'normal' });
+  });
+
+  it('posts checkEnergyBillFeed and returns a validated EnergyBillFeedCheckResult carrying a receipt ("case opened")', async () => {
+    const openedResult = {
+      commandId: 'cmd-1',
+      billFeedId: 'anomalous',
+      caseOpened: true,
+      percentAboveBaseline: 42,
+      thresholdPercent: 15,
+      reason: 'Materially abnormal. Opening a case.',
+      receipt: baseReceipt,
+    };
+    server.use(
+      http.post(`${BASE_URL}/api/cases/energy-bill-feed-check`, () =>
+        HttpResponse.json(openedResult),
+      ),
+    );
+
+    const client = createSiftClient({ baseUrl: BASE_URL });
+    const result = await client.checkEnergyBillFeed({ billFeedId: 'anomalous' });
+
+    expect(result).toEqual(openedResult);
+  });
+
+  it('rejects an invalid checkEnergyBillFeed input locally, without making a network request', async () => {
+    server.use(
+      http.post(`${BASE_URL}/api/cases/energy-bill-feed-check`, () => {
+        throw new Error('checkEnergyBillFeed must not reach the network with invalid input');
+      }),
+    );
+
+    const client = createSiftClient({ baseUrl: BASE_URL });
+    const invalidInput = { billFeedId: 'made-up' } as unknown as Parameters<
+      ReturnType<typeof createSiftClient>['checkEnergyBillFeed']
+    >[0];
+
+    await expect(client.checkEnergyBillFeed(invalidInput)).rejects.toMatchObject({
+      code: 'VALIDATION',
+    });
+  });
+
   it('posts requestInvestigation to /api/cases/:caseId/run and returns a RunReceipt', async () => {
     server.use(
       http.post(`${BASE_URL}/api/cases/case-1/run`, () =>

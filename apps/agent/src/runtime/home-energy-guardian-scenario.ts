@@ -49,10 +49,15 @@
  * The scripted round1 trajectory `scripted-beats/home-energy-guardian.ts`
  * already ships (unmodified, imported read-only here) never actually
  * exercises this: its `decision-synthesizer` beat is a single, already-valid
- * turn. Earlier work this session (the AWS demo-script task) found and
- * documented this exact same honest gap for the live click-through product
- * (`docs/submissions/agents-for-humans/demo-script.md`'s "Flagged gap #1"):
- * the real `GoalLoop` rejection mechanism is proven
+ * turn. What actually happens in THIS scenario's own round1 run instead:
+ * `decision-synthesizer`'s first turn emits an uncited draft
+ * ("Monitor for now.", below), the real `DEFAULT_SYNTHESIZER_VALIDATOR`
+ * rejects it and `event-normalizer.ts` emits a real `goal.validation_failed`
+ * event on attempt 1 (captured into `trajectory.goalValidationFailures`
+ * below), and the corrected retry -- citing real fixture sources and
+ * naming `monitor-one-cycle` -- validates on attempt 2, emitting a real
+ * `goal.validated` event (`trajectory.goalValidationPasses`). The real
+ * `GoalLoop` rejection mechanism this reuses is proven directly
  * (`home-energy-swarm.test.ts`, describe block "intervention integrity",
  * test "rejects a decision-synthesizer draft with no source citation, then
  * accepts a corrected retry (GoalLoop maxAttempts: 2)"), but does not fire
@@ -375,16 +380,28 @@ export async function runHomeEnergyGuardianScenario(
     idGenerator: deps.idGenerator,
   });
 
-  // --- 1/2. A deterministic watcher creates the case; Sift routes to Home Energy Guardian without a human choice ---
-  const startResult = commandService.startDemo(deps.idGenerator.next('cmd'), {
-    demoId: 'home-energy-guardian',
+  // --- 1/2. The deterministic bill-feed gate (`CommandService.
+  // checkEnergyBillFeed`, `@sift/scenarios`'s `evaluateBillFeed`) evaluates
+  // the real, checked-in bill (42% above the normalized baseline, well
+  // past the 15% threshold) and opens the case; Sift routes to Home Energy
+  // Guardian without a human choice. This is a genuine gate, not a
+  // narrated one: pointed at the OTHER real fixture
+  // (`current-bill-normal.json`, within threshold) the same call declines
+  // and opens no case at all -- proved directly in
+  // `command-service.test.ts`'s "checkEnergyBillFeed" describe block, not
+  // merely asserted here. `checkEnergyBillFeed('anomalous')` delegates its
+  // actual case construction to the same `CommandService.startDemo` this
+  // scenario used to call directly, so the resulting case/event sequence
+  // is unchanged -- only the honesty of what decided to create it is.
+  const checkResult = commandService.checkEnergyBillFeed(deps.idGenerator.next('cmd'), {
+    billFeedId: 'anomalous',
   });
-  if (startResult.status !== 'ok' || startResult.value.snapshot === undefined) {
+  if (checkResult.status !== 'ok' || checkResult.value.receipt?.snapshot === undefined) {
     throw new Error(
-      `home-energy-guardian-scenario: startDemo failed: status "${startResult.status}"`,
+      `home-energy-guardian-scenario: checkEnergyBillFeed failed: status "${checkResult.status}"`,
     );
   }
-  let snapshot = startResult.value.snapshot;
+  let snapshot = checkResult.value.receipt.snapshot;
   const caseId = snapshot.id;
   captureNewEvents(caseStore, caseId, 0, trajectory);
   trajectory.packSelections.push({ packId: snapshot.pack.id, reasons: snapshot.pack.reasons });

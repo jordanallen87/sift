@@ -15,10 +15,21 @@
 %%      GoalLoop, sessions, hooks
 %%   6. Local vs. AgentCore execution targets
 %%   7. Sift-minted trace/correlation ids linking lifecycle-hook events to the
-%%      Runtime Inspector. Deliberately NO OpenTelemetry/OTLP path: none is
-%%      implemented (setupTracer() is never called), and the checklist item
-%%      is "only where implemented" -- see
-%%      docs/submissions/webmcp/claim-evidence-matrix.md rows E8/E9.
+%%      Runtime Inspector, PLUS the real OpenTelemetry span path added
+%%      2026-09-04 (apps/agent/src/runtime/otel-span-recorder.ts):
+%%      installSiftTracing() registers a real NodeTracerProvider and calls
+%%      the Strands SDK's own setupTracer({ provider }) at startup
+%%      (apps/agent/src/server.ts), so the spans @strands-agents/sdk already
+%%      emits are captured by SiftSpanRecorder (a real SpanProcessor) and
+%%      persisted into runtime_events with real span_id/parent_span_id and a
+%%      real ReadableSpan.duration-measured durationMs. A conditional OTLP
+%%      exporter (BatchSpanProcessor(new OTLPTraceExporter())) additionally
+%%      attaches when OTEL_EXPORTER_OTLP_ENDPOINT is set; unset, no exporter
+%%      is created and nothing opens a socket. Still NOT implemented and
+%%      deliberately absent from this diagram: setupMeter()/OTEL metrics, W3C
+%%      traceparent propagation to AgentCore/CloudWatch, and any CloudWatch/
+%%      AgentCore Observability correlation for the OTel path specifically --
+%%      see docs/submissions/webmcp/claim-evidence-matrix.md rows E8/E9.
 %%   8. The human-only approval boundary (styled distinctly, not just another
 %%      box in the flow)
 %% Also folds in the instrumentation pipeline from
@@ -115,9 +126,14 @@ flowchart TD
     direction TB
     NORM["TelemetryNormalizer<br/>Sift-minted traceId per run"]
     REDACT["Redactor<br/>strips secrets, headers, raw reasoning"]
+    OTELSPANS["Strands SDK spans<br/>(graph/swarm/agent/model/tool)<br/>already emitted, previously discarded"]
+    SPANREC["SiftSpanRecorder<br/>real SpanProcessor, NodeTracerProvider<br/>span_id / parent_span_id / durationMs"]
+    OTLP["OTLPTraceExporter (conditional)<br/>only when OTEL_EXPORTER_OTLP_ENDPOINT is set"]
     INSPECTOR["Runtime Inspector SSE<br/>SIFT_DEBUG_ENABLED"]
     BUNDLE["Sanitized JSON run bundle export"]
     NORM --> REDACT --> RUNTIME
+    OTELSPANS --> SPANREC --> RUNTIME
+    SPANREC -.->|"OTEL_EXPORTER_OTLP_ENDPOINT set"| OTLP
     RUNTIME --> INSPECTOR
     RUNTIME --> BUNDLE
   end
@@ -158,6 +174,7 @@ flowchart TD
   HTTP -.->|"HTTP/SSE/storage events"| NORM
   INTERVENE -.->|"intervention/plugin events"| NORM
   SESS -.->|"session/snapshot events"| NORM
+  GRAPHSWARM -.->|"real OTel spans<br/>(graph/swarm/agent/model/tool)"| OTELSPANS
 
   classDef browser fill:#e0f2fe,stroke:#0369a1,color:#0c4a6e;
   classDef railway fill:#ede9fe,stroke:#6d28d9,color:#3b0764;

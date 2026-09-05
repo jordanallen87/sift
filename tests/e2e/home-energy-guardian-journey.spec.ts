@@ -326,7 +326,8 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
 
     // Recommendation carries a rationale and cited, source-linked evidence,
     // and (per the real proven scenario trajectory) favors monitoring for
-    // one more billing cycle at the pack's default 50/50 weighting.
+    // one more billing cycle at the pack's default 80/20 cost-favoring
+    // weighting (energy.cost 80 / energy.conservation 20).
     await expect(page.getByTestId('recommendation-card-rationale')).toContainText(
       'monitor-one-cycle',
     );

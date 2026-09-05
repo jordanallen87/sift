@@ -110,8 +110,11 @@ interface ObligationTemplate {
   preferredSpecialists: string[]
   completionRule: CompletionRule
   origin: 'pack' | 'case_extension'
+  dependsOnCriteria?: boolean
 }
 ```
+
+`dependsOnCriteria` (optional, defaults to false) marks an obligation whose answer is a *synthesis over the case's criteria* rather than a measurement of the world. A criteria reweight does not invalidate a measurement — how much of a bill came from a tariff change is unaffected by how much the household now cares about long-term waste — but it does invalidate an answer that was a synthesis over those criteria's weights. When `updateCriteria` changes an active recommendation, only obligations carrying this flag reopen (their `attemptsUsed` is preserved, not reset, so the pack's attempt budget cannot be looped by repeated reweights); every other satisfied obligation stands. Without this distinction, `selectNextObligation` — which only considers `open` obligations — has nothing to select once every obligation is satisfied, and the required adaptive moment "changing the criterion changes option ranking" becomes unreachable through the product's own controls. Home Energy Guardian's `energy.response_options` obligation is the concrete example: its own question ("Which actions fit the user's cost and conservation criteria?") names the criteria directly, so it is the one obligation in that pack that sets `dependsOnCriteria: true`.
 
 Evidence levels are:
 
@@ -270,5 +273,7 @@ Orchestration: bounded Strands Swarm with deterministic readiness outside the Sw
 - The engine investigates the anomaly in the background before creating a human action.
 - Weather explains part but not all of the spike, causing the engine to activate home-event correlation.
 - Repeated work without evidence gain triggers steering and a specialist handoff.
-- Changing the criterion from lowest immediate cost to long-term waste reduction changes option ranking.
+- Changing the criterion from lowest immediate cost to long-term waste reduction changes option ranking. `energy.response_options` is the one obligation in this pack with `dependsOnCriteria: true` (see "Obligation template" above), so a reweight reopens exactly that obligation — the four measurement obligations it depends on stay satisfied — and a plain re-run finds it without a targeted `obligationId`. Reachable from a real UI control (`CriteriaEditor`, opened from the app bar's "Add or adjust → Adjust priorities" item) as well as through `sift_update_criteria`, per docs/engineering-principles.md's "Visible UI controls and WebMCP callbacks use the same command implementation."
 - The system asks for confirmation before creating an inspection proposal.
+
+The pack's shipped default weighting is cost-heavy (`energy.cost` outweighs `energy.conservation`): a household that just opened an anomalously high bill wants the number smaller before it wants long-term waste reduced, and the round-1 investigation's own recommendation has to agree with whatever the default actually is, or the product's hero card states two disagreeing numbers for the same comparison. The exact weight values are an implementation constant (`packages/packs/src/home-energy-guardian.ts`), not a spec-level commitment; what this spec requires is that the pack's default weighting and its round-1 narration never drift apart, which `home-energy-guardian.test.ts` enforces.

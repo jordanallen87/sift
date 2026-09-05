@@ -468,6 +468,42 @@ export function RuntimeInspector({
   // Inspector was opened specifically to show that event.
   const focusHiddenByFilter = focusEventId !== undefined && focusIndex === -1 && filtersActive;
 
+  // The Overview's "Obligation" field names the ONE obligation a run was
+  // launched to investigate (`overview.obligationId`) -- accurate for a
+  // Graph round, which genuinely targets one obligation at a time, but not
+  // the whole truth for a Swarm round: Home Energy Guardian's Swarm runs
+  // every specialist every round and its events carry as many as five
+  // distinct `obligationId` values (confirmed directly against a real run's
+  // exported bundle -- `energy.anomaly`, `energy.rate_change`,
+  // `energy.weather`, `energy.household_change`, `energy.response_options`
+  // all appear on one run's events). Left as a single field, "Obligation"
+  // silently understates what a Swarm run did -- a Graph-shaped assumption
+  // (one round, one obligation) applied to a Swarm. This is derived from
+  // the run's own loaded events, never hardcoded to either pack, so a
+  // Graph run -- whose events genuinely name only its one obligation --
+  // renders no extra note at all.
+  //
+  // Deliberately gated on `!filtersActive`: `events` is the SAME
+  // server-filtered array the Timeline renders (see this hook's own header
+  // comment -- category/level/agent/search/origin are real query
+  // parameters, not a client-side `.filter()`), so a filter left active on
+  // the Timeline tab would make this list silently partial if it were
+  // computed while filtered. Saying nothing is honest here; asserting
+  // partial coverage as if it were total would not be.
+  const obligationIdsFromEvents = useMemo(() => {
+    const ids = new Set<string>();
+    for (const event of orderedEvents) {
+      if (typeof event.obligationId === 'string' && event.obligationId.length > 0) {
+        ids.add(event.obligationId);
+      }
+    }
+    return [...ids].sort();
+  }, [orderedEvents]);
+  const otherObligationIds =
+    overview !== null && !filtersActive
+      ? obligationIdsFromEvents.filter((id) => id !== overview.obligationId)
+      : [];
+
   // Every new result set re-anchors the window: to the page holding the
   // focused event when there is one, otherwise back to the start of the run.
   // Paging within an unchanged result set does not re-run this, so "Later
@@ -721,6 +757,19 @@ export function RuntimeInspector({
                 <div>
                   <dt className="text-[var(--color-ink-muted)]">Obligation</dt>
                   <dd data-testid="runtime-inspector-obligation-id">{overview.obligationId}</dd>
+                  {/* A Swarm round can genuinely resolve several obligations
+                      at once -- see this component's own header comment on
+                      `otherObligationIds` for why this is derived from the
+                      run's real events rather than assumed, and why it says
+                      nothing while a Timeline filter is narrowing them. */}
+                  {otherObligationIds.length > 0 ? (
+                    <p
+                      data-testid="runtime-inspector-obligation-coverage"
+                      className="text-[length:var(--font-size-2xs)] text-[var(--color-ink-muted)]"
+                    >
+                      {`This run's events also name ${otherObligationIds.length === 1 ? 'one other obligation' : `${otherObligationIds.length} other obligations`}: ${otherObligationIds.join(', ')}.`}
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <dt className="text-[var(--color-ink-muted)]">Case</dt>

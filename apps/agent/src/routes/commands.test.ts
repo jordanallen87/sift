@@ -536,6 +536,153 @@ describe('POST /api/cases/:caseId/commands/:commandName', () => {
     expect(asJson<HttpErrorBody>(approved.body).error.code).toBe('VALIDATION');
   });
 
+  // Real gap found by a defect-hunting pass over the human-approval and
+  // refusal paths: every existing HTTP-level `reviewProposal` case above
+  // exercises a REJECTED request (an already-reviewed proposal, a
+  // proposal-id mismatch) -- nothing anywhere in this file proved that
+  // `POST .../commands/reviewProposal` returns a genuine 200 for a real
+  // approval or denial over real HTTP, the literal request path a person
+  // clicking "Approve"/"Deny" in the product sends. `command-service.test.ts`
+  // covers the `CommandService` method directly; these two prove the whole
+  // HTTP stack (body parsing, `Idempotency-Key`, response envelope) wired on
+  // top of it.
+  describe('reviewProposal over real HTTP (success)', () => {
+    function seedPendingProposal(caseId: string, expectedSequence: number): number {
+      if (harness === undefined) throw new Error('harness not initialized');
+      harness.caseStore.append(
+        caseId,
+        [
+          {
+            eventId: 'seed-recommendation',
+            caseId,
+            sequence: expectedSequence + 1,
+            timestamp: '2026-08-27T00:00:00.000Z',
+            type: 'recommendation.ready',
+            payload: {
+              recommendation: {
+                id: 'rec-http-1',
+                status: 'ready',
+                favoredOptionId: null,
+                rationale: 'because',
+                facts: [],
+                hypotheses: [],
+                confidence: 0.5,
+                limitations: [],
+                sourceIds: [],
+                resolvedObligationIds: [],
+                acceptedUncertaintyObligationIds: [],
+                generatedAt: '2026-08-27T00:00:00.000Z',
+              },
+            },
+          },
+          {
+            eventId: 'seed-proposal',
+            caseId,
+            sequence: expectedSequence + 2,
+            timestamp: '2026-08-27T00:00:00.000Z',
+            type: 'proposal.proposed',
+            payload: {
+              proposal: {
+                id: 'proposal-http-1',
+                recommendationId: 'rec-http-1',
+                status: 'pending',
+                createdAt: '2026-08-27T00:00:00.000Z',
+              },
+            },
+          },
+        ],
+        expectedSequence,
+      );
+      const seeded = harness.caseStore.load(caseId);
+      if (seeded === undefined) throw new Error('expected a seeded case');
+      return seeded.eventSequence;
+    }
+
+    it('approves a pending proposal (200): case decided, attributed to a human reviewer, reason persisted', async () => {
+      harness = await createHttpTestHarness();
+      const { caseId, expectedSequence } = await startDemo();
+      const afterSeed = seedPendingProposal(caseId, expectedSequence);
+
+      const response = await request(harness.server)
+        .post(`/api/cases/${caseId}/commands/reviewProposal`)
+        .set('Idempotency-Key', 'cmd-approve-http')
+        .send({
+          caseId,
+          proposalId: 'proposal-http-1',
+          actor: 'human',
+          decision: 'approve',
+          reason: 'Confirmed with the household by phone.',
+          expectedSequence: afterSeed,
+        });
+
+      expect(response.status).toBe(200);
+      const receipt = asJson<CommandReceipt>(response.body);
+      expect(receipt.snapshot?.status).toBe('decided');
+      expect(receipt.snapshot?.proposal?.status).toBe('approved');
+      expect(receipt.snapshot?.proposal?.reviewedByActor).toBe('human');
+      expect(receipt.snapshot?.proposal?.reviewReason).toBe(
+        'Confirmed with the household by phone.',
+      );
+      // Durably persisted, not merely echoed in the response body.
+      const reloaded = harness.caseStore.load(caseId);
+      expect(reloaded?.status).toBe('decided');
+      expect(reloaded?.proposal?.status).toBe('approved');
+    });
+
+    it('denies a pending proposal (200): proposal rejected, case stays draft (not stuck in an undocumented status), reason persisted', async () => {
+      harness = await createHttpTestHarness();
+      const { caseId, expectedSequence } = await startDemo();
+      const afterSeed = seedPendingProposal(caseId, expectedSequence);
+
+      const response = await request(harness.server)
+        .post(`/api/cases/${caseId}/commands/reviewProposal`)
+        .set('Idempotency-Key', 'cmd-deny-http')
+        .send({
+          caseId,
+          proposalId: 'proposal-http-1',
+          actor: 'human',
+          decision: 'reject',
+          reason: 'Not ready to commit yet.',
+          expectedSequence: afterSeed,
+        });
+
+      expect(response.status).toBe(200);
+      const receipt = asJson<CommandReceipt>(response.body);
+      expect(receipt.snapshot?.status).toBe('draft');
+      expect(receipt.snapshot?.proposal?.status).toBe('rejected');
+      expect(receipt.snapshot?.proposal?.reviewedByActor).toBe('human');
+      expect(receipt.snapshot?.proposal?.reviewReason).toBe('Not ready to commit yet.');
+      const reloaded = harness.caseStore.load(caseId);
+      expect(reloaded?.status).toBe('draft');
+      expect(reloaded?.proposal?.status).toBe('rejected');
+    });
+
+    it('returns 409 (never a silent success) for reviewProposal against a stale expectedSequence', async () => {
+      harness = await createHttpTestHarness();
+      const { caseId, expectedSequence } = await startDemo();
+      const afterSeed = seedPendingProposal(caseId, expectedSequence);
+
+      const response = await request(harness.server)
+        .post(`/api/cases/${caseId}/commands/reviewProposal`)
+        .set('Idempotency-Key', 'cmd-approve-stale')
+        .send({
+          caseId,
+          proposalId: 'proposal-http-1',
+          actor: 'human',
+          decision: 'approve',
+          expectedSequence: afterSeed - 1,
+        });
+
+      expect(response.status).toBe(409);
+      const body = asJson<HttpConflictResponse>(response.body);
+      expect(body.error.code).toBe('CONFLICT');
+      expect(body.snapshot.eventSequence).toBe(afterSeed);
+      // The stale request never applied -- the proposal is exactly as
+      // pending as it was before the request landed.
+      expect(harness.caseStore.load(caseId)?.proposal?.status).toBe('pending');
+    });
+  });
+
   // I1 (docs/planning/plans/2026-08-30-generic-decision-workspace.md
   // "Phase I"; ADR 0006 decision 8; debugging-and-observability.md "WebMCP
   // tool calls"): the `X-Sift-Command-Origin` request header tags a command

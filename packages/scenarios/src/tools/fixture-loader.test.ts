@@ -23,6 +23,7 @@ describe('FIXTURE_NAMES', () => {
         'safety-reliability-sources',
         // energy
         'current-bill',
+        'current-bill-normal',
         'usage-history',
         'weather-history',
         'household-events',
@@ -527,6 +528,15 @@ describe('loadFixture (disk I/O + caching)', () => {
     const bill = loadFixture('current-bill');
     expect(bill.householdId).toBe('household-demo-energy-01');
     expect(bill.anomaly.percentAboveBaseline).toBe(42);
+
+    // The second, within-threshold bill feed (bill-feed-gate.ts's "no case
+    // opened" fixture) -- same household/account, a different, ordinary
+    // billing cycle. Registered under its own fixture name rather than
+    // ever overwriting current-bill.json, which the anomalous demo path
+    // and its baselines depend on unchanged.
+    const normalBill = loadFixture('current-bill-normal');
+    expect(normalBill.householdId).toBe('household-demo-energy-01');
+    expect(normalBill.anomaly.percentAboveBaseline).toBeLessThan(15);
 
     const usage = loadFixture('usage-history');
     expect(usage.cycles).toHaveLength(18);

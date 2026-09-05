@@ -7,7 +7,7 @@
  * instead of mocking `fetch`/MSW for every component test.
  */
 import { vi } from 'vitest';
-import type { CommandReceipt, RunReceipt } from '@sift/contracts';
+import type { CommandReceipt, EnergyBillFeedCheckResult, RunReceipt } from '@sift/contracts';
 import type { SiftCommands } from '../api/sift-client.js';
 
 export function buildFakeCommandReceipt(overrides: Partial<CommandReceipt> = {}): CommandReceipt {
@@ -27,6 +27,22 @@ export function buildFakeRunReceipt(overrides: Partial<RunReceipt> = {}): RunRec
   };
 }
 
+/** Defaults to the "case opened" outcome -- matching every other fake command's default optimistic-success shape. Pass `{ caseOpened: false, receipt: undefined, ... }` to script the "no case opened" outcome instead. */
+export function buildFakeEnergyBillFeedCheckResult(
+  overrides: Partial<EnergyBillFeedCheckResult> = {},
+): EnergyBillFeedCheckResult {
+  return {
+    commandId: 'cmd-fake-1',
+    billFeedId: 'anomalous',
+    caseOpened: true,
+    percentAboveBaseline: 42,
+    thresholdPercent: 15,
+    reason: 'Materially abnormal. Opening a case.',
+    receipt: buildFakeCommandReceipt(),
+    ...overrides,
+  };
+}
+
 /** Every method resolves to a fake receipt by default; pass `overrides` (e.g. `{ startDemo: vi.fn().mockRejectedValue(...) }`) to script a specific test's behavior. */
 export function createFakeSiftCommands(overrides: Partial<SiftCommands> = {}): SiftCommands {
   const defaultReceipt = buildFakeCommandReceipt();
@@ -35,6 +51,7 @@ export function createFakeSiftCommands(overrides: Partial<SiftCommands> = {}): S
   return {
     startDemo: vi.fn().mockResolvedValue(defaultReceipt),
     startCase: vi.fn().mockResolvedValue(defaultReceipt),
+    checkEnergyBillFeed: vi.fn().mockResolvedValue(buildFakeEnergyBillFeedCheckResult()),
     selectPack: vi.fn().mockResolvedValue(defaultReceipt),
     upsertOption: vi.fn().mockResolvedValue(defaultReceipt),
     focusOption: vi.fn().mockResolvedValue(defaultReceipt),

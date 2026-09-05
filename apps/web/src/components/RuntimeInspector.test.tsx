@@ -2,6 +2,20 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
+
+/**
+ * Axe walks the whole rendered subtree, and this component renders the
+ * largest one in the app -- the full Inspector with its filter set, paging
+ * controls and a populated Timeline. On its own that costs ~1.2s; under
+ * `pnpm test:coverage` the instrumentation roughly triples it, and with the
+ * suite's workers running in parallel it intermittently crossed Vitest's
+ * 5s default and failed the coverage stage while passing `test:unit`
+ * moments earlier. The assertions are unchanged and still fail on a real
+ * violation -- this only stops a slow accessibility check from being
+ * reported as a broken one. It is a ceiling, not a sleep: a genuinely hung
+ * test still fails here, just later.
+ */
+const AXE_TIMEOUT_MS = 20_000;
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import type { PublicActivityEvent, RuntimeDebugEvent } from '@sift/contracts';
@@ -116,6 +130,140 @@ describe('RuntimeInspector', () => {
     expect(screen.getByTestId('runtime-inspector-error-count')).toHaveTextContent('0');
     expect(screen.getByTestId('runtime-inspector-trace-id')).toHaveTextContent('trace-1');
     expect(screen.getByTestId('runtime-inspector-category-counts')).toHaveTextContent('tool');
+  });
+
+  // A real Home Energy Guardian round-1 run resolves all five of the pack's
+  // obligations in one Swarm pass (every specialist runs every round), but
+  // `overview.obligationId` -- "active obligation" in
+  // debugging-and-observability.md's Overview spec -- only ever names the
+  // ONE obligation the run was launched to investigate. That field alone
+  // was designed around car-purchase's Graph, where a round genuinely
+  // targets one obligation; applied to a Swarm run whose events plainly
+  // carry five different `obligationId` values, the Overview's single
+  // "Obligation" line understates what the run actually did -- a real,
+  // observed defect (confirmed against a live run's exported bundle, not
+  // invented), not a hypothetical. The fix is derived from the run's own
+  // events, never hardcoded to either pack, matching this component's
+  // existing "derived, never assumed" discipline (see RunGraphView.tsx).
+  it("states every obligation a run's events touch, not just its seed obligation", async () => {
+    server.use(
+      debugHandler(buildOverview({ obligationId: 'energy.anomaly' }), [
+        buildEvent({
+          id: 'debug-1',
+          sequence: 0,
+          category: 'swarm',
+          obligationId: 'energy.anomaly',
+        }),
+        buildEvent({
+          id: 'debug-2',
+          sequence: 1,
+          category: 'swarm',
+          obligationId: 'energy.rate_change',
+        }),
+        buildEvent({
+          id: 'debug-3',
+          sequence: 2,
+          category: 'swarm',
+          obligationId: 'energy.weather',
+        }),
+        // No obligationId at all (a real, honest state -- e.g. a
+        // `swarm.handoff` event) must never be counted as a distinct
+        // obligation.
+        buildEvent({ id: 'debug-4', sequence: 3, category: 'swarm' }),
+      ]),
+    );
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+
+    const note = await screen.findByTestId('runtime-inspector-obligation-coverage');
+    expect(note).toHaveTextContent('energy.rate_change');
+    expect(note).toHaveTextContent('energy.weather');
+    // The seed obligation is already shown by the existing "Obligation"
+    // field -- restating it here would be redundant, not additionally
+    // honest.
+    expect(within(note).queryByText(/energy\.anomaly/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing extra when a run's events name only its one seed obligation", async () => {
+    server.use(
+      debugHandler(buildOverview({ obligationId: 'car.deal_normalization' }), [
+        buildEvent({ id: 'debug-1', sequence: 0, obligationId: 'car.deal_normalization' }),
+        buildEvent({ id: 'debug-2', sequence: 1, obligationId: 'car.deal_normalization' }),
+      ]),
+    );
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('runtime-inspector-obligation-coverage')).not.toBeInTheDocument();
+  });
+
+  it('hides the obligation-coverage note while a Timeline filter is narrowing the loaded events, rather than reporting a partial run as the whole one', async () => {
+    server.use(
+      http.get(`${BASE_URL}/api/debug/runs/${RUN_ID}`, ({ request }) => {
+        const url = new URL(request.url);
+        const category = url.searchParams.get('category');
+        const events =
+          category === null
+            ? [
+                buildEvent({ id: 'debug-1', sequence: 0, obligationId: 'energy.anomaly' }),
+                buildEvent({ id: 'debug-2', sequence: 1, obligationId: 'energy.rate_change' }),
+              ]
+            : // A filtered fetch can still, on its own, contain more than one
+              // distinct obligationId -- the guard must key off "a filter is
+              // active" itself, not off whatever the filtered set happens to
+              // contain.
+              [
+                buildEvent({
+                  id: 'debug-3',
+                  sequence: 2,
+                  category: 'swarm',
+                  obligationId: 'energy.rate_change',
+                }),
+                buildEvent({
+                  id: 'debug-4',
+                  sequence: 3,
+                  category: 'swarm',
+                  obligationId: 'energy.weather',
+                }),
+              ];
+        return HttpResponse.json({
+          overview: buildOverview({ obligationId: 'energy.anomaly' }),
+          events,
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <RuntimeInspector
+        runId={RUN_ID}
+        onClose={() => undefined}
+        apiConfig={{ baseUrl: BASE_URL }}
+      />,
+    );
+
+    await screen.findByTestId('runtime-inspector-obligation-coverage');
+
+    await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+    await user.selectOptions(screen.getByTestId('runtime-inspector-filter-category'), 'swarm');
+    await waitFor(() => {
+      expect(screen.getByTestId('runtime-inspector-timeline-item-debug-3')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('runtime-inspector-tab-overview'));
+    expect(screen.queryByTestId('runtime-inspector-obligation-coverage')).not.toBeInTheDocument();
   });
 
   it('shows a null-safe "In progress" duration for a run with no completedAt', async () => {
@@ -346,30 +494,34 @@ describe('RuntimeInspector', () => {
     expect(screen.getByTestId('runtime-inspector-timeline-empty')).toBeInTheDocument();
   });
 
-  it('has no axe violations in the Overview and Timeline views', async () => {
-    server.use(debugHandler(buildOverview(), [buildEvent()]));
-    const user = userEvent.setup();
-    // The Sheet's content is rendered through a Radix portal into
-    // `document.body`, outside `container` -- axe must inspect the real
-    // rendered tree, not the now-empty wrapper `render()` leaves behind.
-    const { baseElement } = render(
-      <RuntimeInspector
-        runId={RUN_ID}
-        onClose={() => undefined}
-        apiConfig={{ baseUrl: BASE_URL }}
-      />,
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
-    );
-    expect(await axe(baseElement)).toHaveNoViolations();
+  it(
+    'has no axe violations in the Overview and Timeline views',
+    { timeout: AXE_TIMEOUT_MS },
+    async () => {
+      server.use(debugHandler(buildOverview(), [buildEvent()]));
+      const user = userEvent.setup();
+      // The Sheet's content is rendered through a Radix portal into
+      // `document.body`, outside `container` -- axe must inspect the real
+      // rendered tree, not the now-empty wrapper `render()` leaves behind.
+      const { baseElement } = render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+      );
+      expect(await axe(baseElement)).toHaveNoViolations();
 
-    await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
-    await waitFor(() =>
-      expect(screen.getByTestId('runtime-inspector-timeline')).toBeInTheDocument(),
-    );
-    expect(await axe(baseElement)).toHaveNoViolations();
-  });
+      await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+      await waitFor(() =>
+        expect(screen.getByTestId('runtime-inspector-timeline')).toBeInTheDocument(),
+      );
+      expect(await axe(baseElement)).toHaveNoViolations();
+    },
+  );
 
   it('formats a sub-second duration in milliseconds rather than seconds', async () => {
     server.use(debugHandler(buildOverview({ durationMs: 500 }), [buildEvent()]));
@@ -698,32 +850,36 @@ describe('RuntimeInspector', () => {
     );
   });
 
-  it('has no axe violations on a Timeline item carrying both redactions and a stateDiff', async () => {
-    server.use(
-      debugHandler(buildOverview(), [
-        buildEvent({
-          redactions: [{ path: 'payload.note', reason: 'matched a configured secret pattern' }],
-          stateDiff: [{ op: 'replace', path: '/status', value: 'active' }],
-        }),
-      ]),
-    );
-    const user = userEvent.setup();
-    const { baseElement } = render(
-      <RuntimeInspector
-        runId={RUN_ID}
-        onClose={() => undefined}
-        apiConfig={{ baseUrl: BASE_URL }}
-      />,
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
-    );
-    await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
-    await waitFor(() =>
-      expect(screen.getByTestId('runtime-inspector-timeline')).toBeInTheDocument(),
-    );
-    expect(await axe(baseElement)).toHaveNoViolations();
-  });
+  it(
+    'has no axe violations on a Timeline item carrying both redactions and a stateDiff',
+    { timeout: AXE_TIMEOUT_MS },
+    async () => {
+      server.use(
+        debugHandler(buildOverview(), [
+          buildEvent({
+            redactions: [{ path: 'payload.note', reason: 'matched a configured secret pattern' }],
+            stateDiff: [{ op: 'replace', path: '/status', value: 'active' }],
+          }),
+        ]),
+      );
+      const user = userEvent.setup();
+      const { baseElement } = render(
+        <RuntimeInspector
+          runId={RUN_ID}
+          onClose={() => undefined}
+          apiConfig={{ baseUrl: BASE_URL }}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('runtime-inspector-overview')).toBeInTheDocument(),
+      );
+      await user.click(screen.getByTestId('runtime-inspector-tab-timeline'));
+      await waitFor(() =>
+        expect(screen.getByTestId('runtime-inspector-timeline')).toBeInTheDocument(),
+      );
+      expect(await axe(baseElement)).toHaveNoViolations();
+    },
+  );
 
   // Task A5 / I2b: the Runtime Inspector is extended (not duplicated) with
   // an Activity tab reusing `ActivityTimeline` verbatim, and `runId` can now
@@ -885,21 +1041,25 @@ describe('RuntimeInspector', () => {
       });
     });
 
-    it('has no axe violations on the Activity tab, including with Inspect-event buttons rendered', async () => {
-      const { baseElement } = render(
-        <RuntimeInspector
-          runId={null}
-          onClose={() => undefined}
-          apiConfig={{ baseUrl: BASE_URL }}
-          events={[buildActivityEvent({ runId: 'run-2', debugEventId: 'debug-7' })]}
-          onInspectEvent={() => undefined}
-        />,
-      );
-      await waitFor(() => {
-        expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
-      });
-      expect(await axe(baseElement)).toHaveNoViolations();
-    });
+    it(
+      'has no axe violations on the Activity tab, including with Inspect-event buttons rendered',
+      { timeout: AXE_TIMEOUT_MS },
+      async () => {
+        const { baseElement } = render(
+          <RuntimeInspector
+            runId={null}
+            onClose={() => undefined}
+            apiConfig={{ baseUrl: BASE_URL }}
+            events={[buildActivityEvent({ runId: 'run-2', debugEventId: 'debug-7' })]}
+            onInspectEvent={() => undefined}
+          />,
+        );
+        await waitFor(() => {
+          expect(screen.getByTestId('runtime-inspector-activity')).toBeInTheDocument();
+        });
+        expect(await axe(baseElement)).toHaveNoViolations();
+      },
+    );
   });
 
   // The rest of the spec'd Timeline filter set ("category, agent, level, and
@@ -1361,38 +1521,42 @@ describe('RuntimeInspector', () => {
       expect(screen.queryByTestId('runtime-inspector-focus-hidden')).not.toBeInTheDocument();
     });
 
-    it('has no axe violations with the full filter set, an origin badge, and the paging controls rendered', async () => {
-      const events = buildLargeRun(120);
-      events[0] = buildEvent({
-        id: 'debug-0',
-        sequence: 0,
-        summary: 'Command issued through a registered WebMCP tool.',
-        agentId: 'deal-analyst',
-        attributes: { origin: 'webmcp' },
-      });
-      server.use(
-        filteringHandler(
-          events,
-          buildOverview({
-            eventCount: 120,
-            agentIds: ['deal-analyst'],
-            countsByOrigin: { webmcp: 1 },
-          }),
-        ),
-      );
-      const user = userEvent.setup();
-      const { baseElement } = render(
-        <RuntimeInspector
-          runId={RUN_ID}
-          onClose={() => undefined}
-          apiConfig={{ baseUrl: BASE_URL }}
-        />,
-      );
-      await openTimeline(user);
-      expect(screen.getByTestId('runtime-inspector-timeline-window')).toBeInTheDocument();
+    it(
+      'has no axe violations with the full filter set, an origin badge, and the paging controls rendered',
+      { timeout: AXE_TIMEOUT_MS },
+      async () => {
+        const events = buildLargeRun(120);
+        events[0] = buildEvent({
+          id: 'debug-0',
+          sequence: 0,
+          summary: 'Command issued through a registered WebMCP tool.',
+          agentId: 'deal-analyst',
+          attributes: { origin: 'webmcp' },
+        });
+        server.use(
+          filteringHandler(
+            events,
+            buildOverview({
+              eventCount: 120,
+              agentIds: ['deal-analyst'],
+              countsByOrigin: { webmcp: 1 },
+            }),
+          ),
+        );
+        const user = userEvent.setup();
+        const { baseElement } = render(
+          <RuntimeInspector
+            runId={RUN_ID}
+            onClose={() => undefined}
+            apiConfig={{ baseUrl: BASE_URL }}
+          />,
+        );
+        await openTimeline(user);
+        expect(screen.getByTestId('runtime-inspector-timeline-window')).toBeInTheDocument();
 
-      expect(await axe(baseElement)).toHaveNoViolations();
-    });
+        expect(await axe(baseElement)).toHaveNoViolations();
+      },
+    );
 
     it('introduces no fixed width wider than the 390px pane, in the Timeline as rendered through the sheet portal', async () => {
       server.use(

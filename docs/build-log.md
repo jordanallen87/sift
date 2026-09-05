@@ -8023,3 +8023,113 @@ the page's snapshot behind the case it was about to write to. It drives
 - Baselines regenerated only after each cause was fixed, and only for content
   that genuinely changed: the 80/20 comparison copy, and the masked duration
   column. Actual/expected/diff inspected for each before updating.
+
+## 2026-09-05 — Home Energy Guardian, second pass: the claims we could not back
+
+The first pass fixed what the product did wrong. This one went after what the
+product *said* — and found three claims in submission artifacts that were not
+true. Every one was found the same way as before: by driving the thing, or by
+checking a written claim against the code rather than against another
+document.
+
+### Three false claims, all now resolved at the source
+
+**1. The architecture diagram denied a feature we had built.** `architecture.mmd`
+asserted "Deliberately NO OpenTelemetry/OTLP path: none is implemented
+(`setupTracer()` is never called)". `otel-span-recorder.ts`'s
+`installSiftTracing()` builds a real `NodeTracerProvider`, calls
+`provider.register()` and the Strands SDK's own `setupTracer({ provider })`,
+and `server.ts` installs it at startup — landed 2026-09-04, roughly half a day
+*after* the diagram was last regenerated. `submission-details.md` contradicted
+itself about it in two adjacent sections. The diagram now draws the real span
+path and the conditional OTLP branch, and still draws no CloudWatch/AgentCore
+correlation, no OTEL metrics and no `traceparent` propagation, because none of
+those exist. Understating your own work is the same defect as overstating it.
+
+**2. "A deterministic watcher creates a case after detecting the 42% anomaly."**
+There was no watcher. `startDemo` created the case unconditionally; the 15%
+threshold gated a tool call *inside* an already-open case, so no bill could
+ever fail to open one. This mattered more than a normal doc bug — the AWS
+track is "Everyday Agents" and the whole pitch is a system that notices on its
+own. Fixed by building the gate rather than deleting the sentence:
+`bill-feed-gate.ts` is now the single decision point for whether an energy case
+exists, reusing the one `DEFAULT_ANOMALY_THRESHOLD_PERCENT` definition rather
+than restating the arithmetic; `checkEnergyBillFeed` routes creation through it;
+and `DemoLauncher` sends *every* energy launch down that path, not just a
+special mode. Both directions are proven against real fixtures —
+`current-bill.json` (42%) opens a case, `current-bill-normal.json` (4.42%)
+opens none and says why. The spec was still corrected: it is a gate invoked
+when the bill is checked, not a background poller, and it no longer claims to
+be one.
+
+**3. Release metadata recorded almost none of what the checklist says it records.**
+No commit SHA, no Builder ID, no diagram path/hash/size, no video duration, no
+report path. All added, with the Builder ID left empty and explicitly marked a
+submitter action.
+
+### A human's stated reason was silently discarded
+
+`ApprovalCard` collects a free-text reason when someone approves or denies a
+consequential proposal, `App.tsx` sends it, the schema validated it — and
+`policy.ts`'s `reviewProposal`, the one function CLAUDE.md names as the
+human-authority gate, never read it. It was accepted and dropped. In a product
+whose entire thesis is that only a person may approve, losing the person's
+words is not a small bug. Now persisted as `DecisionProposal.reviewReason` for
+all three decisions, proven to survive a genuine SQLite close-and-reopen, and
+rendered back — a fix that was worthless while only half-done.
+
+### The Swarm's work was undercounted
+
+The Runtime Inspector's Overview named a run's *seed* obligation, which is
+right for a Graph round and wrong for a Swarm: one energy round genuinely
+resolves five. Derived from the run's own events rather than hardcoded per
+pack, and deliberately silent while a Timeline filter is narrowing them — a
+partial list asserted as total would be worse than saying nothing.
+
+### The checklist was not "human attestations"
+
+It sat at 1 ticked of 137 on the assumption that the rest needed a person.
+Only the first nine did. Most were machine-verifiable facts about this
+repository that nobody had ever checked. Now 75 verified with concrete
+citations, 62 honestly unticked and labelled as either the submitter's action
+or a real external blocker, and zero marked FALSE.
+
+### Two races, fixed at the source rather than retried around
+
+- `awaiting-approval.png` failed in the full e2e stage with the "Add or adjust"
+  menu covering the recommendation, while passing 3/3 in isolation.
+  `reweightCriteria` waited for the priorities Sheet to hide but not for the
+  menu Radix reopens when focus returns to its trigger. It waits for both now.
+  No baseline was updated — the rendering was not required, it was a race.
+- A single `read ECONNRESET` against `/api/debug/runs/:runId` killed a whole
+  spec. The poll already returned `null` for a non-ok response; a dropped
+  connection now takes the same path, while the 30s ceiling and the following
+  UI assertion are unchanged. Same lesson as the 409 that a `response.ok()`
+  filter once hid behind a blind timeout.
+- `RuntimeInspector`'s four axe tests were given an explicit 20s ceiling.
+  Axe walks the largest subtree in the app; coverage instrumentation roughly
+  triples it, and under four parallel workers it intermittently crossed
+  Vitest's 5s default — failing `test:coverage` seconds after `test:unit`
+  passed. The assertions are untouched; a hung test still fails, just later.
+
+### Gate
+
+- `pnpm verify` → **PASSED**, all ten stages.
+- `npx playwright test` → **192 passed** across six viewports, three
+  consecutive clean runs after the two race fixes.
+- Railway redeployed to HEAD; `pnpm test:deployed` → 11 passed, 1 expected skip
+  (needs a real WebMCP-capable browser). A live redeploy check confirmed a
+  seeded case, its run, and 321 runtime events survived the restart.
+- `pnpm test:submission` → the only failure is the two empty video URLs.
+
+### Still open, and not ours to close
+
+AgentCore is not deployed: `aws sts get-caller-identity` returns NoCredentials
+and there is no AWS account in this environment. An AWS Builder ID is a
+required submission field regardless. Both demo video URLs need the recordings
+uploaded. A 2:35 AWS cut was assembled from real captured footage
+(`artifacts/demo/sift-aws-energy-demo-DRAFT.mp4`, 52/52 assertions passed
+against the live DOM) with burned-in captions, but its voice track is macOS
+`say` and is marked DRAFT on the face of the video — it needs a real voice
+before it is submittable. `rec/energy/REVOICE.md` documents the one-command
+ElevenLabs path.

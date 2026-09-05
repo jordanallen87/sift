@@ -18,6 +18,12 @@ artifacts/
 !artifacts/demo/
 artifacts/demo/*
 !artifacts/demo/sift-webmcp-demo-FINAL.mp4
+# The AWS cut is allowlisted under its FINAL name only. The current file is
+# sift-aws-energy-demo-DRAFT.mp4 and stays untracked on purpose: its footage is
+# real, but its voice track is macOS `say` and the video says DRAFT on its own
+# face. Re-voice it (see rec/energy/REVOICE.md), rename it to the name below,
+# and it becomes committable without touching this file.
+!artifacts/demo/sift-aws-energy-demo-FINAL.mp4
 !artifacts/demo/screenshots/
 coverage/
 playwright-report/

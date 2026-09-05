@@ -188,6 +188,25 @@ describe('reviewProposal: human approval', () => {
     expect(result.updatedAt).toBe('2026-03-01T12:00:00.000Z');
   });
 
+  it('persists a human reviewer-supplied reason on approval too (not reject-only)', () => {
+    const proposal = makeProposal();
+    const caseState = makeCaseState({ status: 'draft', proposal });
+    const clock = makeClock('2026-03-01T12:00:00.000Z');
+
+    const result = reviewProposal(
+      caseState,
+      makeReviewInput({
+        decision: 'approve',
+        reason: 'We already confirmed the technician is available this week.',
+      }),
+      clock,
+    );
+
+    expect(result.proposal?.reviewReason).toBe(
+      'We already confirmed the technician is available this week.',
+    );
+  });
+
   it('does not mutate the original case or proposal objects (pure function)', () => {
     const proposal = makeProposal();
     const caseState = makeCaseState({ proposal });
@@ -232,6 +251,47 @@ describe('reviewProposal: human rejection', () => {
     expect(result.proposal?.status).toBe('rejected');
     expect(result.proposal?.reviewedByActor).toBe('human');
     expect(result.proposal?.reviewedAt).toBe('2026-03-01T00:00:00.000Z');
+  });
+
+  // Real defect found by driving the product: `ReviewProposalInput.reason`
+  // (the free-text explanation `ApprovalCard` collects and
+  // `apps/web/src/app/App.tsx`'s `handleReviewProposal` genuinely sends over
+  // the wire -- see that file) was validated, accepted, and then silently
+  // discarded. Nothing in `@sift/contracts` had a field to hold it, this
+  // function never wrote it anywhere, and no downstream layer picked it up
+  // either -- despite this module's own (now-corrected) header comment
+  // claiming it "remains available to whichever layer emits the narrative
+  // case event later". A person who explains *why* they are declining a
+  // consequential action (e.g. "we already booked our own HVAC tech") had
+  // that explanation vanish the instant they submitted it: never on the
+  // case, never in the activity stream, never in the Runtime Inspector.
+  // `DecisionProposalSchema.reviewReason` (mirroring `EvidenceLink
+  // .dispositionReason`'s identical precedent) is the fix -- this asserts
+  // the human-rejection case actually keeps it.
+  it('persists a human reviewer-supplied reason onto the reviewed proposal (was silently dropped)', () => {
+    const proposal = makeProposal();
+    const caseState = makeCaseState({ status: 'draft', proposal });
+
+    const result = reviewProposal(
+      caseState,
+      makeReviewInput({ decision: 'reject', reason: 'Already booked our own HVAC technician.' }),
+      makeClock('2026-03-01T00:00:00.000Z'),
+    );
+
+    expect(result.proposal?.reviewReason).toBe('Already booked our own HVAC technician.');
+  });
+
+  it('leaves reviewReason unset when the reviewer supplies no reason (never fabricates one)', () => {
+    const proposal = makeProposal();
+    const caseState = makeCaseState({ status: 'draft', proposal });
+
+    const result = reviewProposal(
+      caseState,
+      makeReviewInput({ decision: 'reject' }),
+      makeClock('2026-03-01T00:00:00.000Z'),
+    );
+
+    expect(result.proposal?.reviewReason).toBeUndefined();
   });
 });
 

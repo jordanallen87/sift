@@ -21,7 +21,7 @@ import type {
 import type { Clock, IdGenerator } from '@sift/core';
 import { compileHomeEnergyGuardianPack, PackRegistry } from '@sift/packs';
 import { buildHomeEnergyResponseOptionEntities } from '@sift/scenarios';
-import { createTestDatabase, type TestDatabase } from '../db/connection.js';
+import { createTestDatabase, openDatabase, type TestDatabase } from '../db/connection.js';
 import { applyMigrations } from '../db/migrate.js';
 import { CommandService } from '../services/command-service.js';
 import { RunService, SqliteRunStore, type RunRecord } from '../services/run-service.js';
@@ -161,6 +161,64 @@ function buildLiveStack(): {
     registry,
     pack,
   };
+}
+
+/**
+ * Drives a fresh live stack through round1, the household's real reweight,
+ * and round2 -- exactly the setup `'runs round1 then round2...'` above
+ * proves, factored out so the human-approval/refusal tests below (which
+ * this task added) do not each re-derive it -- until the case genuinely
+ * carries a `pending` `request-hvac-inspection` proposal, the same real way
+ * a person reaches `ApprovalCard` in the product. Never used by that
+ * pre-existing test itself (kept exactly as it was written, so its own
+ * step-by-step narration and inline assertions are undisturbed).
+ */
+async function driveToPendingInspectionProposal(): Promise<{
+  stack: ReturnType<typeof buildLiveStack>;
+  caseId: string;
+}> {
+  const stack = buildLiveStack();
+  const { caseStore, runStore, commandService, runService } = stack;
+
+  const startResult = commandService.startDemo('cmd-start', { demoId: 'home-energy-guardian' });
+  requireOkCommand(startResult);
+  let snapshot = startResult.value.snapshot!;
+  const caseId = snapshot.id;
+
+  const run1Result = runService.requestInvestigation('cmd-run-1', {
+    caseId,
+    expectedSequence: snapshot.eventSequence,
+  });
+  requireOkRun(run1Result);
+  await waitForRunSettled(runStore, run1Result.value.runId);
+
+  snapshot = caseStore.load(caseId)!;
+  const criteriaResult = commandService.updateCriteria('cmd-criteria', {
+    caseId,
+    expectedSequence: snapshot.eventSequence,
+    operations: [
+      { op: 'reweight', criterionId: 'energy.cost', weight: 20 },
+      { op: 'reweight', criterionId: 'energy.conservation', weight: 80 },
+    ],
+  });
+  requireOkCommand(criteriaResult);
+  snapshot = criteriaResult.value.snapshot!;
+
+  const run2Result = runService.requestInvestigation('cmd-run-2', {
+    caseId,
+    obligationId: 'energy.response_options',
+    expectedSequence: snapshot.eventSequence,
+  });
+  requireOkRun(run2Result);
+  await waitForRunSettled(runStore, run2Result.value.runId);
+
+  snapshot = caseStore.load(caseId)!;
+  if (snapshot.proposal?.status !== 'pending') {
+    throw new Error(
+      `test setup: expected a pending proposal after round2, got ${JSON.stringify(snapshot.proposal)}`,
+    );
+  }
+  return { stack, caseId };
 }
 
 describe('determineHomeEnergyRound', () => {
@@ -593,6 +651,196 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
     expect(failedActivity).toBeDefined();
     expect(failedActivity?.summary).toContain('is not registered');
   });
+
+  // --- Human approval and refusal of the round-2 inspection proposal, live
+  // (real SQLite, real Swarm) -- the paths a defect-hunting pass over this
+  // exact command found undertested: the pre-existing live test above
+  // stopped the instant `snapshot.proposal?.status === 'pending'`, so
+  // `reviewProposal` itself (approve, deny, idempotent retry, restart
+  // durability) had never actually run against a live-Swarm-produced
+  // `home-energy-guardian` proposal, only against hand-seeded fixture
+  // proposals (`command-service.test.ts`) or the pure `@sift/core` function
+  // (`policy.test.ts`). ---
+
+  it('approves the live round-2 inspection proposal: case decided, attributed to origin human, reason kept, activity and case sequences stay distinct counters', async () => {
+    const { stack, caseId } = await driveToPendingInspectionProposal();
+    const { caseStore, activityStore, commandService } = stack;
+
+    const beforeApproval = caseStore.load(caseId)!;
+    const proposalId = beforeApproval.proposal!.id;
+
+    const approveResult = commandService.reviewProposal('cmd-approve', {
+      caseId,
+      proposalId,
+      actor: 'human',
+      decision: 'approve',
+      reason: 'The household wants the technician out before the next billing cycle.',
+      expectedSequence: beforeApproval.eventSequence,
+    });
+    requireOkCommand(approveResult);
+    const decided = approveResult.value.snapshot!;
+
+    // CLAUDE.md's central rule, proven against a real Swarm-produced
+    // proposal rather than a hand-seeded one: only a human actor may ever
+    // move a case to 'decided', and the reviewer, not the model that
+    // proposed the action, is who gets recorded.
+    expect(decided.status).toBe('decided');
+    expect(decided.proposal?.status).toBe('approved');
+    expect(decided.proposal?.reviewedByActor).toBe('human');
+    expect(decided.proposal?.id).toBe(proposalId);
+    // The reviewer's own stated reason -- real defect fixed by this task
+    // (`@sift/core`'s `reviewProposal` used to discard it entirely; see
+    // `packages/core/src/policy.test.ts`).
+    expect(decided.proposal?.reviewReason).toBe(
+      'The household wants the technician out before the next billing cycle.',
+    );
+
+    // Re-submitting the identical commandId is a pure idempotent replay --
+    // no second `proposal.reviewed` event, no change to acceptedSequence.
+    const replay = commandService.reviewProposal('cmd-approve', {
+      caseId,
+      proposalId,
+      actor: 'human',
+      decision: 'approve',
+      reason: 'The household wants the technician out before the next billing cycle.',
+      expectedSequence: beforeApproval.eventSequence,
+    });
+    requireOkCommand(replay);
+    expect(replay.value.acceptedSequence).toBe(approveResult.value.acceptedSequence);
+    expect(caseStore.load(caseId)?.eventSequence).toBe(decided.eventSequence);
+
+    // `PublicActivityEvent.sequence` and `CaseState.eventSequence` are
+    // different monotonic counters (store/activity-store.ts's own header
+    // comment) -- proven concretely, not just by type, against this real
+    // run: the activity stream's own sequence numbers are contiguous from 1
+    // for THIS case's activity events alone, while the case's event
+    // sequence reflects every underlying CaseEvent two full Swarm rounds
+    // plus the reweight plus this review produced, which is a materially
+    // different (larger) number.
+    const activity = activityStore.replayFrom(caseId, 0);
+    expect(activity.map((event) => event.sequence)).toEqual(
+      activity.map((_event, index) => index + 1),
+    );
+    expect(activity.at(-1)?.sequence).not.toBe(decided.eventSequence);
+    expect(activity.some((event) => event.summary === 'Proposal approved.')).toBe(true);
+  }, 30_000);
+
+  it('denies the live round-2 inspection proposal: case stays draft with no dangling obligation, recommendation still stands, reason kept', async () => {
+    const { stack, caseId } = await driveToPendingInspectionProposal();
+    const { caseStore, activityStore, commandService } = stack;
+
+    const beforeDenial = caseStore.load(caseId)!;
+    const proposalId = beforeDenial.proposal!.id;
+    // The obligation the round-2 recommendation itself rests on -- proven
+    // satisfied before the denial, so the "no dangling obligation" assertion
+    // below is a real before/after comparison, not an assumption.
+    const obligationBefore = beforeDenial.obligations.find(
+      (entry) => entry.id === 'energy.response_options',
+    );
+    expect(obligationBefore?.status).toBe('satisfied');
+
+    const denyResult = commandService.reviewProposal('cmd-deny', {
+      caseId,
+      proposalId,
+      actor: 'human',
+      decision: 'reject',
+      reason: 'Already have our own HVAC technician scheduled this week.',
+      expectedSequence: beforeDenial.eventSequence,
+    });
+    requireOkCommand(denyResult);
+    const denied = denyResult.value.snapshot!;
+
+    // A denial is not a silent no-op and not a case the product can never
+    // complete: the proposal itself is terminal (rejected)...
+    expect(denied.proposal?.status).toBe('rejected');
+    expect(denied.proposal?.reviewedByActor).toBe('human');
+    expect(denied.proposal?.reviewReason).toBe(
+      'Already have our own HVAC technician scheduled this week.',
+    );
+    // ...but 'decided' is reserved for approval alone (docs/specs/product.md
+    // "CaseStatus is a two-value type"), so the case correctly stays
+    // 'draft' rather than being stuck in some fourth, undocumented status.
+    expect(denied.status).toBe('draft');
+    // The recommendation the household can still act on was never touched
+    // by the denial -- only the separate, optional consequential proposal
+    // was.
+    expect(denied.recommendation?.status).toBe('ready');
+    expect(denied.recommendation?.favoredOptionId).toBe('request-hvac-inspection');
+    // No dangling obligation: the obligation the recommendation rests on is
+    // exactly as satisfied after the denial as it was before it -- denying
+    // the optional follow-up proposal cannot re-open completed
+    // investigation work.
+    const obligationAfter = denied.obligations.find(
+      (entry) => entry.id === 'energy.response_options',
+    );
+    expect(obligationAfter?.status).toBe('satisfied');
+    expect(obligationAfter?.attemptsUsed).toBe(obligationBefore?.attemptsUsed);
+
+    // The UI-facing activity stream says why the case landed here.
+    const activity = activityStore.replayFrom(caseId, 0);
+    expect(activity.some((event) => event.summary === 'Proposal rejected.')).toBe(true);
+
+    // Idempotent duplicate submit -- a second identical POST (e.g. a
+    // doubled network retry) never double-applies the denial.
+    const replay = commandService.reviewProposal('cmd-deny', {
+      caseId,
+      proposalId,
+      actor: 'human',
+      decision: 'reject',
+      reason: 'Already have our own HVAC technician scheduled this week.',
+      expectedSequence: beforeDenial.eventSequence,
+    });
+    requireOkCommand(replay);
+    expect(replay.value.acceptedSequence).toBe(denyResult.value.acceptedSequence);
+    expect(caseStore.load(caseId)?.eventSequence).toBe(denied.eventSequence);
+  }, 30_000);
+
+  it('restart durability: an approved live inspection proposal survives closing and reopening the real SQLite connection', async () => {
+    const { stack, caseId } = await driveToPendingInspectionProposal();
+    const { database, caseStore, commandService } = stack;
+
+    const beforeApproval = caseStore.load(caseId)!;
+    const proposalId = beforeApproval.proposal!.id;
+    const approveResult = commandService.reviewProposal('cmd-approve-restart', {
+      caseId,
+      proposalId,
+      actor: 'human',
+      decision: 'approve',
+      reason: 'Confirmed with the household by phone.',
+      expectedSequence: beforeApproval.eventSequence,
+    });
+    requireOkCommand(approveResult);
+    const beforeRestart = approveResult.value.snapshot!;
+    expect(beforeRestart.status).toBe('decided');
+
+    // A genuine restart, not a second wrapper over the same open handle
+    // (`sqlite-case-store.test.ts`'s existing "second store instance" test
+    // already covers that lighter case): close the real connection this
+    // stack wrote through, then open a brand-new one against the same
+    // on-disk file, mirroring `session-adapter.test.ts`'s own "a genuine
+    // round trip through the real filesystem" restore test for Strands
+    // session snapshots.
+    database.close();
+    const reopened = openDatabase(database.dir);
+    try {
+      const reopenedCaseStore = new SqliteCaseStore(reopened);
+      const restored = reopenedCaseStore.load(caseId);
+
+      expect(restored?.status).toBe('decided');
+      expect(restored?.proposal?.status).toBe('approved');
+      expect(restored?.proposal?.id).toBe(proposalId);
+      expect(restored?.proposal?.reviewedByActor).toBe('human');
+      expect(restored?.proposal?.reviewReason).toBe('Confirmed with the household by phone.');
+      expect(restored?.eventSequence).toBe(beforeRestart.eventSequence);
+      expect(restored?.recommendation?.favoredOptionId).toBe('request-hvac-inspection');
+
+      const reopenedActivityStore = new SqliteActivityStore(reopened);
+      const restoredActivity = reopenedActivityStore.replayFrom(caseId, 0);
+      expect(restoredActivity.some((event) => event.summary === 'Proposal approved.')).toBe(true);
+    } finally {
+      reopened.close();
+    }
+  }, 30_000);
 });
 
 describe('extractFavoredResponseOptionId', () => {

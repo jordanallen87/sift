@@ -745,6 +745,12 @@ const FIXTURE_SCHEMAS = {
   'ownership-assumptions': OwnershipAssumptionsSchema,
   'safety-reliability-sources': SafetyReliabilitySourcesSchema,
   'current-bill': CurrentBillSchema,
+  // The second, within-threshold bill feed `bill-feed-gate.ts` reads to
+  // prove its case-creation gate declines in both directions -- same shape
+  // as `current-bill` (reuses `CurrentBillSchema` unmodified), a distinct
+  // fixture file so `current-bill.json` itself, and everything that reads
+  // it unconditionally by name, is never touched.
+  'current-bill-normal': CurrentBillSchema,
   'usage-history': UsageHistorySchema,
   'weather-history': WeatherHistorySchema,
   'household-events': HouseholdEventsSchema,
@@ -763,6 +769,7 @@ const FIXTURE_PACK_DIR: Record<FixtureName, string> = {
   'ownership-assumptions': CAR_PURCHASE_FIXTURES_DIR,
   'safety-reliability-sources': CAR_PURCHASE_FIXTURES_DIR,
   'current-bill': ENERGY_FIXTURES_DIR,
+  'current-bill-normal': ENERGY_FIXTURES_DIR,
   'usage-history': ENERGY_FIXTURES_DIR,
   'weather-history': ENERGY_FIXTURES_DIR,
   'household-events': ENERGY_FIXTURES_DIR,

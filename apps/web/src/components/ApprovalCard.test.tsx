@@ -189,6 +189,47 @@ describe('ApprovalCard', () => {
     );
   });
 
+  describe('reviewer reason (the reason a human gave for their decision -- packages/contracts/src/case.ts DecisionProposal.reviewReason)', () => {
+    it.each([
+      ['approved' as const, 'We already booked our own technician.'],
+      ['rejected' as const, 'We already booked our own technician.'],
+    ])(
+      "shows the reviewer's stated reason on a settled %s proposal, attributed to the reviewer",
+      (status, reviewReason) => {
+        render(
+          <ApprovalCard proposal={buildProposal({ status, reviewReason })} onReview={vi.fn()} />,
+        );
+        const reason = screen.getByTestId('approval-card-review-reason');
+        // "You said:" is this product's existing voice for attributing text to
+        // the human, not the system -- see decision-orientation.ts's
+        // `latestChangeOf`. A bare reproduction of the reason with no
+        // attribution would read as Sift's own words.
+        expect(reason).toHaveTextContent(/you said/i);
+        expect(reason).toHaveTextContent(reviewReason);
+      },
+    );
+
+    it('renders nothing -- no empty region, no placeholder -- when reviewReason is absent', () => {
+      render(<ApprovalCard proposal={buildProposal({ status: 'approved' })} onReview={vi.fn()} />);
+      expect(screen.queryByTestId('approval-card-review-reason')).not.toBeInTheDocument();
+    });
+
+    it('wraps a long (near the 2000-char schema limit) reason instead of overflowing', () => {
+      const longReason = 'We already booked our own technician. '.repeat(50).slice(0, 1999);
+      render(
+        <ApprovalCard
+          proposal={buildProposal({ status: 'rejected', reviewReason: longReason })}
+          onReview={vi.fn()}
+        />,
+      );
+      const reason = screen.getByTestId('approval-card-review-reason');
+      expect(reason).toHaveTextContent(longReason.slice(0, 40));
+      // Wrapping, not truncating clipping: no nowrap/pre and no fixed width
+      // that would force horizontal scroll at 390/430px.
+      expect(reason.className).not.toMatch(/whitespace-nowrap/);
+    });
+  });
+
   it('renders a recoverable error while the pending proposal and controls remain usable', () => {
     render(
       <ApprovalCard

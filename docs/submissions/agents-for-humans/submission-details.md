@@ -56,7 +56,7 @@ A live demo and AgentCore deployment are not required, but the official judging 
 | `27730` | Country of Residence | Yes | Participant supplies the truthful country. |
 | `27731` | Organization name | No | Complete only when applicable. |
 | `27732` | Competition Track | Yes | Recommended answer: `Everyday Agents`. |
-| `27733` | Public code repository URL | Yes | Not yet available; must include README and visible MIT or Apache license. |
+| `27733` | Public code repository URL | Yes | `https://github.com/jordanallen87/sift` — confirmed public with a visible MIT license (`gh repo view jordanallen87/sift --json visibility,licenseInfo`: `"visibility":"PUBLIC"`, `"licenseInfo":{"key":"mit"}`). |
 | `27734` | Architecture diagram | Yes | Upload final PNG or PDF; do not treat a URL answer as the file upload. |
 | `27735` | AWS Builder ID | Yes | Participant must supply. |
 | `27736` | Live demo URL | No | Strongly recommended; use verified Railway URL. |
@@ -118,7 +118,7 @@ The distinguishing claim below is implemented literally rather than asserted. Ev
 - Context Injector supplies current evidence, criteria, case extensions, and remaining budgets on each turn.
 - GoalLoop rejects an unsupported early recommendation and provides bounded corrective feedback.
 - Sessions and snapshots preserve the execution across a human confirmation and service reconstruction.
-- Strands TypeScript lifecycle hooks — `BeforeToolCallEvent`/`AfterToolCallEvent`/`BeforeModelCallEvent`/`AfterModelCallEvent` on every agent, `BeforeNodeCallEvent`/`NodeResultEvent` on the Swarm, and `MultiAgentHandoffEvent` on each real handoff — feed the user activity stream and the detailed Runtime Inspector without exposing chain-of-thought, correlated by a Sift-minted trace id that ties an activity event to its runtime event and state diff. (No OpenTelemetry; see the note under Built-with draft.)
+- Strands TypeScript lifecycle hooks — `BeforeToolCallEvent`/`AfterToolCallEvent`/`BeforeModelCallEvent`/`AfterModelCallEvent` on every agent, `BeforeNodeCallEvent`/`NodeResultEvent` on the Swarm, and `MultiAgentHandoffEvent` on each real handoff — feed the user activity stream and the detailed Runtime Inspector without exposing chain-of-thought, correlated by a Sift-minted trace id that ties an activity event to its runtime event and state diff. (Sift also records real OpenTelemetry spans alongside this hook correlation — see the note under Built-with draft for exactly what is and is not claimed.)
 - AgentCore provides the AWS execution target when deployed.
 
 ### Distinguishing claim
@@ -134,7 +134,7 @@ The maximum-five-minute video should follow one legible causal chain:
 3. **0:45–1:30 — genuine Strands work.** Show rate and weather specialists, AgentSkills activation, tools, evidence, and real-time UI updates.
 4. **1:30–2:05 — premature answer rejected.** The model proposes monitoring one cycle; GoalLoop/readiness emits `Draft withheld` because household-change evidence remains unresolved.
 5. **2:05–2:45 — steering and switching.** Repeated weather work yields no evidence delta; `RetrySteering` emits `Guide`, the Swarm hands off to `home-systems-analyst`, and `home-event-correlation` activates.
-6. **2:45–3:20 — supported revision.** The thermostat event supports the HVAC hypothesis; `source-challenger` verifies the claim; the user or ChatGPT reweights the criterion from lowest immediate cost to long-term waste reduction (a required final assertion), and the recommendation changes to `request-hvac-inspection` after GoalLoop validation.
+6. **2:45–3:20 — supported revision.** The thermostat event supports the HVAC hypothesis; `source-challenger` verifies the claim; the user (via the app bar's **Add or adjust → Adjust priorities** control) or ChatGPT (`sift_update_criteria`) reweights the criterion from lowest immediate cost to long-term waste reduction (a required final assertion), and the recommendation changes to `request-hvac-inspection` after GoalLoop validation.
 7. **3:20–3:50 — human boundary and persistence.** `ConsequenceGuard` emits `Confirm`, saves a snapshot, restores after reconstruction, and waits for visible human proposal approval without scheduling anything.
 8. **3:50–4:25 — implementation proof.** Show the Runtime Inspector path, state diff, token/latency metadata, AgentCore/CloudWatch correlation when available, and `pnpm verify:release` result.
 9. **4:25–4:50 — platform proof.** Briefly show that Car Purchase uses a compiled Graph pack and that a typed case concern can adapt a run without rewriting the pack.
@@ -146,7 +146,7 @@ The maximum-five-minute video should follow one legible causal chain:
 2. Start the deterministic scenario and observe the anomaly, rate, and weather work update in real time.
 3. Verify the first monitoring draft is visibly withheld.
 4. Verify repeated/no-progress weather work causes a `Guide` and Swarm handoff to `home-systems-analyst`.
-5. Verify the thermostat evidence is source-linked and the recommendation changes after criteria reweighting.
+5. Verify the thermostat evidence is source-linked and the recommendation changes after reweighting criteria through **Add or adjust → Adjust priorities**.
 6. At confirmation, verify the session snapshot exists, restart/reconstruct the runtime, and verify restoration without lost case events.
 7. Confirm the agent cannot approve or schedule the inspection.
 8. Open Runtime Inspector and correlate the visible activity with its exact Strands lifecycle-hook event, via the activity item's own "Inspect event" control (the Sift-minted trace id plus `debugEventId`).
@@ -171,7 +171,7 @@ Replace this draft with the exact public URL, scenario control labels, AgentCore
 - Docker
 - Railway
 
-**OpenTelemetry is now part of this list (2026-09-04).** Sift registers a real `NodeTracerProvider` through the Strands SDK's own `setupTracer({ provider })` and records the spans the SDK already emits into `runtime_events`, with real `span_id`/`parent_span_id` links and span-measured durations (`apps/agent/src/runtime/otel-span-recorder.ts`). The lifecycle-hook correlation is unchanged and still real: hook events normalized in `apps/agent/src/runtime/event-normalizer.ts` under a Sift-minted `traceId`. Still not claimed: `setupMeter()`/OTEL metrics and W3C `traceparent` propagation to a tracing backend. See `docs/submissions/webmcp/claim-evidence-matrix.md` rows E8/E9.
+**OpenTelemetry is now part of this list (2026-09-04).** Sift registers a real `NodeTracerProvider` through the Strands SDK's own `setupTracer({ provider })` and records the spans the SDK already emits into `runtime_events`, with real `span_id`/`parent_span_id` links and span-measured durations (`apps/agent/src/runtime/otel-span-recorder.ts`, installed at startup by `apps/agent/src/server.ts`). A standard `OTLPTraceExporter` additionally attaches, via a real `BatchSpanProcessor`, whenever `OTEL_EXPORTER_OTLP_ENDPOINT` is set; unset (the default), no exporter is constructed and nothing opens a socket. The lifecycle-hook correlation is unchanged and still real: hook events normalized in `apps/agent/src/runtime/event-normalizer.ts` under a Sift-minted `traceId`. Still not claimed: `setupMeter()`/OTEL metrics, W3C `traceparent` propagation to AgentCore/CloudWatch specifically, and any CloudWatch/AgentCore Observability correlation for this OTel span path. See `docs/submissions/webmcp/claim-evidence-matrix.md` rows E8/E9.
 
 ## Architecture diagram requirements
 
@@ -183,7 +183,7 @@ The submitted export must visibly distinguish:
 - compiled Decision Pack and case/run plan;
 - Strands AgentSkills, Graph/Swarm, interventions, Context Injector, GoalLoop, sessions, and hooks;
 - local versus AgentCore execution target;
-- Sift-minted trace/correlation ids linking hook events to the Runtime Inspector, and **no** OpenTelemetry or OTLP path, because none is implemented (see the note under Built-with draft);
+- Sift-minted trace/correlation ids linking hook events to the Runtime Inspector, plus the real OpenTelemetry span path (`NodeTracerProvider` → `SiftSpanRecorder` → `runtime_events`, with a conditional `OTLPTraceExporter` gated on `OTEL_EXPORTER_OTLP_ENDPOINT`) — but **no** CloudWatch/AgentCore Observability correlation for that span path, because none is implemented (see the note under Built-with draft for the exact boundary);
 - human-only approval boundary.
 
 ## Bonus Builder post
@@ -198,7 +198,7 @@ Cover the real Strands trajectory, why deterministic readiness sits outside the 
 
 - [ ] Confirm registration and eligibility in Devpost.
 - [ ] Select `Everyday Agents` in the final form.
-- [ ] Add the public repository URL and visible MIT license.
+- [ ] Add the public repository URL and visible MIT license (already true: `https://github.com/jordanallen87/sift` is public with an MIT license — just paste the URL into field `27733`).
 - [ ] Add the AWS Builder ID.
 - [ ] Export and upload the required architecture diagram.
 - [ ] Add the verified Railway URL.

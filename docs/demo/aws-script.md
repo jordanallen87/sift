@@ -1,5 +1,7 @@
 # Agents for Humans Video — Shot-by-Shot Script
 
+> **Superseded for recording.** `docs/submissions/agents-for-humans/demo-script.md` is the canonical, current, fixture-verified recording script — use that one to actually shoot the video. This document predates the real `packages/scenarios/fixtures/energy/*.json` fixtures (see "Note on illustrative figures" below) and predates the real `CriteriaEditor` UI control; its dollar/percentage figures are still illustrative placeholders, not the real numbers. It is retained as an early specification-level draft of the beat structure and the reasoning behind judgment calls (e.g. the reweight-through-the-visible-control decision at the bottom of this file), not as a shot list to follow verbatim. Its Beat 4 warning box below, in particular, describes a limitation (`GoalLoop` validating on attempt 1, so no rejection could be shown live) that was fixed on 2026-09-04 — the rejection now fires live on every round-1 run; see the canonical script's Beat 3 and note 5.
+
 **Target runtime: no longer than 5:00.** Spine: the timed beat breakdown in
 `docs/submissions/agents-for-humans/submission-details.md` § "Required hero
 demonstration." Content for each beat is drawn from
@@ -159,34 +161,31 @@ counts update live as each obligation moves between groups.
 
 ## Beat 4 — 1:30–2:05 — Premature answer rejected
 
-> **⚠ This beat cannot be filmed live as written. Read
-> `docs/submissions/agents-for-humans/demo-script.md` "Flagged gap #1"
-> before recording — its beat 3 is the version to shoot.**
+> **This beat can now be filmed live — the limitation below was fixed
+> 2026-09-04.** Read `docs/submissions/agents-for-humans/demo-script.md`
+> note 5 and its beat 3 before recording — that is the version to shoot.
 >
-> Verified repeatedly, most recently by `pnpm test:journey aws-hero` (ADR
-> 0014): on the live click-through the decision-synthesizer's structured
-> output **validates on attempt 1** (`goal.validated`, "Recommendation
-> draft validated on attempt 1"), because by the time synthesis runs every
-> obligation — `energy.household_change` included — is already resolved.
-> No `goal.validation_failed` is emitted and no `draft.withheld` public
-> activity event is produced by any runtime path, so the card below never
-> appears.
+> Previously (recorded here as history, not current behavior): on the live
+> click-through the decision-synthesizer's structured output validated on
+> attempt 1 because by the time synthesis ran every obligation was already
+> resolved, so no rejection ever fired and the card below never appeared.
+> That is no longer true. Round 1's `decision-synthesizer` now offers a
+> genuinely uncited first draft on purpose; the real `GoalLoop` validator
+> rejects it (`goal.validation_failed`, attempt 1), and the corrected,
+> source-cited retry validates on attempt 2. The rejection surfaces as a
+> real public `draft.withheld` activity event — **"Recommendation draft
+> rejected on attempt 1."** — immediately followed by the recommendation
+> that replaced it. `apps/agent/src/runtime/home-energy-swarm.test.ts`
+> ("intervention integrity", *"rejects a decision-synthesizer draft with no
+> source citation, then accepts a corrected retry (GoalLoop maxAttempts:
+> 2)"*) still proves the mechanism, but it is no longer the only place this
+> happens — it now happens on camera, on every round-1 run.
 >
-> The rejection mechanism itself is real and proven — `apps/agent/src/
-> runtime/home-energy-swarm.test.ts`, "intervention integrity", *"rejects a
-> decision-synthesizer draft with no source citation, then accepts a
-> corrected retry (GoalLoop maxAttempts: 2)"* — and the deterministic
-> scenario genuinely constructs it. It just does not fire on the path a
-> camera sees.
->
-> **Do not re-cut this into a fake "Draft withheld" moment.** Show the real
-> live `goal.validated` proof that GoalLoop runs, and say plainly on camera
-> that the rejection path is proven by the automated suite. The text below
-> is retained as the specification of the mechanism, not as a shot list.
+> **Do not narrate around this any more.** Show the real live rejection,
+> named plainly, exactly as it happens.
 
-**On screen (specification, not a live shot):** A draft recommendation
-attempt surfaces and is visibly withheld. The exact required copy, as a
-card in the Activity or Recommendation region:
+**On screen:** A draft recommendation attempt surfaces and is visibly
+withheld. The exact required copy, as a card in the Recommendation region:
 
 ```
 Draft withheld
@@ -194,9 +193,10 @@ This answer is plausible, but 3 required questions are still unresolved.
 Sift is continuing the investigation before asking you to decide.
 ```
 
-One of the three listed unresolved questions is visibly
-`energy.household_change — Did a household or appliance event plausibly
-change consumption?`.
+The unresolved-question count and the exact wording of any listed question
+are the real, current numbers/labels from the live product, not the figures
+above — re-verify against the running build immediately before recording
+(see the superseded-for-recording notice at the top of this file).
 
 **Presenter says:**
 

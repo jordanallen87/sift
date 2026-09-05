@@ -97,6 +97,7 @@ import {
   SetEvidenceDispositionInputSchema,
   SetOptionAttributeInputSchema,
   SetViewInputSchema,
+  CheckEnergyBillFeedInputSchema,
   StartCaseInputSchema,
   StartDemoInputSchema,
   SubmitSourceInputSchema,
@@ -114,6 +115,7 @@ import {
   type CommandOrigin,
   PRESENTATION_ONLY_ACTIVITY_DETAIL,
   type CommandReceipt,
+  type EnergyBillFeedCheckResult,
   type CompiledDecisionPack,
   type Criterion,
   type EntityRecord,
@@ -154,6 +156,7 @@ import {
   planDiscoveryResponse,
 } from '@sift/core';
 import type { PackRegistry } from '@sift/packs';
+import { loadAndEvaluateBillFeed } from '@sift/scenarios';
 import type { RunPlanRevisionCause } from '../runtime/run-plan.js';
 import type { ActivityStore } from '../store/activity-store.js';
 import type { AppendResult, CaseStore } from '../store/case-store.js';
@@ -399,6 +402,79 @@ export class CommandService {
       }
     }
     return this.toReceipt(commandId, result);
+  }
+
+  /**
+   * `checkEnergyBillFeed`: the deterministic Home Energy Guardian
+   * case-creation gate. Decides, from the real bill-feed arithmetic
+   * (`@sift/scenarios`'s `loadAndEvaluateBillFeed`/`evaluateBillFeed`,
+   * `bill-feed-gate.ts`, itself built on `energy-calculator.ts`'s
+   * `determineAnomaly` -- the one place the 15% "materially abnormal"
+   * threshold is defined), whether a case is opened at all -- not merely a
+   * computation that runs *inside* an already-created case.
+   *
+   * A sibling command to `startDemo`, not an overload of it: `startDemo`'s
+   * own "reset to the fixture, unconditionally" semantics for every demo
+   * (including `home-energy-guardian`) are left completely intact, and
+   * this command's result cannot be represented as a bare `CommandReceipt`
+   * -- that schema requires a non-empty `caseId`, which does not exist
+   * when the gate declines. See `EnergyBillFeedCheckResultSchema`'s own
+   * doc comment in `packages/contracts/src/commands.ts`.
+   *
+   * `billFeedId: 'anomalous'` points at the real, checked-in
+   * `current-bill.json` (42% above baseline -- always opens a case, by the
+   * same arithmetic `energy-calculator.test.ts` already proves).
+   * `billFeedId: 'normal'` points at `current-bill-normal.json` (within
+   * the default 15% threshold -- never opens a case). When the gate opens
+   * a case, it delegates the actual case creation to `this.startDemo`
+   * (identical pack resolution, seed entities, event sequence, and
+   * idempotency as the existing `home-energy-guardian` demo path) rather
+   * than duplicating that construction -- so a person who reaches an
+   * opened case through this command sees exactly the same case shape as
+   * the unconditional launcher button produces.
+   */
+  checkEnergyBillFeed(
+    commandId: string,
+    rawInput: unknown,
+  ): ServiceResult<EnergyBillFeedCheckResult> {
+    const parsed = CheckEnergyBillFeedInputSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return validationFailure(
+        'Invalid checkEnergyBillFeed input.',
+        formatZodIssues(parsed.error.issues),
+      );
+    }
+    const input = parsed.data;
+
+    // Pure and deterministic (no side effects) -- safe to recompute on
+    // every call, including an idempotent retry of a "no case opened"
+    // result, without needing its own idempotency record.
+    const fixtureName = input.billFeedId === 'anomalous' ? 'current-bill' : 'current-bill-normal';
+    const decision = loadAndEvaluateBillFeed(fixtureName);
+
+    if (!decision.caseShouldOpen) {
+      return ok({
+        commandId,
+        billFeedId: input.billFeedId,
+        caseOpened: false,
+        percentAboveBaseline: decision.percentAboveBaseline,
+        thresholdPercent: decision.thresholdPercent,
+        reason: decision.reason,
+      });
+    }
+
+    const startResult = this.startDemo(commandId, { demoId: 'home-energy-guardian' });
+    if (startResult.status !== 'ok') return startResult;
+
+    return ok({
+      commandId,
+      billFeedId: input.billFeedId,
+      caseOpened: true,
+      percentAboveBaseline: decision.percentAboveBaseline,
+      thresholdPercent: decision.thresholdPercent,
+      reason: decision.reason,
+      receipt: startResult.value,
+    });
   }
 
   /**

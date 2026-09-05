@@ -59,6 +59,8 @@ Six defects on the first four runs. **None was reachable by any existing test**,
 
 6. **Two demo documents disagreed about the same beat.** `aws-script.md` beat 4 told a recorder to film a "genuine validator rejection, not a scripted UI state"; `demo-script.md` Flagged gap #1 documents that GoalLoop validates on attempt 1 in the live click-through and the rejection never fires. `aws-script.md` now carries the warning, and `aws-hero` asserts that nothing claims a "Draft withheld" that did not happen.
 
+   **Superseded 2026-09-05.** The underlying limitation was fixed rather than narrated around: round 1's scripted beats now emit an uncited draft first, so GoalLoop genuinely refuses it (`goal.validation_failed` on attempt 1) and the corrected retry validates on attempt 2. The "Draft withheld" beat can therefore be filmed live, `demo-script.md`'s "Flagged gap #1" section no longer exists, and `aws-hero`'s check now reports a *missing* rejection as a regression instead of as an expected condition. The record above is kept as written because it describes what was true when this decision was taken.
+
 Findings 1–4 were found by the `agreement` and `ui` checks; 4 and the UX observations came from **reading the rendered screenshots**, which the harness captures per turn precisely so that a person or a model can.
 
 ## Consequences

@@ -49,9 +49,9 @@ The organizer's final checklist says to show the project working in the first 15
 | `28251` | Organization name | No | Complete only if submitting for an organization. |
 | `28252` | App Status | Yes | Expected answer: `New`; confirm against the final repository history. |
 | `28253` | Existing-app changes during submission period | Conditional | Not applicable if `New`; otherwise document only WebMCP work completed during the official period. |
-| `28254` | Judge-accessible live URL | Yes | Not yet available; use the verified Railway URL. |
+| `28254` | Judge-accessible live URL | Yes | `https://sift-hackathon-production.up.railway.app` — the verified Railway URL. |
 | `28255` | Testing instructions or credentials | No | Provide concise ChatGPT/Chrome steps even when authentication is unnecessary. |
-| `28256` | Public repository URL | Yes | Not yet available; repository must include a visible open-source license. |
+| `28256` | Public repository URL | Yes | `https://github.com/jordanallen87/sift` — confirmed public with a visible MIT license (`gh repo view jordanallen87/sift --json visibility,licenseInfo`: `"visibility":"PUBLIC"`, `"licenseInfo":{"key":"mit"}`). |
 | `28257` | Agents or clients used to test WebMCP | Yes | Record only completed tests; target ChatGPT in-app browser and Chrome 149+ with WebMCP enabled. |
 | `28258` | AI tools used while building | Yes | Expected: Claude Code, Codex, and the actual model/runtime tools used; verify final list. |
 | `28259` | Learning level | Yes | Participant chooses None, Moderate, or Significant. |
@@ -277,7 +277,7 @@ Replace this draft with the exact deployed URL, browser versions, and observed r
 
 - [ ] Confirm registration and eligibility in Devpost.
 - [ ] Confirm `New` versus `Existing` truthfully.
-- [ ] Add the public repository URL and visible MIT license.
+- [ ] Add the public repository URL and visible MIT license (already true: `https://github.com/jordanallen87/sift` is public with an MIT license — just paste the URL into field `28256`).
 - [ ] Add the verified Railway URL.
 - [ ] Test every registered tool in ChatGPT's in-app browser.
 - [ ] Test the supported Chrome configuration and record its exact version/flag.

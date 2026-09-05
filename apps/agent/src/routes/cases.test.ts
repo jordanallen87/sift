@@ -1,6 +1,11 @@
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CaseState, CommandReceipt, HttpErrorBody } from '@sift/contracts';
+import type {
+  CaseState,
+  CommandReceipt,
+  EnergyBillFeedCheckResult,
+  HttpErrorBody,
+} from '@sift/contracts';
 import { asJson } from '../fixtures/http-types.js';
 import { createHttpTestHarness, type HttpTestHarness } from '../fixtures/http-harness.js';
 
@@ -229,5 +234,65 @@ describe('POST /api/cases/demo, POST /api/cases, and GET /api/cases/:caseId', ()
     const snapshot = asJson<CaseState>(response.body);
     expect(snapshot.entities).toHaveLength(1);
     expect(snapshot.entities[0]?.label).toBe('Toyota Camry');
+  });
+});
+
+describe('POST /api/cases/energy-bill-feed-check', () => {
+  let harness: HttpTestHarness | undefined;
+
+  afterEach(() => {
+    harness?.cleanup();
+    harness = undefined;
+  });
+
+  it('opens NO case for the real, within-threshold "normal" bill feed -- needs no installed pack at all', async () => {
+    harness = await createHttpTestHarness();
+
+    const response = await request(harness.server)
+      .post('/api/cases/energy-bill-feed-check')
+      .set('Idempotency-Key', 'cmd-1')
+      .send({ billFeedId: 'normal' });
+
+    expect(response.status).toBe(200);
+    const result = asJson<EnergyBillFeedCheckResult>(response.body);
+    expect(result.caseOpened).toBe(false);
+    expect(result.percentAboveBaseline).toBeLessThan(15);
+    expect(result.receipt).toBeUndefined();
+    expect(result.reason).toMatch(/normal/i);
+  });
+
+  it('returns not_found for the "anomalous" bill feed when home-energy-guardian has no installed pack (mirrors POST /api/cases/demo\'s own not-found case)', async () => {
+    harness = await createHttpTestHarness();
+
+    const response = await request(harness.server)
+      .post('/api/cases/energy-bill-feed-check')
+      .set('Idempotency-Key', 'cmd-1')
+      .send({ billFeedId: 'anomalous' });
+
+    expect(response.status).toBe(404);
+    expect(asJson<HttpErrorBody>(response.body).error.code).toBe('NOT_FOUND');
+  });
+
+  it('rejects an invalid billFeedId (validation)', async () => {
+    harness = await createHttpTestHarness();
+
+    const response = await request(harness.server)
+      .post('/api/cases/energy-bill-feed-check')
+      .set('Idempotency-Key', 'cmd-1')
+      .send({ billFeedId: 'made-up' });
+
+    expect(response.status).toBe(400);
+    expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
+  });
+
+  it('rejects a missing Idempotency-Key header (validation)', async () => {
+    harness = await createHttpTestHarness();
+
+    const response = await request(harness.server)
+      .post('/api/cases/energy-bill-feed-check')
+      .send({ billFeedId: 'normal' });
+
+    expect(response.status).toBe(400);
+    expect(asJson<HttpErrorBody>(response.body).error.code).toBe('VALIDATION');
   });
 });

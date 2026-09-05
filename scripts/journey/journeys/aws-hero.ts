@@ -243,13 +243,25 @@ export const awsHero: Journey = {
           obligations.map((o) => o.status).join(', '),
         );
 
-        // The rejection path is a different claim, and it does not fire in
-        // the live click-through: the synthesizer validates on attempt 1
-        // because every obligation is already resolved by the time
-        // synthesis runs. `demo-script.md` documents this as Flagged gap
-        // #1 and writes the recording around it; `docs/demo/aws-script.md`
-        // beat 4 still says the opposite. This check exists to keep the two
-        // from drifting apart again without anyone noticing.
+        // The rejection path is a different claim from the one above, so it
+        // gets its own check. It USED to be unreachable -- the synthesizer
+        // validated on attempt 1 because every obligation was already
+        // resolved by the time synthesis ran, so the "Draft withheld" beat
+        // could not be filmed and two demo documents disagreed about it.
+        // That was fixed on 2026-09-04: round 1's scripted beats now emit an
+        // uncited draft first, GoalLoop genuinely rejects it
+        // (`goal.validation_failed`, attempt 1), and the corrected retry
+        // validates on attempt 2 -- see
+        // `apps/agent/src/runtime/scripted-beats/home-energy-guardian.ts`
+        // and `home-energy-swarm.test.ts`.
+        //
+        // The assertion stays an implication rather than a bare
+        // `rejected === true`: what must never happen is the UI claiming a
+        // withheld draft that no validator actually refused. Keeping it in
+        // that shape means this check still tells the truth if the beat is
+        // ever deliberately retired, instead of failing for the wrong
+        // reason. The missing rejection is now reported as the regression it
+        // would be.
         const rejected = goal.some((event) => event.name === 'goal.validation_failed');
         check.data(
           'no "Draft withheld" is claimed unless one actually happened',
@@ -261,7 +273,7 @@ export const awsHero: Journey = {
 
         if (!rejected) {
           ctx.observe(
-            'GoalLoop validated on attempt 1, so the "Draft withheld" beat cannot be filmed live. demo-script.md documents this (Flagged gap #1) and narrates around it, but docs/demo/aws-script.md beat 4 still tells the recorder it is "a genuine validator rejection, not a scripted UI state". Two demo documents disagree about the same beat.',
+            'GoalLoop validated without a single rejection. Since 2026-09-04 round 1 is expected to refuse an uncited draft first (goal.validation_failed on attempt 1) and validate the corrected retry on attempt 2, so this is a regression, not a documented gap: the "Draft withheld" beat the AWS demo script now films live would have nothing to show.',
           );
         }
       },

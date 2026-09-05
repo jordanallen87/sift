@@ -327,17 +327,34 @@ export class SiftPage {
     return { caseId: body.caseId };
   }
 
-  /** Clicks "Investigate my energy bill" and waits for the real `POST /api/cases/demo` response, returning its `caseId`. */
+  /**
+   * Clicks "Investigate my energy bill" and waits for the real
+   * `POST /api/cases/energy-bill-feed-check` response -- the deterministic
+   * bill-feed gate this button always goes through now, not
+   * `POST /api/cases/demo` directly (`DemoLauncher.tsx`'s own header
+   * comment). Its success body is an `EnergyBillFeedCheckResult`, so the
+   * `caseId` this returns comes from `body.receipt.caseId`, not a bare
+   * top-level field -- the default click's real 42%-above-baseline fixture
+   * always clears the threshold and opens a case, so `receipt` is always
+   * present here.
+   */
   async launchHomeEnergyGuardian(): Promise<LaunchedCase> {
     const [response] = await Promise.all([
       this.page.waitForResponse(
-        (res) => res.url().includes('/api/cases/demo') && res.request().method() === 'POST',
+        (res) =>
+          res.url().includes('/api/cases/energy-bill-feed-check') &&
+          res.request().method() === 'POST',
       ),
       this.page.getByTestId('demo-launcher-home-energy-guardian').click(),
     ]);
-    const body = (await response.json()) as { caseId: string };
+    const body = (await response.json()) as { receipt?: { caseId: string } };
+    if (body.receipt === undefined) {
+      throw new Error(
+        'launchHomeEnergyGuardian: the bill-feed gate did not open a case (unexpected -- the default click always uses the anomalous fixture).',
+      );
+    }
     await expect(this.page.getByTestId('case-workspace')).toBeVisible();
-    return { caseId: body.caseId };
+    return { caseId: body.receipt.caseId };
   }
 
   /**
@@ -399,9 +416,24 @@ export class SiftPage {
     await expect
       .poll(
         async () => {
-          const response = await this.page.request.get(
-            `/api/debug/runs/${encodeURIComponent(runId)}`,
-          );
+          // A transient transport failure is not an answer about the run, so
+          // it is treated the same way a non-ok response already is: return
+          // null and let the poll ask again. Without this the whole spec died
+          // on a single `read ECONNRESET` against this debug route while the
+          // full suite ran four workers in parallel -- a connection the
+          // server dropped under load, reported as though the investigation
+          // had failed. This is deliberately NOT a blanket catch that hides a
+          // real problem: the poll still fails after its 30s ceiling with the
+          // message below, and the UI assertion that follows still has to
+          // pass on its own. It is the same lesson as the 409 that a
+          // `response.ok()` filter once hid behind a 30-second timeout --
+          // report the real cause, retry only what is genuinely transient.
+          let response;
+          try {
+            response = await this.page.request.get(`/api/debug/runs/${encodeURIComponent(runId)}`);
+          } catch {
+            return null;
+          }
           if (!response.ok()) return null;
           const body = (await response.json()) as { overview: { status: string } };
           return body.overview.status;
@@ -773,6 +805,18 @@ export class SiftPage {
       );
     }
     await expect(this.page.getByTestId('workspace-priorities-sheet')).toBeHidden();
+    // The Sheet closing is not the end of the interaction. "Adjust
+    // priorities" is reached through the app bar's "Add or adjust" dropdown,
+    // and Radix returns focus to that trigger when the Sheet unmounts. Under
+    // a loaded run (the full suite uses four workers) the menu could still be
+    // painted when the next screenshot was taken, which is exactly how this
+    // surfaced: `awaiting-approval.png` failed in the full e2e stage with the
+    // menu covering the recommendation, while the same spec passed three for
+    // three in isolation. Waiting on the menu's real dismissal -- not a
+    // sleep, and not a retry around the screenshot -- removes the race at its
+    // source, the same way `reweightCriteria` itself replaced the out-of-band
+    // POST that used to race the page's cached snapshot.
+    await expect(this.page.getByTestId('workspace-app-bar-create-menu-content')).toBeHidden();
   }
 
   /** The `openAddConcern` counterpart -- see `closeNotes` above for why closing is no longer optional in pane mode. */

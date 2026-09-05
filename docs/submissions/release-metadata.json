@@ -1,6 +1,35 @@
 {
   "repositoryUrl": "https://github.com/jordanallen87/sift",
   "deployedUrl": "https://sift-hackathon-production.up.railway.app",
+  "submittedCommitSha": "1833f483da7789dea9517acd8600f175853d0fe3",
+  "submittedCommitShaNote": "Refreshed immediately before submission; must match the tagged release commit on origin/main.",
+  "releaseTag": "",
+  "releaseTagNote": "Submitter action: tag the submitted commit so the judged tree is immutable.",
+  "awsBuilderId": "",
+  "awsBuilderIdNote": "Submitter action: requires an AWS Builder ID, which must be personally verified by the entrant. No AWS account credentials exist in the build environment.",
+  "architectureDiagram": {
+    "source": "docs/architecture.mmd",
+    "export": "docs/architecture.png",
+    "exportFormat": "PNG",
+    "exportBytes": 748580,
+    "exportMiB": 0.7139,
+    "exportSha256": "cbc50b4892289d8b7a8223109dadfd60450172d373c5f3818deb03d434380562",
+    "sourceSha256": "1fbd60e5bb8c3fda94719663b67ba568e5d560dc00d0993e6a0dd7a9d820ffbc",
+    "withinDevpost35MiBLimit": true,
+    "regeneratedAt": "2026-09-05",
+    "showsOtelSpanPath": true,
+    "note": "Regenerated after the real OpenTelemetry span path (installSiftTracing -> NodeTracerProvider -> SiftSpanRecorder, conditional OTLP export) was added on 2026-09-04. Deliberately shows no CloudWatch/AgentCore correlation, no OTEL metrics and no W3C traceparent propagation, none of which are implemented."
+  },
+  "reportPaths": {
+    "completionReport": "docs/completion-report.md",
+    "verificationReport": "artifacts/verification/latest/report.json",
+    "buildLog": "docs/build-log.md"
+  },
+  "videoDurationsSeconds": {
+    "webmcp": null,
+    "agentsForHumans": null,
+    "note": "Measured by scripts/test-submission.ts with ffprobe once the recorded files are present. Limits: WebMCP under 3:00, Agents for Humans 5:00 or under."
+  },
   "webmcpVideoUrl": "",
   "agentsForHumansVideoUrl": "",
   "railway": {
@@ -14,8 +43,8 @@
     "volumeName": "pax-hackathon-volume",
     "volumeId": "477985d7-abfe-4216-8281-fa01b3e7b508",
     "volumeMountPath": "/data",
-    "latestDeploymentId": "5755fca7-554a-413e-9388-d94d3362ca21",
-    "latestDeploymentGitSha": "6edf2d1",
+    "latestDeploymentId": "3757d76f-e868-4361-bed5-24f19a5bf2b1",
+    "latestDeploymentGitSha": "1833f48",
     "latestDeploymentStatus": "SUCCESS"
   },
   "agentCore": {
@@ -54,7 +83,7 @@
   "_todo": [
     "Record the WebMCP demo video (docs/submissions/webmcp/demo-script.md) and set webmcpVideoUrl once uploaded (must be under 3:00).",
     "Record the Agents for Humans demo video (docs/submissions/agents-for-humans/demo-script.md) and set agentsForHumansVideoUrl once uploaded (must be 5:00 or under).",
-    "Flip the GitHub repository to public before final submission (currently private) -- see README.md's Live demo section.",
+    "Verified 2026-09-05 via `gh repo view jordanallen87/sift --json visibility,licenseInfo`: repository is PUBLIC with an MIT license on file. No action needed.",
     "List the exact WebMCP test clients/browser versions actually used in webmcpTestClients once tested (e.g. 'ChatGPT in-app browser, build X' or 'Chrome NNN with WebMCP origin trial flag Y').",
     "If AWS credentials become available, deploy to Bedrock AgentCore and fill in agentCore.deployed=true plus its own endpoint/CloudWatch correlation details."
   ]

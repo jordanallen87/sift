@@ -68,7 +68,14 @@ The UI labels fixture cases as demonstrations. No fixture uses a real person's a
 
 ### Required sequence
 
-1. A deterministic watcher creates a case after detecting the 42% anomaly.
+1. A deterministic bill-feed gate decides whether a case is warranted, and opens one only because the
+   bill is 42% above baseline — past the 15% materiality threshold. The gate is invoked when the
+   month's bill is checked; it is not a background poller, and this spec should not be read as
+   promising one. What it does guarantee is that no energy case exists without the threshold having
+   been met: `packages/scenarios/src/tools/bill-feed-gate.ts` is the single decision point, it reuses
+   the one `DEFAULT_ANOMALY_THRESHOLD_PERCENT` definition rather than restating the arithmetic, and
+   the refusal direction is proven against a real second fixture (`current-bill-normal.json`, 4.42%
+   above baseline) that genuinely opens nothing.
 2. Sift routes to Home Energy Guardian without requiring a human choice.
 3. The anomaly check reaches E3 through deterministic baseline calculation.
 4. Rate and weather analysis explain part but not all of the increase.

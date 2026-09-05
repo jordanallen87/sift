@@ -135,10 +135,23 @@ export function sendError(
   );
 }
 
-/** Writes the appropriate HTTP response for a `CommandService`/`RunService` `ServiceResult`. `onOk` lets a caller (e.g. `routes/runs.ts`, which returns a `RunReceipt`, a strict superset of `CommandReceipt`) customize the success-response schema; defaults to `CommandReceiptSchema`. */
-export function respondWithServiceResult<
-  T extends { commandId: string; caseId: string; acceptedSequence: number },
->(
+/**
+ * Writes the appropriate HTTP response for a `CommandService`/`RunService`
+ * `ServiceResult`. `onOk` lets a caller (e.g. `routes/runs.ts`, which
+ * returns a `RunReceipt`, a strict superset of `CommandReceipt`; or
+ * `routes/cases.ts`'s `checkEnergyBillFeed` route, whose
+ * `EnergyBillFeedCheckResult` is not `CommandReceipt`-shaped at all when
+ * no case was opened) customize the success-response schema; defaults to
+ * `CommandReceiptSchema`, which is why every *other* existing caller can
+ * still omit it. `T`'s bound is deliberately just `{ commandId: string }`
+ * -- the field every `ServiceResult` success value actually carries -- not
+ * a `CommandReceipt`-shaped constraint: nothing in this function's body
+ * reads `caseId`/`acceptedSequence` off `T` itself (only `onOk` does, and
+ * only when the caller's own schema needs them), so requiring them here
+ * would reject an honest non-case-creating outcome for no functional
+ * reason.
+ */
+export function respondWithServiceResult<T extends { commandId: string }>(
   res: Response,
   result: ServiceResult<T>,
   onOk: (value: T) => unknown = (value) => CommandReceiptSchema.parse(value),

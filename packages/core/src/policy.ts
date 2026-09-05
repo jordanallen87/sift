@@ -34,11 +34,20 @@
  *    `'decided'`. Rejection and revision-request leave `status` untouched
  *    -- the case is not concluded, it still needs further work, and
  *    nothing in the spec set assigns them a specific different status.
- * 4. `reason` (always-optional on `ReviewProposalInput`) is accepted as
- *    valid input but not persisted onto `DecisionProposal`, which has no
- *    matching field (only `revisionInstructions` for the request_revision
- *    case). It remains available to whichever layer emits the narrative
- *    case event later.
+ * 4. `reason` (always-optional on `ReviewProposalInput`) IS persisted, onto
+ *    `DecisionProposal.reviewReason` (`@sift/contracts` `case.ts`), for
+ *    every decision (approve/reject/request_revision alike) it is supplied
+ *    with -- not only `revisionInstructions` for the request_revision case.
+ *    This was a real, user-reachable defect until fixed: `ApprovalCard`
+ *    (`apps/web`) already collects this free-text explanation from the
+ *    person reviewing a consequential proposal and `App.tsx`'s
+ *    `handleReviewProposal` already sends it over the wire, but nothing
+ *    downstream ever kept it -- it was validated, accepted, and silently
+ *    discarded, so a human's stated reason for declining or approving
+ *    vanished the instant they submitted it. `dispositionReason` on
+ *    `EvidenceLink` (a materially identical "the reviewer explains why" field
+ *    on a sibling human-authority action) was the precedent this now
+ *    matches.
  */
 import type {
   CaseState,
@@ -195,6 +204,9 @@ export function reviewProposal(
     ...(decision.decision === 'request_revision' && decision.instructions !== undefined
       ? { revisionInstructions: decision.instructions }
       : {}),
+    // See judgment call #4 above: a reviewer-supplied reason is persisted
+    // for every decision, never fabricated when absent.
+    ...(decision.reason !== undefined ? { reviewReason: decision.reason } : {}),
   };
 
   return {

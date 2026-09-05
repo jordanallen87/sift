@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   AddNoteInputSchema,
+  CheckEnergyBillFeedInputSchema,
   CommandReceiptSchema,
   DefineCaseAttributeInputSchema,
+  EnergyBillFeedCheckResultSchema,
   FocusEvidenceInputSchema,
   FocusOptionInputSchema,
   GetCaseContextInputSchema,
@@ -54,6 +56,72 @@ describe('StartCaseInputSchema', () => {
     expect(StartCaseInputSchema.safeParse({ packId: 'car-purchase', extra: 1 }).success).toBe(
       false,
     );
+  });
+});
+
+describe('CheckEnergyBillFeedInputSchema', () => {
+  it('accepts the two bill-feed ids the deterministic gate can be pointed at', () => {
+    expect(CheckEnergyBillFeedInputSchema.safeParse({ billFeedId: 'anomalous' }).success).toBe(
+      true,
+    );
+    expect(CheckEnergyBillFeedInputSchema.safeParse({ billFeedId: 'normal' }).success).toBe(true);
+  });
+
+  it('rejects an unlisted bill feed id', () => {
+    expect(CheckEnergyBillFeedInputSchema.safeParse({ billFeedId: 'made-up' }).success).toBe(false);
+  });
+
+  it('rejects a missing billFeedId', () => {
+    expect(CheckEnergyBillFeedInputSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('rejects an unknown field (strict)', () => {
+    expect(
+      CheckEnergyBillFeedInputSchema.safeParse({ billFeedId: 'normal', extra: 1 }).success,
+    ).toBe(false);
+  });
+});
+
+describe('EnergyBillFeedCheckResultSchema', () => {
+  it('parses a "no case opened" outcome with no receipt', () => {
+    expect(
+      EnergyBillFeedCheckResultSchema.safeParse({
+        commandId: 'cmd-1',
+        billFeedId: 'normal',
+        caseOpened: false,
+        percentAboveBaseline: 4.42,
+        thresholdPercent: 15,
+        reason: 'Your bill looks normal this month; no case opened.',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('parses a "case opened" outcome carrying a real CommandReceipt', () => {
+    expect(
+      EnergyBillFeedCheckResultSchema.safeParse({
+        commandId: 'cmd-1',
+        billFeedId: 'anomalous',
+        caseOpened: true,
+        percentAboveBaseline: 42,
+        thresholdPercent: 15,
+        reason: 'Materially abnormal. Opening a case.',
+        receipt: { commandId: 'cmd-1', caseId: 'case-1', acceptedSequence: 3 },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an unknown field (strict)', () => {
+    expect(
+      EnergyBillFeedCheckResultSchema.safeParse({
+        commandId: 'cmd-1',
+        billFeedId: 'normal',
+        caseOpened: false,
+        percentAboveBaseline: 4.42,
+        thresholdPercent: 15,
+        reason: 'no case opened',
+        extra: 1,
+      }).success,
+    ).toBe(false);
   });
 });
 

@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { CaseEvent, CaseState, CommandReceipt, EntityRecord } from '@sift/contracts';
-import { compilePack, PackRegistry } from '@sift/packs';
+import type {
+  CaseEvent,
+  CaseState,
+  CommandReceipt,
+  EnergyBillFeedCheckResult,
+  EntityRecord,
+} from '@sift/contracts';
+import { compileHomeEnergyGuardianPack, compilePack, PackRegistry } from '@sift/packs';
 import { evaluateReadiness } from '@sift/core';
 import {
   createRegistryWithSyntheticPack,
@@ -10,6 +16,7 @@ import {
   syntheticCarPurchaseManifest,
   syntheticCatalog,
 } from '../fixtures/synthetic-pack.js';
+import { homeEnergyCapabilityCatalog } from '../runtime/home-energy-engine.js';
 import { InMemoryActivityStore } from '../store/activity-store.js';
 import { MemoryCaseStore } from '../store/memory-case-store.js';
 import { CommandService } from './command-service.js';
@@ -242,6 +249,143 @@ describe('CommandService', () => {
     it('starts a case with no entities when the pack has no demoSeedEntities entry (unchanged default behavior)', () => {
       const snapshot = startDemo();
       expect(snapshot.entities).toHaveLength(0);
+    });
+  });
+
+  /**
+   * `checkEnergyBillFeed`: the deterministic Home Energy Guardian
+   * case-creation gate (docs/specs/demos-and-submission.md: "A
+   * deterministic watcher creates a case after detecting the 42%
+   * anomaly."). Routes real case creation through
+   * `@sift/scenarios`'s `evaluateBillFeed`/`loadAndEvaluateBillFeed`
+   * (`bill-feed-gate.ts`) so a normal bill genuinely produces no case --
+   * proven here against the real, checked-in `current-bill.json` (42%
+   * above baseline, opens a case) and `current-bill-normal.json` (within
+   * the default 15% threshold, does not), not a mock.
+   */
+  describe('checkEnergyBillFeed', () => {
+    function requireEnergyResultOk(result: {
+      status: string;
+    }): asserts result is { status: 'ok'; value: EnergyBillFeedCheckResult } {
+      if (result.status !== 'ok') {
+        throw new Error(`expected ok, got ${result.status}: ${JSON.stringify(result)}`);
+      }
+    }
+
+    /** Real, compiled home-energy-guardian pack -- not a synthetic stand-in -- since this is specifically the pack the gate creates cases against. */
+    function registryWithHomeEnergyGuardianPack(): PackRegistry {
+      const registry = new PackRegistry();
+      registry.register(compileHomeEnergyGuardianPack(homeEnergyCapabilityCatalog(), fixedClock));
+      return registry;
+    }
+
+    it('opens a real, persisted case for the real 42%-above-baseline bill feed ("anomalous")', () => {
+      const localCaseStore = new MemoryCaseStore();
+      const localActivityStore = new InMemoryActivityStore();
+      const localService = new CommandService({
+        caseStore: localCaseStore,
+        activityStore: localActivityStore,
+        registry: registryWithHomeEnergyGuardianPack(),
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'anomalous' });
+      requireEnergyResultOk(result);
+
+      expect(result.value.caseOpened).toBe(true);
+      expect(result.value.percentAboveBaseline).toBe(42);
+      expect(result.value.thresholdPercent).toBe(15);
+      expect(result.value.reason).toMatch(/42%/);
+      expect(result.value.receipt).toBeDefined();
+
+      // A real case really exists in the store -- not just an in-memory claim.
+      const caseId = result.value.receipt?.caseId;
+      expect(caseId).toBeDefined();
+      const persisted = caseId === undefined ? undefined : localCaseStore.load(caseId);
+      expect(persisted?.pack.id).toBe('home-energy-guardian');
+    });
+
+    it('opens NO case for the real, within-threshold bill feed ("normal") -- the case store stays untouched', () => {
+      const localCaseStore = new MemoryCaseStore();
+      const localActivityStore = new InMemoryActivityStore();
+      const localService = new CommandService({
+        caseStore: localCaseStore,
+        activityStore: localActivityStore,
+        registry: registryWithHomeEnergyGuardianPack(),
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'normal' });
+      requireEnergyResultOk(result);
+
+      expect(result.value.caseOpened).toBe(false);
+      expect(result.value.percentAboveBaseline).toBeLessThan(15);
+      expect(result.value.thresholdPercent).toBe(15);
+      expect(result.value.reason).toMatch(/normal/i);
+      expect(result.value.receipt).toBeUndefined();
+
+      // Nothing was appended anywhere: no case, no activity.
+      expect(localActivityStore.replayFrom('any-case-id', 0)).toHaveLength(0);
+    });
+
+    it('declining a normal bill needs no registered pack at all -- the gate runs before any pack lookup', () => {
+      const localService = new CommandService({
+        caseStore: new MemoryCaseStore(),
+        activityStore: new InMemoryActivityStore(),
+        registry: new PackRegistry(),
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'normal' });
+      requireEnergyResultOk(result);
+      expect(result.value.caseOpened).toBe(false);
+    });
+
+    it('an anomalous bill still fails honestly (not_found) when the pack is not registered', () => {
+      const localService = new CommandService({
+        caseStore: new MemoryCaseStore(),
+        activityStore: new InMemoryActivityStore(),
+        registry: new PackRegistry(),
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'anomalous' });
+      expect(result.status).toBe('not_found');
+    });
+
+    it('rejects invalid input (validation)', () => {
+      const localService = new CommandService({
+        caseStore: new MemoryCaseStore(),
+        activityStore: new InMemoryActivityStore(),
+        registry: registryWithHomeEnergyGuardianPack(),
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const result = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'made-up' });
+      expect(result.status).toBe('validation');
+    });
+
+    it('is idempotent for a case-opening result: retrying the same commandId returns the same case, not a second one', () => {
+      const localCaseStore = new MemoryCaseStore();
+      const localService = new CommandService({
+        caseStore: localCaseStore,
+        activityStore: new InMemoryActivityStore(),
+        registry: registryWithHomeEnergyGuardianPack(),
+        clock: fixedClock,
+        idGenerator: createSequentialIdGenerator(),
+      });
+
+      const first = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'anomalous' });
+      requireEnergyResultOk(first);
+      const second = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'anomalous' });
+      requireEnergyResultOk(second);
+
+      expect(second.value.receipt?.caseId).toBe(first.value.receipt?.caseId);
     });
   });
 
@@ -3777,6 +3921,40 @@ describe('CommandService', () => {
 
       const activity = activityStore.replayFrom(snapshot.id, 0);
       expect(activity.some((event) => event.summary === 'Proposal rejected.')).toBe(true);
+    });
+
+    // Real defect found by driving the product: a human's stated reason for
+    // declining a consequential proposal was validated by the HTTP layer,
+    // routed all the way to `CommandService`, and then discarded --
+    // `applyProposalReview` never read `input.reason` at all, and
+    // `DecisionProposalSchema` had no field to hold it even if it had. Fixed
+    // in `@sift/contracts` (`DecisionProposalSchema.reviewReason`) and
+    // `@sift/core` (`reviewProposal` now writes it). Proven here at the
+    // service/store layer, not only the pure `@sift/core` function: this
+    // asserts the reason survives a real `CaseStore.append` + reload, the
+    // way a person reloading the page after rejecting would see it.
+    it('persists the reviewer-supplied reason through append() and a fresh load (was silently dropped end to end)', () => {
+      const { snapshot } = withPendingProposal();
+      const result = service.reviewProposal('cmd-3', {
+        caseId: snapshot.id,
+        proposalId: 'proposal-1',
+        actor: 'human',
+        decision: 'reject',
+        reason: 'The household already scheduled its own inspection.',
+        expectedSequence: snapshot.eventSequence,
+      });
+      requireOk(result);
+      const updated = requireSnapshot(result.value);
+      expect(updated.proposal?.reviewReason).toBe(
+        'The household already scheduled its own inspection.',
+      );
+
+      // Reload from the store fresh -- proves this is durable case state,
+      // not merely an in-memory echo of the input the caller already had.
+      const reloaded = caseStore.load(snapshot.id);
+      expect(reloaded?.proposal?.reviewReason).toBe(
+        'The household already scheduled its own inspection.',
+      );
     });
 
     it('returns a 409-shaped conflict when the underlying append() call itself detects the case has advanced (applyProposalReview, shared by reviewProposal/requestRevision)', () => {

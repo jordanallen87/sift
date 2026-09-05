@@ -65,8 +65,14 @@ import {
 
 export const ENERGY_CALCULATOR_TOOL_ID = 'energy-calculator';
 
-/** Default "materially abnormal" threshold -- see the file docstring's judgment-call note. */
-const DEFAULT_ANOMALY_THRESHOLD_PERCENT = 15;
+/**
+ * Default "materially abnormal" threshold -- see the file docstring's
+ * judgment-call note. Exported so it has exactly one definition in the
+ * codebase: `bill-feed-gate.ts`'s `evaluateBillFeed` (the deterministic
+ * gate that decides whether a Home Energy Guardian case is even created)
+ * reuses this same constant rather than hardcoding a second `15`.
+ */
+export const DEFAULT_ANOMALY_THRESHOLD_PERCENT = 15;
 
 /** Default equal weighting between cost and conservation/root-cause fit -- see the file docstring's judgment-call note. */
 const DEFAULT_COST_WEIGHT = 0.5;
@@ -152,6 +158,32 @@ function energyCalculatorSourceId(concern: string): string {
 }
 
 /**
+ * The anomaly-determination arithmetic itself, extracted out of
+ * `calculateEnergyAnalysis` so it has exactly one implementation:
+ * `bill-feed-gate.ts`'s `evaluateBillFeed` -- the deterministic gate that
+ * decides whether a Home Energy Guardian case is even created, before any
+ * of `calculateEnergyAnalysis`'s other (rate/weather) computations run or
+ * their fixtures are even loaded -- calls this directly rather than
+ * re-deriving "percent above baseline" and ">= threshold" a second time.
+ */
+export function determineAnomaly(
+  currentAmount: MoneyAmount,
+  baselineAmount: MoneyAmount,
+  thresholdPercent: number = DEFAULT_ANOMALY_THRESHOLD_PERCENT,
+): AnomalyDetermination {
+  const percentAboveBaseline = round2(
+    ((currentAmount.amount - baselineAmount.amount) / baselineAmount.amount) * 100,
+  );
+  return {
+    currentAmount: { ...currentAmount },
+    baselineAmount: { ...baselineAmount },
+    percentAboveBaseline,
+    thresholdPercent,
+    isMateriallyAbnormal: percentAboveBaseline >= thresholdPercent,
+  };
+}
+
+/**
  * The tariff in effect immediately before `currentTariff`: the tariff with
  * the latest `effectiveFrom` that is still earlier than `currentTariff`'s.
  * Generalizes beyond exactly two tariffs without hardcoding either id.
@@ -184,16 +216,11 @@ export function calculateEnergyAnalysis(
   const currency = bill.currentAmount.currency;
 
   // --- anomaly determination ---
-  const percentAboveBaseline = round2(
-    ((bill.currentAmount.amount - bill.baseline.amount.amount) / bill.baseline.amount.amount) * 100,
-  );
-  const anomaly: AnomalyDetermination = {
-    currentAmount: { ...bill.currentAmount },
-    baselineAmount: { ...bill.baseline.amount },
-    percentAboveBaseline,
+  const anomaly: AnomalyDetermination = determineAnomaly(
+    bill.currentAmount,
+    bill.baseline.amount,
     thresholdPercent,
-    isMateriallyAbnormal: percentAboveBaseline >= thresholdPercent,
-  };
+  );
 
   // --- rate-change attribution ---
   // Non-null: `current-bill.json`'s `tariffId` always names a tariff
@@ -286,7 +313,7 @@ export function calculateEnergyAnalysis(
       sourceId: energyCalculatorSourceId('anomaly'),
       level: 'E3',
       verdict: 'pass',
-      summary: `Current bill $${anomaly.currentAmount.amount.toFixed(2)} is ${percentAboveBaseline}% above the normalized baseline of $${anomaly.baselineAmount.amount.toFixed(2)} (threshold ${thresholdPercent}%): ${anomaly.isMateriallyAbnormal ? 'materially abnormal' : 'within normal range'}.`,
+      summary: `Current bill $${anomaly.currentAmount.amount.toFixed(2)} is ${anomaly.percentAboveBaseline}% above the normalized baseline of $${anomaly.baselineAmount.amount.toFixed(2)} (threshold ${thresholdPercent}%): ${anomaly.isMateriallyAbnormal ? 'materially abnormal' : 'within normal range'}.`,
     },
     {
       sourceId: energyCalculatorSourceId('rate-change'),

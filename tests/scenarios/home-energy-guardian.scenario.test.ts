@@ -167,7 +167,8 @@ describe('Home Energy Guardian scenario: real causal trajectory', () => {
     expect(conservation?.status).toBe('scored');
     expect(conservation?.score).toBe(1);
     // The reweight put 80% of the case's weight here; if this drops back to
-    // the seeded 50/50 split the beat has silently stopped happening.
+    // the pack's seeded 80/20 cost-favoring default (energy.conservation at
+    // 20%, not this reweighted 80%) the beat has silently stopped happening.
     expect(conservation?.weight).toBeCloseTo(0.8, 10);
 
     // The deterministic leader and the Swarm's own favorite agree, so no

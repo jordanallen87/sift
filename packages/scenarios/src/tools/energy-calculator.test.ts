@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadFixture } from './fixture-loader.js';
 import {
+  DEFAULT_ANOMALY_THRESHOLD_PERCENT,
   ENERGY_CALCULATOR_TOOL_ID,
   calculateEnergyAnalysis,
+  determineAnomaly,
   evaluateResponseOptions,
   type EnergyAnalysisResult,
   type ResponseOptionsEvaluationResult,
@@ -30,6 +32,54 @@ function signalAbortingOnRead(n: number): AbortSignal {
 function expectOk<T>(result: { status: string }): asserts result is { status: 'ok'; data: T } {
   expect(result.status).toBe('ok');
 }
+
+describe('determineAnomaly', () => {
+  // Extracted out of `calculateEnergyAnalysis` so a case-creation gate
+  // (`bill-feed-gate.ts`) can reuse the exact same threshold arithmetic
+  // instead of duplicating it -- the 15% default threshold must have
+  // exactly one definition in the codebase.
+  it('independently recomputes percentAboveBaseline and flags it materially abnormal against the default threshold, matching calculateEnergyAnalysis on the real 42% fixture', () => {
+    const anomaly = determineAnomaly(
+      { amount: 248.5, currency: 'USD' },
+      { amount: 175.0, currency: 'USD' },
+    );
+    expect(anomaly.percentAboveBaseline).toBe(42);
+    expect(anomaly.thresholdPercent).toBe(DEFAULT_ANOMALY_THRESHOLD_PERCENT);
+    expect(anomaly.isMateriallyAbnormal).toBe(true);
+    expect(anomaly.currentAmount).toEqual({ amount: 248.5, currency: 'USD' });
+    expect(anomaly.baselineAmount).toEqual({ amount: 175.0, currency: 'USD' });
+  });
+
+  it('does not flag a bill within the threshold as materially abnormal', () => {
+    // 5% above baseline, well under the default 15% threshold.
+    const anomaly = determineAnomaly(
+      { amount: 183.75, currency: 'USD' },
+      { amount: 175.0, currency: 'USD' },
+    );
+    expect(anomaly.percentAboveBaseline).toBe(5);
+    expect(anomaly.isMateriallyAbnormal).toBe(false);
+  });
+
+  it('flags a bill exactly at the threshold as materially abnormal (>=, not >)', () => {
+    const anomaly = determineAnomaly(
+      { amount: 115, currency: 'USD' },
+      { amount: 100, currency: 'USD' },
+      15,
+    );
+    expect(anomaly.percentAboveBaseline).toBe(15);
+    expect(anomaly.isMateriallyAbnormal).toBe(true);
+  });
+
+  it('honors a caller-supplied threshold override', () => {
+    const anomaly = determineAnomaly(
+      { amount: 248.5, currency: 'USD' },
+      { amount: 175.0, currency: 'USD' },
+      50,
+    );
+    expect(anomaly.thresholdPercent).toBe(50);
+    expect(anomaly.isMateriallyAbnormal).toBe(false);
+  });
+});
 
 describe('calculateEnergyAnalysis', () => {
   it('independently recomputes percentAboveBaseline matching the fixture-documented 42% and flags it materially abnormal', () => {

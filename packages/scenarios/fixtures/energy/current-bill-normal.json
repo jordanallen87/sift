@@ -1,0 +1,38 @@
+{
+  "_provenance": "Fictional demo data. Household, utility, and account identifiers are invented for the Sift 'Home Energy Guardian' hackathon scenario. No real person, address, or utility account is represented. This is the same fictional household and account as current-bill.json, one billing cycle earlier -- before the thermostat malfunction documented in household-events.json -- checked in specifically to prove the deterministic bill-feed gate (packages/scenarios/src/tools/bill-feed-gate.ts) correctly declines to open a case when nothing is materially wrong.",
+  "caseId": "case-demo-energy-guardian",
+  "householdId": "household-demo-energy-01",
+  "displayName": "The Okafor-Bryant household",
+  "utilityAccountFictionalId": "DEMO-ACCT-0000-0001",
+  "billingPeriod": { "start": "2026-06-16", "end": "2026-07-15", "days": 30 },
+  "tariffId": "tariff-standard-2026",
+  "usage": { "value": 1090, "unit": "kWh" },
+  "charges": {
+    "fixedMonthlyCustomerCharge": { "amount": 13.75, "currency": "USD" },
+    "volumetricCharge": {
+      "amount": 163.5,
+      "currency": "USD",
+      "arithmeticNote": "1090 kWh * 0.150 USD/kWh = 163.50"
+    },
+    "totalAmount": {
+      "amount": 177.25,
+      "currency": "USD",
+      "arithmeticNote": "13.75 + 163.50 = 177.25"
+    }
+  },
+  "currentAmount": { "amount": 177.25, "currency": "USD" },
+  "baseline": {
+    "amount": { "amount": 169.75, "currency": "USD" },
+    "usage": { "value": 1040, "unit": "kWh" },
+    "methodology": "Weather- and trend-normalized expected usage and bill for this billing period, computed from the same calendar period one year prior, billed under the current tariff (tariff-standard-2026) so any rate change is isolated as a separate factor rather than folded into the baseline. 13.75 + 0.150 * 1040 = 169.75.",
+    "computedBy": "bill-normalizer skill (fixture-authored reference value for deterministic tests)"
+  },
+  "anomaly": {
+    "percentAboveBaseline": 4.42,
+    "arithmeticNote": "currentAmount 177.25 / baseline amount 169.75 = 1.0442 -> 4.42% above the normalized baseline. (177.25 - 169.75) = 7.50 dollars above baseline; 7.50 / 169.75 = 0.0442.",
+    "usageGapAboveBaselineKwh": 50,
+    "usageGapArithmeticNote": "1090 - 1040 = 50 kWh above the normalized baseline usage -- ordinary month-to-month variation, not the kind of gap household-events.json documents a cause for.",
+    "flaggedAt": "2026-07-16T09:05:00Z",
+    "flaggedBy": "deterministic anomaly watcher"
+  }
+}

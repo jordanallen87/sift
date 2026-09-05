@@ -157,8 +157,10 @@ export type {
 } from './household-event-lookup.js';
 
 export {
+  DEFAULT_ANOMALY_THRESHOLD_PERCENT,
   ENERGY_CALCULATOR_TOOL_ID,
   calculateEnergyAnalysis,
+  determineAnomaly,
   evaluateResponseOptions,
 } from './energy-calculator.js';
 export type {
@@ -172,3 +174,16 @@ export type {
   ResponseOptionsEvaluationResult,
   EvaluateResponseOptionsInput,
 } from './energy-calculator.js';
+
+// The deterministic case-creation gate for Home Energy Guardian (see
+// bill-feed-gate.ts's own header comment): decides whether a bill feed is
+// materially abnormal enough to open a case at all, reusing
+// `determineAnomaly`/`DEFAULT_ANOMALY_THRESHOLD_PERCENT` above rather than
+// duplicating that arithmetic.
+export { evaluateBillFeed, loadAndEvaluateBillFeed } from './bill-feed-gate.js';
+export type {
+  BillFeedGateDecision,
+  BillFeedFixtureName,
+  BillFeedInput,
+  LoadAndEvaluateBillFeedOptions,
+} from './bill-feed-gate.js';

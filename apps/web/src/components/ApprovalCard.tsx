@@ -168,6 +168,26 @@ export function ApprovalCard({
                   {proposal.revisionInstructions}
                 </p>
               ) : null}
+              {proposal.reviewReason ? (
+                // The reviewer's own stated reason for approving, rejecting,
+                // or requesting revision (`DecisionProposal.reviewReason`,
+                // packages/contracts/src/case.ts) -- optional and frequently
+                // absent, so this renders nothing at all rather than an
+                // empty region when there is none (product.md "Empty
+                // regions"). "You said:" attributes it to the human, not
+                // Sift -- the same voice `decision-orientation.ts`'s
+                // `latestChangeOf` already uses for the person's own words.
+                // `break-words` (not `whitespace-nowrap`) is what keeps a
+                // long reason (up to 2000 schema-valid characters) wrapping
+                // inside the card instead of overflowing at the 390/430px
+                // canonical widths.
+                <p
+                  data-testid="approval-card-review-reason"
+                  className="whitespace-pre-wrap break-words text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
+                >
+                  You said: {proposal.reviewReason}
+                </p>
+              ) : null}
             </div>
           );
         })()

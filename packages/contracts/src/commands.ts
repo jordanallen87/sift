@@ -90,6 +90,46 @@ export const StartCaseInputSchema = z
   .strict();
 export type StartCaseInput = z.infer<typeof StartCaseInputSchema>;
 
+// --- CheckEnergyBillFeedInput / EnergyBillFeedCheckResult ---
+// The deterministic Home Energy Guardian case-creation gate
+// (`packages/scenarios/src/tools/bill-feed-gate.ts`,
+// `CommandService.checkEnergyBillFeed`): decides whether a bill feed is
+// materially abnormal enough to open a case at all, so "a normal bill
+// produces no case" is a real, reachable outcome rather than an
+// unconditional case creation narrated as if it were gated.
+//
+// A sibling command to `startDemo`, not an overload of it, for the same
+// reason `startCase` is a sibling rather than an overload (see that
+// schema's own comment above): `startDemo`'s fixture-reset semantics stay
+// intact and unconditional for every other demo, and this command's own
+// result shape genuinely cannot be a `CommandReceipt` -- that schema
+// requires a non-empty `caseId`, which does not exist when the gate
+// declines to open a case.
+
+export const ENERGY_BILL_FEED_IDS = ['anomalous', 'normal'] as const;
+export type EnergyBillFeedId = (typeof ENERGY_BILL_FEED_IDS)[number];
+
+export const CheckEnergyBillFeedInputSchema = z
+  .object({
+    billFeedId: z.enum(ENERGY_BILL_FEED_IDS),
+  })
+  .strict();
+export type CheckEnergyBillFeedInput = z.infer<typeof CheckEnergyBillFeedInputSchema>;
+
+export const EnergyBillFeedCheckResultSchema = z
+  .object({
+    commandId: idString(),
+    billFeedId: z.enum(ENERGY_BILL_FEED_IDS),
+    caseOpened: z.boolean(),
+    percentAboveBaseline: z.number().finite(),
+    thresholdPercent: z.number().finite(),
+    reason: safeString(2000),
+    /** Present if and only if `caseOpened` is `true`. */
+    receipt: z.lazy(() => CommandReceiptSchema).optional(),
+  })
+  .strict();
+export type EnergyBillFeedCheckResult = z.infer<typeof EnergyBillFeedCheckResultSchema>;
+
 // --- SelectPackInput (webmcp.md `sift_select_pack`) ---
 
 export const SelectPackInputSchema = z

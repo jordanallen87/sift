@@ -6,9 +6,11 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 **This script's "(live-verified …)" claims predate the 2026-08-30 workspace redesign (ADR 0004) and are now stale for on-screen positions.** The former separate "Recommendation" and "Approval" cards this script scrolls to are now composed inside one merged hero region (`RecommendationHero`) rather than being independently scrolled-to cards; the required beats and event names below are unchanged, but re-verify exact scroll targets and card boundaries against the live build before recording.
 
+**2026-09-05 pass.** Nine commits landed the same week that changed what this pack does: the default criteria weights moved from 50/50 to 80/20 (`energy.cost`/`energy.conservation` in `packages/packs/src/home-energy-guardian.ts`), a criteria reweight now genuinely reopens and re-runs the response-options synthesis (`ObligationTemplate.dependsOnCriteria`), the premature draft is now actually rejected and shown as `Draft withheld` rather than only proven by a unit test, and a real **Adjust priorities** control now exists in the app bar. Every beat below was rewritten against the current source (`packages/packs/src/home-energy-guardian.ts`, `apps/agent/src/runtime/home-energy-engine.ts`, `apps/agent/src/runtime/recommendation-scoring.ts`, `apps/agent/src/runtime/scripted-beats/home-energy-guardian.ts`, `apps/web/src/components/CriteriaEditor.tsx`, `apps/web/src/components/SpecialistActivityPanel.tsx`, `apps/web/src/components/RuntimeInspector.tsx`) rather than against a fresh browser recording — **rehearse the whole script once in a real browser before you record**, the same way the rest of this document already asks you to.
+
 ---
 
-## Before you record — read this in full, including the two flagged gaps
+## Before you record — read this in full
 
 1. **URL.** `https://sift-hackathon-production.up.railway.app`. No login required.
 2. **Fresh case.** Click **"Investigate my energy bill"** on the launcher (label verbatim from `apps/web/src/components/DemoLauncher.tsx`). This resets to the checked-in fixture and mints a fresh case ID.
@@ -41,27 +43,29 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 **On-screen action:** click **"Ask Sift to look into this"** (`data-testid="request-investigation"` — the testid still says `request-investigation`, the visible label does not) live, on camera. Let the page update in real time — this is a real bounded Strands Swarm, not a canned animation, and it genuinely completes in a few seconds.
 
-**Point out, live, as the Activity ledger appends (real event labels, live-verified, in this exact order):**
-- **"Specialist started working" — "Swarm node \"anomaly-investigator\" started."**
-- **"Skill activated" — "Activated skill \"bill-normalizer\"."**, then real tool calls: **"bill-reader," "calculator."**
-- Handoff to rate-analyst: **"Skill activated" — "rate-plan-analysis,"** tool calls **"tariff-lookup," "calculator."**
-- Handoff to weather-analyst: **"Skill activated" — "weather-comparison,"** tool call **"weather-lookup."**
+**Point out, live, as it runs (two real consumer surfaces update from the same stream, not a canned animation):**
+- **"Latest command"** updates on every real event as it streams — its summary line carries genuine developer-phrased text (**"Swarm node \"anomaly-investigator\" started."**, **"Activated skill \"bill-normalizer\"."**, **"Calling tool \"bill-reader\"."**) and the plain-language line under it carries the matching consumer label (**"A step in the investigation started,"** **"A new capability activated,"** **"Looking something up"**) — one line at a time, because this block only ever shows what just happened.
+- The **"Investigation team"** panel below it (`data-testid="specialist-activity-panel"`) is the clearer shot for this beat: its rows appear and settle in order as each specialist finishes — **Bill anomaly**, **Rate change**, **Weather** — each a real specialist, not a hardcoded label.
 
 **Narration:**
-> "Watch the skill names change as the Swarm hands off — bill-normalizer, then rate-plan-analysis, then weather-comparison. Each one is a real AgentSkill loading in, not a hardcoded label."
+> "Watch the investigation team fill in — bill anomaly, then rate change, then weather — each one a real specialist activating a real Strands Skill and calling real tools, not a canned animation."
 
-*(Leave this run's ledger on screen — you will come back to the next part of it for beats 3 and 4 without re-running anything.)*
+*(Leave this run on screen — you will come back to the rest of it for beats 3 and 4 without re-running anything. The full, permanent, ordered record of every skill activation and tool call is one click away in the Runtime Inspector, opened in beat 3.)*
 
 ---
 
-### Beat 3 — GoalLoop is real, honestly shown (1:15–1:45, 30s)
+### Beat 3 — GoalLoop is real, and now genuinely shown (1:15–1:45, 30s)
 
-*(Required beat 3: "Show the premature monitoring draft rejected as `Draft withheld`." — this now happens live; see note 5 above.)*
+*(Required beat 3: "Show the premature monitoring draft rejected as `Draft withheld`." — this now happens live, on every run. It did not used to: round 1's `decision-synthesizer` used to cite a source on its very first attempt, so the real validator had nothing to reject, and this beat had to apologise on camera for proving the rejection path only in a unit test. That gap is closed — round 1's first draft is now genuinely uncited and genuinely rejected before the corrected retry lands.)*
 
-**On-screen action:** once the run completes, click **"Inspect run"** to open the Runtime Inspector. On the **Overview** tab, point at the real correlated `trace` and `case` IDs. Switch to **Timeline**, filter category to **goal**, and point at the one real entry: **"Recommendation draft validated on attempt 1"** (`goal.validated`, agent: `decision-synthesizer`).
+**On-screen action:** once the run completes, click **"Inspect run"** to open the Runtime Inspector. On the **Overview** tab, point at the real correlated `trace` and `case` IDs. Switch to **Timeline**, filter category to **goal**, and point at both real entries, in order:
+- **"Recommendation draft rejected on attempt 1."** (`goal.validation_failed`, agent: `decision-synthesizer`) — the uncited first draft, genuinely refused.
+- **"Recommendation draft validated on attempt 2."** (`goal.validated`, agent: `decision-synthesizer`) — the corrected, source-cited retry that actually reached the case.
+
+**Also point out (back in the main pane, the "Investigation team" panel):** the **Recommendation** row reads **Completed**, not Denied. The rejection genuinely happened — you just watched it in the Timeline — but a specialist's row reports the node's own final outcome, not an attempt it recovered from along the way. A withheld draft is not a permanent verdict.
 
 **Narration:**
-> "Every recommendation Sift drafts goes through GoalLoop — a real validator that can reject a plausible-sounding answer and force a corrected retry, bounded at two attempts. In this run it validated on the first attempt, because by the time synthesis runs, every obligation — including the household-change check — is already resolved. Our automated scenario suite proves the rejection path directly: a deliberately unsupported first draft gets bounced, and the corrected second attempt is what actually gets accepted. That's not a hidden claim — it's a real test in `home-energy-swarm.test.ts`, and it runs in the release gate you'll see near the end of this video."
+> "Every recommendation Sift drafts goes through GoalLoop — a real validator that can reject a plausible-sounding answer and force a corrected retry, bounded at two attempts. Watch it happen on this exact run: the first draft cites nothing, GoalLoop rejects it outright — that's the 'Draft withheld' moment — and the corrected second attempt, the one that actually names its sources, is what reaches the case. That used to be provable only in `home-energy-swarm.test.ts`. Now it's what just happened, on camera, in the product."
 
 ---
 
@@ -69,25 +73,27 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 *(Required beat 4: "Show no-progress steering, specialist handoff, skill switch, thermostat evidence, and source challenge.")*
 
-**On-screen action:** scroll back up the same Activity ledger from beat 2, to the weather-analyst section.
+**On-screen action:** still in the Runtime Inspector **Timeline** from beat 3 (clear the category filter, or set it to **tool**), scroll to the weather-analyst entries.
 
-**Point out (live-verified, exact ledger text):**
-- **"Tool call started" — "Calling tool \"weather-lookup\""** a second time, immediately followed by
-- **"Agent redirected" — "RetrySteering: this search repeats a prior query family without explaining a new angle"**
-- then **"Tool call failed" — "Tool \"weather-lookup\" failed."**
+**Point out (exact Timeline entry text, in order):**
+- **"Calling tool \"weather-lookup\"."** — a second time, immediately followed by
+- **"RetrySteering: this search repeats a prior query family without explaining a new angle"**
+- then **"Tool \"weather-lookup\" failed."**
 
 **Narration:**
 > "Weather-analyst tried the same weather lookup twice with nothing new to say for itself. Watch — Sift's RetrySteering intervention catches that immediately and redirects it, live. That's a real `Guide` intervention, not a retry counter quietly incrementing somewhere."
 
-**Continue scrolling; point out:**
-- **"Specialist started working" — "Swarm node \"home-systems-analyst\" started."**, then **"Skill activated" — "home-event-correlation,"** and tool call **"household-event-lookup."**
-- **"Specialist started working" / "finished" — "Swarm node \"source-challenger\""** immediately after.
+**On-screen action:** close the Runtime Inspector and point at the **Investigation team** panel's **Weather** row: it reads **Completed · Redirected once**. The lookup genuinely failed — you just watched it in the Timeline — but the specialist recovered and finished, and the row says so plainly rather than reporting it as broken.
+
+**Continue, pointing at the panel's remaining rows:**
+- **Home systems — Completed** (a real handoff, and a real skill switch to `home-event-correlation`, which found the thermostat sensor-drift event).
+- **Source check — Completed** immediately after.
 
 **Narration:**
 > "The Swarm hands off to home-systems-analyst — a real handoff, a real skill switch to home-event-correlation — and it finds a thermostat sensor-drift event that started three days into this billing cycle. Source-challenger checks that claim before anyone downstream trusts it."
 
 **On-screen action:** scroll to the Recommendation card. Read the real, live text:
-> "Given the household's current criteria (energy.cost weight 80, energy.conservation weight 20), the lowest-cost options score highest… Recommend monitoring for one more billing cycle (monitor-one-cycle) before taking further action… No inspection is proposed at this weighting."
+> "Given the household's current criteria (energy.cost weight 80, energy.conservation weight 20), the lowest-cost options score highest: monitor-one-cycle and change-rate-plan both score 0.80, versus request-hvac-inspection's 0.47. Recommend monitoring for one more billing cycle (monitor-one-cycle) before taking further action… No inspection is proposed at this weighting."
 
 **Narration:**
 > "Right now, under cost-first priorities, Sift's honest answer is: do nothing yet. That's about to change."
@@ -98,23 +104,19 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 *(Required beat 5: "Show confirmation, snapshot restoration, and human-only proposal approval." Sequence steps 10–13.)*
 
-**On-screen action (see note 6 above):** open **Add or adjust -> Adjust priorities** and reweight the case in the UI, on camera:
-
-**Say to ChatGPT (matches the "WebMCP demo moments — energy moment" line in `docs/specs/webmcp.md`-adjacent spec, exact):**
-> "Long-term waste matters more than the cheapest immediate option."
-
-This calls `sift_update_criteria`. Point out: the Recommendation card's status flips to **"Stale — needs investigation."** Nothing is running yet — `updateCriteria` appends `recommendation.invalidated` and revises the run plan (`apps/agent/src/services/run-plan-service.ts`), it does not start an engine run — which is exactly why the next line on camera is you asking for one.
-
-**Say next:**
-> "Ask Sift to reconsider the response options now that long-term waste matters more."
-
-**What happens (live-verified):** a genuinely revised run fires. Point at the ledger:
-- **"Specialist started working" — "Swarm node \"decision-synthesizer\" started."**
-- **"Tool call started" — "Calling tool \"propose_inspection\"."**
-- **"Your approval needed" — "ConsequenceGuard: tool \"propose_inspection\" creates a consequential artifact and requires human confirmation."**
+**On-screen action (see note 6 above):** open **Add or adjust → Adjust priorities** in the app bar, on camera. The **Priorities** sheet opens with two editable weights — **"Lowest immediate cost"** and **"Long-term waste reduction"** — plus the protected **"No electrical, gas, fire, or medical-equipment emergency risk"** criterion, shown as a stated constraint ("is set by the pack and cannot be reweighted") rather than a control you could try and have refused. Move the weights toward conservation (e.g. cost 20 / conservation 80), watch the **"Weights total"** line update live, and press **Save weights**.
 
 **Narration:**
-> "Watch this exactly — before Sift will even draft a proposal to inspect anything in this household, ConsequenceGuard stops it and requires confirmation. That's a real ConsequenceGuard `Confirm` intervention, not a courtesy dialog bolted on afterward."
+> "Long-term waste matters more than the cheapest immediate option — so I'm telling Sift that directly, in the product. No assistant required."
+
+This calls `updateCriteria` — the exact same command a ChatGPT `sift_update_criteria` call would issue; the visible control and the WebMCP tool share one command implementation. Point out: the Recommendation card's status flips to **"Stale — needs investigation."** Nothing is running yet — `updateCriteria` appends `recommendation.invalidated` and revises the run plan (`apps/agent/src/services/run-plan-service.ts`), it does not start an engine run — which is exactly why the next line on camera is asking for one.
+
+**On-screen action:** press **"Ask Sift to look into this"** again — no special phrasing, no targeted obligation ID needed. The reweight reopens the `energy.response_options` obligation (`ObligationTemplate.dependsOnCriteria`, `packages/packs/src/home-energy-guardian.ts`), which is now the only open obligation on the case, so the plain re-run finds it on its own.
+
+**What happens (verified against source):** a genuinely revised run fires, starting directly at `decision-synthesizer` — the four measured findings (the anomaly, the rate-change attribution, the weather attribution, the thermostat event) stand unchanged; only the synthesis is redone. Watch the **Investigation team** panel's **Recommendation** row run again and complete, then watch the **Approval** card itself appear, reading **"Your approval needed."** That heading exists at all only because `decision-synthesizer` called `propose_inspection` and a real `ConsequenceGuard` `Confirm` intervention gated it on human review before the proposal was ever recorded.
+
+**Narration:**
+> "Watch this exactly — before Sift will even record a proposal to inspect anything in this household, ConsequenceGuard stops it and requires confirmation. That's a real ConsequenceGuard `Confirm` intervention, not a courtesy dialog bolted on afterward."
 
 **Continue:** the run completes. Read the new, live Recommendation text — the model's:
 > "Recommend requesting an HVAC/thermostat inspection (request-hvac-inspection) to address the confirmed thermostat sensor-drift root cause… Under the reweighted conservation-focused criteria this scores highest (0.87) versus monitor-one-cycle (0.20)."
@@ -125,17 +127,17 @@ This calls `sift_update_criteria`. Point out: the Recommendation card's status f
 > "Strongest on Long-term waste reduction: best of the options compared, where higher is better."
 
 **Narration — this is the beat that earns the distinguishing claim:**
-> "Two independent things just agreed. The Swarm's synthesis says the inspection scores 0.87 against 0.20. Sift's deterministic engine, which has never seen a prompt, computed 87% and 20% from the household's own weights. That is not the model grading its own homework — it is a measurement the model happened to describe correctly, and if it had described it incorrectly Sift would have said so on this card."
+> "Two independent things just agreed. The Swarm's synthesis says the inspection scores 0.87 against 0.20. Sift's deterministic engine, which has never seen a prompt, computed 87% and 20% from the household's own weights, measuring every bit of the criteria this household wrote down — that's the '100%' in the sentence above. That is not the model grading its own homework — it is a measurement the model happened to describe correctly, and if it had described it incorrectly Sift would have said so on this card."
 
 **And read the limitation, which is the strongest single line in the demo:**
 > "Long-term waste reduction is what puts Request an HVAC / thermostat inspection ahead. Take it out of the weighting and Switch to a different rate plan comes first instead."
 
 **Narration:**
-> "Sift didn't write that sentence from a template. It removed that one criterion, re-ranked, watched the order actually flip, and only then said it. When no single factor flips the order, it says nothing at all — so when it does speak, it has earned it. And notice the confidence: this recommendation is fully measured and decisively ahead, and it still caps itself below certainty, because coverage only counts the criteria this household actually wrote down."
+> "Sift didn't write that sentence from a template. It removed that one criterion, re-ranked, watched the order actually flip, and only then said it. When no single factor flips the order, it says nothing at all — so when it does speak, it has earned it."
 
 **On-screen action — snapshot/reload proof:** reload the browser tab. Point out the case reloads to the identical state — same recommendation, same pending approval — proving this is durable server state, not client memory.
 
-**On-screen action — human-only approval:** scroll to the **Approval** card, which reads **"Your approval needed"**. Click **Approve** (`data-testid="approval-card-approve"`) yourself. Point out the resulting rotated **"Approved"** stamp and the case header status flipping to **"Decided"** (live-verified).
+**On-screen action — human-only approval:** scroll to the **Approval** card, which reads **"Your approval needed"**. Click **"Choose this"** (`data-testid="approval-card-approve"`) yourself — the `data-testid` still says `approve`, but the visible label deliberately reads "Choose this" (`ApprovalCard.tsx:236`), so read the button, not the test id, when you are on camera. Point out the resulting rotated **"Approved"** stamp and the Recommendation card's own status chip flipping to **"Decided"** (verified against source — `RecommendationCard.tsx`'s `SETTLED_STATUS_META`).
 
 **Narration:**
 > "No inspection got scheduled — Sift doesn't book real-world appointments. What just happened is a human, me, approving that this proposal should exist. The agent built the case for it; only I can say yes."
@@ -151,7 +153,10 @@ This calls `sift_update_criteria`. Point out: the Recommendation card's status f
 **Narration (if skipping):**
 > "This deployment runs its Strands execution locally — no AWS credentials were available at deploy time. That's an honest, documented limitation, not a missing feature: the same code path talks to Bedrock AgentCore's `/ping` and `/invocations` contract the moment credentials exist."
 
-**On-screen action (always record this part):** back in the Runtime Inspector's **Overview** tab, point at the real category/level counts from this run (live-verified example: categories including `context`, `goal`, `intervention`, `model`, `skill`, `swarm`, `tool`, with real counts, zero errors) and the real `trace` ID.
+**On-screen action (always record this part):** open the Runtime Inspector on round 1's run (from beats 2–4 — that is the more interesting one to show here) and point at its **Overview** tab's real category and level counts and the real `trace` ID. **Read what is actually on screen rather than reciting a fixed list.** For round 1 specifically, expect a genuine `error`-level entry (the recovered `weather-lookup` failure from beat 4) and a genuine `warn`-level entry (the withheld draft from beat 3), alongside everything that completed cleanly — this is not a defect to explain away.
+
+**Narration:**
+> "This isn't a sanitized trace. That one real error and one real warning are the exact RetrySteering redirect and the withheld draft you just watched happen. Both genuinely occurred, both are visible right here, and the run still finished and produced a sourced recommendation. Nothing here is cleaned up after the fact."
 
 **On-screen action — release report:** in a terminal, show `artifacts/verification/latest/report.json` (or run `pnpm verify` fresh if time allows) — point at `"status": "passed"` and the real `gitSha` matching your submitted commit.
 
@@ -179,4 +184,6 @@ This calls `sift_update_criteria`. Point out: the Recommendation card's status f
 - [ ] The AgentCore/CloudWatch sub-beat either shows real deployed evidence or is honestly narrated as skipped — never staged.
 - [ ] The release-report shot shows the real `pnpm verify` or `pnpm verify:release` report you actually regenerated, and narration matches which one it is — never a claim that `verify:release` is still a stub (see the note above; it is real now).
 - [ ] No beat claims "Draft withheld" happened live if it did not actually appear on screen during your take.
+- [ ] The reweight beat (beat 5) is recorded entirely in the UI — **"Add or adjust → Adjust priorities" → Save weights → "Ask Sift to look into this"**. No ChatGPT dialogue, no DevTools console, and no direct API call appear anywhere in this video.
+- [ ] Beat 3's Runtime Inspector shot shows both the real `goal.validation_failed` (attempt 1) and `goal.validated` (attempt 2) entries — never only one of the two, and never a claim that round 1 "validated on attempt 1."
 - [ ] Upload publicly and confirm playback in a signed-out/incognito window before submitting.
