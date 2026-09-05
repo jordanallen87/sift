@@ -285,12 +285,33 @@ Every authoring action emits the same normalized skill, tool, intervention, vali
 
 ## Models and configuration
 
-- Default runtime provider: Amazon Bedrock.
+- Configured runtime provider: Amazon Bedrock.
 - Default model: `global.anthropic.claude-sonnet-4-6`.
 - Override: `SIFT_MODEL_ID`.
 - Region: `AWS_REGION`, default `us-east-1`.
 - Deterministic tests use a scripted `ModelProvider` test double and never call Bedrock.
 - Live tests use low temperature, bounded tokens, and invariant assertions rather than exact prose matching.
+
+**What actually ships, as of 2026-09-05.** The Bedrock provider is built and unit-tested
+(`apps/agent/src/runtime/model-provider.ts`'s `createBedrockModel`/`resolveModelProvider`, backed by
+the real `BedrockModel` class from `@strands-agents/sdk`) but **is not reached by any production code
+path**. Both hero engines construct their scripted provider unconditionally —
+`home-energy-engine.ts` passes `modelFor: scriptedModelFor(providers)` and `car-purchase-engine.ts`
+calls `buildCarPurchaseScriptedProviders()` — with no branch on `SIFT_MODEL_ID`, `AWS_REGION`, or
+credential availability. `resolveModelProvider`'s only callers are in
+`model-provider.test.ts`. So "default runtime provider" above describes the configured intent and the
+code that exists to honor it, not the behavior of a running deployment: **every run, local and
+deployed, is scripted**.
+
+This is deliberate for the deterministic release gates (CLAUDE.md: "Fixture mode must execute the
+complete product without network access after installation", and a local fake "may replace the model
+and external data, but it may not replace the Strands orchestration being claimed" — which holds
+here, since the scripted provider is a real Strands `Model` subclass driving the actual `Agent`
+loop, tool-calling, and structured-output validation). It is **not** deliberate that no live path is
+wired at all; that remains genuinely unfinished work, blocked on AWS credentials that do not exist in
+this build environment. Anything published about Sift must therefore not claim a live Bedrock
+inference path — see `docs/submissions/agents-for-humans/submission-details.md`'s Built-with entry,
+which is qualified accordingly.
 
 ## AgentCore contract
 

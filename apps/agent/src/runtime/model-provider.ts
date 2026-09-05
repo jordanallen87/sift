@@ -5,6 +5,19 @@
  * for CI ("Deterministic tests use a scripted `ModelProvider` test double
  * and never call Bedrock").
  *
+ * **`createBedrockModel`/`resolveModelProvider` are not wired into any
+ * production path as of 2026-09-05.** Their only callers are in
+ * `model-provider.test.ts`. Both hero engines construct their scripted
+ * provider unconditionally (`home-energy-engine.ts`'s
+ * `modelFor: scriptedModelFor(providers)`, `car-purchase-engine.ts`'s
+ * `buildCarPurchaseScriptedProviders()`), with no branch on config or
+ * credential availability -- so every run, local and deployed, is scripted.
+ * This is stated here rather than left to be inferred from a grep, because
+ * the phrase "for live runs" above otherwise reads as a description of
+ * shipped behavior. Wiring the live path is genuinely unfinished work
+ * blocked on AWS credentials; see docs/specs/strands-runtime.md
+ * "What actually ships".
+ *
  * `ScriptedModelProvider` is a real Strands `Model` subclass (extends the
  * abstract `Model<BaseModelConfig>` from `@strands-agents/sdk`, implements
  * `updateConfig`/`getConfig`/`stream`) -- not a look-alike standing in for

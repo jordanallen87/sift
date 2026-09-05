@@ -157,7 +157,12 @@ Replace this draft with the exact public URL, scenario control labels, AgentCore
 ## Built-with draft
 
 - Strands Agents SDK for TypeScript
-- Amazon Bedrock
+- Amazon Bedrock — **list only with the qualification below.** The Bedrock provider is built and
+  unit-tested (`apps/agent/src/runtime/model-provider.ts`, using the SDK's real `BedrockModel`), and
+  `SIFT_MODEL_ID`/`AWS_REGION` configure it, but no production code path reaches it: both hero
+  engines construct their scripted provider unconditionally, so every run — local and deployed — is
+  scripted. Listing "Amazon Bedrock" unqualified would claim a live inference path this build does
+  not have. See `docs/specs/strands-runtime.md` "What actually ships".
 - Amazon Bedrock AgentCore, only if actually deployed
 - TypeScript
 - React
