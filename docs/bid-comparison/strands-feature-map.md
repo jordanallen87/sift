@@ -35,6 +35,16 @@ Baseline for each row is what `docs/submissions/agents-for-humans/claim-evidence
 
 ## The two honest losses
 
+> **Revised 2026-09-06, after reading the track descriptions verbatim.** This loss is
+> **Everyday-specific and disappears in the Professional framing.** The Everyday track's
+> defining sentence is "the best ones run quietly in the background and only ping you when
+> there's a real decision to make." The Professional track asks for something different
+> entirely — "an agent that makes someone dramatically better at the work they already do,
+> professionals, makers, creators, small-business owners. Target the repetitive,
+> judgment-heavy tasks that eat their day" — with **no autonomy language at all**. Bids
+> arriving because you asked for them is not a gap against a track that never asked for a
+> trigger. Read the loss below as scoped to an Everyday submission.
+
 **1. There is no background trigger.** Energy opens itself: a bill feed arrives, `evaluateBillFeed` finds 42% over baseline, and a case exists without anyone asking. That is the strongest evidence for "works quietly and surfaces you only for a real decision," and it maps to the Everyday track description almost word for word.
 
 Bids arrive because you went and asked for them. There is no honest analogue, and **we should not invent one** — a fake "we noticed your quotes came in" watcher would be exactly the kind of staged autonomy the rest of this project refuses.

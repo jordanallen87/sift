@@ -25,7 +25,25 @@ You get three quotes for the same job. One is cheaper. Is it a better deal, or i
 
 **1. The novelty is not extraction.** Reading three PDFs and building a comparison table is a solved, commoditised product. What no incumbent does is *refuse to rank* until the comparison is fair. That is this engine's actual differentiator and it survives contact with the competition.
 
-**2. The track question is not settled by this pack.** The same pack serves both framings, the way `car-purchase` already serves `family-novice` and `landscaping-owner`:
+**2. The two packs are not competing for one slot — each fits a different track by
+construction.** From the track text verbatim: Everyday wants agents that "run quietly in the
+background and only ping you when there's a real decision to make"; Professional wants an
+agent that "makes someone dramatically better at the work they already do, professionals,
+makers, creators, **small-business owners**... repetitive, judgment-heavy tasks that eat
+their day."
+
+Energy's strongest property — a case that opens itself from a bill feed — is the Everyday
+sentence almost word for word. The bid pack's only real weakness, having no background
+trigger, is measured against that same sentence and **disappears entirely** against a track
+that never asks for one. Meanwhile "small-business owners" names precisely the segment the
+bid-leveling incumbents do not serve.
+
+So the decision is not "is the bid pack good enough." It is **which pairing is stronger**:
+energy into a track it fits by definition but which is likely the most crowded, or bids into
+a thinner track whose description names the exact underserved user and asks for nothing this
+pack lacks.
+
+**2b. Either framing works from one pack.** The same pack serves both framings, the way `car-purchase` already serves `family-novice` and `landscaping-owner`:
 
 - homeowner comparing three quotes → **Everyday** (daily life, home, money) — unserved problem, busier track
 - contractor levelling sub bids → **Professional** (repetitive, judgment-heavy) — thinner track, but a domain with AI incumbents a judge may recognise
