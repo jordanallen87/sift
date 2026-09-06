@@ -72,6 +72,23 @@ export interface ScriptedModelProviderConfig {
   /** Deterministic ID source for auto-generated `toolUseId`s. Defaults to an internal monotonic counter -- still fully deterministic, just not shared with the rest of the run's ID space. */
   idGenerator?: IdGenerator;
   modelId?: string;
+  /**
+   * Milliseconds to wait before serving each turn. **Defaults to 0, and
+   * every test and gate leaves it there** -- determinism and suite runtime
+   * are unaffected.
+   *
+   * It exists for one honest reason. A scripted turn returns instantly,
+   * because there is no inference to wait for: a complete six-specialist
+   * Home Energy investigation emits 81 public activity events in ~1.05s
+   * end to end (measured against the deployed service). A real Bedrock
+   * turn takes seconds, so the *shape* a person would actually watch --
+   * specialists arriving one at a time, a log filling in -- is collapsed
+   * into a blink by the fixture, not by the product. Pacing restores that
+   * shape for a demo recording. It adds latency to a model call that would
+   * really have latency; it does not fabricate work, and every event, count
+   * and ordering is identical with it on or off.
+   */
+  turnDelayMs?: number;
 }
 
 function defaultIdGenerator(): IdGenerator {
@@ -91,6 +108,7 @@ export class ScriptedModelProvider extends Model<BaseModelConfig> {
   private readonly beats: Map<string, ScriptedTurn[]>;
   private readonly cursors = new Map<string, number>();
   private readonly idGenerator: IdGenerator;
+  private turnDelayMs: number;
   private currentBeat: string | undefined;
 
   /** Every call this provider has served, in order, including the exact `messages` array and `StreamOptions` (system prompt, tool specs) the agent sent -- for test assertions that plugin-injected content (skill metadata, Context Injector text) genuinely reached the model input. */
@@ -100,7 +118,13 @@ export class ScriptedModelProvider extends Model<BaseModelConfig> {
     super();
     this.beats = new Map(Object.entries(config.beats));
     this.idGenerator = config.idGenerator ?? defaultIdGenerator();
+    this.turnDelayMs = config.turnDelayMs ?? 0;
     this.config = { modelId: config.modelId ?? 'sift-scripted-model' };
+  }
+
+  /** Sets the per-turn pacing delay after construction, so a bundle of providers built by a shared factory can be paced as a group. 0 disables it. */
+  setTurnDelayMs(ms: number): void {
+    this.turnDelayMs = Math.max(0, ms);
   }
 
   /** Selects which beat's response queue the next `stream()` call draws from. Must be called before every conceptual step that invokes the agent. */
@@ -121,7 +145,9 @@ export class ScriptedModelProvider extends Model<BaseModelConfig> {
     return this.config;
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- `Model.stream` is contractually async (`AsyncIterable<ModelStreamEvent>`); this scripted implementation has nothing to genuinely await, by design (zero network/I/O).
+  // The `require-await` suppression that used to sit here is gone on purpose:
+  // with `turnDelayMs` this method genuinely awaits, so the claim it carried --
+  // "nothing to genuinely await, by design" -- stopped being true.
   override async *stream(
     messages: Message[],
     options?: StreamOptions,
@@ -130,6 +156,9 @@ export class ScriptedModelProvider extends Model<BaseModelConfig> {
       throw new Error(
         'ScriptedModelProvider: setBeat(beatId) must be called before invoking the agent',
       );
+    }
+    if (this.turnDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.turnDelayMs));
     }
     const beat = this.currentBeat;
     const queue = this.beats.get(beat);

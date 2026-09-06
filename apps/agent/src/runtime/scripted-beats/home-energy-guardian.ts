@@ -508,14 +508,21 @@ export interface HomeEnergySwarmScriptedProviders extends Record<
  * scenario). The caller calls `provider.setBeat(...)` on every provider it
  * intends to exercise before invoking the Swarm.
  */
-export function buildHomeEnergySwarmScriptedProviders(): HomeEnergySwarmScriptedProviders {
+export function buildHomeEnergySwarmScriptedProviders(
+  /** Optional demo pacing, forwarded to every provider. 0 (the default) is what every test and gate uses -- see `ScriptedModelProvider.turnDelayMs`. */
+  turnDelayMs = 0,
+): HomeEnergySwarmScriptedProviders {
+  const paced = <T extends ScriptedModelProvider>(provider: T): T => {
+    provider.setTurnDelayMs(turnDelayMs);
+    return provider;
+  };
   return {
-    'anomaly-investigator': buildAnomalyInvestigatorProvider(),
-    'rate-analyst': buildRateAnalystProvider(),
-    'weather-analyst': buildWeatherAnalystProvider(),
-    'home-systems-analyst': buildHomeSystemsAnalystProvider(),
-    'source-challenger': buildSourceChallengerProvider(),
-    'decision-synthesizer': buildDecisionSynthesizerProvider(),
+    'anomaly-investigator': paced(buildAnomalyInvestigatorProvider()),
+    'rate-analyst': paced(buildRateAnalystProvider()),
+    'weather-analyst': paced(buildWeatherAnalystProvider()),
+    'home-systems-analyst': paced(buildHomeSystemsAnalystProvider()),
+    'source-challenger': paced(buildSourceChallengerProvider()),
+    'decision-synthesizer': paced(buildDecisionSynthesizerProvider()),
   };
 }
 

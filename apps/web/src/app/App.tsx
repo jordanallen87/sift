@@ -522,6 +522,8 @@ export function App() {
    * reopens exactly the content just dismissed.
    */
   const helpButtonRef = useRef<HTMLButtonElement>(null);
+  /** Set when the first-run guide is dismissed, cleared once focus reaches the Help control -- see the effect below. */
+  const [helpFocusPending, setHelpFocusPending] = useState(false);
   const [findingsSheetOpen, setFindingsSheetOpen] = useState(false);
   // ADR 0008 sheet-based entry points -- each replaces (expanded mode) or
   // supplements (narrow mode, via the app bar's now-uniform "Add option")
@@ -1550,7 +1552,27 @@ export function App() {
     // before this browser is nagged again.
     markFirstRunGuideSeen();
     setFirstRunGuideOpen(false);
+    setHelpFocusPending(true);
   }, []);
+
+  // The guide can be dismissed before the workspace has finished loading,
+  // and the app bar -- which owns the Help control focus is handed back to
+  // -- only renders once `snapshot` is non-null. Dismiss in that window and
+  // `helpButtonRef.current` is genuinely null, so `FirstRunGuide`'s
+  // `onCloseAutoFocus` hands back to Radix, which sends focus to `<body>`:
+  // a keyboard user is left nowhere, with no visible cause, and nothing
+  // ever recovers it because the Help control mounts afterwards.
+  //
+  // This claims the focus once the control actually exists. It fires only
+  // after a real dismissal, and clears itself immediately, so it can never
+  // steal focus from something a person chose later.
+  useEffect(() => {
+    if (!helpFocusPending) return;
+    const target = helpButtonRef.current;
+    if (target === null) return;
+    if (document.activeElement !== target) target.focus();
+    setHelpFocusPending(false);
+  }, [helpFocusPending, snapshot]);
 
   // Runtime Inspector open/close/navigate handlers (Task A5 / I2b). Every
   // entry point funnels through these three so `runtimeInspectorOpen`/

@@ -2,6 +2,8 @@
 
 Target: **no longer than 5 minutes**, public audio, published video. This script hits, in order, the seven required beats in `docs/specs/demos-and-submission.md` ("Agents for Humans video — no longer than five minutes"). Every quoted UI label and event string below was cross-checked against the actual component source and, where noted "(live-verified …)", against the real deployed product on 2026-08-27 using Playwright against `https://sift-hackathon-production.up.railway.app`, and against `apps/agent/src/runtime/home-energy-swarm.test.ts`. Where the live product genuinely cannot do something the spec describes, this script says so plainly and routes around it honestly instead of scripting a moment that won't happen on camera.
 
+> **Before you record: start the service with `SIFT_DEMO_PACING_MS=250`.** Without it there is nothing to watch. A scripted model turn returns instantly, so a complete six-specialist investigation finishes in **298ms** and emits its entire activity stream in about a second — the Investigation team panel snaps to "all done" and the Runtime Inspector's Timeline is already full before you can toggle to it. Measured with pacing at 250: the same run takes **5.8 seconds** and emits 317 events, which reads as live, gives beat 2 something to narrate over, and lets you open the dev view **mid-run** and watch the log tail in. Nothing else changes — identical events, counts and ordering, paced or not. The delay is added to a model call that would really have latency with a live Bedrock model; the fixture is what removed it. See `.env.example`.
+
 **Total runtime budget: 5:00.** Beats below sum to exactly 300 seconds; land under it, not on it.
 
 > **The 2026-09-05 additions push past 300s and you must rebalance before recording.** Three new moments were added that did not exist when the timings were set: the `Deny` / "Action blocked" pair in beat 4 (~20s), the live AgentCore `/invocations` refusal in beat 6 (~30s), and the corrected demo-switch path in beat 7. If you keep all three — and the AgentCore refusal is the strongest single moment in this video for an "Agents for Humans" judge, because it is the authority boundary proved on the one transport an autonomous agent would actually use — take the time back from beat 6's release-report sub-beat (the `report.json` walkthrough narrates what the repository already documents) and from beat 2, which can lose ~15s without losing the Swarm-filling-in shot. **A run over five minutes is disqualifying; the rules cap it, not the taste.** Time a full rehearsal with a stopwatch before the real take.
@@ -51,6 +53,10 @@ Target: **no longer than 5 minutes**, public audio, published video. This script
 
 **Narration:**
 > "Watch the investigation team fill in — bill anomaly, then rate change, then weather — each one a real specialist activating a real Strands Skill and calling real tools, not a canned animation."
+
+**Optional, and the strongest version of this beat if you are comfortable with it — the live dev view:** with pacing on, click **"Inspect run"** *while the run is still going*. The Runtime Inspector tails a live run: its Timeline appends events as they happen and stops polling the moment the run reaches a terminal status. You can watch skill activations, tool calls, interventions and the GoalLoop rejection arrive in real time, then stay in the Inspector as the run completes.
+
+> This is new as of 2026-09-05. The Inspector used to fetch once — its own hook described `refresh()` as something you call "after a run completes" — so opening it mid-run showed a frozen snapshot. If you are recording against a build older than that, open it *after* the run instead, as the beats below assume.
 
 *(Leave this run on screen — you will come back to the rest of it for beats 3 and 4 without re-running anything. The full, permanent, ordered record of every skill activation and tool call is one click away in the Runtime Inspector, opened in beat 3.)*
 

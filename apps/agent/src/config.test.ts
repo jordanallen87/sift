@@ -14,6 +14,7 @@ const DEFAULTS = {
   debugRetentionDays: 7,
   modelId: 'global.anthropic.claude-sonnet-4-6',
   awsRegion: 'us-east-1',
+  demoPacingMs: 0,
   publicOrigin: undefined,
 } as const;
 
@@ -47,6 +48,7 @@ describe('loadConfig', () => {
       debugRetentionDays: 14,
       modelId: 'global.anthropic.claude-sonnet-4-7',
       awsRegion: 'eu-west-1',
+      demoPacingMs: 0,
       publicOrigin: 'https://sift.example.com',
     });
   });

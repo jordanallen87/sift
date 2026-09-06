@@ -75,6 +75,8 @@ export interface SiftConfig {
   debugRetentionDays: number;
   modelId: string;
   awsRegion: string;
+  /** Milliseconds to pace each scripted model turn for a demo recording. 0 = no added latency (the default everywhere except a deliberate recording session). */
+  demoPacingMs: number;
   /** Same-origin (undefined/unset) unless a separate deployed origin is introduced. */
   publicOrigin?: string;
 }
@@ -122,6 +124,13 @@ const ConfigSchema = z.object({
     .preprocess(emptyToUndefined, z.string().min(1).optional())
     .default('global.anthropic.claude-sonnet-4-6'),
   AWS_REGION: z.string().min(1, 'must not be empty').default('us-east-1'),
+  // Demo pacing: milliseconds to wait before each scripted model turn.
+  // 0 (the default, and what every test and gate uses) means no added
+  // latency. See `ScriptedModelProvider.turnDelayMs` for why this exists:
+  // a scripted turn has no inference to wait for, so a full run collapses
+  // into ~1s and cannot be watched. Capped at 2000ms per turn so a
+  // misconfiguration cannot hang a run indefinitely.
+  SIFT_DEMO_PACING_MS: integerFromEnvString(0, 2000).default(0),
   SIFT_PUBLIC_ORIGIN: z.preprocess(emptyToUndefined, z.url().optional()),
 });
 
@@ -155,6 +164,7 @@ export function loadConfig(env: RawEnv = process.env): SiftConfig {
     debugRetentionDays: parsed.SIFT_DEBUG_RETENTION_DAYS,
     modelId: parsed.SIFT_MODEL_ID ?? 'global.anthropic.claude-sonnet-4-6',
     awsRegion: parsed.AWS_REGION,
+    demoPacingMs: parsed.SIFT_DEMO_PACING_MS,
   };
   if (parsed.SIFT_PUBLIC_ORIGIN !== undefined) {
     config.publicOrigin = parsed.SIFT_PUBLIC_ORIGIN;

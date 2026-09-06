@@ -191,6 +191,8 @@ export interface HomeEnergyEngineDeps {
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
   readonly skillsRootDir: string;
+  /** Optional demo pacing in ms per scripted model turn. Omitted/0 everywhere except a deliberate recording session -- see `ScriptedModelProvider.turnDelayMs`. */
+  readonly demoPacingMs?: number;
 }
 
 export interface HomeEnergyEngine extends InvestigationEngine {
@@ -937,7 +939,7 @@ async function runOneInvestigation(
       summary: `Investigation started (${round === 'round1' ? 'initial' : 'revised'} pass).`,
     });
 
-    const providers = buildHomeEnergySwarmScriptedProviders();
+    const providers = buildHomeEnergySwarmScriptedProviders(deps.demoPacingMs ?? 0);
     setScenarioBeat(providers, round);
     const swarmDeps = buildHomeEnergySwarmDepsFromCase(
       initialSnapshot,

@@ -92,6 +92,26 @@ export function FirstRunGuide({ open, onDismiss, returnFocusTo }: FirstRunGuideP
           if (target === null || target === undefined) return;
           event.preventDefault();
           target.focus();
+          // Re-assert once on the next frame. This sheet closes while the
+          // workspace is still streaming its first case events, and a
+          // re-render landing immediately after Radix's close-autofocus can
+          // drop focus back to `<body>` -- leaving a keyboard user nowhere,
+          // with no visible cause. Observed as an intermittent
+          // `first-run-guide.spec.ts` failure where the Help control is
+          // demonstrably mounted (the locator resolves) and simply never
+          // holds focus; it reproduces only under load, at a different
+          // viewport each time.
+          //
+          // Deliberately one frame and one re-assert, guarded on the
+          // element still being connected and not already focused: enough
+          // to survive a single competing render, and incapable of fighting
+          // a person who has deliberately focused something else in the
+          // meantime.
+          requestAnimationFrame(() => {
+            if (target.isConnected && document.activeElement !== target) {
+              target.focus();
+            }
+          });
         }}
       >
         <SheetHeader>

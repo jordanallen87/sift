@@ -134,6 +134,7 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     clock,
     idGenerator,
     skillsRootDir,
+    demoPacingMs: config.demoPacingMs,
   });
   const engines: Readonly<Record<string, InvestigationEngine>> = {
     [carPurchasePack.identity.id]: carPurchaseEngine,

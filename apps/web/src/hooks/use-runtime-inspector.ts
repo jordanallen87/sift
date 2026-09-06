@@ -93,6 +93,12 @@ const RuntimeOverviewSchema = z
   })
   .strict();
 
+/** Run statuses after which nothing further will be appended, so the live tail stops. */
+const TERMINAL_RUN_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
+/** How often the live tail re-reads an in-flight run. Fast enough to read as live, slow enough not to hammer the debug route. */
+const LIVE_POLL_INTERVAL_MS = 400;
+
 const DebugRunResponseSchema = z
   .object({
     overview: RuntimeOverviewSchema,
@@ -249,7 +255,15 @@ export function useRuntimeInspector(
     const baseUrl = config.baseUrl ?? '';
     const fetchImpl = config.fetchImpl ?? fetch;
 
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+    // `loading` is only for the first paint of a run. A live poll must not
+    // flip it, or the Timeline would flash its loading state several times
+    // a second while a run is in flight -- the exact moment a person is
+    // trying to read it.
+    setState((prev) => ({
+      ...prev,
+      loading: prev.overview?.runId !== runId,
+      error: null,
+    }));
 
     // Filters are read off `config` (the current options object) rather
     // than rebuilt from the destructured values, so the Timeline request
@@ -285,6 +299,27 @@ export function useRuntimeInspector(
       cancelled = true;
     };
   }, [runId, category, level, agent, search, origin, refreshToken]);
+
+  // Live tail. The Runtime Inspector used to be a post-mortem viewer: it
+  // fetched once and its own comment described `refresh()` as something you
+  // call "after a run completes". That made the dev view unusable as a thing
+  // to open *during* a run and watch, which is exactly what it is for.
+  //
+  // Polling, not SSE: the public activity stream already owns the real-time
+  // path for the normal workspace, and a second event-stream connection per
+  // open inspector is a lot of moving parts for a panel that is only open
+  // deliberately and only interesting for the seconds a run is in flight.
+  // The poll stops the moment the run reaches a terminal status, so an open
+  // inspector on a finished run costs nothing.
+  const liveStatus = state.overview?.status;
+  const isLive = liveStatus !== undefined && !TERMINAL_RUN_STATUSES.has(liveStatus);
+  useEffect(() => {
+    if (runId === null || !isLive) return;
+    const timer = setTimeout(() => setRefreshToken((token) => token + 1), LIVE_POLL_INTERVAL_MS);
+    return () => clearTimeout(timer);
+    // `state.events.length` re-arms the timer after each poll lands, so the
+    // tail keeps going while the run stays live rather than firing once.
+  }, [runId, isLive, state.events.length]);
 
   return { ...state, refresh, exportRun };
 }

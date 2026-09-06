@@ -67,6 +67,77 @@ function debugHandler(
   });
 }
 
+describe('useRuntimeInspector live tail', () => {
+  // The inspector was a post-mortem viewer: one fetch, and its own comment
+  // called `refresh()` something you use "after a run completes". Opening
+  // the dev view mid-run and watching the log fill in -- the whole point of
+  // a dev view during a demo -- showed a frozen snapshot instead.
+  it('keeps re-reading a run that is still running', async () => {
+    let requests = 0;
+    server.use(
+      http.get(`${BASE_URL}/api/debug/runs/${RUN_ID}`, () => {
+        requests += 1;
+        return HttpResponse.json({
+          overview: buildOverview({ status: 'running', completedAt: null, eventCount: requests }),
+          events: Array.from({ length: requests }, (_, index) => ({
+            ...buildEvent({ sequence: index }),
+            id: `debug-${index}`,
+          })),
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL }));
+
+    await waitFor(() => expect(result.current.events.length).toBeGreaterThanOrEqual(3), {
+      timeout: 5_000,
+    });
+    expect(requests).toBeGreaterThanOrEqual(3);
+  });
+
+  it('stops once the run reaches a terminal status, so a finished run costs nothing', async () => {
+    let requests = 0;
+    server.use(
+      http.get(`${BASE_URL}/api/debug/runs/${RUN_ID}`, () => {
+        requests += 1;
+        return HttpResponse.json({
+          overview: buildOverview({ status: 'completed' }),
+          events: [buildEvent()],
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const afterFirstLoad = requests;
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    expect(requests).toBe(afterFirstLoad);
+  });
+
+  it('does not flash the loading state while tailing a live run', async () => {
+    server.use(
+      http.get(`${BASE_URL}/api/debug/runs/${RUN_ID}`, () =>
+        HttpResponse.json({
+          overview: buildOverview({ status: 'running', completedAt: null }),
+          events: [buildEvent()],
+        }),
+      ),
+    );
+
+    const { result } = renderHook(() => useRuntimeInspector({ runId: RUN_ID, baseUrl: BASE_URL }));
+    await waitFor(() => expect(result.current.overview).not.toBeNull());
+
+    // Once the first paint has landed, subsequent polls must leave `loading`
+    // alone -- otherwise the Timeline strobes its loading state several
+    // times a second at the exact moment someone is reading it.
+    for (let tick = 0; tick < 4; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(result.current.loading).toBe(false);
+    }
+  });
+});
+
 describe('useRuntimeInspector', () => {
   it('does nothing when runId is null', () => {
     const { result } = renderHook(() => useRuntimeInspector({ runId: null, baseUrl: BASE_URL }));
