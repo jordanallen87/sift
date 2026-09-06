@@ -8281,3 +8281,45 @@ Context Injector injections, 4 skill activations, both GoalLoop events and the
 handoff chain. Added to beat 6 as the strongest single moment available, with
 an explicit note that the additions push past 300s and must be rebalanced
 before recording.
+
+## 2026-09-06 — a third pack, and two gates that did their job
+
+Built `bid-comparison` as the AWS hero: three plumbing subcontractor bids for
+one bathroom scope, where the cheapest is cheapest because it is silent on
+$3,700 of required work. `home-energy-guardian` and `car-purchase` both stay
+registered, tested and unchanged.
+
+### Baselines updated deliberately: 12 files, `initial-launcher` only
+
+Adding a third launcher card changed the launcher screen, so
+`initial-launcher` legitimately differs at all six viewports across both
+existing journey specs. Inspected the 390px and 1440px renderings before
+accepting either: at 390 the three example cards stack cleanly with no
+overflow, at 1440 they sit side by side in a balanced row, and the new card's
+copy reads "Put subcontractor bids on the same footing before you award one."
+
+Scoped the regeneration rather than trusting it. Recorded all 78 baseline
+hashes first, ran `--update-snapshots` against only the two affected specs,
+then confirmed the diff was exactly 12 files and all of them
+`initial-launcher`. No other state moved. This is the same trap an earlier
+session fell into and documented -- a blind over-broad `--update-snapshots`
+that regenerated 24 baselines which should not have changed -- so the check
+was explicit this time rather than assumed.
+
+### The secret scanner caught the new pack, and the fix was to conform
+
+`scripts/check-source.ts` flagged the licence source ids
+(`source-license-registry-PL-4417-NG-named-insured`, 48 chars, entropy 4.15)
+as possible secrets. Shortening them to 39 characters did not clear it, so the
+scanner got read properly instead of guessed at a second time. It already
+exempts "a long, strictly-lowercase, multi-segment kebab-case token" as a
+human-readable identifier -- which is why energy's own
+`source-household-event-event-thermostat-failure-2026-07` passes at 55
+characters and entropy 4.07. Only the uppercase licence number broke the
+pattern.
+
+So the identifiers lowercase it, matching the convention the scanner encodes
+and the energy pack already follows. The licence number itself is untouched
+wherever it is data rather than an id. The alternative -- an allowlist entry
+-- is exactly what CLAUDE.md forbids, and this was not a false positive but a
+real naming inconsistency between the new pack and the established one.

@@ -65,7 +65,7 @@ const expectedSequence = z.number().int().min(0);
 // "Demo launcher": "The initial page presents exactly two options ... `car-
 // purchase`/`home-energy-guardian` are the two pack ids those options start.
 
-export const DEMO_IDS = ['car-purchase', 'home-energy-guardian'] as const;
+export const DEMO_IDS = ['car-purchase', 'home-energy-guardian', 'bid-comparison'] as const;
 export type DemoId = (typeof DEMO_IDS)[number];
 
 export const StartDemoInputSchema = z

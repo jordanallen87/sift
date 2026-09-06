@@ -541,50 +541,50 @@ export const CREDENTIAL_CONTEXT: ExecutionResult = {
       stance: 'supports',
       confidence: 0.95,
       sourceIds: [
-        'source-license-registry-PL-4417-NG',
-        'source-license-registry-PL-2290-CS',
-        'source-license-registry-PL-8801-TR-named-insured',
+        'source-license-pl-4417-ng',
+        'source-license-pl-2290-cs',
+        'source-license-pl-8801-tr-named-insured',
       ],
     },
   ],
   evidenceResults: [
     {
-      sourceId: 'source-license-registry-PL-4417-NG',
+      sourceId: 'source-license-pl-4417-ng',
       level: 'E1',
       verdict: 'pass',
       summary:
         'Northgate Plumbing (PL-4417-NG): licence active, Class C-36 Plumbing Contractor (fictional state classification) covers this scope, insurance active.',
     },
     {
-      sourceId: 'source-license-registry-PL-4417-NG-named-insured',
+      sourceId: 'source-license-pl-4417-ng-named-insured',
       level: 'E1',
       verdict: 'pass',
       summary:
         'Certificate of insurance names "Northgate Plumbing", matching the licence holder "Northgate Plumbing".',
     },
     {
-      sourceId: 'source-license-registry-PL-2290-CS',
+      sourceId: 'source-license-pl-2290-cs',
       level: 'E1',
       verdict: 'pass',
       summary:
         'Cedar & Sons (PL-2290-CS): licence active, Class C-36 Plumbing Contractor (fictional state classification) covers this scope, insurance active.',
     },
     {
-      sourceId: 'source-license-registry-PL-2290-CS-named-insured',
+      sourceId: 'source-license-pl-2290-cs-named-insured',
       level: 'E1',
       verdict: 'pass',
       summary:
         'Certificate of insurance names "Cedar & Sons", matching the licence holder "Cedar & Sons".',
     },
     {
-      sourceId: 'source-license-registry-PL-8801-TR',
+      sourceId: 'source-license-pl-8801-tr',
       level: 'E1',
       verdict: 'pass',
       summary:
         'Two Rivers Mechanical Inc (PL-8801-TR): licence active, Class C-36 Plumbing Contractor (fictional state classification) covers this scope, insurance active.',
     },
     {
-      sourceId: 'source-license-registry-PL-8801-TR-named-insured',
+      sourceId: 'source-license-pl-8801-tr-named-insured',
       level: 'E1',
       verdict: 'degraded',
       summary:
@@ -608,7 +608,7 @@ function buildCredentialCheckerProvider(): ScriptedModelProvider {
         structuredOutputTurn({
           agentId: 'schedule-analyst',
           message:
-            "Northgate Plumbing and Cedar & Sons both carry fully valid credentials; Two Rivers Mechanical's insurance certificate does not name its license holder, per source-license-registry-PL-8801-TR-named-insured. Handing off to schedule-analyst to evaluate each bid's start date and duration.",
+            "Northgate Plumbing and Cedar & Sons both carry fully valid credentials; Two Rivers Mechanical's insurance certificate does not name its license holder, per source-license-pl-8801-tr-named-insured. Handing off to schedule-analyst to evaluate each bid's start date and duration.",
           context: CREDENTIAL_CONTEXT,
         }),
       ],
@@ -752,10 +752,10 @@ const DECISION_TEXT_ROUND1_DRAFT =
   "Cedar & Sons offers the lowest total at $14,900.00 (source-bid-cedar), versus Northgate Plumbing's $18,400.00 (source-bid-northgate) and Two Rivers Mechanical's $19,250.00 (source-bid-tworivers). Recommend awarding to Cedar & Sons on lowest price.";
 
 const DECISION_TEXT_ROUND1 =
-  "Correcting for scope: Cedar & Sons' $14,900.00 quote is missing three required items -- permits and inspections ($1,200.00), shower-valve rough-in ($2,100.00), and debris haul-away ($400.00) -- so its scope-normalized adjusted total is $18,600.00 (source-bid-calculator-bid-cedar-adjusted-total), not $14,900.00. That is higher than Northgate Plumbing's adjusted total of $18,400.00 (source-bid-calculator-bid-northgate-adjusted-total), which already prices every required item and carries fully valid license and insurance credentials (source-license-registry-PL-4417-NG). Two Rivers Mechanical's adjusted total is $19,250.00 (source-bid-calculator-bid-tworivers-adjusted-total) and its insurance certificate does not name its license holder (source-license-registry-PL-8801-TR-named-insured), so its credentials do not verify as valid. Recommend awarding to Northgate Plumbing.";
+  "Correcting for scope: Cedar & Sons' $14,900.00 quote is missing three required items -- permits and inspections ($1,200.00), shower-valve rough-in ($2,100.00), and debris haul-away ($400.00) -- so its scope-normalized adjusted total is $18,600.00 (source-bid-calculator-bid-cedar-adjusted-total), not $14,900.00. That is higher than Northgate Plumbing's adjusted total of $18,400.00 (source-bid-calculator-bid-northgate-adjusted-total), which already prices every required item and carries fully valid license and insurance credentials (source-license-pl-4417-ng). Two Rivers Mechanical's adjusted total is $19,250.00 (source-bid-calculator-bid-tworivers-adjusted-total) and its insurance certificate does not name its license holder (source-license-pl-8801-tr-named-insured), so its credentials do not verify as valid. Recommend awarding to Northgate Plumbing.";
 
 const DECISION_TEXT_ROUND2 =
-  'With the household now weighting warranty length and payment risk most heavily, Two Rivers Mechanical scores highest of the three bids (0.81) -- it leads on both upweighted criteria: a 36-month warranty (source-bid-tworivers) and a 20% deposit (source-bid-tworivers), the lowest payment risk of the three. It is still not recommended: its certificate of insurance names "TRM Holdings LLC," not its license holder "Two Rivers Mechanical Inc" (source-license-registry-PL-8801-TR-named-insured), so its credentials do not verify as valid. Of the two bids whose credentials are fully valid, Northgate Plumbing scores highest (0.58 vs. Cedar & Sons\' 0.31) and its scope-normalized adjusted total ($18,400.00, source-bid-calculator-bid-northgate-adjusted-total) remains lower than Cedar & Sons\' ($18,600.00, source-bid-calculator-bid-cedar-adjusted-total). Recommend awarding to Northgate Plumbing. Correcting the named-insured discrepancy on Two Rivers Mechanical\'s certificate of insurance would reopen this recommendation.';
+  'With the household now weighting warranty length and payment risk most heavily, Two Rivers Mechanical scores highest of the three bids (0.81) -- it leads on both upweighted criteria: a 36-month warranty (source-bid-tworivers) and a 20% deposit (source-bid-tworivers), the lowest payment risk of the three. It is still not recommended: its certificate of insurance names "TRM Holdings LLC," not its license holder "Two Rivers Mechanical Inc" (source-license-pl-8801-tr-named-insured), so its credentials do not verify as valid. Of the two bids whose credentials are fully valid, Northgate Plumbing scores highest (0.58 vs. Cedar & Sons\' 0.31) and its scope-normalized adjusted total ($18,400.00, source-bid-calculator-bid-northgate-adjusted-total) remains lower than Cedar & Sons\' ($18,600.00, source-bid-calculator-bid-cedar-adjusted-total). Recommend awarding to Northgate Plumbing. Correcting the named-insured discrepancy on Two Rivers Mechanical\'s certificate of insurance would reopen this recommendation.';
 
 /**
  * `decision-synthesizer`'s round 1 begins with a draft that sounds entirely

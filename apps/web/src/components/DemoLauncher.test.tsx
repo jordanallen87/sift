@@ -22,17 +22,30 @@ function renderLauncher(overrides: Parameters<typeof createFakeSiftCommands>[0] 
 }
 
 describe('DemoLauncher', () => {
-  it('renders the two demo options from product.md, with the exact required labels', () => {
+  it('renders the three demo options, with the exact required labels', () => {
     renderLauncher();
 
     const carOption = screen.getByRole('button', { name: 'Choose our next car' });
     const energyOption = screen.getByRole('button', { name: 'Investigate my energy bill' });
+    const bidOption = screen.getByRole('button', { name: 'Compare these bids' });
 
     expect(carOption).toHaveAttribute('data-testid', 'demo-launcher-car-purchase');
     expect(energyOption).toHaveAttribute('data-testid', 'demo-launcher-home-energy-guardian');
-    // Four buttons total: the help trigger, the primary "Compare vehicles"
-    // action (ADR 0003), and the two unchanged demo cards.
-    expect(screen.getAllByRole('button')).toHaveLength(4);
+    expect(bidOption).toHaveAttribute('data-testid', 'demo-launcher-bid-comparison');
+    // Five buttons total: the help trigger, the primary "Compare vehicles"
+    // action (ADR 0003), and the three demo cards (two pre-existing, one
+    // added for the bid-comparison hero).
+    expect(screen.getAllByRole('button')).toHaveLength(5);
+  });
+
+  it('calls startDemo with the bid-comparison demoId when the third option is clicked', async () => {
+    const user = userEvent.setup();
+    const { commands } = renderLauncher();
+
+    await user.click(screen.getByRole('button', { name: 'Compare these bids' }));
+
+    expect(commands.startDemo).toHaveBeenCalledWith({ demoId: 'bid-comparison' });
+    expect(commands.checkEnergyBillFeed).not.toHaveBeenCalled();
   });
 
   it('renders the Sift logo as decoration, leaving the heading to name the product', () => {

@@ -89,6 +89,12 @@ const DEMO_OPTIONS: readonly DemoOption[] = [
     label: 'Investigate my energy bill',
     description: 'Find out why a utility bill changed and what to do about it.',
   },
+  {
+    demoId: 'bid-comparison',
+    testId: 'demo-launcher-bid-comparison',
+    label: 'Compare these bids',
+    description: 'Put subcontractor bids on the same footing before you award one.',
+  },
 ];
 
 type LauncherStatus =

@@ -8,6 +8,7 @@ export * from './tools/index.js';
 export {
   CAR_PURCHASE_CANDIDATE_IDS,
   HOUSEHOLD_FIT_DEFINITION_ID_TRANSLATION,
+  buildBidComparisonEntities,
   buildCarPurchaseCandidateEntities,
   buildCarPurchaseSeedEvents,
   buildHomeEnergyResponseOptionEntities,

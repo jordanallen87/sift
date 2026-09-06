@@ -76,8 +76,28 @@ export interface LicenseLookupInput extends LoadFixtureOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Deliberately short. `scripts/check-source.ts` flags any 40+ character
+ * `[A-Za-z0-9+_=-]` token whose Shannon entropy reaches 4.0 as a possible
+ * secret, and it evaluates string literals -- which these ids are, both here
+ * and where the scripted beats quote them. `source-license-pl-4417-ng-named-insured`
+ * is 48 characters at entropy 4.15 and tripped it: the uppercase licence
+ * numbers carry enough character diversity to clear the threshold where the
+ * energy pack's all-lowercase ids do not.
+ *
+ * The scanner is right to be blunt about this and must not be softened to
+ * accommodate us, so the identifiers conform instead. It already exempts
+ * "a long, strictly-lowercase, multi-segment kebab-case token (3+
+ * hyphen-joined alphanumeric words)" as a human-readable identifier rather
+ * than a credential -- which is exactly what these are, and exactly the
+ * shape the energy pack's own source ids already use (that is why
+ * `source-household-event-event-thermostat-failure-2026-07` passes at 55
+ * characters and entropy 4.07). Only the uppercase licence number broke the
+ * pattern, so the id lowercases it. The licence number itself is untouched
+ * everywhere it is data rather than an identifier.
+ */
 function licenseSourceId(licenseNumber: string): string {
-  return `source-license-registry-${licenseNumber}`;
+  return `source-license-${licenseNumber.toLowerCase()}`;
 }
 
 function toFacts(entry: LicenseRegistryEntry): LicenseLookupFacts {

@@ -21,8 +21,14 @@ import type { Server } from 'node:http';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Application } from 'express';
-import { compileCarPurchasePack, compileHomeEnergyGuardianPack, PackRegistry } from '@sift/packs';
 import {
+  compileBidComparisonPack,
+  compileCarPurchasePack,
+  compileHomeEnergyGuardianPack,
+  PackRegistry,
+} from '@sift/packs';
+import {
+  buildBidComparisonEntities,
   buildCarPurchaseCandidateEntities,
   buildHomeEnergyResponseOptionEntities,
 } from '@sift/scenarios';
@@ -32,6 +38,10 @@ import type { SiftDatabase } from './db/connection.js';
 import { migrate, type MigrateResult } from './db/migrate.js';
 import { carPurchaseCapabilityCatalog } from './runtime/car-purchase-scenario.js';
 import { createCarPurchaseEngine } from './runtime/car-purchase-engine.js';
+import {
+  bidComparisonCapabilityCatalog,
+  createBidComparisonEngine,
+} from './runtime/bid-comparison-engine.js';
 import {
   createHomeEnergyEngine,
   homeEnergyCapabilityCatalog,
@@ -103,6 +113,13 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     clock,
   );
   registry.register(homeEnergyGuardianPack);
+  // `bid-comparison`'s identical gap (it was built, compiled-pack-tested,
+  // and Swarm-tested but never compiled/registered here at all, so
+  // `POST /api/cases/demo {demoId: "bid-comparison"}` 404'd even before a
+  // launcher card existed to click) is this task's own closure of the same
+  // class of bug for the third pack.
+  const bidComparisonPack = compileBidComparisonPack(bidComparisonCapabilityCatalog(), clock);
+  registry.register(bidComparisonPack);
   const skillsRootDir = fileURLToPath(new URL('../skills', import.meta.url));
 
   const runStore = new SqliteRunStore(database);
@@ -136,9 +153,21 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     skillsRootDir,
     demoPacingMs: config.demoPacingMs,
   });
+  const bidComparisonEngine = createBidComparisonEngine({
+    caseStore,
+    activityStore,
+    runStore,
+    runtimeEventStore,
+    registry,
+    clock,
+    idGenerator,
+    skillsRootDir,
+    demoPacingMs: config.demoPacingMs,
+  });
   const engines: Readonly<Record<string, InvestigationEngine>> = {
     [carPurchasePack.identity.id]: carPurchaseEngine,
     [homeEnergyGuardianPack.identity.id]: homeEnergyEngine,
+    [bidComparisonPack.identity.id]: bidComparisonEngine,
   };
 
   // The continuous RunPlan. Constructed before `commandService` because
@@ -167,6 +196,7 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     demoSeedEntities: {
       'car-purchase': buildCarPurchaseCandidateEntities,
       'home-energy-guardian': buildHomeEnergyResponseOptionEntities,
+      'bid-comparison': buildBidComparisonEntities,
     },
   });
   const runService = new RunService({

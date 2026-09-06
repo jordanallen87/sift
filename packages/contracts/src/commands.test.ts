@@ -32,9 +32,10 @@ import {
 import { z } from 'zod';
 
 describe('StartDemoInputSchema', () => {
-  it('accepts the two demo launcher options', () => {
+  it('accepts the three demo launcher options', () => {
     expect(StartDemoInputSchema.safeParse({ demoId: 'car-purchase' }).success).toBe(true);
     expect(StartDemoInputSchema.safeParse({ demoId: 'home-energy-guardian' }).success).toBe(true);
+    expect(StartDemoInputSchema.safeParse({ demoId: 'bid-comparison' }).success).toBe(true);
   });
 
   it('rejects an unlisted demo id', () => {
