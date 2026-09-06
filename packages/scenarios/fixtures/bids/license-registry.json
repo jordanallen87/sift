@@ -1,0 +1,47 @@
+{
+  "_provenance": "Fictional demo data. This is an invented state contractor-licence registry for the Sift 'bid-comparison' hackathon scenario. No real licensing authority, licence number, business, or insurer is represented.",
+  "entries": [
+    {
+      "licenseNumber": "PL-4417-NG",
+      "licenseHolderName": "Northgate Plumbing",
+      "status": "active",
+      "classCoversScope": true,
+      "class": "Class C-36 Plumbing Contractor (fictional state classification)",
+      "insurance": {
+        "status": "active",
+        "namedInsured": "Northgate Plumbing",
+        "matchesLicenseHolder": true,
+        "policyNumberFictional": "GL-INS-0001-NG"
+      },
+      "note": "Licence active, class covers this scope, and the certificate of insurance names the licence holder exactly."
+    },
+    {
+      "licenseNumber": "PL-2290-CS",
+      "licenseHolderName": "Cedar & Sons",
+      "status": "active",
+      "classCoversScope": true,
+      "class": "Class C-36 Plumbing Contractor (fictional state classification)",
+      "insurance": {
+        "status": "active",
+        "namedInsured": "Cedar & Sons",
+        "matchesLicenseHolder": true,
+        "policyNumberFictional": "GL-INS-0002-CS"
+      },
+      "note": "Licence active, class covers this scope, and the certificate of insurance names the licence holder exactly."
+    },
+    {
+      "licenseNumber": "PL-8801-TR",
+      "licenseHolderName": "Two Rivers Mechanical Inc",
+      "status": "active",
+      "classCoversScope": true,
+      "class": "Class C-36 Plumbing Contractor (fictional state classification)",
+      "insurance": {
+        "status": "active",
+        "namedInsured": "TRM Holdings LLC",
+        "matchesLicenseHolder": false,
+        "policyNumberFictional": "GL-INS-0003-TR"
+      },
+      "note": "Licence active and class covers this scope, but the certificate of insurance names \"TRM Holdings LLC\", not the licence holder \"Two Rivers Mechanical Inc\" -- a discrepancy that needs a human answer before this bid's credentials can be marked verified."
+    }
+  ]
+}

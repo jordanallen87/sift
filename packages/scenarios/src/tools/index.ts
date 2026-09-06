@@ -27,6 +27,9 @@ export {
   HouseholdEventsSchema,
   RateSchedulesSchema,
   ResponseOptionsSchema,
+  BidJobSchema,
+  BidSchema,
+  LicenseRegistrySchema,
 } from './fixture-loader.js';
 export type {
   FixtureName,
@@ -58,6 +61,14 @@ export type {
   Tariff,
   ResponseOptions,
   ResponseOption,
+  BidJob,
+  ScopeLineItemDefinition,
+  Bid,
+  BidLineItem,
+  BidAllowance,
+  BidWarranty,
+  LicenseRegistry,
+  LicenseRegistryEntry,
 } from './fixture-loader.js';
 
 export { isAborted, okResult, notFoundResult, cancelledResult } from './tool-result.js';
@@ -187,3 +198,48 @@ export type {
   BillFeedInput,
   LoadAndEvaluateBillFeedOptions,
 } from './bill-feed-gate.js';
+
+// --- bid-comparison fixture tools ---
+
+export { BID_READER_TOOL_ID, BID_FIXTURE_NAMES, isBidFixtureName, readBid } from './bid-reader.js';
+export type {
+  MoneyAmount as BidMoneyAmount,
+  BidFixtureName,
+  BidReaderResult,
+  BidReaderInput,
+} from './bid-reader.js';
+
+export { SCOPE_DIFFER_TOOL_ID, diffBidScope, compareBidScope } from './scope-differ.js';
+export type {
+  ScopeItemStatus,
+  ScopeItemDiffEntry,
+  BidScopeDiff,
+  ScopeDifferResult,
+  ScopeDifferInput,
+  ScopeDifferJobInput,
+  ScopeDifferBidInput,
+} from './scope-differ.js';
+
+export {
+  BID_CALCULATOR_TOOL_ID,
+  PAYMENT_RISK_NORMAL_MAX_PERCENT,
+  PAYMENT_RISK_ELEVATED_MAX_PERCENT,
+  derivePaymentRisk,
+  calculateBidEconomics,
+} from './bid-calculator.js';
+export type {
+  PaymentRiskBand,
+  KnownAdjustedTotal,
+  UnknownAdjustedTotal,
+  AdjustedTotalResult,
+  BidCalculatorResult,
+  BidCalculatorInput,
+} from './bid-calculator.js';
+
+export { LICENSE_LOOKUP_TOOL_ID, lookupLicense } from './license-lookup.js';
+export type {
+  LicenseInsuranceFacts,
+  LicenseLookupFacts,
+  LicenseLookupResult,
+  LicenseLookupInput,
+} from './license-lookup.js';

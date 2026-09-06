@@ -1,7 +1,8 @@
 /**
  * Internal loader for the fixture JSON files under
- * `packages/scenarios/fixtures/car-purchase/` (Choose Our Next Car) and
- * `packages/scenarios/fixtures/energy/` (Home Energy Guardian).
+ * `packages/scenarios/fixtures/car-purchase/` (Choose Our Next Car),
+ * `packages/scenarios/fixtures/energy/` (Home Energy Guardian), and
+ * `packages/scenarios/fixtures/bids/` (bid comparison).
  *
  * Filesystem access is scoped to `packages/scenarios` deliberately --
  * `packages/core` may never read the filesystem (architecture.md
@@ -37,6 +38,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // `src/tools/fixture-loader.ts` -> `../../fixtures/<pack>`.
 const CAR_PURCHASE_FIXTURES_DIR = join(__dirname, '..', '..', 'fixtures', 'car-purchase');
 const ENERGY_FIXTURES_DIR = join(__dirname, '..', '..', 'fixtures', 'energy');
+const BIDS_FIXTURES_DIR = join(__dirname, '..', '..', 'fixtures', 'bids');
 
 /**
  * Defensive upper bound on a single fixture file's byte size
@@ -735,6 +737,136 @@ export const ResponseOptionsSchema = z
 export type ResponseOptions = z.infer<typeof ResponseOptionsSchema>;
 export type ResponseOption = z.infer<typeof ResponseOptionSchema>;
 
+// --- job.json (bid comparison) ---
+
+const ScopeLineItemDefinitionSchema = z
+  .object({
+    scopeItemId: z.string().min(1),
+    label: z.string().min(1),
+  })
+  .strict();
+
+export const BidJobSchema = z
+  .object({
+    _provenance: z.string(),
+    caseId: z.string().min(1),
+    jobId: z.string().min(1),
+    title: z.string().min(1),
+    trade: z.string().min(1),
+    projectAddressNote: z.string().min(1),
+    summary: z.string().min(1),
+    requiredScopeLineItems: z.array(ScopeLineItemDefinitionSchema).min(1).max(50),
+    biddersInvited: z.array(z.string().min(1)).max(20),
+    note: z.string().optional(),
+  })
+  .strict();
+export type BidJob = z.infer<typeof BidJobSchema>;
+export type ScopeLineItemDefinition = z.infer<typeof ScopeLineItemDefinitionSchema>;
+
+// --- bid-northgate.json / bid-cedar.json / bid-tworivers.json (bid comparison) ---
+
+const BidLineItemSchema = z
+  .object({
+    scopeItemId: z.string().min(1),
+    label: z.string().min(1),
+    amount: MoneyAmountSchema,
+  })
+  .strict();
+
+const BidAllowanceSchema = z
+  .object({
+    id: z.string().min(1),
+    scopeItemId: z.string().min(1).optional(),
+    label: z.string().min(1),
+    amount: MoneyAmountSchema,
+    note: z.string().optional(),
+  })
+  .strict();
+
+const BidWarrantySchema = z
+  .object({
+    present: z.boolean(),
+    termMonths: z.number().int().positive().nullable(),
+    statedInWriting: z.boolean(),
+    note: z.string().optional(),
+  })
+  .strict();
+
+const BidShape = z
+  .object({
+    _provenance: z.string(),
+    caseId: z.string().min(1),
+    bidId: z.string().min(1),
+    jobId: z.string().min(1),
+    contractorName: z.string().min(1),
+    licenseNumber: z.string().min(1),
+    total: MoneyAmountSchema,
+    lineItems: z.array(BidLineItemSchema).min(1).max(20),
+    depositPercent: z.number().finite().min(0).max(100),
+    warranty: BidWarrantySchema,
+    startInWeeks: z.number().finite().positive(),
+    durationWorkingDays: z.number().int().positive(),
+    allowances: z.array(BidAllowanceSchema).max(20),
+  })
+  .strict();
+
+/**
+ * Line items must sum exactly to the stated total -- this is obligation
+ * `bid.price_verification` from the bid-comparison build plan
+ * (docs/bid-comparison/plan.md), enforced once at load time (the same
+ * "join checked here, not by every consumer" judgment call as
+ * `SafetyReliabilitySourcesSchema`'s sourceId cross-check above) so no
+ * bid-reading tool needs its own defensive re-addition of a bid's own line
+ * items before trusting its total.
+ */
+export const BidSchema = BidShape.superRefine((bid, ctx) => {
+  const lineItemSum = bid.lineItems.reduce((sum, item) => sum + item.amount.amount, 0);
+  const roundedSum = Math.round(lineItemSum * 100) / 100;
+  if (Math.abs(roundedSum - bid.total.amount) > 0.005) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['lineItems'],
+      message: `line items sum to ${roundedSum} but total.amount is ${bid.total.amount}`,
+    });
+  }
+});
+export type Bid = z.infer<typeof BidSchema>;
+export type BidLineItem = z.infer<typeof BidLineItemSchema>;
+export type BidAllowance = z.infer<typeof BidAllowanceSchema>;
+export type BidWarranty = z.infer<typeof BidWarrantySchema>;
+
+// --- license-registry.json (bid comparison) ---
+
+const LicenseInsuranceSchema = z
+  .object({
+    status: z.string().min(1),
+    namedInsured: z.string().min(1),
+    matchesLicenseHolder: z.boolean(),
+    policyNumberFictional: z.string().min(1),
+  })
+  .strict();
+
+const LicenseRegistryEntrySchema = z
+  .object({
+    licenseNumber: z.string().min(1),
+    licenseHolderName: z.string().min(1),
+    status: z.string().min(1),
+    classCoversScope: z.boolean(),
+    class: z.string().min(1),
+    insurance: LicenseInsuranceSchema,
+    note: z.string().optional(),
+  })
+  .strict();
+
+export const LicenseRegistrySchema = z
+  .object({
+    _provenance: z.string(),
+    entries: z.array(LicenseRegistryEntrySchema).min(1).max(50),
+  })
+  .strict();
+export type LicenseRegistry = z.infer<typeof LicenseRegistrySchema>;
+export type LicenseRegistryEntry = z.infer<typeof LicenseRegistryEntrySchema>;
+
 // --- registry, pure parsing, and disk-backed loader with in-memory cache ---
 
 const FIXTURE_SCHEMAS = {
@@ -756,6 +888,11 @@ const FIXTURE_SCHEMAS = {
   'household-events': HouseholdEventsSchema,
   'rate-schedules': RateSchedulesSchema,
   'response-options': ResponseOptionsSchema,
+  job: BidJobSchema,
+  'bid-northgate': BidSchema,
+  'bid-cedar': BidSchema,
+  'bid-tworivers': BidSchema,
+  'license-registry': LicenseRegistrySchema,
 } as const;
 
 export const FIXTURE_NAMES = Object.keys(FIXTURE_SCHEMAS) as FixtureName[];
@@ -775,6 +912,11 @@ const FIXTURE_PACK_DIR: Record<FixtureName, string> = {
   'household-events': ENERGY_FIXTURES_DIR,
   'rate-schedules': ENERGY_FIXTURES_DIR,
   'response-options': ENERGY_FIXTURES_DIR,
+  job: BIDS_FIXTURES_DIR,
+  'bid-northgate': BIDS_FIXTURES_DIR,
+  'bid-cedar': BIDS_FIXTURES_DIR,
+  'bid-tworivers': BIDS_FIXTURES_DIR,
+  'license-registry': BIDS_FIXTURES_DIR,
 };
 
 export type FixtureName = keyof typeof FIXTURE_SCHEMAS;

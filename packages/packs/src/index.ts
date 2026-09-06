@@ -75,3 +75,7 @@ export {
   HOME_ENERGY_GUARDIAN_MANIFEST,
   compileHomeEnergyGuardianPack,
 } from './home-energy-guardian.js';
+
+// The real `bid-comparison@1.0.0` Decision Pack manifest ("Bid Comparison"):
+// docs/bid-comparison/plan.md.
+export { BID_COMPARISON_MANIFEST, compileBidComparisonPack } from './bid-comparison.js';
