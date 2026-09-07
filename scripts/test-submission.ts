@@ -370,7 +370,11 @@ export function checkFixtureAttribution(rootDir: string): SubmissionCheckResult 
 }
 
 // --- 7. Deterministic scenario reports present and passed ---
-export const HERO_SCENARIO_IDS = ['car-purchase', 'home-energy-guardian'] as const;
+export const HERO_SCENARIO_IDS = [
+  'car-purchase',
+  'home-energy-guardian',
+  'bid-comparison',
+] as const;
 
 export function checkScenarioReport(rootDir: string, scenarioId: string): SubmissionCheckResult {
   const name = `scenario-report:${scenarioId}`;

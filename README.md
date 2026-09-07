@@ -32,7 +32,7 @@ Hackathon).
 ## Contents
 
 - [Quickstart](#quickstart)
-- [The two demos](#the-two-demos)
+- [The three demos](#the-three-demos)
 - [WebMCP](#webmcp)
 - [Architecture](#architecture)
 - [How the ranking works](#how-the-ranking-works)
@@ -146,10 +146,10 @@ screen; both surfaces render one shared module,
 
 ---
 
-## The two demos
+## The three demos
 
 Open the app. The launcher shows one primary action, **"Compare vehicles"**, and below it, under
-**"Or try a finished example,"** the two hero demos.
+**"Or try a finished example,"** the three finished demos.
 
 ### Choose Our Next Car (the WebMCP hero)
 
@@ -160,7 +160,44 @@ The answer-first hero, the workspace view switcher (Quick Pick / List / Compare 
 readiness state, and the findings all update in real time from the same server-sent event stream.
 You can edit criteria and candidates and review the resulting recommendation as it forms.
 
-### Home Energy Guardian (the AWS/Strands hero)
+### Compare these bids (the AWS/Strands hero)
+
+Click **"Compare these bids"**. Three plumbing bids for one bathroom remodel: Northgate at
+$18,400, Cedar & Sons at $14,900, Two Rivers at $19,250. One is $3,500 cheaper. The question the
+pack exists to answer is whether that is a better deal or simply less work priced.
+
+This runs a real bounded Strands Swarm across six specialists — scope analyst, price analyst,
+credential checker, schedule analyst, source challenger, decision synthesizer. **All four Strands
+control-flow beats fire in a single first run**, which is what makes it the hero:
+
+- **A tool call is refused.** `price-analyst` reaches for `license-lookup`, a tool this pack grants
+  only to `credential-checker`, and a real `ScopeAuthorization` intervention denies it before it
+  runs. The activity stream says _"Action blocked"_ — and deliberately does **not** report a tool
+  failure, because a refusal is not an error.
+- **An agent is redirected mid-run.** `scope-analyst` compares the same pair of bids twice with no
+  new angle, `RetrySteering` sends it to the third bid, and the specialist row reads
+  _"Redirected once"_.
+- **The obvious answer is rejected.** The first synthesis ranks the bids on their raw quoted totals.
+  The real `GoalLoop` validator throws it out — not because it is badly written, but because the
+  bids are not on a common scope basis, so ranking them would be false.
+- **A consequential action stops for a human.** `propose_award` is gated by a real
+  `ConsequenceGuard`. The proposal sits pending with no approving actor until a person acts. Sift
+  recommends; you award.
+
+Then the arithmetic anyone can follow: Cedar's $14,900 is silent on permits and inspections
+($1,200), the shower-valve rough-in ($2,100), and debris haul-away ($400). Scope-normalized, it is
+**$18,600 — more than the $18,400 bid it appeared to beat.**
+
+Two things are worth doing yourself. First, note that Sift names a winner and **still refuses to
+close two questions**: Cedar's scope comparison came back incomplete and Two Rivers' insurance
+certificate names a different company than its licence holder. Evidence here is fail-closed, so a
+degraded answer does not get to count as settled. Second, open **Add or adjust → Adjust
+priorities**, raise warranty term and payment risk, and re-run. Two Rivers now scores highest of
+the three — 81%, the largest number on the page — and still does not win, because credentials are a
+hard constraint rather than a preference. It is not hidden either: it stays ranked at #3 of 3 with
+its score showing and the words _"Flagged, not removed — still ranked, and still yours to decide."_
+
+### Home Energy Guardian (a Strands Swarm that opens its own case)
 
 Click **"Investigate my energy bill"**. A bill has posted at $248.50 against a weather-normalized
 baseline of $175.00 — 42% over — and the case is already open before anyone is asked anything.
@@ -187,7 +224,7 @@ changing what you value does not un-measure anything. Only the synthesis is redo
 
 ### The Runtime Inspector
 
-Either demo can be opened up. Click the **"Developer view"** icon in the case header (always
+Any of the three demos can be opened up. Click the **"Developer view"** icon in the case header (always
 available once a case is open, no run required), or **"Inspect run"** in the hero once a run is
 active, which pre-targets the inspector at that specific run.
 
@@ -461,7 +498,7 @@ that. See [`docs/decisions/0012-deterministic-scoring-and-insights.md`](docs/dec
 ### A generic engine, not a car tool
 
 A **Decision Pack** supplies the vocabulary, defaults, and orchestration for one class of decision;
-a **case** is one person's use of a pinned pack version. The two hero packs are not the limit of
+a **case** is one person's use of a pinned pack version. The three built-in packs are not the limit of
 the architecture.
 
 Inside a comparison-shaped case, the workspace offers four ways to work — **Quick Pick**
@@ -696,7 +733,7 @@ Run `pnpm install` without the flag to regenerate `pnpm-lock.yaml`, then re-run 
 confirm it is reproducible.
 
 **Do I need API keys, an AWS account, or network access?**
-No. Fixture mode executes the complete product offline after install. The two hero demos, the
+No. Fixture mode executes the complete product offline after install. All three demos, the
 vehicle catalog, the deterministic scoring engine, the Runtime Inspector, and the entire
 `pnpm verify` gate all run with no network and no credentials. AWS is only needed for the optional
 `agentcore` execution target.
