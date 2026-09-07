@@ -4,6 +4,7 @@ import {
   PAYMENT_RISK_ELEVATED_MAX_PERCENT,
   PAYMENT_RISK_NORMAL_MAX_PERCENT,
   calculateBidEconomics,
+  computeAdjustedTotal,
   derivePaymentRisk,
   type BidCalculatorResult,
   type KnownAdjustedTotal,
@@ -32,6 +33,37 @@ const CEDAR_PLUG_NUMBERS = {
   'shower-valve-rough-in': 2100,
   'debris-haul-away': 400,
 };
+
+describe('BID_CALCULATOR_TOOL_ID', () => {
+  it('names the tool id exactly, at the documented literal value', () => {
+    // Hardcoded, not `expect(BID_CALCULATOR_TOOL_ID).toBe(BID_CALCULATOR_TOOL_ID)` --
+    // comparing the constant to itself can never fail no matter what value
+    // it holds, which is exactly the kind of test gap that let a mutant
+    // collapse this constant to "" survive elsewhere in this file.
+    expect(BID_CALCULATOR_TOOL_ID).toBe('bid-calculator');
+  });
+});
+
+describe('computeAdjustedTotal (pure)', () => {
+  it('with zero absent items, returns the quoted total UNTOUCHED by round2 -- not recomputed through round2(amount + 0)', () => {
+    // A sub-cent amount distinguishes the `absentItemIds.length === 0`
+    // fast-path spread-copy return from the general path's
+    // `round2(quotedTotal.amount + 0)`, which would round 100.004 down to
+    // 100. The real bid fixtures never carry a sub-cent total, so this
+    // fast path is otherwise unreachable through `calculateBidEconomics`.
+    const result = computeAdjustedTotal({ amount: 100.004, currency: 'USD' }, [], {});
+    expect(result).toEqual({ status: 'known', value: { amount: 100.004, currency: 'USD' } });
+  });
+
+  it('with one or more absent items, computes the plug-adjusted total via round2', () => {
+    const result = computeAdjustedTotal(
+      { amount: 100, currency: 'USD' },
+      ['item-a'],
+      { 'item-a': 50.005 },
+    );
+    expect(result).toEqual({ status: 'known', value: { amount: 150.01, currency: 'USD' } });
+  });
+});
 
 describe('derivePaymentRisk', () => {
   it('names the two threshold constants exactly once, at the documented values', () => {
@@ -114,6 +146,14 @@ describe('calculateBidEconomics -- Cedar & Sons (the flip)', () => {
       new Set(['permits-inspections', 'shower-valve-rough-in', 'debris-haul-away']),
     );
     expect(result.data.adjustedTotal.reason.length).toBeGreaterThan(0);
+    // The reason names all 3 missing ids, comma-separated, in the job's
+    // own required-scope order (shower valve rough-in, then permits, then
+    // debris haul-away) -- pinning the real separator so a mutant that
+    // empties `.join(', ')` to `.join('')` cannot survive by still
+    // matching three independent `toContain` checks.
+    expect(result.data.adjustedTotal.reason).toContain(
+      'shower-valve-rough-in, permits-inspections, debris-haul-away',
+    );
     // Never coalesced to the quoted total or to 0 -- there is no "value" key
     // on the unknown variant at all.
     expect(result.data.adjustedTotal).not.toHaveProperty('value');
@@ -203,6 +243,7 @@ describe('calculateBidEconomics -- evidence summaries carry the real figures', (
     const adjustedTotalItem = result.data.evidence.find((item) =>
       item.sourceId.endsWith('-adjusted-total'),
     );
+    expect(adjustedTotalItem?.level).toBe('E3');
     expect(adjustedTotalItem?.verdict).toBe('degraded');
     expect(adjustedTotalItem?.summary).toContain('$14,900.00');
     expect(adjustedTotalItem?.summary).toContain('unknown');
@@ -210,16 +251,21 @@ describe('calculateBidEconomics -- evidence summaries carry the real figures', (
     const scopeItem = result.data.evidence.find((item) =>
       item.sourceId.endsWith('-scope-completeness'),
     );
+    expect(scopeItem?.level).toBe('E3');
+    expect(scopeItem?.verdict).toBe('pass');
     expect(scopeItem?.summary).toContain('5 of 8');
     expect(scopeItem?.summary).toContain('62.5%');
 
     const paymentRiskItem = result.data.evidence.find((item) =>
       item.sourceId.endsWith('-payment-risk'),
     );
+    expect(paymentRiskItem?.level).toBe('E3');
+    expect(paymentRiskItem?.verdict).toBe('pass');
     expect(paymentRiskItem?.summary).toContain('45%');
     expect(paymentRiskItem?.summary).toContain('elevated');
 
     const warrantyItem = result.data.evidence.find((item) => item.sourceId.endsWith('-warranty'));
+    expect(warrantyItem?.level).toBe('E1');
     expect(warrantyItem?.verdict).toBe('degraded');
     expect(warrantyItem?.summary).toContain('not stated in writing');
     // The summary may explain the rule ("not a 0-month warranty") but must
@@ -234,6 +280,7 @@ describe('calculateBidEconomics -- evidence summaries carry the real figures', (
     const adjustedTotalItem = result.data.evidence.find((item) =>
       item.sourceId.endsWith('-adjusted-total'),
     );
+    expect(adjustedTotalItem?.level).toBe('E3');
     expect(adjustedTotalItem?.verdict).toBe('pass');
     expect(adjustedTotalItem?.summary).toContain('$14,900.00');
     expect(adjustedTotalItem?.summary).toContain('$18,600.00');
@@ -283,6 +330,10 @@ describe('calculateBidEconomics -- determinism, not_found, and cancellation', ()
     }
     expect(result.toolId).toBe(BID_CALCULATOR_TOOL_ID);
     expect(result.query).toBe('bid-does-not-exist');
+    // The message is what a caller would actually see; pin it, not just
+    // its presence, so it cannot be silently emptied to "".
+    expect(result.message).toContain('bid-does-not-exist');
+    expect(result.message.length).toBeGreaterThan(0);
   });
 
   it('returns a cancelled result when called with an already-aborted signal, before computing anything', () => {
@@ -291,6 +342,18 @@ describe('calculateBidEconomics -- determinism, not_found, and cancellation', ()
     const result = calculateBidEconomics({ bidId: 'bid-cedar', signal: controller.signal });
     expect(result.status).toBe('cancelled');
     expect((result as { toolId: string }).toolId).toBe(BID_CALCULATOR_TOOL_ID);
+  });
+
+  it('checks the signal BEFORE validating bidId -- an already-aborted call is cancelled even with an unknown bidId', () => {
+    // If the first abort check were skipped (or its early return removed),
+    // execution would instead reach the `isBidFixtureName` check below it
+    // and return `not_found` for "bid-does-not-exist" before ever reaching
+    // the second abort check -- silently converting a cancellation into a
+    // normal input error.
+    const controller = new AbortController();
+    controller.abort();
+    const result = calculateBidEconomics({ bidId: 'bid-does-not-exist', signal: controller.signal });
+    expect(result.status).toBe('cancelled');
   });
 
   it('checks the signal again mid-flight and honors a late abort', () => {

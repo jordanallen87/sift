@@ -125,7 +125,18 @@ function formatCurrency(amount: number): string {
   return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function computeAdjustedTotal(
+/**
+ * Pure: no disk I/O, no dependency on which fixture (or non-fixture bid)
+ * the caller obtained `quotedTotal`/`absentItemIds` from. Exported, the
+ * same discipline `scope-differ.ts`'s `diffBidScope` and this file's own
+ * `derivePaymentRisk` follow, so the `absentItemIds.length === 0` fast
+ * path -- which returns the quoted total untouched by `round2`, rather
+ * than the general path's `round2(quotedTotal.amount + 0)` -- is directly
+ * unit-testable against a hand-built sub-cent `quotedTotal`. The real bid
+ * fixtures never carry a sub-cent total, so that fast path is otherwise
+ * unreachable in a way any fixture-driven test could observe.
+ */
+export function computeAdjustedTotal(
   quotedTotal: MoneyAmount,
   absentItemIds: string[],
   plugNumbers: Record<string, number>,

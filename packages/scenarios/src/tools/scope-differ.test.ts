@@ -95,11 +95,26 @@ describe('diffBidScope (pure)', () => {
   });
 });
 
+describe('SCOPE_DIFFER_TOOL_ID', () => {
+  it('names the tool id exactly, at the documented literal value', () => {
+    // Hardcoded, not `expect(SCOPE_DIFFER_TOOL_ID).toBe(SCOPE_DIFFER_TOOL_ID)` --
+    // comparing the constant to itself can never fail no matter what value it
+    // holds, which is exactly the kind of test gap that let a mutant collapse
+    // this constant to "" survive elsewhere in this file.
+    expect(SCOPE_DIFFER_TOOL_ID).toBe('scope-differ');
+  });
+});
+
 describe('compareBidScope', () => {
   it('reports Northgate and Two Rivers as pricing all 8 required scope items -- no absences', () => {
+    const job = loadFixture('job');
     const result = compareBidScope({ bidIds: ['bid-northgate', 'bid-tworivers'] });
     expectOk<ScopeDifferResult>(result);
     expect(result.data.requiredScopeLineItems).toHaveLength(8);
+    // Each entry carries the job's real scopeItemId/label, not an
+    // undefined or empty-object placeholder -- `toHaveLength` alone cannot
+    // tell an array of 8 real items from an array of 8 blanks.
+    expect(result.data.requiredScopeLineItems).toEqual(job.requiredScopeLineItems);
 
     const northgate = result.data.bids.find((bid) => bid.bidId === 'bid-northgate');
     expect(northgate?.requiredItemCount).toBe(8);
@@ -137,17 +152,34 @@ describe('compareBidScope', () => {
     const [item] = result.data.evidence;
     expect(item?.level).toBe('E3');
     expect(item?.verdict).toBe('degraded');
+    expect(item?.sourceId).toBe('source-scope-diff-bid-cedar');
     expect(item?.summary).toContain('Plumbing permit filing and inspection scheduling');
     expect(item?.summary).toContain('Shower valve rough-in and blocking for the curbless shower');
     expect(item?.summary).toContain('Haul-away and disposal of demolition debris');
     expect(item?.summary).toContain('3 of 8');
+    // The three missing labels joined by "; ", in job order, and nothing
+    // else in between -- proves the "absent" filter this evidence text is
+    // built from actually excludes the 5 priced items (a filter that kept
+    // every item, or a separator emptied to "", would each still pass the
+    // three independent `toContain` checks above but would break this
+    // exact contiguous substring).
+    expect(item?.summary).toContain(
+      'Shower valve rough-in and blocking for the curbless shower; ' +
+        'Plumbing permit filing and inspection scheduling; ' +
+        'Haul-away and disposal of demolition debris',
+    );
+    // None of Cedar's 5 actually-priced item labels leak into the "missing" list.
+    expect(item?.summary).not.toContain('Demo of existing tub, tile surround, and fixtures');
+    expect(item?.summary).not.toContain('Set and connect new fixtures');
   });
 
   it("passes for Northgate's evidence with no absences", () => {
     const result = compareBidScope({ bidIds: ['bid-northgate'] });
     expectOk<ScopeDifferResult>(result);
     const [item] = result.data.evidence;
+    expect(item?.level).toBe('E3');
     expect(item?.verdict).toBe('pass');
+    expect(item?.sourceId).toBe('source-scope-diff-bid-northgate');
     expect(item?.summary).toContain('Northgate Plumbing');
     expect(item?.summary).toContain('all 8 required scope items');
   });
@@ -159,6 +191,10 @@ describe('compareBidScope', () => {
     }
     expect(result.toolId).toBe(SCOPE_DIFFER_TOOL_ID);
     expect(result.query).toBe('bid-does-not-exist');
+    // The message is what a caller would actually see; pin it, not just its
+    // presence, so it cannot be silently emptied to "".
+    expect(result.message).toContain('bid-does-not-exist');
+    expect(result.message.length).toBeGreaterThan(0);
   });
 
   it('is deterministic: identical input twice produces deep-equal output', () => {
@@ -173,6 +209,22 @@ describe('compareBidScope', () => {
     const result = compareBidScope({ signal: controller.signal });
     expect(result.status).toBe('cancelled');
     expect((result as { toolId: string }).toolId).toBe(SCOPE_DIFFER_TOOL_ID);
+  });
+
+  it('checks the signal BEFORE validating bidIds -- an already-aborted call is cancelled even when bidIds also contains an unknown id', () => {
+    // If the first abort check were skipped (or its early return removed),
+    // execution would instead reach the bidId-validation loop below it and
+    // return `not_found` for "bid-does-not-exist" before ever reaching the
+    // second abort check -- silently converting a cancellation into a
+    // normal input error, and doing the job/bidId work the abort exists to
+    // avoid.
+    const controller = new AbortController();
+    controller.abort();
+    const result = compareBidScope({
+      bidIds: ['bid-does-not-exist'],
+      signal: controller.signal,
+    });
+    expect(result.status).toBe('cancelled');
   });
 
   it('checks the signal again mid-flight and honors a late abort', () => {
