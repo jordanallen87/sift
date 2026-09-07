@@ -71,9 +71,9 @@ Global Devpost project fields also require a title, tagline, description, built-
 | --- | --- | --- |
 | Technological Implementation | How thoroughly and skillfully does the project use Strands Agents? Does the code reflect genuine effort and a working, non-trivial implementation? A live demo and/or Amazon Bedrock AgentCore deployment will strengthen this score. | Real AgentSkills, bounded Swarm handoffs, interventions, Context Injector, GoalLoop, sessions/snapshots, Strands TypeScript lifecycle hooks normalized into the Runtime Inspector, scripted deterministic tests, and AgentCore when available. |
 | Design | Does the project deliver a complete, coherent product experience and not just a technical proof of concept? | Calm right-pane UI, truthful real-time activity, reviewable evidence, explicit waiting/blocked states, and human confirmation rather than a terminal trace. |
-| Potential Impact | Does the project make a credible, specific case for solving a real problem for a real audience, and does the solution actually address that problem based on what's demonstrated? | Home Energy Guardian reduces continuous household vigilance and investigates abnormal bills before interrupting the user. |
-| Creativity & Originality | Is this a creative, non-obvious use of Strands Agents and does the team demonstrate genuine understanding of the problem space they're working in? | A supervised adaptive system measures evidence progress, rejects plausible premature answers, and changes agent/skill/tool trajectory under deterministic governance. |
-| Presentation | Does the video clearly demonstrate the project working end-to-end? Does the pitch communicate what problem is solved, who it's for, and why it matters? Is the overall presentation easy to follow? | One causal story from anomaly detection through withheld draft, steering, specialist handoff, source challenge, confirmation, persistence, and human action. |
+| Potential Impact | Does the project make a credible, specific case for solving a real problem for a real audience, and does the solution actually address that problem based on what's demonstrated? | Bid comparison serves the small trade shop and the homeowner -- the end of a real, AI-served market that every incumbent skips -- and addresses the part incumbents decline to touch: refusing to rank an unfair comparison. Home Energy Guardian additionally proves the quiet-background case. |
+| Creativity & Originality | Is this a creative, non-obvious use of Strands Agents and does the team demonstrate genuine understanding of the problem space they're working in? | A supervised adaptive system measures evidence progress, rejects plausible premature answers, and changes agent/skill/tool trajectory under deterministic governance. The non-obvious move is inverting the category: where every incumbent races to produce a ranking, Sift uses Strands to establish that it has not yet earned the right to produce one. |
+| Presentation | Does the video clearly demonstrate the project working end-to-end? Does the pitch communicate what problem is solved, who it's for, and why it matters? Is the overall presentation easy to follow? | One causal story: three bids, a refused ranking, the scope gaps named in plain words, the arithmetic that flips the cheapest bid into the most expensive, and an award the agent recommends but never makes. Every beat is legible without construction knowledge. |
 
 ## Prize snapshot
 
@@ -98,29 +98,43 @@ Sift
 
 ### One-line summary
 
-Sift is a supervised adaptive agent system that investigates repetitive household decisions in the background, changes skills and specialists when evidence stalls, and interrupts the person only when judgment or authority is genuinely required.
+Sift is a supervised adaptive agent system that refuses to rank competing bids until they are actually comparable -- normalizing scope, holding the gaps open as explicit unknowns, and handing the award decision to the person who has to sign it.
+
+### Track
+
+**Professional Agents.** The track asks for "an agent that makes someone dramatically better at the work they already do -- professionals, makers, creators, small-business owners" targeting "repetitive, judgment-heavy tasks that eat their day." Comparing subcontractor bids is precisely that task, and the segment is precisely the one the existing tools do not serve (see [`docs/bid-comparison/prior-art.md`](../../bid-comparison/prior-art.md)).
 
 ### Problem
 
-Households repeatedly notice a surprising bill, search one likely cause, and either overreact or accept a plausible explanation too early. A normal assistant can generate advice, but it does not maintain evidence obligations, detect an unproductive investigation, or preserve a safe human decision boundary over time.
+You get three bids for the same job. One is thousands cheaper. Almost nobody can tell whether that is a better deal or simply less work priced -- because bids are not comparable as delivered. Each one draws its own scope boundary, and the cheapest is usually cheapest partly because it is silent about something.
+
+There is a real AI market for this, and we should not pretend otherwise: bid leveling is called table stakes for competitive preconstruction teams in 2026, and MeltPlan, Struvia, Buildr and Procore all ship it. Every one of those products targets mid-size to large commercial general contractors inside a preconstruction workflow. The homeowner with three quotes, and the two-to-ten-person trade shop that cannot justify a preconstruction platform, have spreadsheets and gut feel.
+
+What none of those tools do is the part that actually matters: they produce a comparison and leave the judgment to you. "Verify and adjust" is their stated pitch. They will happily rank an unfair comparison.
 
 ### Solution
 
-Home Energy Guardian watches a deterministic bill feed and creates a case only when usage is materially abnormal. A Strands Swarm investigates rate, weather, usage, and household changes. Sift measures evidence progress around the Swarm. It can reject a plausible recommendation, steer a stalled agent, switch skills and specialists, inject new case state, challenge sources, persist through a confirmation pause, and surface one bounded proposal for human review.
+Sift takes three plumbing bids for one bathroom remodel and puts them on a single scope basis before it will rank anything. A Strands Swarm reads the bids, normalizes scope, verifies the price arithmetic, checks licences and insurance, and tests schedule feasibility. Sift measures evidence progress around the Swarm.
 
-The distinguishing claim below is implemented literally rather than asserted. Every recommendation's confidence is a stated function of two measured quantities -- how much of what the household said matters was actually established, and how far the leader leads -- both reported alongside it so the arithmetic can be checked. A factor nobody researched lowers that confidence without ever being counted against an option. A measurement whose sources contradict each other is marked contested, and Sift says when the leader's lead depends on it. Where the Swarm's own favorite is not the option the household's criteria put first, the product states the disagreement in plain words instead of resolving it silently in either direction.
+The pivotal moment is a refusal. The synthesis draft ranks the bids on their raw quoted totals -- the obvious answer, and the one every incumbent produces. GoalLoop rejects it, because the bids are not on a common scope basis and ranking them would be false. What the person sees is not a leaderboard but a sentence: I cannot rank these yet, and here is exactly what is missing.
+
+The domain already has a word for the missing piece -- a **plug number** -- and Sift models it as a first-class explicit unknown that blocks readiness rather than defaulting to zero. Once the three unpriced items are plugged, the arithmetic is visible to anyone watching: the $14,900 bid is silent on permits and inspections ($1,200), the shower-valve rough-in ($2,100), and debris haul-away ($400). Adjusted, it is $18,600 -- more than the $18,400 bid it appeared to beat by $3,500. The ranking flips on addition a viewer can follow.
+
+Credentials are a hard constraint rather than a weighted criterion, so a bid whose insurance certificate names a different entity than the licence holder cannot be scored past that discrepancy no matter how well it does elsewhere. And awarding a contract is real money, so `propose_award` is gated: Sift recommends, the person awards, and that boundary is structural rather than a setting.
+
+None of this is asserted rather than implemented. Every recommendation's confidence is a stated function of two measured quantities -- how much of what the person said matters was actually established, and how far the leader leads -- both reported alongside it so the arithmetic can be checked. A factor nobody researched lowers that confidence without ever being counted against an option. A measurement whose sources contradict each other is marked contested, and Sift says when the leader's lead depends on it. Where the Swarm's own favorite is not the option the person's criteria put first, the product states the disagreement in plain words instead of resolving it silently in either direction.
 
 ### Why Strands is essential
 
-> **Every claim in this list is mapped to a log record a judge can pull themselves** — see [`claim-evidence-matrix.md`](./claim-evidence-matrix.md), which gives the implementing file, the test that fails if the claim stops being true, and the exact event name and count in an exported run. The shortest version: every OpenTelemetry span in that export carries `"otel.scope": "strands-agents"`, the instrumentation scope of the SDK's own tracer, which a local class named after Strands cannot produce.
+> **Every claim in this list is mapped to a log record a judge can pull themselves** -- see [`claim-evidence-matrix.md`](./claim-evidence-matrix.md), which gives the implementing file, the test that fails if the claim stops being true, and the exact event name and count in an exported run. The shortest version: every OpenTelemetry span in that export carries `"otel.scope": "strands-agents"`, the instrumentation scope of the SDK's own tracer, which a local class named after Strands cannot produce.
 
-- AgentSkills progressively load the technique required by the active obligation.
-- A real bounded Swarm moves among anomaly, rate, weather, home-systems, source-challenge, and synthesis specialists.
-- Interventions use `Guide`, `Confirm`, and `Deny` to redirect work and preserve authority.
-- Context Injector supplies current evidence, criteria, case extensions, and remaining budgets on each turn.
-- GoalLoop rejects an unsupported early recommendation and provides bounded corrective feedback.
-- Sessions and snapshots preserve the execution across a human confirmation and service reconstruction.
-- Strands TypeScript lifecycle hooks — `BeforeToolCallEvent`/`AfterToolCallEvent`/`BeforeModelCallEvent`/`AfterModelCallEvent` on every agent, `BeforeNodeCallEvent`/`NodeResultEvent` on the Swarm, and `MultiAgentHandoffEvent` on each real handoff — feed the user activity stream and the detailed Runtime Inspector without exposing chain-of-thought, correlated by a Sift-minted trace id that ties an activity event to its runtime event and state diff. (Sift also records real OpenTelemetry spans alongside this hook correlation — see the note under Built-with draft for exactly what is and is not claimed.)
+- AgentSkills progressively load the technique the active obligation needs -- scope normalization, price arithmetic, credential verification, schedule analysis.
+- A real bounded Swarm moves among scope, price, credential, schedule, source-challenge, and synthesis specialists with model-decided handoffs.
+- Interventions use `Guide`, `Confirm`, and `Deny` to redirect work and preserve authority. `Deny` is load-bearing here rather than decorative: the price analyst reaches for the licence registry, a tool the pack grants only to the credential checker, and is refused before it runs.
+- Context Injector supplies current criteria weights, unresolved scope gaps, and remaining budgets on each turn.
+- GoalLoop rejects the plausible premature ranking and provides bounded corrective feedback -- the single most important beat in the demo, and a genuine Strands mechanism rather than a UI state.
+- Sessions and snapshots preserve execution across the award confirmation and service reconstruction.
+- Strands TypeScript lifecycle hooks -- `BeforeToolCallEvent`/`AfterToolCallEvent`/`BeforeModelCallEvent`/`AfterModelCallEvent` on every agent, `BeforeNodeCallEvent`/`NodeResultEvent` on the Swarm, and `MultiAgentHandoffEvent` on each real handoff -- feed the user activity stream and the detailed Runtime Inspector without exposing chain-of-thought, correlated by a Sift-minted trace id that ties an activity event to its runtime event and state diff.
 - AgentCore provides the AWS execution target when deployed.
 
 ### Distinguishing claim
