@@ -13,12 +13,12 @@ A capability with no row here is one we do not claim.
 One run produces the whole table. Against the deployed service:
 
 ```bash
-URL=https://sift-hackathon-production.up.railway.app
+URL=http://127.0.0.1:8080   # or the deployed URL
 
-# 1. The deterministic gate opens a case, because the bill is 42% over baseline.
-CASE=$(curl -s -X POST "$URL/api/cases/energy-bill-feed-check" \
+# 1. Open the hero case.
+CASE=$(curl -s -X POST "$URL/api/cases/demo" \
   -H 'Content-Type: application/json' -H "Idempotency-Key: proof-$(date +%s)" \
-  -d '{"billFeedId":"anomalous"}' | jq -r '.receipt.caseId')
+  -d '{"demoId":"bid-comparison"}' | jq -r '.caseId')
 
 # 2. Run the investigation through the AgentCore-contract transport.
 SEQ=$(curl -s "$URL/api/cases/$CASE" | jq -r '.eventSequence')
@@ -45,6 +45,50 @@ A reference capture taken 2026-09-05 against the deployed service — run `run-3
 That is the instrumentation scope of the Strands SDK's own tracer. Sift did not author those spans or their names; it registered a `NodeTracerProvider` and recorded what the SDK already emitted. A local class pretending to be Strands cannot produce that field.
 
 ---
+
+## The hero run, measured
+
+Captured 2026-09-07 from a real local run of the **`bid-comparison`** pack through `POST /invocations` — run `run-f74fb1e4-9924-4e88-b402-936c750d87de`, **394 events, 485 KB**, redaction manifest present. Every number below is `jq` output from that file, not an estimate.
+
+| Category | Events |
+| --- | --- |
+| `intervention` | 137 |
+| `model` | 84 |
+| `tool` | 82 |
+| `agent` | 41 |
+| `context` | 25 |
+| `swarm` | 18 |
+| `skill` | 4 |
+| `goal` | 2 |
+| `case` | 1 |
+
+**All four Strands control-flow beats in one round-1 run**, which the energy pack needs two rounds to reach:
+
+| Event | Count | Agent | Subject |
+| --- | --- | --- | --- |
+| `intervention.deny` | 1 | `price-analyst` | `license-lookup` |
+| `intervention.guide` | 1 | `scope-analyst` | `scope-differ` |
+| `intervention.confirm` | 1 | `decision-synthesizer` | `propose_award` |
+| `goal.validation_failed` → `goal.validated` | 1 each | `decision-synthesizer` | — |
+| `intervention.proceed` | 134 | — | — |
+
+That last row matters: the interventions are evaluated on **every** tool call, and 134 of 137 were allowed through. The three that were not are decisions, not decoration.
+
+**Swarm, skills, context:** `swarm.node_started` × 6, `swarm.node_completed` × 6, `swarm.handoff` × 5, `skill.activated` × 4, `context.injected` × 25.
+
+**Tools, by name:** `bid-reader` × 10, `license-lookup` × 8, `scope-differ` × 8, `bid-calculator` × 6, `propose_award` × 2, plus the SDK's own `skills` × 8 and `strands_structured_output` × 14.
+
+**The single strongest line in the file.** 96 OpenTelemetry spans, and:
+
+```bash
+jq '[.events[]|select(.name|startswith("span."))|.attributes["otel.scope"]]|unique' bid-run.json
+["strands-agents"]
+```
+
+One distinct value across every span: the instrumentation scope of the Strands SDK's own tracer. Sift registered a `NodeTracerProvider` and recorded what the SDK already emitted. A local class named after Strands cannot produce that field.
+
+Span breakdown: `chat` × 28, `execute_agent_loop_cycle` × 28, `execute_tool` × 26, `invoke_agent` × 7, `execute_node` × 6, `invoke_swarm` × 1.
+
 
 ## A. Strands runtime capabilities
 

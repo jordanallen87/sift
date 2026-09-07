@@ -143,18 +143,19 @@ Most agents are optimized to finish. Sift is optimized to know when the agent ha
 
 ## Required hero demonstration
 
-The maximum-five-minute video should follow one legible causal chain:
+The full shot-by-shot script is [`demo-script-bid.md`](./demo-script-bid.md), written against a product that was driven rather than read. The five-minute causal chain:
 
-1. **0:00–0:20 — product and problem.** Show the working right-pane Energy case and state that the household should not have to babysit another app.
-2. **0:20–0:45 — background trigger.** A 42% anomaly creates the case; the anomaly check reaches E3 without asking the user.
-3. **0:45–1:30 — genuine Strands work.** Show rate and weather specialists, AgentSkills activation, tools, evidence, and real-time UI updates.
-4. **1:30–2:05 — premature answer rejected.** The model proposes monitoring one cycle; GoalLoop/readiness emits `Draft withheld` because household-change evidence remains unresolved.
-5. **2:05–2:45 — steering and switching.** Repeated weather work yields no evidence delta; `RetrySteering` emits `Guide`, the Swarm hands off to `home-systems-analyst`, and `home-event-correlation` activates.
-6. **2:45–3:20 — supported revision.** The thermostat event supports the HVAC hypothesis; `source-challenger` verifies the claim; the user (via the app bar's **Add or adjust → Adjust priorities** control) or ChatGPT (`sift_update_criteria`) reweights the criterion from lowest immediate cost to long-term waste reduction (a required final assertion), and the recommendation changes to `request-hvac-inspection` after GoalLoop validation.
-7. **3:20–3:50 — human boundary and persistence.** `ConsequenceGuard` emits `Confirm`, saves a snapshot, restores after reconstruction, and waits for visible human proposal approval without scheduling anything.
-8. **3:50–4:25 — implementation proof.** Show the Runtime Inspector path, state diff, token/latency metadata, AgentCore/CloudWatch correlation when available, and `pnpm verify:release` result.
-9. **4:25–4:50 — platform proof.** Briefly show that Car Purchase uses a compiled Graph pack and that a typed case concern can adapt a run without rewriting the pack.
-10. **4:50–5:00 — close.** Deliver the distinguishing claim above.
+1. **0:00–0:30 — the problem.** Three plumbing bids for one bathroom. One is $3,500 cheaper. Is it a better deal, or is it pricing less work?
+2. **0:30–1:20 — a real Strands Swarm.** Six specialists, model-decided handoffs, four AgentSkills. Two interventions visible as they land: the scope analyst is **redirected** by `Guide` after circling, and an **"Action blocked"** appears when the price analyst reaches for a tool this pack grants only to the credential checker.
+3. **1:20–2:00 — the refusal.** GoalLoop rejects the first synthesis, which ranked on raw totals. Not badly written — false, because the bids are not on a common scope basis. Every incumbent will happily rank an unfair comparison; this one will not.
+4. **2:00–2:45 — the arithmetic.** Cedar is silent on permits ($1,200), the shower-valve rough-in ($2,100) and haul-away ($400). Adjusted: $18,600 against Northgate's $18,400. The cheapest bid was the most expensive one, on addition a viewer can follow.
+5. **2:45–3:15 — it still will not call two questions closed.** Fail-closed evidence keeps `bid.scope_normalization` and `bid.credential_verification` open on degraded verdicts, even with a winner named.
+6. **3:15–3:55 — priorities, and a constraint that outranks a winning score.** Reweight toward warranty and deposit and Two Rivers scores highest of the three (0.8125, rendered "81%"). It still does not win — its insurance names "TRM Holdings LLC", not its licence holder — and the product **flags rather than eliminates** it: "#3 of 3", score still showing, "Flagged, not removed — still ranked, and still yours to decide."
+7. **3:55–4:25 — the human boundary.** `propose_award` is gated by `Confirm`; the proposal sits pending with no approving actor until a person acts on camera.
+8. **4:25–4:50 — implementation proof.** The Runtime Inspector, tailing live: 394 runtime events in that first run, 6 swarm nodes, 5 handoffs, 25 context injections, every span carrying the SDK's own instrumentation scope.
+9. **4:50–5:00 — close.** "Most agents are optimized to finish. This one is optimized to know when it hasn't earned the right to answer yet."
+
+**Versatility beat, if time allows in a separate take:** Home Energy Guardian opens its own case from a bill feed with nobody asking — the quiet-background property this pack structurally does not have, and which is not claimed for it.
 
 ## Testing instructions draft
 
