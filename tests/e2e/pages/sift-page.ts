@@ -94,6 +94,40 @@ export const HOME_ENERGY_CRITERION_IDS = {
 export const HOME_ENERGY_RESPONSE_OPTIONS_OBLIGATION_ID = 'energy.response_options';
 
 /**
+ * Real, stable Bid Comparison fixture entity ids (`packages/scenarios/src/seeds.ts`
+ * `buildBidComparisonEntities`), confirmed directly against the real running app. Unlike
+ * `HOME_ENERGY_RESPONSE_OPTION_IDS` above, this array needs no separate "real entity order"
+ * export: `buildBidComparisonEntities` maps directly over `BID_FIXTURE_NAMES`
+ * (`packages/scenarios/src/tools/bid-reader.ts`), whose own declared order already IS this
+ * array's order (`bid-reader.test.ts` pins it: `['bid-northgate', 'bid-cedar', 'bid-tworivers']`)
+ * -- so it is safe to index directly (e.g. `[0]`/`[1]`) for `OptionCompareView`'s narrow-layout
+ * head-to-head selection, the same way `CAR_PURCHASE_CANDIDATE_IDS` is.
+ */
+export const BID_COMPARISON_ENTITY_IDS = ['bid-northgate', 'bid-cedar', 'bid-tworivers'] as const;
+
+/** Every real obligation id `packages/packs/src/bid-comparison.ts` declares, in the manifest's own declared order. */
+export const BID_COMPARISON_OBLIGATION_IDS = [
+  'bid.scope_normalization',
+  'bid.price_verification',
+  'bid.credential_verification',
+  'bid.schedule_feasibility',
+  'bid.award_recommendation',
+] as const;
+
+/** The one obligation id Bid Comparison's `dependsOnCriteria: true` synthesis carries (`packages/packs/src/bid-comparison.ts`) -- the only obligation a criteria reweight may reopen. */
+export const BID_COMPARISON_AWARD_RECOMMENDATION_OBLIGATION_ID = 'bid.award_recommendation';
+
+/** Real pack-declared criterion ids `packages/packs/src/bid-comparison.ts`'s `criteria.defaults` carries, including the one protected hard constraint (`bid.credentials_valid`, `protectedCriterionIds`). */
+export const BID_COMPARISON_CRITERION_IDS = {
+  adjustedTotal: 'bid.adjusted_total',
+  scopeCompleteness: 'bid.scope_completeness',
+  paymentRisk: 'bid.payment_risk',
+  scheduleFit: 'bid.schedule_fit',
+  warranty: 'bid.warranty',
+  credentialsValid: 'bid.credentials_valid',
+} as const;
+
+/**
  * `docs/decisions/0008-two-mode-product-architecture.md`'s narrow/expanded boundary.
  *
  * This was a local `= 480` literal whose comment claimed it mirrored the app's own constant.
@@ -109,6 +143,15 @@ export { NARROW_MAX_WIDTH_PX } from '../../../apps/web/src/hooks/width-mode-cons
 
 /** The product's real first-run-guide storage key, imported rather than duplicated -- see `seedFirstRunGuideDismissed` below. */
 export { FIRST_RUN_GUIDE_STORAGE_KEY };
+
+/**
+ * The product's own `PublicActivityEventType` -> consumer label/tone lookup, imported rather than
+ * duplicated (matching `NARROW_MAX_WIDTH_PX`/`FIRST_RUN_GUIDE_STORAGE_KEY` above) -- used by
+ * `bid-comparison-journey.spec.ts` to assert the real, product-declared "Action blocked" label for
+ * `intervention.denied` rather than a copy of that string that could silently drift from
+ * `activity-labels.ts`'s own (product.md terminology table, verbatim) mapping.
+ */
+export { getActivityLabel } from '../../../apps/web/src/components/activity-labels.js';
 
 /** `true` at the narrow/pane-mode viewports (390/430/480/640), `false` at `expanded-820` and `desktop-1440`. */
 export function isNarrowLayout(page: Page): boolean {
@@ -214,6 +257,40 @@ export async function getCaseState(
     true,
   );
   return (await response.json()) as Record<string, unknown>;
+}
+
+/**
+ * Fetches every real `PublicActivityEvent` recorded for `caseId` via the exact
+ * `GET /api/cases/:caseId/events?mode=poll` route (`apps/agent/src/routes/events.ts`) the app's
+ * own browser uses for its documented polling-fallback transport -- the genuinely public,
+ * sanitized activity stream (docs/engineering-principles.md "Persist a replayable sanitized
+ * public activity stream ... separately from ... detailed runtime events"), NOT the developer-only
+ * `GET /api/debug/runs/:runId` the Runtime Inspector reads.
+ *
+ * Used in `bid-comparison-journey.spec.ts` to prove a real `intervention.denied` ("Action
+ * blocked") landed in this stream. A live DOM assertion cannot do this honestly here: this
+ * deterministic test server runs with no `demoPacingMs` (0, matching every other gate in this
+ * suite), so a whole six-specialist Swarm round streams and settles in well under 100ms end to
+ * end -- confirmed directly against the real running app (`price-analyst`'s `license-lookup`
+ * denial and its very next tool call land two sequence numbers apart in the same burst) -- so any
+ * live-DOM read of the single most-recent-event region (`LiveRunStatus`) would be racing a
+ * sub-100ms transition rather than asserting a real, settled state. This route is the same
+ * transport a real polling-fallback browser session would read after the run settles, so it is
+ * the honest way to prove the event landed, not a bypass of the real contract.
+ */
+export async function getPublicActivityEvents(
+  request: APIRequestContext,
+  caseId: string,
+): Promise<Record<string, unknown>[]> {
+  const response = await request.get(
+    `/api/cases/${encodeURIComponent(caseId)}/events?mode=poll&afterSequence=0`,
+  );
+  expect(
+    response.ok(),
+    `GET /api/cases/${caseId}/events?mode=poll failed with status ${response.status()}`,
+  ).toBe(true);
+  const body = (await response.json()) as { events: Record<string, unknown>[] };
+  return body.events;
 }
 
 export class SiftPage {
@@ -355,6 +432,24 @@ export class SiftPage {
     }
     await expect(this.page.getByTestId('case-workspace')).toBeVisible();
     return { caseId: body.receipt.caseId };
+  }
+
+  /**
+   * Clicks "Compare these bids" and waits for the real `POST /api/cases/demo` response, returning
+   * its `caseId`. Structurally identical to `launchCarPurchase` above -- `bid-comparison` goes
+   * through the same plain `startDemo` path `DemoLauncher.tsx`'s own header comment describes;
+   * only `home-energy-guardian` diverts through the deterministic bill-feed gate.
+   */
+  async launchBidComparison(): Promise<LaunchedCase> {
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (res) => res.url().includes('/api/cases/demo') && res.request().method() === 'POST',
+      ),
+      this.page.getByTestId('demo-launcher-bid-comparison').click(),
+    ]);
+    const body = (await response.json()) as { caseId: string };
+    await expect(this.page.getByTestId('case-workspace')).toBeVisible();
+    return { caseId: body.caseId };
   }
 
   /**
@@ -745,6 +840,35 @@ export class SiftPage {
       return;
     }
     await this.closeSheet('workspace-decision-profile-sheet');
+  }
+
+  /**
+   * Opens "Decision readiness" (`ReadinessPanel`) -- pane mode's pre-existing
+   * `disclosure-still-checking` row, or web-app mode's Sheet, reached through
+   * `WorkspaceSidebar`'s own `workspace-sidebar-still-checking-button` trigger (`onOpenQuestions`).
+   * The identical layout branch `openDecisionProfile` above documents, for the identical reason:
+   * ADR 0008 kept the narrow disclosure in place but moved the same content behind a Sheet-opening
+   * button in the wider shell rather than a second inline disclosure.
+   */
+  async openReadiness(): Promise<Locator> {
+    if (isNarrowLayout(this.page)) {
+      await this.openDisclosure('still-checking');
+      return this.page.getByTestId('disclosure-still-checking');
+    }
+    await this.openSheetVia(
+      'workspace-sidebar-still-checking-button',
+      'workspace-still-checking-sheet',
+    );
+    return this.page.getByTestId('workspace-still-checking-sheet');
+  }
+
+  /** The `openReadiness` counterpart -- see `closeDecisionProfile` above for why only the Sheet form is a real modal that must be closed before an unrelated control elsewhere on the page can be clicked. */
+  async closeReadiness(): Promise<void> {
+    if (isNarrowLayout(this.page)) {
+      await this.closeDisclosure('still-checking');
+      return;
+    }
+    await this.closeSheet('workspace-still-checking-sheet');
   }
 
   /**
