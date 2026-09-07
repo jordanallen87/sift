@@ -155,7 +155,15 @@ import {
 // never silently drift from the weighting the shipped narrative actually
 // describes.
 import { scoreCaseState } from '../../packages/core/src/index.js';
-import type { CaseState } from '../../packages/contracts/src/index.js';
+import { WORKSPACE_VIEW_MODES, type CaseState } from '../../packages/contracts/src/index.js';
+
+/**
+ * Derived from the contract rather than hand-listed, so a new view mode is
+ * covered by the touch-target guard the moment it exists.
+ */
+const WORKSPACE_VIEW_TAB_TEST_IDS = WORKSPACE_VIEW_MODES.map(
+  (viewMode) => `workspace-view-tab-${viewMode}`,
+);
 import { ROUND2_CRITERIA_WEIGHTS } from '../../apps/agent/src/runtime/scripted-beats/bid-comparison.js';
 
 /**
@@ -835,24 +843,17 @@ test.describe('Bid Comparison -- full demo journey', () => {
     for (const entityId of BID_COMPARISON_ENTITY_IDS) {
       await expect(page.getByTestId(`option-list-view-card-${entityId}`)).toBeVisible();
     }
-    // Deliberately no `primaryActionTestIds` here (unlike this file's other
-    // `assertRightPaneIntegrity` calls): a real, reproducible, pre-existing
-    // touch-target gap was found while drafting this test --
-    // `workspace-view-tab-list` (and, sharing the same unstyled
-    // `TabsTrigger`, every `workspace-view-tab-*` control in
-    // `WorkspaceViewSwitcher.tsx`) measures ~42.2 CSS px, under the 44px
-    // floor every other interactive control in this codebase honors via
-    // `min-h-[var(--size-touch-target-min)]` -- but no existing spec, unit
-    // or e2e, across any of the three packs, had ever asserted on it. That
-    // is a real, shared-component defect, not specific to this beat or this
-    // pack, and fixing `ui/tabs.tsx`/`WorkspaceViewSwitcher.tsx` risks
-    // shifting rendered height in the already-committed car-purchase and
-    // home-energy baselines this task must not touch. Reported, not
-    // asserted around: the overflow-only checks below still run for every
-    // required viewport; the touch-target claim on this specific control is
-    // left for a dedicated follow-up rather than silently included or
-    // silently dropped.
-    await assertRightPaneIntegrity(page);
+    // This call once deliberately omitted `primaryActionTestIds`: the
+    // `workspace-view-tab-*` controls, sharing an unstyled `TabsTrigger`,
+    // measured ~42.2 CSS px against the 44px floor
+    // `--size-touch-target-min` defines and 53 other files honor, and no
+    // spec in any of the three packs had ever asserted on it. That was a
+    // real shared-component defect (WCAG 2.5.8 AA) rather than anything
+    // specific to this beat, so it was reported instead of asserted around.
+    // `ui/tabs.tsx` now carries the floor on the trigger itself and the
+    // strip grows to fit, so the tab controls are checked here like every
+    // other primary action -- this is the regression guard for that fix.
+    await assertRightPaneIntegrity(page, WORKSPACE_VIEW_TAB_TEST_IDS);
 
     await expect(page.getByTestId('option-rank-position-bid-northgate')).toContainText('#1 of 3');
     await expect(page.getByTestId('option-rank-position-bid-tworivers')).toContainText('#3 of 3');
