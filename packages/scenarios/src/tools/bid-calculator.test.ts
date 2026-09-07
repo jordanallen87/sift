@@ -56,11 +56,9 @@ describe('computeAdjustedTotal (pure)', () => {
   });
 
   it('with one or more absent items, computes the plug-adjusted total via round2', () => {
-    const result = computeAdjustedTotal(
-      { amount: 100, currency: 'USD' },
-      ['item-a'],
-      { 'item-a': 50.005 },
-    );
+    const result = computeAdjustedTotal({ amount: 100, currency: 'USD' }, ['item-a'], {
+      'item-a': 50.005,
+    });
     expect(result).toEqual({ status: 'known', value: { amount: 150.01, currency: 'USD' } });
   });
 });
@@ -352,7 +350,10 @@ describe('calculateBidEconomics -- determinism, not_found, and cancellation', ()
     // normal input error.
     const controller = new AbortController();
     controller.abort();
-    const result = calculateBidEconomics({ bidId: 'bid-does-not-exist', signal: controller.signal });
+    const result = calculateBidEconomics({
+      bidId: 'bid-does-not-exist',
+      signal: controller.signal,
+    });
     expect(result.status).toBe('cancelled');
   });
 

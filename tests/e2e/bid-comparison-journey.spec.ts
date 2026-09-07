@@ -184,9 +184,27 @@ import { ROUND2_CRITERIA_WEIGHTS } from '../../apps/agent/src/runtime/scripted-b
  */
 function verifyNorthgateWinsUnderReweight(): void {
   const facts = [
-    { bidId: 'bid-northgate', adjustedTotal: 18400, scopeCompleteness: 1, depositPercent: 25, credentialsValid: true },
-    { bidId: 'bid-cedar', adjustedTotal: 18600, scopeCompleteness: 0.625, depositPercent: 45, credentialsValid: true },
-    { bidId: 'bid-tworivers', adjustedTotal: 19250, scopeCompleteness: 1, depositPercent: 20, credentialsValid: false },
+    {
+      bidId: 'bid-northgate',
+      adjustedTotal: 18400,
+      scopeCompleteness: 1,
+      depositPercent: 25,
+      credentialsValid: true,
+    },
+    {
+      bidId: 'bid-cedar',
+      adjustedTotal: 18600,
+      scopeCompleteness: 0.625,
+      depositPercent: 45,
+      credentialsValid: true,
+    },
+    {
+      bidId: 'bid-tworivers',
+      adjustedTotal: 19250,
+      scopeCompleteness: 1,
+      depositPercent: 20,
+      credentialsValid: false,
+    },
   ] as const;
   // This spec's own reweight, below: adjustedTotal 10 / scopeCompleteness 30
   // / paymentRisk 40 (scheduleFit/warranty untouched at their round-1
@@ -395,9 +413,12 @@ test.describe('Bid Comparison -- full demo journey', () => {
     await expect(page.getByTestId('option-card-signal-unresolved-bid-cedar')).toHaveCount(0);
 
     const afterWarrantyAnswer = await getCaseState(page.request, caseId);
-    const cedarEntity = (afterWarrantyAnswer['entities'] as { id: string; attributes: Record<string, { status: string; value?: { value: number } }> }[]).find(
-      (e) => e.id === 'bid-cedar',
-    );
+    const cedarEntity = (
+      afterWarrantyAnswer['entities'] as {
+        id: string;
+        attributes: Record<string, { status: string; value?: { value: number } }>;
+      }[]
+    ).find((e) => e.id === 'bid-cedar');
     expect(cedarEntity?.attributes['bid.warranty_months']?.status).toBe('asserted');
     expect(cedarEntity?.attributes['bid.warranty_months']?.value?.value).toBe(18);
     // Recorded, but not yet consequential: no recommendation exists yet for
@@ -410,7 +431,9 @@ test.describe('Bid Comparison -- full demo journey', () => {
     await sift.openPriorities();
     await expect(page.getByTestId('workspace-priorities-sheet')).toBeVisible();
     await expect(
-      page.getByTestId(`criteria-editor-protected-${BID_COMPARISON_CRITERION_IDS.credentialsValid}`),
+      page.getByTestId(
+        `criteria-editor-protected-${BID_COMPARISON_CRITERION_IDS.credentialsValid}`,
+      ),
     ).toBeVisible();
     await expect(
       page.getByTestId(`criteria-editor-weight-${BID_COMPARISON_CRITERION_IDS.credentialsValid}`),
@@ -746,7 +769,9 @@ test.describe('Bid Comparison -- full demo journey', () => {
     await sift.openPriorities();
     await expect(page.getByTestId('workspace-priorities-sheet')).toBeVisible();
     await expect(
-      page.getByTestId(`criteria-editor-protected-${BID_COMPARISON_CRITERION_IDS.credentialsValid}`),
+      page.getByTestId(
+        `criteria-editor-protected-${BID_COMPARISON_CRITERION_IDS.credentialsValid}`,
+      ),
     ).toBeVisible();
     await expect(
       page.getByTestId(`criteria-editor-weight-${BID_COMPARISON_CRITERION_IDS.credentialsValid}`),
