@@ -7,6 +7,67 @@
 
 This report is written per docs/engineering-principles.md's completion contract. It documents what is implemented, exactly how it was verified, what remains genuinely external to this build environment, and what is honestly still missing.
 
+## 2026-09-07 — a third pack, and it is now the hero
+
+**`bid-comparison` is the Agents for Humans hero, submitted to the Professional Agents track.**
+`car-purchase` and `home-energy-guardian` both remain registered, tested and shipped; nothing was
+removed. Everything in this report below this section predates the change and is still accurate
+about the two older packs.
+
+**Gate results at `be0257b`:** `pnpm verify` **passed all 10 stages**. `pnpm verify:release`
+passed `verify`, `test:mutation`, `release:build` and `release:docker`, and failed only
+`test:submission` — on `release-metadata-public-urls`, the two unset video URLs. That is the same
+human-only external blocker recorded below, not a regression; the other 10 submission checks pass
+and 2 skip pending the recordings.
+
+**Current numbers.** Coverage: lines 96.99%, statements 96.18%, functions 96.30%, branches 91.94%.
+Mutation: 5,743 killed, 752 survived, 7 timeout, 141 no-coverage — **86.56%** against a break
+threshold of 80, up from 85.06% now that the bid pack's two decision rules are in scope, both at
+**100%**. Playwright: **210 tests passing** across six viewports, with **120 baseline images**
+(42 bid, 36 energy, 36 car, 6 catalog). Scenario reports: 39 car, 34 energy, **35 bid** — the last
+of which `test:submission` now requires, having previously gated only the other two.
+
+**Hero evidence, measured not asserted.** Run `run-f74fb1e4`, 394 events, 485 KB, captured through
+`POST /invocations`. All four Strands control-flow beats fire in a single round-1 run where energy
+needs two: `intervention.deny` (`price-analyst` → `license-lookup`), `intervention.guide`,
+`intervention.confirm` (`propose_award`), and `goal.validation_failed` → `goal.validated` —
+alongside 134 `intervention.proceed`, which is the honest half: the guards run on every call and
+allowed 134 of 137. Six swarm nodes, five handoffs, four skill activations, 25 context injections,
+and 96 spans whose `otel.scope` values reduce under `unique` to exactly `["strands-agents"]`.
+
+### Three defects this pack's own testing found, all fixed
+
+1. **The recommendation stated a score the engine never computed.** The round-2 rationale read
+   "0.58 vs. Cedar & Sons' 0.31" while the card beside it rendered Cedar at 24%; production
+   `scoreCaseState` computes 0.2353. The wrong number came from the fixture's hand-written
+   `scoreBids`, which has no coverage concept and so diverges on the one bid whose coverage is
+   incomplete — agreeing with production on the other two, which is how it survived review and
+   reached a baseline image. Fixed by removing every score numeral from user-visible prose rather
+   than correcting it: scores belong to the deterministic core, which renders them already. A
+   regression guard fails if one returns.
+2. **Tab controls sat under the 44px touch target on both axes** (WCAG 2.5.8 AA), in a shared
+   component used by all three packs, with no spec anywhere asserting on it. Width was the failing
+   axis. The first fix attempt used `min-w` and made it worse — `TabsTrigger` is `flex-1`, so the
+   strip divides evenly and the longest label overflowed its own box by 4px, exactly the class of
+   defect `overflow-x: hidden` conceals. Padding was correct. This is adjacent to, but not the
+   same control as, the parked `activity-item-inspect-run-*` gap recorded under Known limitations.
+3. **The claim-evidence matrix's own reproduction command was broken.** It told a judge to read
+   `.receipt.caseId`; the endpoint returns `caseId` at the top level, so anyone following our
+   documented steps would have gotten a null and an empty export. Found only by running it.
+
+### Two claims retired as false
+
+- **Explicit unknowns do not block readiness.** `evaluateReadiness` keys off obligation status and
+  no obligation targets `bid.warranty_months`. What is true: the unknown is held as an unknown and
+  scored neutrally rather than coerced to zero, and readiness genuinely is blocked — by fail-closed
+  degraded evidence on two obligations. The refusal is real; the mechanism was misdescribed, in
+  `docs/bid-comparison/strands-feature-map.md`, where it was stated as a strength.
+- **A local Playwright pass proved nothing, again.** Twelve tests reported green against baselines
+  still showing pre-edit text, because `reuseExistingServer` reused a server left running by an
+  earlier process. This is the second recorded instance of the same trap (see Known limitations)
+  and it was caught by opening a baseline image, not by the suite.
+
+
 ## Implemented capabilities
 
 - **Two complete, live, tested Decision Packs** sharing one runtime:
@@ -130,7 +191,7 @@ The redesign above landed three commits before the last recorded `pnpm verify` p
 
 - **Home Energy Guardian's round-2 re-investigation control gap — fixed 2026-09-04 (was an unmet requirement).** This report previously recorded that round-2 re-investigation had no dedicated visible-UI control and that a plain re-run failed with `"No open obligation remains to select."`, forcing the Agents for Humans demo script to route the reweight beat through ChatGPT or a documented DevTools/API fallback. Both causes are fixed: `ObligationTemplate.dependsOnCriteria` (`packages/contracts/src/packs.ts`) marks `energy.response_options` as a synthesis-over-criteria obligation, so `updateCriteria` now genuinely reopens it (and only it — the four measurement obligations it depends on stay satisfied) when it invalidates the recommendation; and `CriteriaEditor.tsx`, reached from the app bar's "Add or adjust → Adjust priorities" item, is a real visible control that reweights the case and triggers that reopening. A bystander can now complete this pack's full journey — reweight, then a plain "Ask Sift to look into this" click — with no WebMCP client, no DevTools, and no API knowledge required. `docs/submissions/agents-for-humans/demo-script.md` was rewritten accordingly.
 - **GitHub repository visibility — confirmed public.** `gh repo view jordanallen87/sift --json visibility,licenseInfo` returns `"visibility":"PUBLIC"` and `"licenseInfo":{"key":"mit"}`. This report previously (2026-09-02) recorded the repository as still private; it has since been made public. No outstanding action here.
-- **Two demo videos are not recorded.** Both shot-by-shot scripts exist and are ready to follow: `docs/submissions/webmcp/demo-script.md` (under 3:00) and `docs/submissions/agents-for-humans/demo-script.md` (under 5:00). `docs/submissions/release-metadata.json`'s `webmcpVideoUrl`/`agentsForHumansVideoUrl` are deliberately left empty until recorded and uploaded.
+- **Two demo videos are not recorded.** (The Agents for Humans script to follow is now `demo-script-bid.md`, the hero; `demo-script.md` remains valid for the energy pack.) Both shot-by-shot scripts exist and are ready to follow: `docs/submissions/webmcp/demo-script.md` (under 3:00) and `docs/submissions/agents-for-humans/demo-script.md` (under 5:00). `docs/submissions/release-metadata.json`'s `webmcpVideoUrl`/`agentsForHumansVideoUrl` are deliberately left empty until recorded and uploaded.
 - **Real WebMCP client registration is untested by automation.** `pnpm test:deployed`'s one skip; genuinely requires a ChatGPT in-app browser or a flagged Chrome build. Per `docs/specs/testing.md`, record one manual host smoke test (timestamp, deployed URL, tool names discovered, outcome) and list it in `release-metadata.json`'s `webmcpTestClients`.
 - **AWS Bedrock AgentCore is not deployed** — no AWS credentials in this environment (see above).
 - **`Deny` was implemented but invisible until 2026-09-05.** `docs/engineering-principles.md` requires TypeScript interventions with visible `Guide`, `Confirm`, **and** `Deny` outcomes. The first two were visible; the third was not. `ScopeAuthorization` was constructed and registered in both the Swarm and the Graph, but no specialist in either demo trajectory ever attempted an ungranted tool, so `deny` fired only inside a unit test that patched a provider on purpose — it appeared in no scenario report and on no screen. Confirmed against a live deployed run: 308 runtime events, interventions were 104 `proceed` + 1 `guide`, zero `deny`. Now genuinely reachable: `anomaly-investigator` reaches for `household-event-lookup` (granted by the compiled pack to `home-systems-analyst`) and the real guard refuses the call before it executes. All three outcomes are now asserted in `artifacts/verification/scenarios/home-energy-guardian/assertion-report.json` (34 assertions, up from 33).
