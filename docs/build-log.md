@@ -8323,3 +8323,37 @@ and the energy pack already follows. The licence number itself is untouched
 wherever it is data rather than an id. The alternative -- an allowlist entry
 -- is exactly what CLAUDE.md forbids, and this was not a false positive but a
 real naming inconsistency between the new pack and the established one.
+
+## 2026-09-07 — bid-comparison wave 4, and a score a judge could have caught
+
+Scenario trajectory assertions, the e2e journey at six viewports, and the
+mutation gate extended to the pack's two decision rules. Details in the
+commits; three things belong in the log rather than a message.
+
+**Seven baselines updated deliberately, not because they differed.**
+`awaiting-approval` and `decided` at 640/1440 (and `decided` at 820), plus
+both `designed-round2-recommendation` wides. Required rendering change: the
+round-2 rationale claimed "0.58 vs. Cedar & Sons' 0.31" while the card
+beside it rendered Cedar at 24%. Production `scoreCaseState` computes
+0.2353; the 0.31 came from the fixture's hand-written `scoreBids`, which has
+no coverage concept and so diverges on exactly the bid whose coverage is
+incomplete. It agrees on the other two, which is why the error survived
+review. Every score numeral is now gone from user-visible strings -- scores
+belong to the deterministic core, which renders them itself -- and a
+regression guard in `bid-comparison-swarm.test.ts` fails if one returns.
+All updated images were opened and inspected before acceptance.
+
+**The first e2e run after that fix passed, and was worthless.** Twelve
+green, against baselines still showing the old text. `playwright.config.ts`
+sets `reuseExistingServer: !CI`, and a test server left running by an
+earlier agent (PID 48791) still held the pre-edit scripted beats in memory.
+Killing it produced the five honest failures. `pnpm test:e2e` rebuilds the
+web app but does not restart a server that is already listening on 8080;
+check the port before trusting a local pass.
+
+**Two claims retired as false.** "Explicit unknowns block readiness" -- they
+do not; `evaluateReadiness` is driven by obligation status and no obligation
+targets `bid.warranty_months`. What is true, and better, is that the unknown
+is held as an unknown and scored neutrally rather than coerced to zero, and
+that readiness is blocked by fail-closed degraded evidence. Corrected in
+`docs/bid-comparison/strands-feature-map.md`.

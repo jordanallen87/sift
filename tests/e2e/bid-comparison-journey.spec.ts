@@ -93,8 +93,12 @@
  * `determineBidComparisonRound` lands on -- never to the actual weight
  * values supplied. Confirmed directly: this spec's own weights never touch
  * `bid.warranty` at all, yet the resulting rationale still names "a
- * 36-month warranty" and a "0.81" score -- the exact `ROUND2_CRITERIA_
- * WEIGHTS` narrative, not a recomputation against this run's real inputs.
+ * 36-month warranty" -- the `ROUND2_CRITERIA_WEIGHTS` narrative, not a
+ * recomputation against this run's real inputs. (It also named a "0.81"
+ * score when this was written. The score numerals have since been removed
+ * from every user-visible string; see the note above `DECISION_TEXT_ROUND2`
+ * in `scripted-beats/bid-comparison.ts`. The qualitative mismatch above
+ * remains, which is why this spec still asserts no narrative specifics.)
  * This spec therefore asserts only what the real text genuinely contains
  * (still names "Northgate Plumbing," the real, independently-verified
  * winner) and does not assert that it names `bid.scope_completeness` or this
@@ -690,9 +694,12 @@ test.describe('Bid Comparison -- full demo journey', () => {
    * below -- it is genuinely accurate for this exact weighting, unlike the
    * arbitrary-reweight test above.
    *
-   * A real, unplanned discrepancy surfaced while confirming this: the
-   * scripted narrative's own claimed numbers ("Northgate ... 0.58 vs. Cedar
-   * & Sons' 0.31") come from `scripted-beats/bid-comparison.ts`'s
+   * A real, unplanned discrepancy surfaced while confirming this, and has
+   * since been fixed at the source -- no score numeral survives in any
+   * user-visible string. Kept here because it is the reason this spec
+   * cross-checks every number against live `scoreCaseState`: the scripted
+   * narrative's then-claimed numbers ("Northgate ... 0.58 vs. Cedar
+   * & Sons' 0.31") came from `scripted-beats/bid-comparison.ts`'s
    * hand-written `scoreBids` reproduction, not from `packages/core/src/
    * scoring.ts`'s real production `scoreCaseState` -- the function that
    * actually drives this UI. The two agree on Northgate (0.58) and on Two

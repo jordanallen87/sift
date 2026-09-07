@@ -26,12 +26,36 @@ Baseline for each row is what `docs/submissions/agents-for-humans/claim-evidence
 | S11 | AgentCore `/ping` + `/invocations` | Served, exercised | Unchanged | **Same** |
 | — | Deterministic scoring, human-only approval | Real | Unchanged, and more legible: price vs completeness | **Same** |
 | — | Evidence conflicts | Engineered into the demo | **Native — bids genuinely disagree about scope** | **Stronger** |
-| — | Explicit unknowns blocking readiness | Real | **Native — the domain's own word for it is a "plug number"** | **Stronger** |
+| — | Explicit unknowns held as unknowns | Real | **Native — the domain's own word for it is a "plug number"**. Cedar's warranty term seeds unknown, displays as "1 unknown", is answerable by a human, and scores as a neutral rather than being coerced to zero. See the correction below: it does **not** block readiness. | **Same** |
 | — | Custom `custom.*` concerns | Supported | **"Does it include haul-away?" — the most natural instance of this feature we have** | **Stronger** |
 
 **Result: nothing is lost, five things get materially better motivated.** The GoalLoop rejection stops being "the model forgot to cite a source" and becomes "these bids are not comparable yet, so ranking them would be a lie" — which is the product's actual thesis, doing visible work.
 
 ---
+
+## A claim this file made and had to retire
+
+**"Explicit unknowns block readiness" was false**, and it was stated here as a
+strength. Writing the e2e journey disproved it: `evaluateReadiness`
+(`packages/core/src/readiness.ts`) is driven purely by `ObligationState.status`,
+and no obligation in this pack targets `bid.warranty_months`, so that unknown can
+never appear as a readiness blocker. The spec now asserts it is *not* among them.
+
+What is actually true is nearby, and is not weaker:
+
+- The unknown **is held as an unknown**. It renders as "1 unknown", a human can
+  answer it through the real editor, and it scores as a neutral rather than a
+  zero — a bid with no stated warranty is not treated as a bid with no warranty.
+- **Readiness genuinely is blocked**, by fail-closed degraded evidence.
+  `bid.scope_normalization` and `bid.credential_verification` both end round 1
+  `open` because each carries a non-stale `degraded` verdict — Cedar's incomplete
+  scope diff and Two Rivers' named-insured mismatch. `packages/core/src/evidence.ts`
+  forbids satisfaction while such a link is included, no matter how many other
+  checks pass.
+
+So the product does refuse to call the question closed, and it refuses for a
+reason it can name. It simply does not refuse via the mechanism this file
+claimed. Nothing in the demo changes; one sentence of the pitch does.
 
 ## The two honest losses
 

@@ -577,9 +577,17 @@ describe('executeBidComparisonSwarm: criteria reweight exercises the hard-constr
     expect(result.proposedAward).toEqual(PROPOSED_AWARD_ROUND2);
     expect(result.proposedAward?.bidId).toBe('bid-northgate');
     // The named reason, not a generic "constraint failed": the actual
-    // scored bid, the actual score, and the actual mismatched entity names.
+    // scored bid, its qualitative lead, and the actual mismatched entity
+    // names.
     expect(result.decisionSynthesizerText).toContain('Two Rivers Mechanical');
-    expect(result.decisionSynthesizerText).toContain('0.81');
+    expect(result.decisionSynthesizerText).toContain('scores highest of the three bids');
+    // Regression guard. This string once claimed "0.58 vs. Cedar & Sons'
+    // 0.31" while the card beside it rendered Cedar at 24%, because the
+    // prose was authored from `scoreBids` rather than from production
+    // `scoreCaseState`. Scores belong to the deterministic core, which
+    // renders them itself; a score numeral reaching this narrative can only
+    // ever agree with the page or contradict it.
+    expect(result.decisionSynthesizerText).not.toMatch(/\b0\.\d+\b/);
     expect(result.decisionSynthesizerText).toContain('TRM Holdings LLC');
     expect(result.decisionSynthesizerText).toContain('Two Rivers Mechanical Inc');
     expect(result.decisionSynthesizerText).toContain('Northgate Plumbing');

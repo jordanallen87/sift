@@ -119,14 +119,21 @@ export const ROUND1_CRITERIA_WEIGHTS = {
  * needs to give the bid under test its best real case, not an arbitrary one.
  *
  * Verified with `scoreBids`, not hand-tuned to it: this weighting gives Two
- * Rivers Mechanical the highest raw score of all three bids (0.81 vs.
- * Northgate's 0.58 and Cedar & Sons' 0.31) -- it leads on both of the two
- * upweighted criteria -- and it still sorts last, because
+ * Rivers Mechanical the highest raw score of all three bids -- it leads on
+ * both of the two upweighted criteria -- and it still sorts last, because
  * `packages/core/src/scoring.ts`'s own rule 4 ranks any hard-constraint
  * violator below every compliant bid regardless of score. Northgate
- * Plumbing remains the higher-scoring of the two credentials-valid bids
- * (0.58 vs. Cedar & Sons' 0.31), so the award stays with Northgate: the
- * numbers move, the constraint does not, and the recommendation names both.
+ * Plumbing remains the higher-scoring of the two credentials-valid bids, so
+ * the award stays with Northgate: the numbers move, the constraint does
+ * not, and the recommendation names both.
+ *
+ * The authoritative figures are production `scoreCaseState`'s, measured
+ * over the wire in `tests/e2e/bid-comparison-journey.spec.ts`: northgate
+ * 0.5825, cedar 0.2353, tworivers 0.8125 with
+ * `violated: ['bid.credentials_valid']`. `scoreBids` below agrees on the
+ * first and third and disagrees on Cedar, whose coverage is incomplete;
+ * see the note above `DECISION_TEXT_ROUND2` for why no score numeral
+ * appears in any user-visible string.
  *
  * A schedule-urgency reweight (raising `bid.schedule_fit` instead) was
  * tried and rejected on narrative, not arithmetic, grounds -- see the
@@ -745,7 +752,7 @@ export const PROPOSED_AWARD_ROUND1 = {
 export const PROPOSED_AWARD_ROUND2 = {
   bidId: 'bid-northgate',
   rationale:
-    'Two Rivers Mechanical scores highest under the household\'s warranty- and payment-risk-weighted criteria (0.81 vs. Northgate\'s 0.58), but its certificate of insurance names "TRM Holdings LLC," not its license holder "Two Rivers Mechanical Inc," so its credentials do not verify as valid. Of the two bids with fully valid credentials, Northgate Plumbing scores highest and its scope-normalized adjusted total ($18,400.00) remains the lower of the two.',
+    'Two Rivers Mechanical scores highest of the three under the household\'s warranty- and payment-risk-weighted criteria, but its certificate of insurance names "TRM Holdings LLC," not its license holder "Two Rivers Mechanical Inc," so its credentials do not verify as valid. Of the two bids with fully valid credentials, Northgate Plumbing scores higher, and its scope-normalized adjusted total ($18,400.00) remains the lower of the two.',
 };
 
 const DECISION_TEXT_ROUND1_DRAFT =
@@ -754,8 +761,29 @@ const DECISION_TEXT_ROUND1_DRAFT =
 const DECISION_TEXT_ROUND1 =
   "Correcting for scope: Cedar & Sons' $14,900.00 quote is missing three required items -- permits and inspections ($1,200.00), shower-valve rough-in ($2,100.00), and debris haul-away ($400.00) -- so its scope-normalized adjusted total is $18,600.00 (source-bid-calculator-bid-cedar-adjusted-total), not $14,900.00. That is higher than Northgate Plumbing's adjusted total of $18,400.00 (source-bid-calculator-bid-northgate-adjusted-total), which already prices every required item and carries fully valid license and insurance credentials (source-license-pl-4417-ng). Two Rivers Mechanical's adjusted total is $19,250.00 (source-bid-calculator-bid-tworivers-adjusted-total) and its insurance certificate does not name its license holder (source-license-pl-8801-tr-named-insured), so its credentials do not verify as valid. Recommend awarding to Northgate Plumbing.";
 
+/**
+ * No score numeral appears in this text, deliberately.
+ *
+ * It used to read "0.58 vs. Cedar & Sons' 0.31" -- and the page beside it
+ * rendered Cedar at 24%. Production `scoreCaseState` computes 0.2353 for
+ * Cedar here; the 0.31 came from `scoreBids` below, the hand-written
+ * reproduction used to design this fixture, which has no coverage concept
+ * and so disagrees with production on exactly the bid whose coverage is
+ * incomplete. The two agree on Northgate and Two Rivers, which is why the
+ * discrepancy survived review: it is visible only on the third bid.
+ *
+ * The deeper reason not to simply correct the numeral is architectural.
+ * "The deterministic core, not an LLM, owns case state, evidence validity,
+ * readiness, and human authority" (CLAUDE.md). Scores belong to the core,
+ * which already renders them next to every bid. Prose that restates them
+ * asserts ownership the model does not have, and can only ever agree or be
+ * wrong. Qualitative claims ("scores highest of the three") stay, because
+ * they remain true across any weighting that upweights warranty and
+ * deposit, which is what this round exists to demonstrate. Dollar figures
+ * stay too: those are tool outputs carrying their own source ids.
+ */
 const DECISION_TEXT_ROUND2 =
-  'With the household now weighting warranty length and payment risk most heavily, Two Rivers Mechanical scores highest of the three bids (0.81) -- it leads on both upweighted criteria: a 36-month warranty (source-bid-tworivers) and a 20% deposit (source-bid-tworivers), the lowest payment risk of the three. It is still not recommended: its certificate of insurance names "TRM Holdings LLC," not its license holder "Two Rivers Mechanical Inc" (source-license-pl-8801-tr-named-insured), so its credentials do not verify as valid. Of the two bids whose credentials are fully valid, Northgate Plumbing scores highest (0.58 vs. Cedar & Sons\' 0.31) and its scope-normalized adjusted total ($18,400.00, source-bid-calculator-bid-northgate-adjusted-total) remains lower than Cedar & Sons\' ($18,600.00, source-bid-calculator-bid-cedar-adjusted-total). Recommend awarding to Northgate Plumbing. Correcting the named-insured discrepancy on Two Rivers Mechanical\'s certificate of insurance would reopen this recommendation.';
+  'With the household now weighting warranty length and payment risk most heavily, Two Rivers Mechanical scores highest of the three bids -- it leads on both upweighted criteria: a 36-month warranty (source-bid-tworivers) and a 20% deposit (source-bid-tworivers), the lowest payment risk of the three. It is still not recommended: its certificate of insurance names "TRM Holdings LLC," not its license holder "Two Rivers Mechanical Inc" (source-license-pl-8801-tr-named-insured), so its credentials do not verify as valid. Of the two bids whose credentials are fully valid, Northgate Plumbing scores higher, and its scope-normalized adjusted total ($18,400.00, source-bid-calculator-bid-northgate-adjusted-total) remains lower than Cedar & Sons\' ($18,600.00, source-bid-calculator-bid-cedar-adjusted-total). Recommend awarding to Northgate Plumbing. Correcting the named-insured discrepancy on Two Rivers Mechanical\'s certificate of insurance would reopen this recommendation.';
 
 /**
  * `decision-synthesizer`'s round 1 begins with a draft that sounds entirely

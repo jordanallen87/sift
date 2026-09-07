@@ -89,7 +89,13 @@ describe('scoreBids: round2 hard-constraint beat (Two Rivers Mechanical scores h
     expect(ranked[0]?.constraintViolated).toBe(false);
     expect(ranked[0]?.bidId).toBe(ROUND2_RECOMMENDED_BID_ID);
 
-    // The exact scored totals this task's report cites.
+    // The exact scored totals `scoreBids` computes. This is the fixture's
+    // own design-check reproduction, NOT production scoring: `scoreCaseState`
+    // has a coverage concept this helper lacks and genuinely computes 0.2353
+    // for Cedar & Sons, whose coverage is incomplete. The two agree on the
+    // other two bids and on the ordering, which is all this helper exists to
+    // establish. No user-visible string may quote either set -- see the note
+    // above `DECISION_TEXT_ROUND2`.
     expect(ranked.find((entry) => entry.bidId === 'bid-tworivers')?.score).toBe(0.81);
     expect(ranked.find((entry) => entry.bidId === 'bid-northgate')?.score).toBe(0.58);
     expect(ranked.find((entry) => entry.bidId === 'bid-cedar')?.score).toBe(0.31);
