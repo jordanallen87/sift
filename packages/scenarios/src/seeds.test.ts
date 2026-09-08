@@ -21,7 +21,6 @@ import type {
   SafetyReliabilityClaim,
 } from './tools/index.js';
 import {
-  buildBidComparisonEntities,
   buildCarPurchaseCandidateEntities,
   buildCarPurchaseSeedEvents,
   CAR_PURCHASE_CANDIDATE_IDS,
@@ -191,90 +190,6 @@ describe('buildCarPurchaseSeedEvents', () => {
 
     expect(caseState.pack.id).toBe('car-purchase');
     expect(caseState.entities).toHaveLength(0); // instantiateCase alone never seeds entities
-  });
-});
-
-describe('buildBidComparisonEntities', () => {
-  it('builds one EntityRecord per bid, kind "bid", labelled by contractor name', () => {
-    const entities = buildBidComparisonEntities(FIXED_CLOCK);
-    expect(entities.map((entity) => entity.id).sort()).toEqual(
-      ['bid-cedar', 'bid-northgate', 'bid-tworivers'].sort(),
-    );
-    for (const entity of entities) {
-      expect(entity.kind).toBe('bid');
-    }
-    expect(entities.find((entity) => entity.id === 'bid-northgate')?.label).toBe(
-      'Northgate Plumbing',
-    );
-    expect(entities.find((entity) => entity.id === 'bid-cedar')?.label).toBe('Cedar & Sons');
-    expect(entities.find((entity) => entity.id === 'bid-tworivers')?.label).toBe(
-      'Two Rivers Mechanical',
-    );
-  });
-
-  it("never fabricates Cedar & Sons' warranty term -- it stays an explicit unknown, never 0 months", () => {
-    const entities = buildBidComparisonEntities(FIXED_CLOCK);
-    const cedar = entities.find((entity) => entity.id === 'bid-cedar');
-    const warranty = cedar?.attributes['bid.warranty_months'];
-    expect(warranty?.status).toBe('unknown');
-    expect('value' in (warranty ?? {})).toBe(false);
-
-    // Northgate and Two Rivers both state a real term in writing.
-    expect(
-      entities.find((entity) => entity.id === 'bid-northgate')?.attributes['bid.warranty_months']
-        ?.value,
-    ).toEqual({
-      type: 'number',
-      value: 24,
-      unit: 'months',
-    });
-    expect(
-      entities.find((entity) => entity.id === 'bid-tworivers')?.attributes['bid.warranty_months']
-        ?.value,
-    ).toEqual({ type: 'number', value: 36, unit: 'months' });
-  });
-
-  it("seeds Cedar & Sons' scope-normalized adjusted total using the real absent-item plug numbers, not its raw quoted total", () => {
-    const entities = buildBidComparisonEntities(FIXED_CLOCK);
-    const cedar = entities.find((entity) => entity.id === 'bid-cedar');
-    expect(cedar?.attributes['bid.quoted_total']?.value).toEqual({
-      type: 'money',
-      amount: 14900,
-      currency: 'USD',
-    });
-    // Higher than Northgate's own adjusted total -- the central finding this
-    // pack exists to surface.
-    expect(cedar?.attributes['bid.adjusted_total']?.value).toEqual({
-      type: 'money',
-      amount: 18600,
-      currency: 'USD',
-    });
-    expect(cedar?.attributes['bid.scope_completeness']?.value).toEqual({
-      type: 'number',
-      value: 62.5,
-      unit: '%',
-    });
-  });
-
-  it("marks Two Rivers Mechanical's credentials invalid on the real named-insured mismatch, and the other two bids fully valid", () => {
-    const entities = buildBidComparisonEntities(FIXED_CLOCK);
-    const byId = new Map(entities.map((entity) => [entity.id, entity]));
-
-    expect(
-      byId.get('bid-tworivers')?.attributes['bid.insurance_named_insured_match']?.value,
-    ).toEqual({ type: 'boolean', value: false });
-    expect(byId.get('bid-tworivers')?.attributes['bid.credentials_valid']?.value).toEqual({
-      type: 'boolean',
-      value: false,
-    });
-    expect(byId.get('bid-northgate')?.attributes['bid.credentials_valid']?.value).toEqual({
-      type: 'boolean',
-      value: true,
-    });
-    expect(byId.get('bid-cedar')?.attributes['bid.credentials_valid']?.value).toEqual({
-      type: 'boolean',
-      value: true,
-    });
   });
 });
 

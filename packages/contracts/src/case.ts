@@ -319,18 +319,6 @@ export const DecisionProposalSchema = z
     reviewedAt: z.iso.datetime().optional(),
     reviewedByActor: ActorSchema.optional(),
     revisionInstructions: safeString(5000).optional(),
-    // Mirrors `EvidenceLink.dispositionReason`'s precedent: the reviewer's
-    // own free-text explanation for their decision (`ReviewProposalInput
-    // .reason`, `commands.ts` -- always-optional, any of the three
-    // decisions). Added because a real, user-reachable defect let this field
-    // be validated, transmitted (`apps/web/src/app/App.tsx`'s
-    // `handleReviewProposal` genuinely sends it), and then silently
-    // discarded: `packages/core/src/policy.ts`'s `reviewProposal` never
-    // wrote it anywhere, so a human's stated reason for declining or
-    // approving a consequential action vanished the instant they submitted
-    // it -- never on the case, never in the activity stream, nowhere. See
-    // `policy.ts`'s `reviewProposal` doc comment for the write.
-    reviewReason: safeString(2000).optional(),
   })
   .strict();
 export type DecisionProposal = z.infer<typeof DecisionProposalSchema>;
@@ -460,7 +448,7 @@ export type WorkspaceViewState = z.infer<typeof WorkspaceViewStateSchema>;
 // evidence (`submitSource`, a separate, explicit command) -- nothing about
 // `CaseNote` itself can silently become evidence, which is exactly what
 // keeps the deterministic core (not an LLM) the sole owner of evidence
-// validity and readiness (docs/engineering-principles.md "Non-negotiable product truths").
+// validity and readiness (CLAUDE.md "Non-negotiable product truths").
 //
 // `origin`/`authoredBy` reuse `CaseAttributeDefinition`'s exact
 // origin-vocabulary pattern (`CASE_ATTRIBUTE_ORIGINS`, `proposedBy`) rather

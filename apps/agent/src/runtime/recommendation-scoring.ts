@@ -11,7 +11,7 @@
  * numbers and lists was the model's word, or a constant, presented to a
  * person as if it were a finding.
  *
- * docs/engineering-principles.md is explicit that the model "may propose candidate events and
+ * CLAUDE.md is explicit that the model "may propose candidate events and
  * recommendations" but that the deterministic core owns state and
  * readiness. A ranking is a claim about a case, so it belongs to the core.
  * This module is the seam: the model still proposes, and its rationale is
@@ -119,6 +119,7 @@ export function deriveScoredRecommendationFields(
   const ranked = board.options.filter((option) => option.total !== null);
   const compliant = ranked.filter((option) => option.violatedConstraintIds.length === 0);
   const leader = compliant[0];
+  const runnerUp = compliant[1];
 
   const favored =
     proposedFavoredOptionId === null
@@ -156,14 +157,7 @@ export function deriveScoredRecommendationFields(
     leader !== undefined &&
     (leader.optionId === favored.optionId ||
       (leader.total !== null && favored.total >= leader.total - 1e-9));
-  // The peer has to be a *different* option, which positional `runnerUp`
-  // does not guarantee: when the favoured option ties for the lead but sorts
-  // second, `runnerUp` is the favoured option itself and the card compares it
-  // to itself. `compliant` is already sorted best-first, so the best option
-  // that is not the favoured one is the honest comparison in both branches.
-  const comparisonPeer = agrees
-    ? compliant.find((option) => option.optionId !== favored.optionId)
-    : leader;
+  const comparisonPeer = agrees ? runnerUp : leader;
 
   facts.push(
     `${favored.optionLabel} scores ${percent(favored.total)} against the criteria on this case, measured across ${percent(favored.coverage)} of the weight assigned to them.`,

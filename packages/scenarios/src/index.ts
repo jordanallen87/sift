@@ -1,5 +1,5 @@
 // @sift/scenarios — Sift fixture data, scripted tools/model, scenario runner,
-// and assertions. See docs/planning/plans/2026-08-26-pax-hackathon-build.md
+// and assertions. See docs/superpowers/plans/2026-08-26-pax-hackathon-build.md
 // for the task map: the deterministic car-purchase fixture tools ship in
 // Task 3; the scripted model ships in `apps/agent/src/runtime/model-provider.ts`.
 export * from './tools/index.js';
@@ -8,7 +8,6 @@ export * from './tools/index.js';
 export {
   CAR_PURCHASE_CANDIDATE_IDS,
   HOUSEHOLD_FIT_DEFINITION_ID_TRANSLATION,
-  buildBidComparisonEntities,
   buildCarPurchaseCandidateEntities,
   buildCarPurchaseSeedEvents,
   buildHomeEnergyResponseOptionEntities,

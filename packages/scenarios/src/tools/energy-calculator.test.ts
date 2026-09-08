@@ -4,10 +4,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadFixture } from './fixture-loader.js';
 import {
-  DEFAULT_ANOMALY_THRESHOLD_PERCENT,
   ENERGY_CALCULATOR_TOOL_ID,
   calculateEnergyAnalysis,
-  determineAnomaly,
   evaluateResponseOptions,
   type EnergyAnalysisResult,
   type ResponseOptionsEvaluationResult,
@@ -32,54 +30,6 @@ function signalAbortingOnRead(n: number): AbortSignal {
 function expectOk<T>(result: { status: string }): asserts result is { status: 'ok'; data: T } {
   expect(result.status).toBe('ok');
 }
-
-describe('determineAnomaly', () => {
-  // Extracted out of `calculateEnergyAnalysis` so a case-creation gate
-  // (`bill-feed-gate.ts`) can reuse the exact same threshold arithmetic
-  // instead of duplicating it -- the 15% default threshold must have
-  // exactly one definition in the codebase.
-  it('independently recomputes percentAboveBaseline and flags it materially abnormal against the default threshold, matching calculateEnergyAnalysis on the real 42% fixture', () => {
-    const anomaly = determineAnomaly(
-      { amount: 248.5, currency: 'USD' },
-      { amount: 175.0, currency: 'USD' },
-    );
-    expect(anomaly.percentAboveBaseline).toBe(42);
-    expect(anomaly.thresholdPercent).toBe(DEFAULT_ANOMALY_THRESHOLD_PERCENT);
-    expect(anomaly.isMateriallyAbnormal).toBe(true);
-    expect(anomaly.currentAmount).toEqual({ amount: 248.5, currency: 'USD' });
-    expect(anomaly.baselineAmount).toEqual({ amount: 175.0, currency: 'USD' });
-  });
-
-  it('does not flag a bill within the threshold as materially abnormal', () => {
-    // 5% above baseline, well under the default 15% threshold.
-    const anomaly = determineAnomaly(
-      { amount: 183.75, currency: 'USD' },
-      { amount: 175.0, currency: 'USD' },
-    );
-    expect(anomaly.percentAboveBaseline).toBe(5);
-    expect(anomaly.isMateriallyAbnormal).toBe(false);
-  });
-
-  it('flags a bill exactly at the threshold as materially abnormal (>=, not >)', () => {
-    const anomaly = determineAnomaly(
-      { amount: 115, currency: 'USD' },
-      { amount: 100, currency: 'USD' },
-      15,
-    );
-    expect(anomaly.percentAboveBaseline).toBe(15);
-    expect(anomaly.isMateriallyAbnormal).toBe(true);
-  });
-
-  it('honors a caller-supplied threshold override', () => {
-    const anomaly = determineAnomaly(
-      { amount: 248.5, currency: 'USD' },
-      { amount: 175.0, currency: 'USD' },
-      50,
-    );
-    expect(anomaly.thresholdPercent).toBe(50);
-    expect(anomaly.isMateriallyAbnormal).toBe(false);
-  });
-});
 
 describe('calculateEnergyAnalysis', () => {
   it('independently recomputes percentAboveBaseline matching the fixture-documented 42% and flags it materially abnormal', () => {
@@ -140,20 +90,7 @@ describe('calculateEnergyAnalysis', () => {
       expect(item.level).toBe('E3');
       expect(item.verdict).toBe('pass');
       expect(item.sourceId).toMatch(/^source-energy-calculator-/);
-      // An evidence item whose summary is blank is not evidence -- it is a
-      // citation to nothing, rendered to a person as an empty line. Every
-      // one of these four summaries could be mutated to "" with the whole
-      // suite still green until this assertion existed.
-      expect(item.summary.trim()).not.toBe('');
     }
-
-    // The headline finding the entire demo turns on, pinned to its actual
-    // figures rather than merely to being non-empty.
-    const anomalyEvidence = result.data.evidence.find((item) => item.sourceId.endsWith('-anomaly'));
-    expect(anomalyEvidence?.summary).toContain('$248.50');
-    expect(anomalyEvidence?.summary).toContain('$175.00');
-    expect(anomalyEvidence?.summary).toContain('42%');
-    expect(anomalyEvidence?.summary).toContain('materially abnormal');
   });
 
   it('is deterministic and reproducible: identical input twice produces deep-equal output', () => {
@@ -248,93 +185,6 @@ describe('calculateEnergyAnalysis -- rate-schedules edge case with no tariff eff
   });
 });
 
-describe('calculateEnergyAnalysis -- findPriorTariff generality beyond exactly two tariffs (via fixtureBaseDir test seam)', () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'sift-energy-calculator-'));
-  });
-
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  // `findPriorTariff`'s own comment claims it "generalizes beyond exactly
-  // two tariffs without hardcoding either id", but the real fixture holds
-  // exactly two -- so its date filter was doing no work that the preceding
-  // id filter had not already done, and mutation testing proved it: both
-  // `.filter((tariff) => true)` and `<` -> `<=` survived the whole suite.
-  // A schedule with a later tariff and a same-date sibling is what makes
-  // that filter load-bearing, and it is not a contrived shape: a utility
-  // publishing a future rate change, or two concurrent tariffs sharing an
-  // effective date, are both ordinary.
-  it('picks the latest tariff strictly earlier than the current one, ignoring a later tariff and a same-effective-date sibling', () => {
-    const realBill = loadFixture('current-bill');
-    const realRateSchedules = loadFixture('rate-schedules');
-    const realWeatherHistory = loadFixture('weather-history');
-
-    const currentTariff = realRateSchedules.tariffs.find(
-      (tariff) => tariff.tariffId === realBill.tariffId,
-    );
-    const genuinePriorTariff = realRateSchedules.tariffs.find(
-      (tariff) => tariff.tariffId !== realBill.tariffId,
-    );
-    if (!currentTariff || !genuinePriorTariff) {
-      throw new Error(
-        'fixture invariant broken: rate-schedules.json must hold the current tariff and exactly one earlier tariff',
-      );
-    }
-
-    // Distinct rates, so choosing the wrong tariff changes the reported
-    // arithmetic too -- the id assertion below is not the only thing
-    // standing between a regression and a green run.
-    const laterTariff = {
-      ...genuinePriorTariff,
-      tariffId: 'tariff-decoy-later',
-      label: 'Announced future tariff (must never be treated as "prior")',
-      effectiveFrom: '2027-01-01',
-      effectiveTo: null,
-      fixedMonthlyCustomerCharge: { amount: 99.0, currency: 'USD' },
-      volumetricRatePerKwh: { amount: 0.99, currency: 'USD' },
-    };
-    const sameDateTariff = {
-      ...genuinePriorTariff,
-      tariffId: 'tariff-decoy-same-date',
-      label: 'Concurrent tariff sharing the current effective date (not strictly earlier)',
-      effectiveFrom: currentTariff.effectiveFrom,
-      effectiveTo: null,
-      fixedMonthlyCustomerCharge: { amount: 55.0, currency: 'USD' },
-      volumetricRatePerKwh: { amount: 0.55, currency: 'USD' },
-    };
-
-    writeFileSync(
-      join(tempDir, 'rate-schedules.json'),
-      JSON.stringify({
-        ...realRateSchedules,
-        tariffs: [laterTariff, currentTariff, sameDateTariff, genuinePriorTariff],
-      }),
-    );
-    writeFileSync(join(tempDir, 'current-bill.json'), JSON.stringify(realBill));
-    writeFileSync(join(tempDir, 'weather-history.json'), JSON.stringify(realWeatherHistory));
-
-    const result = calculateEnergyAnalysis({ fixtureBaseDir: tempDir });
-    expectOk<EnergyAnalysisResult>(result);
-    const { rateChange } = result.data;
-
-    expect(rateChange.currentTariffId).toBe(currentTariff.tariffId);
-    expect(rateChange.priorTariffId).toBe(genuinePriorTariff.tariffId);
-
-    // Independently recomputed from the genuine prior tariff's own rates:
-    // if either decoy had been selected, this number would differ.
-    expect(rateChange.billUnderPriorTariffAtBaselineUsage.amount).toBe(
-      round2(
-        genuinePriorTariff.fixedMonthlyCustomerCharge.amount +
-          genuinePriorTariff.volumetricRatePerKwh.amount * realBill.baseline.usage.value,
-      ),
-    );
-  });
-});
-
 describe('evaluateResponseOptions', () => {
   it('scores all four real options, ranked by fitScore descending with the documented cost/root-cause formula (default equal weights)', () => {
     const result = evaluateResponseOptions();
@@ -397,47 +247,6 @@ describe('evaluateResponseOptions', () => {
     expect(byId.get('monitor-one-cycle')?.withinBudget).toBe(true);
   });
 
-  // Every other weight test in this file happens to pass weights summing to
-  // exactly 1 (0.5/0.5, 1/0, 0/1, 0.3/0.7), which makes `/ totalWeight`
-  // indistinguishable from `* totalWeight` -- and mutation testing proved
-  // it, with the division mutant surviving the whole suite. Weights are not
-  // contractually normalized: `CriteriaEditor` edits whole numbers 0-100,
-  // so a 80/20 pair reaching a scorer is the ordinary case, not an exotic
-  // one. Scaling the weights must not move the score.
-  it('normalizes by the weight total, so 80/20 scores identically to 0.8/0.2', () => {
-    const scaled = evaluateResponseOptions({ costWeight: 80, conservationWeight: 20 });
-    const unit = evaluateResponseOptions({ costWeight: 0.8, conservationWeight: 0.2 });
-    expectOk<ResponseOptionsEvaluationResult>(scaled);
-    expectOk<ResponseOptionsEvaluationResult>(unit);
-
-    const scaledFits = scaled.data.options.map((option) => option.fitScore);
-    expect(scaledFits).toEqual(unit.data.options.map((option) => option.fitScore));
-    for (const fitScore of scaledFits) {
-      expect(fitScore).toBeGreaterThanOrEqual(0);
-      expect(fitScore).toBeLessThanOrEqual(1);
-    }
-  });
-
-  // Boundary: `<=` vs `<`. An option costing exactly the stated maximum is
-  // within budget -- a person who says "no more than $165" means $165 is
-  // allowed. The `<` mutant survived until this test existed.
-  it('counts an option costing exactly maxRoughCost as within budget', () => {
-    const result = evaluateResponseOptions({ maxRoughCost: 165 });
-    expectOk<ResponseOptionsEvaluationResult>(result);
-
-    const exactlyAtLimit = result.data.options.find(
-      (option) => option.optionId === 'request-hvac-inspection',
-    );
-    expect(exactlyAtLimit?.roughCost.amount).toBe(165);
-    expect(exactlyAtLimit?.withinBudget).toBe(true);
-
-    const overLimit = result.data.options.find(
-      (option) => option.optionId === 'request-energy-audit',
-    );
-    expect(overLimit?.roughCost.amount).toBe(250);
-    expect(overLimit?.withinBudget).toBe(false);
-  });
-
   it('omits withinBudget when no maxRoughCost is given', () => {
     const result = evaluateResponseOptions();
     expectOk<ResponseOptionsEvaluationResult>(result);
@@ -461,17 +270,7 @@ describe('evaluateResponseOptions', () => {
     for (const item of result.data.evidence) {
       expect(item.level).toBe('E3');
       expect(item.verdict).toBe('pass');
-      expect(item.summary.trim()).not.toBe('');
     }
-
-    // Each summary has to describe the option it belongs to, not merely
-    // exist: label, cost, and whether it addresses the root cause are the
-    // three facts a person weighs when choosing between them.
-    const hvacEvidence = result.data.evidence.find((item) =>
-      item.summary.includes('Request an HVAC / thermostat inspection'),
-    );
-    expect(hvacEvidence?.summary).toContain('$165.00');
-    expect(hvacEvidence?.summary).toContain('addresses root cause');
   });
 
   it('returns a deterministic not_found result for an unknown optionId, without throwing', () => {

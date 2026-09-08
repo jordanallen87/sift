@@ -11,7 +11,7 @@ import {
 } from './fixture-loader.js';
 
 describe('FIXTURE_NAMES', () => {
-  it('lists every car-purchase, energy, and bids fixture file this loader knows how to validate', () => {
+  it('lists every car-purchase and energy fixture file this loader knows how to validate', () => {
     expect([...FIXTURE_NAMES].sort()).toEqual(
       [
         // car-purchase
@@ -23,18 +23,11 @@ describe('FIXTURE_NAMES', () => {
         'safety-reliability-sources',
         // energy
         'current-bill',
-        'current-bill-normal',
         'usage-history',
         'weather-history',
         'household-events',
         'rate-schedules',
         'response-options',
-        // bids
-        'job',
-        'bid-northgate',
-        'bid-cedar',
-        'bid-tworivers',
-        'license-registry',
       ].sort(),
     );
   });
@@ -465,104 +458,6 @@ describe('parseFixtureJson (pure validation, no disk I/O) -- energy fixtures', (
   });
 });
 
-describe('parseFixtureJson (pure validation, no disk I/O) -- bids fixtures', () => {
-  it('parses valid job content', () => {
-    const raw = JSON.stringify({
-      _provenance: 'fictional',
-      caseId: 'case-demo-bid-comparison',
-      jobId: 'job-demo-bathroom-remodel-01',
-      title: 'x',
-      trade: 'plumbing',
-      projectAddressNote: 'x',
-      summary: 'x',
-      requiredScopeLineItems: [{ scopeItemId: 'demo-existing', label: 'x' }],
-      biddersInvited: ['bid-northgate'],
-    });
-    const result = parseFixtureJson('job', raw);
-    expect(result.requiredScopeLineItems).toHaveLength(1);
-  });
-
-  function bidFixture(overrides: { total: number; lineItemAmounts: number[] }): string {
-    return JSON.stringify({
-      _provenance: 'fictional',
-      caseId: 'case-demo-bid-comparison',
-      bidId: 'bid-northgate',
-      jobId: 'job-demo-bathroom-remodel-01',
-      contractorName: 'x',
-      licenseNumber: 'PL-0000-XX',
-      total: { amount: overrides.total, currency: 'USD' },
-      lineItems: overrides.lineItemAmounts.map((amount, index) => ({
-        scopeItemId: `scope-item-${index}`,
-        label: 'x',
-        amount: { amount, currency: 'USD' },
-      })),
-      depositPercent: 25,
-      warranty: { present: true, termMonths: 24, statedInWriting: true },
-      startInWeeks: 3,
-      durationWorkingDays: 9,
-      allowances: [],
-    });
-  }
-
-  it('parses a valid bid whose line items sum exactly to its total', () => {
-    const raw = bidFixture({ total: 300, lineItemAmounts: [100, 200] });
-    const result = parseFixtureJson('bid-northgate', raw);
-    expect(result.total.amount).toBe(300);
-  });
-
-  it('rejects a bid whose line items do not sum to its stated total', () => {
-    const raw = bidFixture({ total: 300, lineItemAmounts: [100, 150] });
-    expect(() => parseFixtureJson('bid-northgate', raw)).toThrow(
-      /line items sum to 250 but total.amount is 300/,
-    );
-  });
-
-  it('accepts a bid warranty that is present with no stated term (null termMonths)', () => {
-    const raw = JSON.stringify({
-      _provenance: 'fictional',
-      caseId: 'case-demo-bid-comparison',
-      bidId: 'bid-cedar',
-      jobId: 'job-demo-bathroom-remodel-01',
-      contractorName: 'x',
-      licenseNumber: 'PL-0000-XX',
-      total: { amount: 100, currency: 'USD' },
-      lineItems: [
-        { scopeItemId: 'demo-existing', label: 'x', amount: { amount: 100, currency: 'USD' } },
-      ],
-      depositPercent: 45,
-      warranty: { present: true, termMonths: null, statedInWriting: false },
-      startInWeeks: 1,
-      durationWorkingDays: 7,
-      allowances: [],
-    });
-    const result = parseFixtureJson('bid-cedar', raw);
-    expect(result.warranty.termMonths).toBeNull();
-  });
-
-  it('parses valid license-registry content, including a named-insured mismatch', () => {
-    const raw = JSON.stringify({
-      _provenance: 'fictional',
-      entries: [
-        {
-          licenseNumber: 'PL-8801-TR',
-          licenseHolderName: 'Two Rivers Mechanical Inc',
-          status: 'active',
-          classCoversScope: true,
-          class: 'x',
-          insurance: {
-            status: 'active',
-            namedInsured: 'TRM Holdings LLC',
-            matchesLicenseHolder: false,
-            policyNumberFictional: 'GL-INS-0003-TR',
-          },
-        },
-      ],
-    });
-    const result = parseFixtureJson('license-registry', raw);
-    expect(result.entries[0]?.insurance.matchesLicenseHolder).toBe(false);
-  });
-});
-
 describe('loadFixture (disk I/O + caching)', () => {
   let tempDir: string;
 
@@ -633,15 +528,6 @@ describe('loadFixture (disk I/O + caching)', () => {
     expect(bill.householdId).toBe('household-demo-energy-01');
     expect(bill.anomaly.percentAboveBaseline).toBe(42);
 
-    // The second, within-threshold bill feed (bill-feed-gate.ts's "no case
-    // opened" fixture) -- same household/account, a different, ordinary
-    // billing cycle. Registered under its own fixture name rather than
-    // ever overwriting current-bill.json, which the anomalous demo path
-    // and its baselines depend on unchanged.
-    const normalBill = loadFixture('current-bill-normal');
-    expect(normalBill.householdId).toBe('household-demo-energy-01');
-    expect(normalBill.anomaly.percentAboveBaseline).toBeLessThan(15);
-
     const usage = loadFixture('usage-history');
     expect(usage.cycles).toHaveLength(18);
     // Final cycle matches current-bill.json exactly (fixture note).
@@ -675,80 +561,6 @@ describe('loadFixture (disk I/O + caching)', () => {
         'request-hvac-inspection',
       ].sort(),
     );
-  });
-
-  it('loads and validates the real, checked-in bids fixtures from disk, from their own bids directory', () => {
-    const job = loadFixture('job');
-    expect(job.jobId).toBe('job-demo-bathroom-remodel-01');
-    expect(job.requiredScopeLineItems.map((item) => item.scopeItemId).sort()).toEqual(
-      [
-        'demo-existing',
-        'rough-in-supply',
-        'rough-in-drain',
-        'shower-valve-rough-in',
-        'fixture-set-install',
-        'permits-inspections',
-        'debris-haul-away',
-        'final-test',
-      ].sort(),
-    );
-
-    const northgate = loadFixture('bid-northgate');
-    expect(northgate.contractorName).toBe('Northgate Plumbing');
-    expect(northgate.total.amount).toBe(18400);
-    // Every required scope item is priced -- Northgate is the "complete
-    // bid" reference the case's price-verification obligation compares
-    // Cedar's silence against.
-    expect(northgate.lineItems.map((item) => item.scopeItemId).sort()).toEqual(
-      job.requiredScopeLineItems.map((item) => item.scopeItemId).sort(),
-    );
-
-    const cedar = loadFixture('bid-cedar');
-    expect(cedar.contractorName).toBe('Cedar & Sons');
-    expect(cedar.total.amount).toBe(14900);
-    // Cedar is silent on exactly these three items -- absent, not marked
-    // excluded -- which is the entire evidence question this case exists
-    // to surface (docs/bid-comparison/plan.md).
-    const cedarScopeItemIds = new Set(cedar.lineItems.map((item) => item.scopeItemId));
-    for (const missing of ['permits-inspections', 'shower-valve-rough-in', 'debris-haul-away']) {
-      expect(cedarScopeItemIds.has(missing)).toBe(false);
-    }
-    expect(cedar.warranty.termMonths).toBeNull();
-    expect(cedar.depositPercent).toBe(45);
-
-    const tworivers = loadFixture('bid-tworivers');
-    expect(tworivers.contractorName).toBe('Two Rivers Mechanical');
-    expect(tworivers.total.amount).toBe(19250);
-    expect(tworivers.lineItems.map((item) => item.scopeItemId).sort()).toEqual(
-      job.requiredScopeLineItems.map((item) => item.scopeItemId).sort(),
-    );
-
-    // Every bid's line items sum exactly to its own stated total. The
-    // schema's superRefine already enforces this at load time (so a
-    // mismatch would have thrown before this line ever ran), but this
-    // assertion additionally proves it against the real, checked-in fixture
-    // content on disk rather than only against inline test fixtures.
-    for (const bid of [northgate, cedar, tworivers]) {
-      const lineItemSum = bid.lineItems.reduce((sum, item) => sum + item.amount.amount, 0);
-      expect(lineItemSum).toBe(bid.total.amount);
-    }
-
-    const registry = loadFixture('license-registry');
-    expect(registry.entries.map((entry) => entry.licenseNumber).sort()).toEqual(
-      ['PL-4417-NG', 'PL-2290-CS', 'PL-8801-TR'].sort(),
-    );
-    const northgateEntry = registry.entries.find((entry) => entry.licenseNumber === 'PL-4417-NG');
-    const cedarEntry = registry.entries.find((entry) => entry.licenseNumber === 'PL-2290-CS');
-    const tworiversEntry = registry.entries.find((entry) => entry.licenseNumber === 'PL-8801-TR');
-    expect(northgateEntry?.insurance.matchesLicenseHolder).toBe(true);
-    expect(cedarEntry?.insurance.matchesLicenseHolder).toBe(true);
-    // The real, checkable credential discrepancy the case's
-    // credential_verification obligation exists to catch: Two Rivers'
-    // licence holder and its certificate of insurance's named insured
-    // disagree.
-    expect(tworiversEntry?.insurance.matchesLicenseHolder).toBe(false);
-    expect(tworiversEntry?.licenseHolderName).toBe('Two Rivers Mechanical Inc');
-    expect(tworiversEntry?.insurance.namedInsured).toBe('TRM Holdings LLC');
   });
 
   it('caches by fixture name: repeated calls return the identical object reference', () => {

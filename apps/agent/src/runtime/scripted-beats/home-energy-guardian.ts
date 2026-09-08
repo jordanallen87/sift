@@ -6,13 +6,11 @@
  * "Required adaptive moments"), the analogous file to
  * `scripted-beats/car-purchase.ts` for the Swarm-hero pack.
  *
- * - `round1`: the initial investigation under the pack's default 80/20
- *   cost-heavy cost/conservation criteria, where the scripted synthesis
- *   genuinely favors the cheapest response option -- `monitor-one-cycle` --
- *   rather than coincidentally landing on the root-cause fix regardless of
- *   weighting (see the arithmetic note below). The pack's default and this
- *   beat's narration are the same weighting on purpose, and
- *   `home-energy-guardian.test.ts` fails if they diverge.
+ * - `round1`: the initial investigation under the pack's default 50/50
+ *   cost/conservation criteria, reweighted here to 80/20 (cost-heavy) so the
+ *   scripted synthesis genuinely favors the cheapest response option --
+ *   `monitor-one-cycle` -- rather than coincidentally landing on the
+ *   root-cause fix regardless of weighting (see the arithmetic note below).
  *   Exercises: anomaly-first ordering, the weather steering-then-handoff
  *   moment, and a cost-favoring synthesis that does not propose an
  *   inspection.
@@ -149,25 +147,6 @@ function buildAnomalyInvestigatorProvider(): ScriptedModelProvider {
         { toolCalls: [{ name: 'skills', input: { skill_name: 'bill-normalizer' } }] },
         { toolCalls: [{ name: 'bill-reader', input: {} }] },
         { toolCalls: [{ name: 'calculator', input: {} }] },
-        // Deliberate overreach, and the only scripted turn here that is
-        // *meant* to fail. Having measured a 42% spike, the bill specialist
-        // reaches for the household device log to explain it -- a tool the
-        // compiled pack grants to `home-systems-analyst`, not to this node
-        // (`allowedTools` here is bill-reader / usage-history-query /
-        // calculator). The real `ScopeAuthorization` intervention denies it
-        // before it executes.
-        //
-        // This is scripted because the guard cannot be demonstrated
-        // otherwise: a scripted provider only ever asks for what it is told
-        // to ask for, so with every turn inside the grant, `Deny` -- one of
-        // the three intervention outcomes docs/engineering-principles.md
-        // requires to be *visible* -- would never fire outside a unit test
-        // that patches this provider on purpose. What is scripted is the
-        // model's overreach, which is an ordinary real-world failure mode;
-        // what does the denying is real code reading the real compiled pack.
-        // It is also the honest answer to "why hand off at all instead of
-        // letting one agent do everything": it cannot.
-        { toolCalls: [{ name: 'household-event-lookup', input: {} }] },
         structuredOutputTurn({
           agentId: 'rate-analyst',
           message:
@@ -419,18 +398,6 @@ function buildSourceChallengerProvider(): ScriptedModelProvider {
 export const ROUND1_COST_WEIGHT = 80;
 export const ROUND1_CONSERVATION_WEIGHT = 20;
 
-/**
- * The option round 1 recommends.
- *
- * Exported so `home-energy-guardian.test.ts` can assert the thing that
- * actually matters and was not previously checked anywhere: that the option
- * this beat recommends is the option the *pack's shipped default weighting*
- * ranks first. Round 1's narration only tells the truth if the case a person
- * starts is weighted the way the narration says it is, and nothing tied those
- * two facts together until that test did.
- */
-export const ROUND1_RECOMMENDED_OPTION_ID = 'monitor-one-cycle';
-
 /** Round 2's fit scores at conservation-heavy 20/80 weighting: the root-cause fix wins. */
 export const ROUND2_COST_WEIGHT = 20;
 export const ROUND2_CONSERVATION_WEIGHT = 80;
@@ -451,22 +418,6 @@ function buildDecisionSynthesizerProvider(): ScriptedModelProvider {
   return new ScriptedModelProvider({
     beats: {
       round1: [
-        // A first draft that sounds entirely reasonable and cites nothing.
-        //
-        // This is not padding. `decision-synthesizer`'s real `GoalLoop`
-        // validator requires a `source-` id, so this attempt is genuinely
-        // rejected by the same validator the release gate exercises, and
-        // the corrected attempt below is what actually reaches the case.
-        // Before this, round 1 validated on attempt 1 and the whole
-        // rejection path -- the product's clearest demonstration that it
-        // will not ship an unsupported answer -- existed only inside a unit
-        // test, while the UI built to display it sat unreachable.
-        //
-        // `maxAttempts: 2` means there is exactly one retry, so a second
-        // failure would surface as a real failure rather than loop.
-        structuredOutputTurn({
-          message: 'Monitoring for one more billing cycle looks like the sensible call here.',
-        }),
         structuredOutputTurn({
           message: DECISION_TEXT_ROUND1,
         }),
@@ -508,21 +459,14 @@ export interface HomeEnergySwarmScriptedProviders extends Record<
  * scenario). The caller calls `provider.setBeat(...)` on every provider it
  * intends to exercise before invoking the Swarm.
  */
-export function buildHomeEnergySwarmScriptedProviders(
-  /** Optional demo pacing, forwarded to every provider. 0 (the default) is what every test and gate uses -- see `ScriptedModelProvider.turnDelayMs`. */
-  turnDelayMs = 0,
-): HomeEnergySwarmScriptedProviders {
-  const paced = <T extends ScriptedModelProvider>(provider: T): T => {
-    provider.setTurnDelayMs(turnDelayMs);
-    return provider;
-  };
+export function buildHomeEnergySwarmScriptedProviders(): HomeEnergySwarmScriptedProviders {
   return {
-    'anomaly-investigator': paced(buildAnomalyInvestigatorProvider()),
-    'rate-analyst': paced(buildRateAnalystProvider()),
-    'weather-analyst': paced(buildWeatherAnalystProvider()),
-    'home-systems-analyst': paced(buildHomeSystemsAnalystProvider()),
-    'source-challenger': paced(buildSourceChallengerProvider()),
-    'decision-synthesizer': paced(buildDecisionSynthesizerProvider()),
+    'anomaly-investigator': buildAnomalyInvestigatorProvider(),
+    'rate-analyst': buildRateAnalystProvider(),
+    'weather-analyst': buildWeatherAnalystProvider(),
+    'home-systems-analyst': buildHomeSystemsAnalystProvider(),
+    'source-challenger': buildSourceChallengerProvider(),
+    'decision-synthesizer': buildDecisionSynthesizerProvider(),
   };
 }
 

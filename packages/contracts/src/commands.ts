@@ -65,7 +65,7 @@ const expectedSequence = z.number().int().min(0);
 // "Demo launcher": "The initial page presents exactly two options ... `car-
 // purchase`/`home-energy-guardian` are the two pack ids those options start.
 
-export const DEMO_IDS = ['car-purchase', 'home-energy-guardian', 'bid-comparison'] as const;
+export const DEMO_IDS = ['car-purchase', 'home-energy-guardian'] as const;
 export type DemoId = (typeof DEMO_IDS)[number];
 
 export const StartDemoInputSchema = z
@@ -89,46 +89,6 @@ export const StartCaseInputSchema = z
   })
   .strict();
 export type StartCaseInput = z.infer<typeof StartCaseInputSchema>;
-
-// --- CheckEnergyBillFeedInput / EnergyBillFeedCheckResult ---
-// The deterministic Home Energy Guardian case-creation gate
-// (`packages/scenarios/src/tools/bill-feed-gate.ts`,
-// `CommandService.checkEnergyBillFeed`): decides whether a bill feed is
-// materially abnormal enough to open a case at all, so "a normal bill
-// produces no case" is a real, reachable outcome rather than an
-// unconditional case creation narrated as if it were gated.
-//
-// A sibling command to `startDemo`, not an overload of it, for the same
-// reason `startCase` is a sibling rather than an overload (see that
-// schema's own comment above): `startDemo`'s fixture-reset semantics stay
-// intact and unconditional for every other demo, and this command's own
-// result shape genuinely cannot be a `CommandReceipt` -- that schema
-// requires a non-empty `caseId`, which does not exist when the gate
-// declines to open a case.
-
-export const ENERGY_BILL_FEED_IDS = ['anomalous', 'normal'] as const;
-export type EnergyBillFeedId = (typeof ENERGY_BILL_FEED_IDS)[number];
-
-export const CheckEnergyBillFeedInputSchema = z
-  .object({
-    billFeedId: z.enum(ENERGY_BILL_FEED_IDS),
-  })
-  .strict();
-export type CheckEnergyBillFeedInput = z.infer<typeof CheckEnergyBillFeedInputSchema>;
-
-export const EnergyBillFeedCheckResultSchema = z
-  .object({
-    commandId: idString(),
-    billFeedId: z.enum(ENERGY_BILL_FEED_IDS),
-    caseOpened: z.boolean(),
-    percentAboveBaseline: z.number().finite(),
-    thresholdPercent: z.number().finite(),
-    reason: safeString(2000),
-    /** Present if and only if `caseOpened` is `true`. */
-    receipt: z.lazy(() => CommandReceiptSchema).optional(),
-  })
-  .strict();
-export type EnergyBillFeedCheckResult = z.infer<typeof EnergyBillFeedCheckResultSchema>;
 
 // --- SelectPackInput (webmcp.md `sift_select_pack`) ---
 
@@ -369,63 +329,11 @@ const CaseAttributeDraftSchema = z
     appliesTo: z.array(idString()).max(50),
     unit: safeString(60).optional(),
     allowedValues: z.array(safeString(200)).max(200).optional(),
-    /**
-     * The same grades as `allowedValues`, listed worst to best.
-     *
-     * Without this a model-defined enum column renders but cannot be
-     * scored: `scoring.ts` rule 3 is that enums are not ordinal until
-     * something declares them so, and it deliberately refuses to read an
-     * order out of `allowedValues`, which is a membership set. Supplying it
-     * is what lets a criterion point at a custom rating and actually move
-     * the ranking -- "fits two crates" beating "fits one" is a fact about
-     * this household's scale, not something the engine may infer.
-     */
-    orderedValues: z.array(safeString(200)).max(200).optional(),
     evidenceExpectation: z.enum(EVIDENCE_EXPECTATIONS),
     comparison: z.enum(ATTRIBUTE_COMPARISONS),
     reason: safeString(2000),
   })
-  .strict()
-  .superRefine((draft, ctx) => {
-    if (draft.orderedValues === undefined) return;
-    const issue = (message: string) => {
-      ctx.addIssue({ code: 'custom', path: ['orderedValues'], message });
-    };
-    if (draft.valueType !== 'enum') {
-      issue(
-        'orderedValues only applies to an enum attribute; every other type already ranks itself',
-      );
-      return;
-    }
-    if (draft.allowedValues === undefined) {
-      issue(
-        'orderedValues requires allowedValues: a grade must be selectable before it can be ranked',
-      );
-      return;
-    }
-    if (new Set(draft.orderedValues).size !== draft.orderedValues.length) {
-      issue(
-        'orderedValues must not repeat a grade, which would give it two positions on the scale',
-      );
-      return;
-    }
-    // Same set, not merely a subset. A grade that is selectable but
-    // unordered scores as "not one of the declared grades", so a partial
-    // ordering ships a column that silently refuses to score some options
-    // -- the half-blank column this command exists to prevent.
-    const allowed = new Set(draft.allowedValues);
-    const ordered = new Set(draft.orderedValues);
-    const missing = [...allowed].filter((grade) => !ordered.has(grade));
-    const extra = [...ordered].filter((grade) => !allowed.has(grade));
-    if (extra.length > 0) {
-      issue(`orderedValues lists grades that are not selectable: ${extra.join(', ')}`);
-    }
-    if (missing.length > 0) {
-      issue(
-        `orderedValues must place every allowed grade on the scale; these have no position: ${missing.join(', ')}`,
-      );
-    }
-  });
+  .strict();
 
 /**
  * One option's answer for the attribute being defined.
@@ -732,7 +640,7 @@ export type RequestRevisionInput = z.infer<typeof RequestRevisionInputSchema>;
 // and webmcp.md's `sift_request_revision` (which webmcp exposes as a
 // standalone, narrower tool -- see `RequestRevisionInputSchema` above -- but
 // which a later task's command-service implementation is expected to route
-// through this same `reviewProposal` command, per docs/engineering-principles.md's "Visible UI
+// through this same `reviewProposal` command, per CLAUDE.md's "Visible UI
 // controls and WebMCP callbacks use the same command implementation").
 // `actor` deliberately allows `'agent'` structurally, matching
 // `DecisionProposalSchema`'s `ActorSchema`: the human-only rule is a

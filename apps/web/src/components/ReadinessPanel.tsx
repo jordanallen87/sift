@@ -5,7 +5,7 @@
  *
  * `evaluateReadiness(caseState): ReadinessResult`
  * (`packages/core/src/readiness.ts`) is "the single most safety-critical
- * function" in Sift -- docs/engineering-principles.md: "The deterministic core, not an LLM, owns
+ * function" in Sift -- CLAUDE.md: "The deterministic core, not an LLM, owns
  * case state, evidence validity, readiness, and human authority." This
  * component only ever *renders* an already-computed `ReadinessResult`-shaped
  * prop; it recomputes nothing and owns no readiness logic of its own.
@@ -19,12 +19,12 @@
  * shape, a real `ReadinessResult` value from `@sift/core` is assignable here
  * without adaptation the moment a later task wires it in.
  *
- * Adapted from `praetor:apps/web/src/components/strata19/inline/renderers/ReadinessStateCard.tsx`'s
+ * Adapted from `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/inline/renderers/ReadinessStateCard.tsx`'s
  * fail-closed, non-vacuous-measurement principle ("`ready === false` with an
  * empty `blockers` array is a real and important case ... it renders as
  * 'Not ready' with the check fraction rather than as a blocker list that
  * appears to be loading forever") and from
- * `praetor:apps/web/src/components/orchestration/ReadinessPanel.tsx`'s
+ * `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/orchestration/ReadinessPanel.tsx`'s
  * blocker taxonomy/bucket breakdown idea -- see docs/reuse-attribution.md
  * for the recorded entry. Only the information architecture is reused;
  * Praetor's `shadcn` primitives, scoring model, and desktop assumptions are

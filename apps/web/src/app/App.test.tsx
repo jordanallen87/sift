@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { http, HttpResponse } from 'msw';
@@ -559,180 +559,6 @@ describe('App', () => {
       });
       expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
         'Sift is investigating.',
-      );
-    });
-
-    // Regression gate for a real defect found by auditing the client against
-    // a live run's actual event stream. `isRunActive` used to be "does the
-    // single most recent event carry a non-terminal phase?" -- but roughly
-    // half of a real run's ~73 correlated events (`tool.completed`,
-    // `skill.activated`, `specialist.completed`) legitimately report
-    // `phase: 'completed'` while the run continues. So on any render that
-    // landed on one of those, the hero reverted to "Nothing's been looked
-    // into yet." with a primary-emphasis "Ask Sift to look into this"
-    // button, mid-investigation. Invisible only because today's whole burst
-    // lands inside ~70 ms; once the runtime streams events as the graph
-    // progresses it becomes a visible flicker of "nothing has happened" in
-    // the middle of an investigation.
-    //
-    // Asserting only the state after the burst passes on the buggy code --
-    // this asserts after EVERY event, which is where the defect lives.
-    it('never reverts the hero to the not-started phase mid-run, on any event of a realistic burst (half of which report phase "completed")', async () => {
-      const beforeRun = buildFixtureCaseState({ id: CASE_ID, recommendation: null });
-      const afterRun = buildFixtureCaseState({
-        id: CASE_ID,
-        eventSequence: 12,
-        entities: [
-          {
-            id: 'candidate-rav4',
-            kind: 'candidate',
-            label: '2023 Toyota RAV4 Hybrid',
-            attributes: {},
-            createdAt: '2026-08-27T00:00:00.000Z',
-            updatedAt: '2026-08-27T00:00:00.000Z',
-          },
-        ],
-        recommendation: {
-          id: 'rec-burst-1',
-          status: 'ready',
-          rationale: 'The RAV4 leads on the criteria that were checked.',
-          facts: [],
-          hypotheses: [],
-          limitations: [],
-          sourceIds: [],
-          favoredOptionId: 'candidate-rav4',
-          confidence: 0.8,
-          resolvedObligationIds: [],
-          acceptedUncertaintyObligationIds: [],
-          generatedAt: '2026-08-27T00:05:00.000Z',
-        },
-      });
-      // The canonical snapshot only gains the recommendation once the run
-      // has actually finished, exactly as the real server's does -- so every
-      // mid-burst assertion below is genuinely about the run's lifecycle and
-      // not about a recommendation quietly appearing early.
-      let currentSnapshot = beforeRun;
-
-      renderLiveWorkspace(beforeRun);
-      server.use(
-        http.get(`/api/cases/${CASE_ID}/events`, () =>
-          HttpResponse.json({ snapshot: currentSnapshot, events: [] as PublicActivityEvent[] }),
-        ),
-        // The workspace refetches the RunPlan whenever `eventSequence`
-        // moves, which this test's post-run snapshot genuinely does. Not
-        // what is under test here -- answered honestly (no plan) rather than
-        // left to `onUnhandledRequest: 'error'`.
-        http.get(`/api/cases/${CASE_ID}/run-plan`, () => new HttpResponse(null, { status: 404 })),
-        runHandler({ ...buildFakeCommandReceipt({ caseId: CASE_ID }), runId: 'run-burst-1' }),
-      );
-      const user = await startDemoAndWait();
-
-      expect(screen.getByTestId('recommendation-hero-status')).toHaveAttribute(
-        'data-phase',
-        'not_started',
-      );
-
-      await user.click(screen.getByTestId('request-investigation'));
-      await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
-      const source = FakeEventSource.instances.at(-1)!;
-      source.triggerOpen();
-
-      // An ordered burst in the real shape `run-service.ts` and
-      // `car-purchase-engine.ts` emit: `run.queued` carries both commandId
-      // and runId, every later event of the run carries only the runId, and
-      // the run ends with a terminal `run.completed`.
-      const buildBurstEvent = (
-        index: number,
-        step: Pick<PublicActivityEvent, 'type' | 'phase' | 'summary'>,
-      ): PublicActivityEvent => ({
-        schemaVersion: '1.0',
-        eventId: `evt-burst-${String(index)}`,
-        sequence: index + 1,
-        timestamp: '2026-08-27T00:01:00.000Z',
-        caseId: CASE_ID,
-        runId: 'run-burst-1',
-        ...(index === 0 ? { commandId: 'cmd-burst-1' } : {}),
-        ...step,
-      });
-
-      const midRunBurst: PublicActivityEvent[] = [
-        { type: 'run.queued', phase: 'queued', summary: 'Investigation queued.' },
-        { type: 'run.started', phase: 'active', summary: 'Investigation started (initial pass).' },
-        { type: 'specialist.started', phase: 'active', summary: 'Deal analyst started working.' },
-        { type: 'skill.activated', phase: 'completed', summary: 'Activated skill "deal-review".' },
-        { type: 'tool.started', phase: 'active', summary: 'Calling tool "listing_reader".' },
-        { type: 'tool.completed', phase: 'completed', summary: 'Tool "listing_reader" finished.' },
-        { type: 'evidence.accepted', phase: 'completed', summary: 'Evidence accepted.' },
-        { type: 'specialist.completed', phase: 'completed', summary: 'Deal analyst finished.' },
-        { type: 'specialist.started', phase: 'active', summary: 'Safety analyst started working.' },
-        { type: 'tool.completed', phase: 'completed', summary: 'Tool "safety_reader" finished.' },
-        { type: 'obligation.updated', phase: 'completed', summary: 'An obligation was satisfied.' },
-      ].map((step, index) =>
-        buildBurstEvent(index, step as Pick<PublicActivityEvent, 'type' | 'phase' | 'summary'>),
-      );
-
-      // Half of it reports a terminal phase -- the exact condition the old
-      // derivation mistook for "the run is over".
-      expect(
-        midRunBurst.filter((event) => event.phase === 'completed').length,
-      ).toBeGreaterThanOrEqual(midRunBurst.length / 2);
-
-      for (const event of midRunBurst) {
-        act(() => {
-          source.emit(event);
-        });
-
-        const status = screen.getByTestId('recommendation-hero-status');
-        expect(status).not.toHaveAttribute('data-phase', 'not_started');
-        expect(status).toHaveAttribute('data-phase', 'investigating');
-        expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
-          'Sift is investigating.',
-        );
-        expect(screen.getByTestId('recommendation-hero-headline')).not.toHaveTextContent(
-          "Nothing's been looked into yet.",
-        );
-      }
-
-      // The recommendation lands in the canonical snapshot before the run
-      // reports itself finished, exactly as the real engine's does
-      // (`car-purchase-engine.ts` writes it, then appends `run.completed`).
-      currentSnapshot = afterRun;
-      act(() => {
-        source.emit(
-          buildBurstEvent(midRunBurst.length, {
-            type: 'recommendation.ready',
-            phase: 'completed',
-            summary: 'A recommendation is ready for review.',
-          }),
-        );
-      });
-      await waitFor(() => {
-        expect(screen.getByTestId('recommendation-hero-status')).toHaveAttribute(
-          'data-phase',
-          'ready_blocked',
-        );
-      });
-      expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
-        'Leading so far: 2023 Toyota RAV4 Hybrid',
-      );
-
-      // The terminal event genuinely ends the run -- and ending it must not
-      // blank the answer the run just produced.
-      act(() => {
-        source.emit(
-          buildBurstEvent(midRunBurst.length + 1, {
-            type: 'run.completed',
-            phase: 'completed',
-            summary: 'Investigation completed (initial pass).',
-          }),
-        );
-      });
-      expect(screen.getByTestId('recommendation-hero-status')).toHaveAttribute(
-        'data-phase',
-        'ready_blocked',
-      );
-      expect(screen.getByTestId('recommendation-hero-headline')).toHaveTextContent(
-        'Leading so far: 2023 Toyota RAV4 Hybrid',
       );
     });
 
@@ -1497,7 +1323,7 @@ describe('App', () => {
       expect(screen.queryByTestId('live-run-status-empty')).not.toBeInTheDocument();
     });
 
-    // Task A9 (`docs/planning/plans/2026-08-30-generic-decision-workspace.md`
+    // Task A9 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`
     // Phase A; brief w1b-ui-refinement.md): found by live inspection at
     // 430px -- the hero rendered "Nothing's been looked into yet." directly
     // above a "Investigation status -- Completed -- Added option ..." block,
@@ -2294,7 +2120,7 @@ describe('App', () => {
       expect(screen.queryByTestId('disclosure-view')).not.toBeInTheDocument();
     });
 
-    // Task A10 (`docs/planning/plans/2026-08-30-generic-decision-workspace.md`
+    // Task A10 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`
     // Phase A): the regenerated 390px baseline measured ~3379px tall, driven
     // largely by Compare's always-fully-expanded attribute table rendering
     // as the *default* view on a freshly opened case -- directly against
@@ -2606,93 +2432,6 @@ describe('App', () => {
         expectedSequence: snapshot.eventSequence,
         note: { body: 'The seat position felt wrong on the test drive.' },
       });
-    });
-
-    /**
-     * The regression: a visible control sent an `expectedSequence` read out
-     * of a snapshot that the client's own refresh schedule had allowed to
-     * fall behind, and the server correctly refused it.
-     *
-     * Two changes made the window reachable in ordinary use. The runtime now
-     * streams a run's events as the graph progresses rather than draining
-     * them at the end, so the case sequence climbs steadily during a run; and
-     * `use-case-events.ts` now coalesces snapshot refreshes (73 requests in
-     * 70 ms was a real defect), so the snapshot can legitimately trail by up
-     * to `snapshotRefreshIntervalMs`. A person pressing a button inside that
-     * window got a hard failure caused by nothing they did.
-     *
-     * This asserts the sequence actually put on the wire, not the end state:
-     * every end-state assertion in this file passes with the defect present,
-     * because a conflict here is refused server-side and the command simply
-     * never happens.
-     */
-    it('sends the sequence the server would accept when a server-originated event has advanced the case past the snapshot in hand', async () => {
-      const staleSnapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 41 });
-      const advancedSnapshot = buildFixtureCaseState({ id: CASE_ID, eventSequence: 42 });
-      let reads = 0;
-      let releaseCoalescedRefresh: () => void = () => undefined;
-      const coalescedRefreshLanded = new Promise<void>((resolve) => {
-        releaseCoalescedRefresh = resolve;
-      });
-      let capturedBody: unknown;
-
-      renderLiveWorkspace(staleSnapshot);
-      server.use(
-        // The canonical-snapshot route, with the client's event-driven
-        // refresh held open so the pane is provably one behind the server at
-        // the moment of the click -- the deterministic stand-in for "the
-        // coalescing interval has not elapsed yet".
-        http.get(`/api/cases/${CASE_ID}/events`, async () => {
-          reads += 1;
-          if (reads === 1) {
-            return HttpResponse.json({ snapshot: staleSnapshot, events: [] });
-          }
-          if (reads === 2) await coalescedRefreshLanded;
-          return HttpResponse.json({ snapshot: advancedSnapshot, events: [] });
-        }),
-        commandHandler('addNote', buildFakeCommandReceipt({ caseId: CASE_ID }), (body) => {
-          capturedBody = body;
-        }),
-      );
-
-      const user = await startDemoAndWait();
-      await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
-      const source = FakeEventSource.instances[0]!;
-      source.triggerOpen();
-
-      // The server advances the case on its own and says so over SSE. The
-      // event carries an ACTIVITY sequence, which is a different counter from
-      // `CaseState.eventSequence` -- it announces that the case moved without
-      // ever saying where it moved to.
-      act(() => {
-        source.emit({
-          schemaVersion: '1.0',
-          eventId: 'evt-server-originated',
-          sequence: 1,
-          timestamp: '2026-08-27T00:00:00.000Z',
-          caseId: CASE_ID,
-          type: 'specialist.completed',
-          phase: 'completed',
-          summary: 'Deal normalization finished.',
-        });
-      });
-      await waitFor(() => expect(reads).toBe(2));
-
-      await openCreateMenuItem(user, 'workspace-app-bar-add-note', 'workspace-notes-sheet');
-      await user.type(screen.getByLabelText('Note'), 'Ask about the roof rails.');
-      await user.click(screen.getByTestId('add-note-form-submit'));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('add-note-form-success')).toBeInTheDocument();
-      });
-      expect(capturedBody).toEqual({
-        caseId: CASE_ID,
-        // 42, not the 41 the rendered snapshot still shows.
-        expectedSequence: advancedSnapshot.eventSequence,
-        note: { body: 'Ask about the roof rails.' },
-      });
-
-      releaseCoalescedRefresh();
     });
   });
 
@@ -3750,7 +3489,7 @@ describe('App', () => {
         });
         expect(screen.getByTestId('approval-card-approve')).toBeInTheDocument();
 
-        // And it approves NOTHING. docs/engineering-principles.md: "The model may propose
+        // And it approves NOTHING. CLAUDE.md: "The model may propose
         // candidate events and recommendations. It may never approve a
         // consequential decision" -- a dock button that pressed Approve on
         // the person's behalf would be a worse defect than the dead button

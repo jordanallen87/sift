@@ -21,14 +21,8 @@ import type { Server } from 'node:http';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Application } from 'express';
+import { compileCarPurchasePack, compileHomeEnergyGuardianPack, PackRegistry } from '@sift/packs';
 import {
-  compileBidComparisonPack,
-  compileCarPurchasePack,
-  compileHomeEnergyGuardianPack,
-  PackRegistry,
-} from '@sift/packs';
-import {
-  buildBidComparisonEntities,
   buildCarPurchaseCandidateEntities,
   buildHomeEnergyResponseOptionEntities,
 } from '@sift/scenarios';
@@ -39,14 +33,9 @@ import { migrate, type MigrateResult } from './db/migrate.js';
 import { carPurchaseCapabilityCatalog } from './runtime/car-purchase-scenario.js';
 import { createCarPurchaseEngine } from './runtime/car-purchase-engine.js';
 import {
-  bidComparisonCapabilityCatalog,
-  createBidComparisonEngine,
-} from './runtime/bid-comparison-engine.js';
-import {
   createHomeEnergyEngine,
   homeEnergyCapabilityCatalog,
 } from './runtime/home-energy-engine.js';
-import { installSiftTracing, type SiftTracingHandle } from './runtime/otel-span-recorder.js';
 import { createSystemClock, createSystemIdGenerator } from './runtime-ports.js';
 import { CommandService } from './services/command-service.js';
 import { RunPlanService } from './services/run-plan-service.js';
@@ -71,14 +60,6 @@ export interface StartedServer {
   server: Server;
   config: SiftConfig;
   migration: MigrateResult;
-  /**
-   * The registered OpenTelemetry tracer provider and Sift span recorder
-   * (`runtime/otel-span-recorder.ts`), or `undefined` when
-   * `SIFT_TRACING_ENABLED=false`. Registration is process-global (the OTel
-   * API is), so a test that starts a server must `shutdown()` this alongside
-   * closing the server and database, exactly as it already does for those.
-   */
-  tracing?: SiftTracingHandle;
 }
 
 export function startServer(options: StartServerOptions = {}): Promise<StartedServer> {
@@ -113,25 +94,10 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     clock,
   );
   registry.register(homeEnergyGuardianPack);
-  // `bid-comparison`'s identical gap (it was built, compiled-pack-tested,
-  // and Swarm-tested but never compiled/registered here at all, so
-  // `POST /api/cases/demo {demoId: "bid-comparison"}` 404'd even before a
-  // launcher card existed to click) is this task's own closure of the same
-  // class of bug for the third pack.
-  const bidComparisonPack = compileBidComparisonPack(bidComparisonCapabilityCatalog(), clock);
-  registry.register(bidComparisonPack);
   const skillsRootDir = fileURLToPath(new URL('../skills', import.meta.url));
 
   const runStore = new SqliteRunStore(database);
   const runtimeEventStore = new SqliteRuntimeEventStore(database);
-  // Turns on capture of the OpenTelemetry spans the Strands SDK already
-  // emits on every Graph/Swarm/agent/model/tool call, writing them into the
-  // same `runtime_events` table the Runtime Inspector reads. Purely
-  // in-process unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set, so a fixture run
-  // stays fully offline. See `runtime/otel-span-recorder.ts`.
-  const tracing = config.tracingEnabled
-    ? installSiftTracing({ runtimeEventStore, runStore })
-    : undefined;
   const carPurchaseEngine = createCarPurchaseEngine({
     caseStore,
     activityStore,
@@ -151,23 +117,10 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     clock,
     idGenerator,
     skillsRootDir,
-    demoPacingMs: config.demoPacingMs,
-  });
-  const bidComparisonEngine = createBidComparisonEngine({
-    caseStore,
-    activityStore,
-    runStore,
-    runtimeEventStore,
-    registry,
-    clock,
-    idGenerator,
-    skillsRootDir,
-    demoPacingMs: config.demoPacingMs,
   });
   const engines: Readonly<Record<string, InvestigationEngine>> = {
     [carPurchasePack.identity.id]: carPurchaseEngine,
     [homeEnergyGuardianPack.identity.id]: homeEnergyEngine,
-    [bidComparisonPack.identity.id]: bidComparisonEngine,
   };
 
   // The continuous RunPlan. Constructed before `commandService` because
@@ -196,7 +149,6 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
     demoSeedEntities: {
       'car-purchase': buildCarPurchaseCandidateEntities,
       'home-energy-guardian': buildHomeEnergyResponseOptionEntities,
-      'bid-comparison': buildBidComparisonEntities,
     },
   });
   const runService = new RunService({
@@ -225,14 +177,7 @@ export function startServer(options: StartServerOptions = {}): Promise<StartedSe
 
   return new Promise((resolvePromise) => {
     const server = app.listen(port, () => {
-      resolvePromise({
-        app,
-        database,
-        server,
-        config,
-        migration,
-        ...(tracing !== undefined ? { tracing } : {}),
-      });
+      resolvePromise({ app, database, server, config, migration });
     });
   });
 }

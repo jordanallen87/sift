@@ -1,6 +1,6 @@
 /**
  * The genuinely-dynamic-content mask list for `toHaveScreenshot()` calls
- * (docs/engineering-principles.md "Playwright visual verification": "Capture named visual
+ * (CLAUDE.md "Playwright visual verification": "Capture named visual
  * baselines with deterministic fonts, clocks, IDs, and animations
  * disabled").
  *
@@ -46,23 +46,7 @@
 import type { Page } from '@playwright/test';
 
 export function dynamicScreenshotMasks(page: Page) {
-  return [
-    page.locator('time').locator('xpath=..'),
-    // `SpecialistActivityPanel`'s per-specialist elapsed time. This is a
-    // REAL measured duration -- the whole point of that column is that it
-    // reports what the run actually took -- so it is different on every
-    // run by construction, and a baseline that captured "211ms" failed the
-    // next time the same specialist took 299ms.
-    //
-    // It is masked for exactly the reason the `<time>` rows above are: the
-    // value is genuine and non-deterministic, which is what masking is for.
-    // Its correctness is asserted where it can be asserted properly --
-    // `home-energy-engine.test.ts` checks each duration against the
-    // correlated `swarm.node_completed` runtime event, and
-    // `SpecialistActivityPanel.test.tsx` checks the formatting -- rather
-    // than by pixel-comparing a stopwatch.
-    page.getByTestId('specialist-row-duration'),
-  ];
+  return [page.locator('time').locator('xpath=..')];
 }
 
 /**

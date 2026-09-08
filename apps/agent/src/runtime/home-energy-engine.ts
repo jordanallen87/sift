@@ -38,7 +38,7 @@
  *     handle). Neither file may be edited to generalize the other (this
  *     task's scope explicitly excludes touching `car-purchase-engine.ts`),
  *     so this is the documented "genuinely pack-specific, parallel
- *     implementation" case docs/engineering-principles.md's task brief for this file
+ *     implementation" case CLAUDE.md's task brief for this file
  *     anticipated;
  *  4. folds every specialist's validated context/final synthesis into real
  *     `CaseEvent`s via `car-purchase-scenario.ts`'s own exported, fully
@@ -71,34 +71,35 @@
  * `energy.conservation`'s weight now exceeds `energy.cost`'s -- the direct,
  * persisted trace of that reweight, independent of which caller performed
  * it (visible UI control or a WebMCP `sift_update_criteria` call, per
- * docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use the same command
- * implementation"). A freshly started case (pack defaults: cost 80, conservation 20)
- * is `round1` (pack defaults are cost-heavy, so conservation never exceeds cost there).
+ * CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
+ * implementation"). A freshly started case (pack defaults: both weighted 50)
+ * is `round1`.
  *
- * A freshly started case carries the pack's cost-heavy 80/20 default, which
- * is both what round 1's narration says and what the deterministic scorer
- * agrees with. That agreement used to be absent: the pack shipped 50/50
- * while the scripted round-1 text narrated 80/20, so the recommendation card
- * printed the scripted "0.80 versus 0.47" directly above the computed "67%
- * to 50%" and recommended an option its own criteria ranked second. The
- * default is now 80/20 and
- * `scripted-beats/home-energy-guardian.test.ts` fails if the two ever drift
- * apart again.
- *
- * Round 1 also genuinely exercises the `GoalLoop` rejection path: the
- * scripted `decision-synthesizer` offers an uncited draft first, the real
- * validator refuses it for citing no source, and the corrected retry is what
- * reaches the case. That rejection surfaces as a `draft.withheld` consumer
- * event -- the one `goal`-category event promoted out of Runtime
- * Inspector-only detail, because a product refusing an unsupported answer is
- * exactly what a person watching it work should see.
+ * One honest, documented cosmetic limitation this round split inherits from
+ * the already-built, already-tested `scripted-beats/home-energy-guardian.ts`
+ * (not modified here -- out of this task's scope, and doing so would risk
+ * destabilizing `home-energy-swarm.test.ts`'s own passing assertions against
+ * it): that file's `round1` scripted beat narrates its cost/conservation
+ * weighting as "80/20" in `decision-synthesizer`'s fixed response text,
+ * matching the arithmetic that file's own module header documents (a
+ * genuinely cost-heavy weighting is needed to make `monitor-one-cycle`
+ * outscore `request-hvac-inspection` under `evaluateResponseOptions`'
+ * real formula). A freshly started live case actually carries the pack's
+ * *default* 50/50 weights at that point, not 80/20 -- so round 1's
+ * recommendation rationale text names a specific weighting that does not
+ * exactly match the case's true criteria at that moment, even though the
+ * *system prompt* `decision-synthesizer` actually received does honestly
+ * carry the case's real weights (`buildDecisionSynthesizerSystemPrompt` in
+ * `home-energy-swarm.ts` bakes in `request.caseSummary.criteria` from the
+ * live snapshot, unchanged). This is scripted-fixture flavor text, not a
+ * correctness defect in this engine's own round detection, folding, or
+ * event correlation -- recorded here rather than silently accepted.
  */
 import type {
   CaseEvent,
   CaseState,
   CompiledDecisionPack,
   ExecutionResult,
-  PublicActivityEvent,
   PublicActivityEventType,
   PublicActivityPhase,
 } from '@sift/contracts';
@@ -191,8 +192,6 @@ export interface HomeEnergyEngineDeps {
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
   readonly skillsRootDir: string;
-  /** Optional demo pacing in ms per scripted model turn. Omitted/0 everywhere except a deliberate recording session -- see `ScriptedModelProvider.turnDelayMs`. */
-  readonly demoPacingMs?: number;
 }
 
 export interface HomeEnergyEngine extends InvestigationEngine {
@@ -219,19 +218,6 @@ function appendActivity(
     type: PublicActivityEventType;
     phase: PublicActivityPhase;
     summary: string;
-    /**
-     * Small, published, machine-readable facts a consumer surface can render
-     * beside the summary -- `PublicActivityEvent.safeDetails`
-     * (`packages/contracts/src/events.ts`), which `ActivityStore` already
-     * persists and replays as the `activity_events.data` column.
-     *
-     * "Safe" is the whole contract: this rides on the sanitized *public*
-     * stream, so only closed, non-user-shaped values belong here. Never a
-     * user-entered note, a model's private reasoning, a raw tool payload, a
-     * header, or anything credential-shaped -- those stay in the Runtime
-     * Inspector's own detail, behind `event-normalizer.ts`'s redaction.
-     */
-    safeDetails?: NonNullable<PublicActivityEvent['safeDetails']>;
   },
 ): void {
   activityStore.append({
@@ -244,7 +230,6 @@ function appendActivity(
     type: fields.type,
     phase: fields.phase,
     summary: fields.summary,
-    ...(fields.safeDetails !== undefined ? { safeDetails: fields.safeDetails } : {}),
   });
 }
 
@@ -271,8 +256,6 @@ function appendActivityForSwarmEvent(
   clock: Clock,
   /** The synthetic id `runtimeEventStore.append` minted for this exact `event` (I2). Every `appendActivity` call below stamps it, so the resulting `PublicActivityEvent` resolves back to this precise `runtime_events` row. */
   debugEventId: string,
-  /** Tool names this run has already denied, so the denied call's own error-status `AfterToolCall` is not republished as a tool failure. Owned by the drain loop: one set per run, mutated here as denials are seen. */
-  deniedTools: Set<string>,
 ): void {
   const shared = {
     runId: ctx.runId,
@@ -296,22 +279,6 @@ function appendActivityForSwarmEvent(
           type: 'specialist.completed',
           phase: 'completed',
           summary: event.summary,
-          // How long this specialist genuinely took, forwarded onto the
-          // public stream so a consumer surface can freeze a running
-          // elapsed time at the node's real duration rather than leaving
-          // the column blank. `home-energy-swarm.ts` measures it across the
-          // node's own real start/finish hooks and OMITS it when nothing
-          // measured that node, so this spread carries a real figure or
-          // nothing at all -- never a zero and never an estimate.
-          //
-          // Safe to publish: a single integer millisecond count read from a
-          // clock, with no string leaf a note, payload, header, or
-          // credential could reach -- the same reasoning
-          // `event-normalizer.ts`'s `CallMetrics` records for keeping
-          // `durationMs` out of `redactValue`.
-          ...(event.durationMs !== undefined
-            ? { safeDetails: { durationMs: event.durationMs } }
-            : {}),
         });
       }
       return;
@@ -326,19 +293,6 @@ function appendActivityForSwarmEvent(
       return;
     }
     case 'tool': {
-      // A tool the run refused is not a tool that failed. ScopeAuthorization
-      // denies the call in `beforeToolCall`, but the SDK still delivers an
-      // `AfterToolCall` carrying an error status, which would otherwise be
-      // published as "Couldn't complete that lookup" -- telling a person a
-      // lookup broke when in fact a boundary held. The denial has already
-      // been published as "Action blocked"; publishing this too would be
-      // both redundant and false.
-      if (
-        typeof event.attributes['toolName'] === 'string' &&
-        deniedTools.has(event.attributes['toolName'])
-      ) {
-        return;
-      }
       const type =
         event.phase === 'start'
           ? 'tool.started'
@@ -370,56 +324,6 @@ function appendActivityForSwarmEvent(
           phase: 'waiting',
           summary: event.summary,
         });
-      } else if (event.name === 'intervention.deny') {
-        // `Deny` -> "Action blocked" (docs/specs/product.md terminology
-        // table). The denied tool's own `AfterToolCall` still arrives with
-        // an error status, which the `tool` case above would otherwise
-        // publish as "Couldn't complete that lookup" -- so `deniedTools`
-        // records the subject here and suppresses that misleading line.
-        const deniedTool = event.attributes['subject'];
-        if (typeof deniedTool === 'string') {
-          deniedTools.add(deniedTool);
-        }
-        appendActivity(activityStore, clock, ctx.caseId, {
-          ...shared,
-          type: 'intervention.denied',
-          // The guard ran to completion; it is the *action* that was
-          // blocked. `intervention.guided` records itself the same way, and
-          // "blocked" is not a `PUBLIC_ACTIVITY_PHASES` member. The reader
-          // gets the meaning from the label ("Action blocked") and its
-          // `blocked` tone, not from the lifecycle phase.
-          phase: 'completed',
-          summary: event.summary,
-        });
-      }
-      return;
-    }
-    // The `goal` category is otherwise Runtime Inspector detail, and
-    // `goal.validated` stays there: "the model got it right first time" is
-    // not news to anyone. A *rejection* is the opposite. It is the moment
-    // the product refuses a plausible-sounding answer that could not cite a
-    // source, and a person watching an agent work has every reason to see
-    // that happen rather than have it summarized afterwards.
-    //
-    // `draft.withheld` was a fully-built dead end before this: the label,
-    // the `blocked` tone, `RecommendationCard`'s withheld state,
-    // `SpecialistActivityPanel`'s branch and `workspace-status`'s handling
-    // all existed and were tested, and nothing in the product ever emitted
-    // the event they render.
-    case 'goal': {
-      if (event.name === 'goal.validation_failed') {
-        appendActivity(activityStore, clock, ctx.caseId, {
-          ...shared,
-          type: 'draft.withheld',
-          // `failed` is this attempt's real outcome. The *run* is not
-          // failing -- GoalLoop retries and the corrected draft lands --
-          // but the withheld attempt genuinely did not pass, and labelling
-          // it `active` or `waiting` would understate what happened. The
-          // `blocked` styling a reader sees comes from
-          // `activity-labels.ts`'s tone for this event type, not the phase.
-          phase: 'failed',
-          summary: event.summary,
-        });
       }
       return;
     }
@@ -446,10 +350,6 @@ function appendActivityForSwarmEvent(
  * `GET /api/debug/runs/:runId`. `ctx.runId`/`ctx.caseId` (the real ones
  * this engine was `trigger()`ed with) are substituted in before either
  * durable write, exactly like `car-purchase-engine.ts` does.
- *
- * `onTraceId` is handed the trace each persisted event actually carries,
- * so `runOneInvestigation` can record that same id -- not a second,
- * separately minted one -- on the `runs` row. See its doc comment there.
  */
 interface DrainResult {
   readonly result: HomeEnergySwarmResult;
@@ -461,6 +361,13 @@ interface DrainResult {
    * identical `DrainResult` for the full rationale.
    */
   readonly lastSequence: number;
+  /**
+   * The real `traceId` every drained `RuntimeEvent` carried (the Swarm's own
+   * internally-minted trace) -- a *different* id than `runOneInvestigation`'s
+   * own local `traceId`, which only ever reaches `runStore.traceId`, never
+   * the Swarm. `undefined` only if the Swarm yielded no events at all.
+   */
+  readonly traceId: string | undefined;
 }
 
 async function drainSwarmToActivity(
@@ -469,24 +376,22 @@ async function drainSwarmToActivity(
   activityStore: ActivityStore,
   runtimeEventStore: RuntimeEventStore,
   clock: Clock,
-  onTraceId: (traceId: string) => void,
 ): Promise<DrainResult> {
   let next = await gen.next();
   let lastSequence = -1;
-  // One per run: a tool denied once stays denied for this drain's lifetime.
-  const deniedTools = new Set<string>();
+  let traceId: string | undefined;
   while (!next.done) {
     const persisted = runtimeEventStore.append({
       ...next.value,
       caseId: ctx.caseId,
       runId: ctx.runId,
     });
-    onTraceId(persisted.traceId);
-    appendActivityForSwarmEvent(next.value, ctx, activityStore, clock, persisted.id, deniedTools);
+    appendActivityForSwarmEvent(next.value, ctx, activityStore, clock, persisted.id);
     lastSequence = persisted.sequence;
+    traceId = persisted.traceId;
     next = await gen.next();
   }
-  return { result: next.value, lastSequence };
+  return { result: next.value, lastSequence, traceId };
 }
 
 function scenarioFoldDeps(deps: HomeEnergyEngineDeps): {
@@ -926,10 +831,12 @@ async function runOneInvestigation(
     }
 
     const round = determineHomeEnergyRound(initialSnapshot);
+    const traceId = deps.idGenerator.next('trace');
 
     deps.runStore.updateStatus(params.runId, {
       status: 'running',
       updatedAt: deps.clock.now(),
+      traceId,
     });
     appendActivity(deps.activityStore, deps.clock, params.caseId, {
       runId: params.runId,
@@ -939,7 +846,7 @@ async function runOneInvestigation(
       summary: `Investigation started (${round === 'round1' ? 'initial' : 'revised'} pass).`,
     });
 
-    const providers = buildHomeEnergySwarmScriptedProviders(deps.demoPacingMs ?? 0);
+    const providers = buildHomeEnergySwarmScriptedProviders();
     setScenarioBeat(providers, round);
     const swarmDeps = buildHomeEnergySwarmDepsFromCase(
       initialSnapshot,
@@ -949,33 +856,16 @@ async function runOneInvestigation(
       round === 'round2' ? 'decision-synthesizer' : undefined,
     );
 
-    // --- One trace per run, not two -- the identical correction
-    // `car-purchase-engine.ts`'s `runOneInvestigation` documents in full.
-    // The Swarm mints the trace every `runtime_events` row carries
-    // (`home-energy-swarm.ts`'s `RunAccumulator.traceId`); the run row now
-    // records that same id instead of a second, unrelated one that the
-    // Runtime Inspector's Overview showed under "Trace" while matching no
-    // event in the Timeline.
-    let recordedTraceId: string | undefined;
-    const recordTraceId = (candidate: string): string => {
-      if (recordedTraceId === undefined) {
-        recordedTraceId = candidate;
-        deps.runStore.updateStatus(params.runId, {
-          status: 'running',
-          updatedAt: deps.clock.now(),
-          traceId: candidate,
-        });
-      }
-      return recordedTraceId;
-    };
-
-    const { result: swarmResult, lastSequence } = await drainSwarmToActivity(
+    const {
+      result: swarmResult,
+      lastSequence,
+      traceId: swarmTraceId,
+    } = await drainSwarmToActivity(
       executeHomeEnergySwarm(swarmDeps),
       { caseId: params.caseId, runId: params.runId },
       deps.activityStore,
       deps.runtimeEventStore,
       deps.clock,
-      recordTraceId,
     );
 
     const finalSnapshot =
@@ -994,13 +884,11 @@ async function runOneInvestigation(
         normalizeCaseStateChange(
           { stateDiff },
           {
-            // The same one trace the run row and every other event for
-            // this run carry. A trace is minted here only if the Swarm
-            // yielded no events at all (never expected) -- and
-            // `recordTraceId` puts that id on the run row too, so the
-            // Overview's "Trace" still names this run's one event rather
-            // than nothing.
-            traceId: recordedTraceId ?? recordTraceId(deps.idGenerator.next('trace')),
+            // The Swarm's own real trace (see DrainResult.traceId's doc
+            // comment), never the unrelated local `traceId` above -- falls
+            // back to it only in the never-expected case the Swarm yielded
+            // no events at all, so this event still carries a real trace.
+            traceId: swarmTraceId ?? traceId,
             caseId: params.caseId,
             runId: params.runId,
             obligationId: params.obligationId,

@@ -4,7 +4,7 @@
  * predicate (docs/specs/pack-authoring.md).
  *
  * This is the single most safety-critical rule in the product
- * (docs/engineering-principles.md: "The model may propose candidate events and recommendations.
+ * (CLAUDE.md: "The model may propose candidate events and recommendations.
  * It may never approve a consequential decision."). Every branch below is
  * covered by both example-based and property-based tests in
  * `policy.test.ts`.
@@ -19,7 +19,7 @@
  *    `{ actor, proposalId, outcome, instructions }` shape sketched in the
  *    task description. This module is grounded in the real contract.
  * 2. Every timestamp (`DecisionProposal.reviewedAt`, `CaseState.updatedAt`)
- *    comes from an injected `Clock`, per docs/engineering-principles.md's non-negotiable rule.
+ *    comes from an injected `Clock`, per CLAUDE.md's non-negotiable rule.
  *    `IdGenerator` is still defined below (no other module had defined it
  *    yet) so sibling `packages/core` modules and the later reducer
  *    integration layer share one minimal port shape -- but `reviewProposal`
@@ -34,20 +34,11 @@
  *    `'decided'`. Rejection and revision-request leave `status` untouched
  *    -- the case is not concluded, it still needs further work, and
  *    nothing in the spec set assigns them a specific different status.
- * 4. `reason` (always-optional on `ReviewProposalInput`) IS persisted, onto
- *    `DecisionProposal.reviewReason` (`@sift/contracts` `case.ts`), for
- *    every decision (approve/reject/request_revision alike) it is supplied
- *    with -- not only `revisionInstructions` for the request_revision case.
- *    This was a real, user-reachable defect until fixed: `ApprovalCard`
- *    (`apps/web`) already collects this free-text explanation from the
- *    person reviewing a consequential proposal and `App.tsx`'s
- *    `handleReviewProposal` already sends it over the wire, but nothing
- *    downstream ever kept it -- it was validated, accepted, and silently
- *    discarded, so a human's stated reason for declining or approving
- *    vanished the instant they submitted it. `dispositionReason` on
- *    `EvidenceLink` (a materially identical "the reviewer explains why" field
- *    on a sibling human-authority action) was the precedent this now
- *    matches.
+ * 4. `reason` (always-optional on `ReviewProposalInput`) is accepted as
+ *    valid input but not persisted onto `DecisionProposal`, which has no
+ *    matching field (only `revisionInstructions` for the request_revision
+ *    case). It remains available to whichever layer emits the narrative
+ *    case event later.
  */
 import type {
   CaseState,
@@ -204,9 +195,6 @@ export function reviewProposal(
     ...(decision.decision === 'request_revision' && decision.instructions !== undefined
       ? { revisionInstructions: decision.instructions }
       : {}),
-    // See judgment call #4 above: a reviewer-supplied reason is persisted
-    // for every decision, never fabricated when absent.
-    ...(decision.reason !== undefined ? { reviewReason: decision.reason } : {}),
   };
 
   return {

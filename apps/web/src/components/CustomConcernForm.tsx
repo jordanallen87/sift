@@ -3,7 +3,7 @@
  * tool (docs/specs/webmcp.md "`sift_define_case_attribute`") -- lets the user
  * define a typed `custom.*` case concern the installed pack did not
  * anticipate, directly from the page rather than only through ChatGPT
- * (docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use the same command
+ * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation": both paths call `commands.defineCaseAttribute` on the
  * exact same `SiftCommands` instance).
  *
@@ -43,20 +43,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export interface CustomConcernFormProps {
   caseId: string;
-  /**
-   * Resolves the `expectedSequence` this write must carry, at SUBMIT time.
-   *
-   * A plain `expectedSequence: number` prop was a render-time value used for
-   * a submit-time decision, and the gap between the two is real: the pane's
-   * canonical snapshot refreshes on a coalescing throttle, so between the
-   * events of a live run it is legitimately behind the server and this form
-   * would send a sequence the case had already moved past -- a visible,
-   * unexplainable failure for the person, on a write nothing had actually
-   * invalidated. `App.tsx`'s `resolveExpectedSequence` answers with the
-   * sequence the server confirms, reading it only when the client knows it
-   * is behind.
-   */
-  resolveExpectedSequence: () => Promise<number>;
+  expectedSequence: number;
   /** Entity kinds this concern may apply to, e.g. `['car']`. */
   applicableKinds: string[];
 }
@@ -98,7 +85,7 @@ const labelClassName = 'text-[length:var(--font-size-sm)] text-[var(--color-ink-
 
 export function CustomConcernForm({
   caseId,
-  resolveExpectedSequence,
+  expectedSequence,
   applicableKinds,
 }: CustomConcernFormProps) {
   const commands = useSiftCommands();
@@ -123,24 +110,22 @@ export function CustomConcernForm({
       .map((entry) => entry.trim())
       .filter((entry) => entry.length > 0);
 
-    resolveExpectedSequence()
-      .then((expectedSequence) =>
-        commands.defineCaseAttribute({
-          caseId,
-          expectedSequence,
-          definition: {
-            id: `custom.${form.slug}`,
-            label: form.label.trim(),
-            valueType: form.valueType,
-            appliesTo: form.appliesTo,
-            ...(form.unit.trim().length > 0 ? { unit: form.unit.trim() } : {}),
-            ...(allowedValues.length > 0 ? { allowedValues } : {}),
-            evidenceExpectation: form.evidenceExpectation,
-            comparison: form.comparison,
-            reason: form.reason.trim(),
-          },
-        }),
-      )
+    commands
+      .defineCaseAttribute({
+        caseId,
+        expectedSequence,
+        definition: {
+          id: `custom.${form.slug}`,
+          label: form.label.trim(),
+          valueType: form.valueType,
+          appliesTo: form.appliesTo,
+          ...(form.unit.trim().length > 0 ? { unit: form.unit.trim() } : {}),
+          ...(allowedValues.length > 0 ? { allowedValues } : {}),
+          evidenceExpectation: form.evidenceExpectation,
+          comparison: form.comparison,
+          reason: form.reason.trim(),
+        },
+      })
       .then(() => {
         setSubmitting(false);
         setSuccess(true);

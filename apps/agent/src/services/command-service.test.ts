@@ -1,12 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type {
-  CaseEvent,
-  CaseState,
-  CommandReceipt,
-  EnergyBillFeedCheckResult,
-  EntityRecord,
-} from '@sift/contracts';
-import { compileHomeEnergyGuardianPack, compilePack, PackRegistry } from '@sift/packs';
+import type { CaseState, CommandReceipt, EntityRecord } from '@sift/contracts';
+import { compilePack, PackRegistry } from '@sift/packs';
 import { evaluateReadiness } from '@sift/core';
 import {
   createRegistryWithSyntheticPack,
@@ -16,7 +10,6 @@ import {
   syntheticCarPurchaseManifest,
   syntheticCatalog,
 } from '../fixtures/synthetic-pack.js';
-import { homeEnergyCapabilityCatalog } from '../runtime/home-energy-engine.js';
 import { InMemoryActivityStore } from '../store/activity-store.js';
 import { MemoryCaseStore } from '../store/memory-case-store.js';
 import { CommandService } from './command-service.js';
@@ -93,9 +86,7 @@ describe('CommandService', () => {
       expect(snapshot.pack.selectedBy).toBe('user');
       expect(snapshot.title).toBe('Choose Our Next Car (test fixture)');
       expect(snapshot.criteria).toHaveLength(1);
-      // Two: the measurement obligation and the `dependsOnCriteria`
-      // synthesis one the reweight tests need.
-      expect(snapshot.obligations).toHaveLength(2);
+      expect(snapshot.obligations).toHaveLength(1);
       // The real gap `seedSnapshot` closes: attributeDefinitions must come
       // from the pack, not be left empty by applyCaseEvent's minimal skeleton.
       expect(snapshot.attributeDefinitions).toHaveLength(1);
@@ -200,7 +191,7 @@ describe('CommandService', () => {
       // manual smoke test (docs/build-log.md). upsertOption cannot be used
       // to seed these instead: OptionAttributeInputSchema.value is required
       // and the handler hardcodes status: 'asserted', so an entity carrying
-      // a legitimately unknown-status attribute (no value; docs/engineering-principles.md "never
+      // a legitimately unknown-status attribute (no value; CLAUDE.md "never
       // fabricate") can only be expressed as a direct option.upserted event
       // -- exactly what demoSeedEntities lets a pack-boot wiring supply.
       const unknownAttributeEntity: EntityRecord = {
@@ -249,143 +240,6 @@ describe('CommandService', () => {
     it('starts a case with no entities when the pack has no demoSeedEntities entry (unchanged default behavior)', () => {
       const snapshot = startDemo();
       expect(snapshot.entities).toHaveLength(0);
-    });
-  });
-
-  /**
-   * `checkEnergyBillFeed`: the deterministic Home Energy Guardian
-   * case-creation gate (docs/specs/demos-and-submission.md: "A
-   * deterministic watcher creates a case after detecting the 42%
-   * anomaly."). Routes real case creation through
-   * `@sift/scenarios`'s `evaluateBillFeed`/`loadAndEvaluateBillFeed`
-   * (`bill-feed-gate.ts`) so a normal bill genuinely produces no case --
-   * proven here against the real, checked-in `current-bill.json` (42%
-   * above baseline, opens a case) and `current-bill-normal.json` (within
-   * the default 15% threshold, does not), not a mock.
-   */
-  describe('checkEnergyBillFeed', () => {
-    function requireEnergyResultOk(result: {
-      status: string;
-    }): asserts result is { status: 'ok'; value: EnergyBillFeedCheckResult } {
-      if (result.status !== 'ok') {
-        throw new Error(`expected ok, got ${result.status}: ${JSON.stringify(result)}`);
-      }
-    }
-
-    /** Real, compiled home-energy-guardian pack -- not a synthetic stand-in -- since this is specifically the pack the gate creates cases against. */
-    function registryWithHomeEnergyGuardianPack(): PackRegistry {
-      const registry = new PackRegistry();
-      registry.register(compileHomeEnergyGuardianPack(homeEnergyCapabilityCatalog(), fixedClock));
-      return registry;
-    }
-
-    it('opens a real, persisted case for the real 42%-above-baseline bill feed ("anomalous")', () => {
-      const localCaseStore = new MemoryCaseStore();
-      const localActivityStore = new InMemoryActivityStore();
-      const localService = new CommandService({
-        caseStore: localCaseStore,
-        activityStore: localActivityStore,
-        registry: registryWithHomeEnergyGuardianPack(),
-        clock: fixedClock,
-        idGenerator: createSequentialIdGenerator(),
-      });
-
-      const result = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'anomalous' });
-      requireEnergyResultOk(result);
-
-      expect(result.value.caseOpened).toBe(true);
-      expect(result.value.percentAboveBaseline).toBe(42);
-      expect(result.value.thresholdPercent).toBe(15);
-      expect(result.value.reason).toMatch(/42%/);
-      expect(result.value.receipt).toBeDefined();
-
-      // A real case really exists in the store -- not just an in-memory claim.
-      const caseId = result.value.receipt?.caseId;
-      expect(caseId).toBeDefined();
-      const persisted = caseId === undefined ? undefined : localCaseStore.load(caseId);
-      expect(persisted?.pack.id).toBe('home-energy-guardian');
-    });
-
-    it('opens NO case for the real, within-threshold bill feed ("normal") -- the case store stays untouched', () => {
-      const localCaseStore = new MemoryCaseStore();
-      const localActivityStore = new InMemoryActivityStore();
-      const localService = new CommandService({
-        caseStore: localCaseStore,
-        activityStore: localActivityStore,
-        registry: registryWithHomeEnergyGuardianPack(),
-        clock: fixedClock,
-        idGenerator: createSequentialIdGenerator(),
-      });
-
-      const result = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'normal' });
-      requireEnergyResultOk(result);
-
-      expect(result.value.caseOpened).toBe(false);
-      expect(result.value.percentAboveBaseline).toBeLessThan(15);
-      expect(result.value.thresholdPercent).toBe(15);
-      expect(result.value.reason).toMatch(/normal/i);
-      expect(result.value.receipt).toBeUndefined();
-
-      // Nothing was appended anywhere: no case, no activity.
-      expect(localActivityStore.replayFrom('any-case-id', 0)).toHaveLength(0);
-    });
-
-    it('declining a normal bill needs no registered pack at all -- the gate runs before any pack lookup', () => {
-      const localService = new CommandService({
-        caseStore: new MemoryCaseStore(),
-        activityStore: new InMemoryActivityStore(),
-        registry: new PackRegistry(),
-        clock: fixedClock,
-        idGenerator: createSequentialIdGenerator(),
-      });
-
-      const result = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'normal' });
-      requireEnergyResultOk(result);
-      expect(result.value.caseOpened).toBe(false);
-    });
-
-    it('an anomalous bill still fails honestly (not_found) when the pack is not registered', () => {
-      const localService = new CommandService({
-        caseStore: new MemoryCaseStore(),
-        activityStore: new InMemoryActivityStore(),
-        registry: new PackRegistry(),
-        clock: fixedClock,
-        idGenerator: createSequentialIdGenerator(),
-      });
-
-      const result = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'anomalous' });
-      expect(result.status).toBe('not_found');
-    });
-
-    it('rejects invalid input (validation)', () => {
-      const localService = new CommandService({
-        caseStore: new MemoryCaseStore(),
-        activityStore: new InMemoryActivityStore(),
-        registry: registryWithHomeEnergyGuardianPack(),
-        clock: fixedClock,
-        idGenerator: createSequentialIdGenerator(),
-      });
-
-      const result = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'made-up' });
-      expect(result.status).toBe('validation');
-    });
-
-    it('is idempotent for a case-opening result: retrying the same commandId returns the same case, not a second one', () => {
-      const localCaseStore = new MemoryCaseStore();
-      const localService = new CommandService({
-        caseStore: localCaseStore,
-        activityStore: new InMemoryActivityStore(),
-        registry: registryWithHomeEnergyGuardianPack(),
-        clock: fixedClock,
-        idGenerator: createSequentialIdGenerator(),
-      });
-
-      const first = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'anomalous' });
-      requireEnergyResultOk(first);
-      const second = localService.checkEnergyBillFeed('cmd-1', { billFeedId: 'anomalous' });
-      requireEnergyResultOk(second);
-
-      expect(second.value.receipt?.caseId).toBe(first.value.receipt?.caseId);
     });
   });
 
@@ -450,7 +304,7 @@ describe('CommandService', () => {
     });
   });
 
-  // I1 (docs/planning/plans/2026-08-30-generic-decision-workspace.md
+  // I1 (docs/superpowers/plans/2026-08-30-generic-decision-workspace.md
   // "Phase I"; ADR 0006 decision 8): `commandOrigin` is a trailing optional
   // parameter on the command envelope, threaded straight through to
   // `emitActivity` -- never a branch that changes what the command does.
@@ -1188,11 +1042,7 @@ describe('CommandService', () => {
       expect(result.status).toBe('not_found');
     });
 
-    // Renamed, not weakened: `+5` is a sequence this case has never reached,
-    // which is what the assertion below has always tested. "Stale" is the
-    // opposite direction and is now a separate, deliberate behaviour -- see
-    // the `sequence-independent commands` block at the end of this file.
-    it('returns conflict for an expectedSequence AHEAD of the case', () => {
+    it('returns conflict for a stale expectedSequence', () => {
       const snapshot = startDemo();
       const result = service.addNote('cmd-note-7', {
         caseId: snapshot.id,
@@ -1217,7 +1067,7 @@ describe('CommandService', () => {
       expect(requireSnapshot(second.value).notes).toHaveLength(1);
     });
 
-    // The central rule of this concept (docs/engineering-principles.md "The deterministic core,
+    // The central rule of this concept (CLAUDE.md "The deterministic core,
     // not an LLM, owns case state, evidence validity, readiness, and human
     // authority"): a note is an observation that has not earned evidence
     // status. Adding one to a case that already has a ready recommendation
@@ -1226,11 +1076,11 @@ describe('CommandService', () => {
     it('never touches obligations, readiness, or a ready recommendation (notes never auto-promote to evidence)', () => {
       const snapshot = startDemo();
       const withRecommendation = withReadyRecommendation(snapshot);
-      // The synthetic pack's seeded obligations are `required: true` and
-      // start `open` -- exactly the "open obligations" precondition this
-      // test needs, with no extra setup.
-      expect(withRecommendation.obligations).toHaveLength(2);
-      expect(withRecommendation.obligations.every((o) => o.status === 'open')).toBe(true);
+      // The synthetic pack's one seeded obligation ("hard-constraints") is
+      // `required: true` and starts `open` -- exactly the "open obligations"
+      // precondition this test needs, with no extra setup.
+      expect(withRecommendation.obligations).toHaveLength(1);
+      expect(withRecommendation.obligations[0]?.status).toBe('open');
       const readinessBefore = evaluateReadiness(withRecommendation);
       expect(readinessBefore.ready).toBe(false);
 
@@ -1994,37 +1844,6 @@ describe('CommandService', () => {
       expect(updated.caseExtensions[0]?.definition.allowedValues).toEqual(['1500', '3500', '5000']);
     });
 
-    it('carries orderedValues through, which is what makes a model-defined enum scoreable at all', () => {
-      // `scoring.ts` rule 3 refuses to rank enum grades without a declared
-      // worst-to-best scale, and will not infer one from `allowedValues`. If
-      // the ordering is dropped anywhere between the WebMCP call and the
-      // stored definition, the column still renders and simply never scores
-      // -- a silent failure, so it is asserted rather than assumed.
-      const snapshot = startDemo();
-      const result = service.defineCaseAttribute('cmd-ordered', {
-        caseId: snapshot.id,
-        expectedSequence: snapshot.eventSequence,
-        definition: {
-          id: 'custom.dog_crate_fit',
-          label: 'Dog crate fit',
-          valueType: 'enum',
-          appliesTo: ['car'],
-          allowedValues: ['none', 'one crate', 'two crates'],
-          orderedValues: ['none', 'one crate', 'two crates'],
-          evidenceExpectation: 'assertion',
-          comparison: 'higher_better',
-          reason: 'Two dog crates must fit behind the second row.',
-        },
-      });
-      requireOk(result);
-      const updated = requireSnapshot(result.value);
-      expect(updated.caseExtensions[0]?.definition.orderedValues).toEqual([
-        'none',
-        'one crate',
-        'two crates',
-      ]);
-    });
-
     it("returns a 409-shaped conflict when the underlying append() call itself detects the case has advanced (a genuine race, not one loadForMutation's pre-check already catches -- see focusOption's identical-purpose test above)", () => {
       const snapshot = startDemo();
       const advanced = service.upsertOption('cmd-real', {
@@ -2452,138 +2271,6 @@ describe('CommandService', () => {
   });
 
   describe('updateCriteria', () => {
-    /**
-     * Marking a recommendation stale says the old answer is wrong. It does
-     * not, by itself, make a new one reachable.
-     *
-     * `selectNextObligation` only considers `open` obligations, so on a case
-     * whose obligations had all been satisfied, reweighting left nothing to
-     * investigate and the follow-up run failed outright with "No open
-     * obligation remains to select." Reweighting-changes-the-ranking is the
-     * adaptive moment both shipped packs are built around, and it was
-     * unreachable through the product's own controls -- the demo scripts
-     * routed around it via DevTools rather than the UI.
-     *
-     * The distinction that fixes it is between a measurement and a
-     * synthesis. What the tariff change cost is just as true after the
-     * household decides conservation matters more; which option best fits
-     * the criteria is not. Only obligations marked `dependsOnCriteria`
-     * reopen.
-     */
-    /**
-     * Adds an unprotected preference criterion this block can actually
-     * reweight. Deliberately created here rather than added to the shared
-     * synthetic pack: a second scoring criterion in that fixture silently
-     * re-ranks every other test's options.
-     */
-    function withReweightableCriterion(snapshot: CaseState): CaseState {
-      const added = service.updateCriteria('cmd-add-reweightable', {
-        caseId: snapshot.id,
-        expectedSequence: snapshot.eventSequence,
-        operations: [
-          {
-            op: 'add',
-            criterion: {
-              id: 'value',
-              label: 'Value',
-              kind: 'preference',
-              weight: 40,
-              direction: 'higher_better',
-            },
-          },
-        ],
-      });
-      requireOk(added);
-      return requireSnapshot(added.value);
-    }
-
-    function satisfiedCaseWithRecommendation(snapshot: CaseState): CaseState {
-      const events: CaseEvent[] = snapshot.obligations.map((obligation, index) => ({
-        eventId: `ev-sat-${String(index)}`,
-        caseId: snapshot.id,
-        sequence: snapshot.eventSequence + index + 1,
-        timestamp: FIXED_NOW,
-        type: 'obligation.updated',
-        payload: {
-          obligation: { ...obligation, status: 'satisfied', attemptsUsed: 1 },
-        },
-      }));
-      events.push({
-        eventId: 'ev-rec-reweight',
-        caseId: snapshot.id,
-        sequence: snapshot.eventSequence + events.length + 1,
-        timestamp: FIXED_NOW,
-        type: 'recommendation.ready',
-        payload: {
-          recommendation: {
-            id: 'rec-reweight',
-            status: 'ready',
-            favoredOptionId: null,
-            rationale: 'because',
-            facts: [],
-            hypotheses: [],
-            confidence: 0.5,
-            limitations: [],
-            sourceIds: [],
-            resolvedObligationIds: [],
-            acceptedUncertaintyObligationIds: [],
-            generatedAt: FIXED_NOW,
-          },
-        },
-      });
-      const appended = caseStore.append(snapshot.id, events, snapshot.eventSequence);
-      if (appended.status !== 'applied') throw new Error('test setup failed');
-      return appended.snapshot;
-    }
-
-    it('reopens a satisfied synthesis obligation so the invalidated recommendation can actually be replaced', () => {
-      const satisfied = satisfiedCaseWithRecommendation(withReweightableCriterion(startDemo()));
-      expect(satisfied.obligations.every((o) => o.status === 'satisfied')).toBe(true);
-
-      const result = service.updateCriteria('cmd-reweight', {
-        caseId: satisfied.id,
-        expectedSequence: satisfied.eventSequence,
-        operations: [{ op: 'reweight', criterionId: 'value', weight: 90 }],
-      });
-      requireOk(result);
-      const updated = requireSnapshot(result.value);
-
-      const synthesis = updated.obligations.find((o) => o.id === 'synthesis');
-      const measurement = updated.obligations.find((o) => o.id === 'hard-constraints');
-      expect(synthesis?.status).toBe('open');
-      // The measurement stands. Reweighting did not un-measure anything.
-      expect(measurement?.status).toBe('satisfied');
-      // Reopening restores the remaining budget rather than granting a new
-      // one, so repeated reweights cannot loop forever.
-      expect(synthesis?.attemptsUsed).toBe(1);
-    });
-
-    it('leaves obligations alone when no ready recommendation was invalidated', () => {
-      const base = withReweightableCriterion(startDemo());
-      const appended = caseStore.append(
-        base.id,
-        base.obligations.map((obligation, index) => ({
-          eventId: `ev-only-sat-${String(index)}`,
-          caseId: base.id,
-          sequence: base.eventSequence + index + 1,
-          timestamp: FIXED_NOW,
-          type: 'obligation.updated' as const,
-          payload: { obligation: { ...obligation, status: 'satisfied' as const, attemptsUsed: 1 } },
-        })),
-        base.eventSequence,
-      );
-      if (appended.status !== 'applied') throw new Error('test setup failed');
-      const satisfied = appended.snapshot;
-      const result = service.updateCriteria('cmd-reweight-2', {
-        caseId: satisfied.id,
-        expectedSequence: satisfied.eventSequence,
-        operations: [{ op: 'reweight', criterionId: 'value', weight: 70 }],
-      });
-      requireOk(result);
-      const updated = requireSnapshot(result.value);
-      expect(updated.obligations.every((o) => o.status === 'satisfied')).toBe(true);
-    });
-
     it('adds a new user-defined criterion (success)', () => {
       const snapshot = startDemo();
       const result = service.updateCriteria('cmd-2', {
@@ -3923,40 +3610,6 @@ describe('CommandService', () => {
       expect(activity.some((event) => event.summary === 'Proposal rejected.')).toBe(true);
     });
 
-    // Real defect found by driving the product: a human's stated reason for
-    // declining a consequential proposal was validated by the HTTP layer,
-    // routed all the way to `CommandService`, and then discarded --
-    // `applyProposalReview` never read `input.reason` at all, and
-    // `DecisionProposalSchema` had no field to hold it even if it had. Fixed
-    // in `@sift/contracts` (`DecisionProposalSchema.reviewReason`) and
-    // `@sift/core` (`reviewProposal` now writes it). Proven here at the
-    // service/store layer, not only the pure `@sift/core` function: this
-    // asserts the reason survives a real `CaseStore.append` + reload, the
-    // way a person reloading the page after rejecting would see it.
-    it('persists the reviewer-supplied reason through append() and a fresh load (was silently dropped end to end)', () => {
-      const { snapshot } = withPendingProposal();
-      const result = service.reviewProposal('cmd-3', {
-        caseId: snapshot.id,
-        proposalId: 'proposal-1',
-        actor: 'human',
-        decision: 'reject',
-        reason: 'The household already scheduled its own inspection.',
-        expectedSequence: snapshot.eventSequence,
-      });
-      requireOk(result);
-      const updated = requireSnapshot(result.value);
-      expect(updated.proposal?.reviewReason).toBe(
-        'The household already scheduled its own inspection.',
-      );
-
-      // Reload from the store fresh -- proves this is durable case state,
-      // not merely an in-memory echo of the input the caller already had.
-      const reloaded = caseStore.load(snapshot.id);
-      expect(reloaded?.proposal?.reviewReason).toBe(
-        'The household already scheduled its own inspection.',
-      );
-    });
-
     it('returns a 409-shaped conflict when the underlying append() call itself detects the case has advanced (applyProposalReview, shared by reviewProposal/requestRevision)', () => {
       const { snapshot } = withPendingProposal();
       const advanced = service.upsertOption('cmd-real', {
@@ -4522,177 +4175,6 @@ describe('CommandService', () => {
           'confirmed',
         );
       });
-    });
-  });
-
-  /**
-   * The bystander-event rule (`CommandService.loadForIndependentMutation`).
-   *
-   * The defect these cover, in the shape it actually occurred: an
-   * investigation streams its events as the graph progresses, so the case's
-   * sequence climbs for several seconds; a person adds a note or marks a
-   * candidate during that window; and the command was refused for a
-   * `409 CONFLICT` caused entirely by work they were watching rather than
-   * competing with. It reproduced as an intermittent failure of the §61
-   * Playwright journey (`addNote`, expected 41 against an actual 42) and is
-   * not closable from the browser: the SSE stream carries a separate activity
-   * counter, so a client must re-read the canonical snapshot to learn the case
-   * sequence at all, and the run can append again between that read and the
-   * request landing.
-   *
-   * These tests fix the boundary in both directions -- what the rule permits,
-   * and what it must still refuse -- so a later change cannot quietly widen it
-   * into "the sequence check does not apply".
-   */
-  describe('sequence-independent commands (bystander events must not refuse a human action)', () => {
-    /**
-     * Appends the shape of event a streaming run actually produces while a
-     * person is watching -- nothing a note or a triage judgment depends on.
-     */
-    function advanceCaseByBystanderEvent(snapshot: CaseState): CaseState {
-      const appended = caseStore.append(
-        snapshot.id,
-        [
-          {
-            eventId: `ev-bystander-${String(snapshot.eventSequence + 1)}`,
-            caseId: snapshot.id,
-            sequence: snapshot.eventSequence + 1,
-            timestamp: FIXED_NOW,
-            type: 'recommendation.ready',
-            payload: {
-              recommendation: {
-                id: 'rec-bystander-1',
-                status: 'ready',
-                favoredOptionId: null,
-                rationale: 'the run finished while the person was reading',
-                facts: [],
-                hypotheses: [],
-                confidence: 0.5,
-                limitations: [],
-                sourceIds: [],
-                resolvedObligationIds: [],
-                acceptedUncertaintyObligationIds: [],
-                generatedAt: FIXED_NOW,
-              },
-            },
-          },
-        ],
-        snapshot.eventSequence,
-      );
-      if (appended.status !== 'applied') throw new Error('test setup failed');
-      return appended.snapshot;
-    }
-
-    it('addNote accepts a caller whose expectedSequence the case has already passed, and appends at the real sequence', () => {
-      const snapshot = startDemo();
-      const staleSequence = snapshot.eventSequence;
-      const advanced = advanceCaseByBystanderEvent(snapshot);
-      expect(advanced.eventSequence).toBe(staleSequence + 1);
-
-      const result = service.addNote('cmd-independent-note', {
-        caseId: snapshot.id,
-        // Exactly the shape of the real failure: the client read this before
-        // the run appended, and the run appended before the click landed.
-        expectedSequence: staleSequence,
-        note: { body: 'Ask the dealer about the roof rails.' },
-      });
-
-      requireOk(result);
-      const updated = requireSnapshot(result.value);
-      expect(updated.notes).toHaveLength(1);
-      // Appended ON TOP of the bystander event, never in place of it: the
-      // recommendation the run had just produced survives untouched, and a
-      // note is still not allowed to invalidate it.
-      expect(updated.eventSequence).toBe(staleSequence + 2);
-      expect(updated.recommendation?.id).toBe('rec-bystander-1');
-      expect(updated.recommendation?.status).toBe('ready');
-      expect(result.value.acceptedSequence).toBe(staleSequence + 2);
-    });
-
-    it('setCandidateDisposition accepts a stale caller and records what it replaced from the CURRENT state, not the stale one', () => {
-      const started = startDemo();
-      const withOption = service.upsertOption('cmd-independent-option', {
-        caseId: started.id,
-        expectedSequence: started.eventSequence,
-        option: { label: 'Honda CR-V', kind: 'car', attributes: [] },
-      });
-      requireOk(withOption);
-      const snapshot = requireSnapshot(withOption.value);
-      const entityId = snapshot.entities[0]?.id;
-      if (entityId === undefined) throw new Error('expected candidate');
-
-      // A first judgment lands, and the caller below never sees it.
-      const first = service.setCandidateDisposition('cmd-independent-keep', {
-        caseId: snapshot.id,
-        expectedSequence: snapshot.eventSequence,
-        actor: 'human',
-        entityId,
-        disposition: 'keep',
-      });
-      requireOk(first);
-
-      const second = service.setCandidateDisposition('cmd-independent-pass', {
-        caseId: snapshot.id,
-        expectedSequence: snapshot.eventSequence,
-        actor: 'human',
-        entityId,
-        disposition: 'pass',
-      });
-
-      requireOk(second);
-      const record = requireSnapshot(second.value).discovery?.dispositions.find(
-        (entry) => entry.entityId === entityId,
-      );
-      expect(record?.disposition).toBe('pass');
-      // The point of deriving from the current snapshot: the history stays
-      // truthful. A stale read would have claimed this replaced 'unreviewed'.
-      expect(record?.previousDisposition).toBe('keep');
-    });
-
-    it('still refuses an expectedSequence AHEAD of the case, for both independent commands', () => {
-      const snapshot = startDemo();
-
-      expect(
-        service.addNote('cmd-independent-ahead-note', {
-          caseId: snapshot.id,
-          expectedSequence: snapshot.eventSequence + 1,
-          note: { body: 'x' },
-        }).status,
-      ).toBe('conflict');
-
-      expect(
-        service.setCandidateDisposition('cmd-independent-ahead-disposition', {
-          caseId: snapshot.id,
-          expectedSequence: snapshot.eventSequence + 1,
-          actor: 'human',
-          entityId: 'candidate-nonexistent',
-          disposition: 'keep',
-        }).status,
-      ).toBe('conflict');
-    });
-
-    it('leaves every other command exactly as strict as it was -- this is an opt-in, not a relaxed default', () => {
-      const snapshot = startDemo();
-      const staleSequence = snapshot.eventSequence;
-      advanceCaseByBystanderEvent(snapshot);
-
-      // Each of these decides what to write by reading the case, so a stale
-      // view is a real hazard and the refusal is the correct answer.
-      expect(
-        service.upsertOption('cmd-strict-option', {
-          caseId: snapshot.id,
-          expectedSequence: staleSequence,
-          option: { label: 'Mazda CX-5', kind: 'car', attributes: [] },
-        }).status,
-      ).toBe('conflict');
-
-      expect(
-        service.updateCriteria('cmd-strict-criteria', {
-          caseId: snapshot.id,
-          expectedSequence: staleSequence,
-          operations: [{ op: 'reweight', criterionId: 'price', weight: 5 }],
-        }).status,
-      ).toBe('conflict');
     });
   });
 });

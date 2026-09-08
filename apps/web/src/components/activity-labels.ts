@@ -3,7 +3,7 @@
  * (docs/specs/architecture.md "Real-time event contract").
  *
  * Adapted from the label-registry pattern in
- * `praetor:apps/web/src/components/strata19/execute/activity-labels.ts`
+ * `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/execute/activity-labels.ts`
  * (docs/reuse-source-map.md: "Adapt the label-registry pattern so
  * user-visible activity never falls back to raw internal event names") --
  * see docs/reuse-attribution.md for the recorded entry. Only the *idea* is
@@ -229,8 +229,6 @@ const ACTIVITY_LABELS = {
   'intervention.guided': { label: 'Agent redirected', tone: 'active' },
   // `Confirm` -> "Your approval needed" (product.md terminology table, verbatim).
   'intervention.confirmation_required': { label: 'Your approval needed', tone: 'ready' },
-  // `Deny` -> "Action blocked" (product.md terminology table, verbatim).
-  'intervention.denied': { label: 'Action blocked', tone: 'blocked' },
   // `Evidence` -> "Research/Source/Fact" (change-set §4 terminology table).
   'evidence.accepted': { label: 'Finding accepted', tone: 'satisfied' },
   // Task A6: the literal change-set §48 example pair -- "Research

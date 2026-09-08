@@ -21,7 +21,7 @@ import type {
 import type { Clock, IdGenerator } from '@sift/core';
 import { compileHomeEnergyGuardianPack, PackRegistry } from '@sift/packs';
 import { buildHomeEnergyResponseOptionEntities } from '@sift/scenarios';
-import { createTestDatabase, openDatabase, type TestDatabase } from '../db/connection.js';
+import { createTestDatabase, type TestDatabase } from '../db/connection.js';
 import { applyMigrations } from '../db/migrate.js';
 import { CommandService } from '../services/command-service.js';
 import { RunService, SqliteRunStore, type RunRecord } from '../services/run-service.js';
@@ -29,7 +29,7 @@ import { SqliteActivityStore } from '../store/activity-store.js';
 import type { CaseStore } from '../store/case-store.js';
 import { SqliteCaseStore } from '../store/sqlite-case-store.js';
 import { SqliteRuntimeEventStore } from '../store/runtime-event-store.js';
-import { HOME_ENERGY_SWARM_NODE_IDS, type HomeEnergySwarmResult } from './home-energy-swarm.js';
+import type { HomeEnergySwarmResult } from './home-energy-swarm.js';
 import {
   createHomeEnergyEngine,
   determineHomeEnergyRound,
@@ -163,64 +163,6 @@ function buildLiveStack(): {
   };
 }
 
-/**
- * Drives a fresh live stack through round1, the household's real reweight,
- * and round2 -- exactly the setup `'runs round1 then round2...'` above
- * proves, factored out so the human-approval/refusal tests below (which
- * this task added) do not each re-derive it -- until the case genuinely
- * carries a `pending` `request-hvac-inspection` proposal, the same real way
- * a person reaches `ApprovalCard` in the product. Never used by that
- * pre-existing test itself (kept exactly as it was written, so its own
- * step-by-step narration and inline assertions are undisturbed).
- */
-async function driveToPendingInspectionProposal(): Promise<{
-  stack: ReturnType<typeof buildLiveStack>;
-  caseId: string;
-}> {
-  const stack = buildLiveStack();
-  const { caseStore, runStore, commandService, runService } = stack;
-
-  const startResult = commandService.startDemo('cmd-start', { demoId: 'home-energy-guardian' });
-  requireOkCommand(startResult);
-  let snapshot = startResult.value.snapshot!;
-  const caseId = snapshot.id;
-
-  const run1Result = runService.requestInvestigation('cmd-run-1', {
-    caseId,
-    expectedSequence: snapshot.eventSequence,
-  });
-  requireOkRun(run1Result);
-  await waitForRunSettled(runStore, run1Result.value.runId);
-
-  snapshot = caseStore.load(caseId)!;
-  const criteriaResult = commandService.updateCriteria('cmd-criteria', {
-    caseId,
-    expectedSequence: snapshot.eventSequence,
-    operations: [
-      { op: 'reweight', criterionId: 'energy.cost', weight: 20 },
-      { op: 'reweight', criterionId: 'energy.conservation', weight: 80 },
-    ],
-  });
-  requireOkCommand(criteriaResult);
-  snapshot = criteriaResult.value.snapshot!;
-
-  const run2Result = runService.requestInvestigation('cmd-run-2', {
-    caseId,
-    obligationId: 'energy.response_options',
-    expectedSequence: snapshot.eventSequence,
-  });
-  requireOkRun(run2Result);
-  await waitForRunSettled(runStore, run2Result.value.runId);
-
-  snapshot = caseStore.load(caseId)!;
-  if (snapshot.proposal?.status !== 'pending') {
-    throw new Error(
-      `test setup: expected a pending proposal after round2, got ${JSON.stringify(snapshot.proposal)}`,
-    );
-  }
-  return { stack, caseId };
-}
-
 describe('determineHomeEnergyRound', () => {
   function stateWithCriteria(
     criteria: { id: string; weight: number }[],
@@ -242,10 +184,10 @@ describe('determineHomeEnergyRound', () => {
     expect(determineHomeEnergyRound(stateWithCriteria([]))).toBe('round1');
   });
 
-  it('is round1 at the pack default cost-heavy 80/20 weighting', () => {
+  it('is round1 at the pack default 50/50 weighting', () => {
     const state = stateWithCriteria([
-      { id: 'energy.cost', weight: 80 },
-      { id: 'energy.conservation', weight: 20 },
+      { id: 'energy.cost', weight: 50 },
+      { id: 'energy.conservation', weight: 50 },
     ]);
     expect(determineHomeEnergyRound(state)).toBe('round1');
   });
@@ -313,37 +255,6 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
     expect(activityAfterRound1.some((event) => event.type === 'skill.activated')).toBe(true);
     expect(activityAfterRound1.some((event) => event.type === 'specialist.started')).toBe(true);
     expect(activityAfterRound1.some((event) => event.type === 'specialist.completed')).toBe(true);
-
-    // --- The denial is visible to a person, and is not dressed up as a
-    // broken tool. `anomaly-investigator` reaches for
-    // `household-event-lookup`, which the compiled pack grants only to
-    // `home-systems-analyst`; ScopeAuthorization refuses it before it runs.
-    // Before this was projected, the only thing a reader saw was the denied
-    // call's own error status, rendered "Couldn't complete that lookup" --
-    // which describes a broken lookup rather than an enforced boundary, and
-    // is the opposite of the reassurance the moment should carry.
-    const denials = activityAfterRound1.filter((event) => event.type === 'intervention.denied');
-    expect(denials).toHaveLength(1);
-    expect(denials[0]?.summary).toContain('household-event-lookup');
-
-    const householdLookupActivity = activityAfterRound1.filter((event) =>
-      event.summary.includes('household-event-lookup'),
-    );
-    // The attempt itself is kept. `tool.started` is published before the
-    // guard runs, and suppressing it would need lookahead a streaming
-    // projection does not have -- but it is also the honest sequence, and it
-    // reads correctly: "Looking something up" immediately followed by
-    // "Action blocked". What must never appear is the *third* line, the
-    // denied call's error status republished as a tool failure.
-    expect(householdLookupActivity.map((event) => event.type)).toEqual([
-      'tool.started',
-      'intervention.denied',
-    ]);
-    expect(
-      activityAfterRound1.some(
-        (event) => event.type === 'tool.failed' && event.summary.includes('household-event-lookup'),
-      ),
-    ).toBe(false);
     expect(activityAfterRound1.some((event) => event.type === 'evidence.accepted')).toBe(true);
 
     const anomalyObligation = snapshot.obligations.find((o) => o.id === 'energy.anomaly');
@@ -387,15 +298,6 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
       ),
     ).toBe(true);
     expect(run1Record.traceId).toBeTruthy();
-    // --- The Runtime Inspector Overview's "Trace" must actually identify
-    // this run's events. The run row's trace_id and the trace_id every
-    // runtime_events row for that run carries are ONE id -- previously the
-    // engine minted a local trace for the run row while the Swarm minted
-    // its own for every event, so the value on screen matched nothing in
-    // the Timeline. Asserted at the persisted-data level (both ids read
-    // back out of real SQLite), because that is exactly where the two
-    // diverged. ---
-    expect(runtimeEventsRound1.every((event) => event.traceId === run1Record.traceId)).toBe(true);
 
     // --- I2: a consumer-visible activity event derived from a real Swarm
     // RuntimeEvent carries a real debugEventId that resolves to its exact
@@ -479,12 +381,6 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
           event.agentId === 'decision-synthesizer',
       ),
     ).toBe(true);
-    // The same one-id invariant holds for round 2's own run row, and the
-    // two runs' traces are genuinely distinct (one trace per real Swarm
-    // invocation, so the Overview's "Trace" narrows to one run's events).
-    expect(run2Record.traceId).toBeTruthy();
-    expect(runtimeEventsRound2.every((event) => event.traceId === run2Record.traceId)).toBe(true);
-    expect(run2Record.traceId).not.toBe(run1Record.traceId);
 
     // --- Round 2 gets its own real, separately-sequenced case-state diff and
     // debugEventId correlations, distinct from round 1's. ---
@@ -509,116 +405,6 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
         .replayFrom(caseId, 0)
         .some((event) => event.type === 'intervention.confirmation_required'),
     ).toBe(true);
-  }, 30_000);
-
-  it('withholds an uncited first draft on the live path, and lands the corrected one', async () => {
-    // The product refusing a plausible-sounding answer that cannot cite a
-    // source is its clearest single argument, and for the whole life of the
-    // feature it happened only inside a unit test. `draft.withheld` had a
-    // label, a tone, a `RecommendationCard` state, a
-    // `SpecialistActivityPanel` branch and `workspace-status` handling --
-    // all tested, all unreachable, because the `goal` category never
-    // reached the consumer stream and round 1's scripted draft passed on
-    // its first attempt anyway.
-    //
-    // This asserts the whole path: a real GoalLoop rejection, surfaced as a
-    // real consumer event, followed by a recommendation that still arrives.
-    const { caseStore, activityStore, runStore, commandService, runService } = buildLiveStack();
-
-    const startResult = commandService.startDemo('cmd-start', { demoId: 'home-energy-guardian' });
-    requireOkCommand(startResult);
-    const snapshot = startResult.value.snapshot!;
-    const caseId = snapshot.id;
-
-    const runResult = runService.requestInvestigation('cmd-run-1', {
-      caseId,
-      expectedSequence: snapshot.eventSequence,
-    });
-    requireOkRun(runResult);
-    const record = await waitForRunSettled(runStore, runResult.value.runId);
-    expect(record.status).toBe('completed');
-
-    const activity = activityStore.replayFrom(caseId, 0);
-    const withheld = activity.filter((event) => event.type === 'draft.withheld');
-    expect(withheld).toHaveLength(1);
-    expect(withheld[0]?.phase).toBe('failed');
-    // Correlated back to the specialist whose draft was rejected, so the
-    // event is inspectable rather than a bare banner.
-    expect(withheld[0]?.agentId).toBe('decision-synthesizer');
-    expect(withheld[0]?.debugEventId).toBeTruthy();
-
-    // The rejection is not the end state: the retry cites its sources and
-    // the case ends up with a real recommendation.
-    const finalSnapshot = caseStore.load(caseId);
-    expect(finalSnapshot).not.toBeNull();
-    expect(finalSnapshot?.recommendation?.status).toBe('ready');
-    expect(finalSnapshot?.recommendation?.rationale).toMatch(/source-/);
-
-    // Ordering matters for anyone watching: the withheld draft precedes the
-    // recommendation it was replaced by.
-    const withheldIndex = activity.findIndex((event) => event.type === 'draft.withheld');
-    const readyIndex = activity.findIndex((event) => event.type === 'recommendation.ready');
-    expect(withheldIndex).toBeGreaterThanOrEqual(0);
-    expect(readyIndex).toBeGreaterThan(withheldIndex);
-  }, 30_000);
-
-  it("publishes each specialist's real duration onto the consumer activity stream, not only the Runtime Inspector", async () => {
-    // The gap this closes: `home-energy-swarm.ts` measures a real per-node
-    // duration and stamps it on the `runtime_events` row, but a consumer
-    // surface reads `activity_events`. Without `safeDetails` forwarding,
-    // the duration lands in the developer Inspector and the consumer pane's
-    // elapsed column stays permanently blank.
-    const { activityStore, runStore, runtimeEventStore, commandService, runService } =
-      buildLiveStack();
-
-    const startResult = commandService.startDemo('cmd-start', { demoId: 'home-energy-guardian' });
-    requireOkCommand(startResult);
-    const snapshot = startResult.value.snapshot!;
-    const caseId = snapshot.id;
-
-    const runResult = runService.requestInvestigation('cmd-run-1', {
-      caseId,
-      expectedSequence: snapshot.eventSequence,
-    });
-    requireOkRun(runResult);
-    const runId = runResult.value.runId;
-    const record = await waitForRunSettled(runStore, runId);
-    expect(record.status).toBe('completed');
-
-    const activity = activityStore.replayFrom(caseId, 0);
-    const completions = activity.filter(
-      (event) => event.runId === runId && event.type === 'specialist.completed',
-    );
-    // Every real Swarm node reaches the consumer stream, each carrying its
-    // own duration.
-    expect([...new Set(completions.map((event) => event.agentId))].sort()).toEqual(
-      [...HOME_ENERGY_SWARM_NODE_IDS].sort(),
-    );
-
-    const runtimeEvents = runtimeEventStore.listByRun(runId);
-    for (const event of completions) {
-      const durationMs = event.safeDetails?.['durationMs'];
-      expect(durationMs, `expected a duration for "${String(event.agentId)}"`).toBeTypeOf('number');
-      expect(durationMs as number).toBeGreaterThanOrEqual(0);
-
-      // It is that specialist's OWN measured interval, carried through
-      // unchanged from the exact correlated runtime event -- not a run
-      // total, a neighbour's figure, or a number invented at this layer.
-      const correlated = runtimeEvents.find((entry) => entry.id === event.debugEventId);
-      expect(correlated?.name).toBe('swarm.node_completed');
-      expect(correlated?.attributes['nodeId']).toBe(event.agentId);
-      expect(durationMs).toBe(correlated?.durationMs);
-    }
-
-    // A specialist that has only started has no elapsed time to freeze yet,
-    // so it publishes none -- absent, never a fabricated zero.
-    const starts = activity.filter(
-      (event) => event.runId === runId && event.type === 'specialist.started',
-    );
-    expect(starts.length).toBeGreaterThan(0);
-    for (const event of starts) {
-      expect(event.safeDetails?.['durationMs']).toBeUndefined();
-    }
   }, 30_000);
 
   it('logs a real, inspectable trace when the case does not exist at all', async () => {
@@ -682,196 +468,6 @@ describe('home-energy-engine (live, real Swarm, real SQLite)', () => {
     expect(failedActivity).toBeDefined();
     expect(failedActivity?.summary).toContain('is not registered');
   });
-
-  // --- Human approval and refusal of the round-2 inspection proposal, live
-  // (real SQLite, real Swarm) -- the paths a defect-hunting pass over this
-  // exact command found undertested: the pre-existing live test above
-  // stopped the instant `snapshot.proposal?.status === 'pending'`, so
-  // `reviewProposal` itself (approve, deny, idempotent retry, restart
-  // durability) had never actually run against a live-Swarm-produced
-  // `home-energy-guardian` proposal, only against hand-seeded fixture
-  // proposals (`command-service.test.ts`) or the pure `@sift/core` function
-  // (`policy.test.ts`). ---
-
-  it('approves the live round-2 inspection proposal: case decided, attributed to origin human, reason kept, activity and case sequences stay distinct counters', async () => {
-    const { stack, caseId } = await driveToPendingInspectionProposal();
-    const { caseStore, activityStore, commandService } = stack;
-
-    const beforeApproval = caseStore.load(caseId)!;
-    const proposalId = beforeApproval.proposal!.id;
-
-    const approveResult = commandService.reviewProposal('cmd-approve', {
-      caseId,
-      proposalId,
-      actor: 'human',
-      decision: 'approve',
-      reason: 'The household wants the technician out before the next billing cycle.',
-      expectedSequence: beforeApproval.eventSequence,
-    });
-    requireOkCommand(approveResult);
-    const decided = approveResult.value.snapshot!;
-
-    // CLAUDE.md's central rule, proven against a real Swarm-produced
-    // proposal rather than a hand-seeded one: only a human actor may ever
-    // move a case to 'decided', and the reviewer, not the model that
-    // proposed the action, is who gets recorded.
-    expect(decided.status).toBe('decided');
-    expect(decided.proposal?.status).toBe('approved');
-    expect(decided.proposal?.reviewedByActor).toBe('human');
-    expect(decided.proposal?.id).toBe(proposalId);
-    // The reviewer's own stated reason -- real defect fixed by this task
-    // (`@sift/core`'s `reviewProposal` used to discard it entirely; see
-    // `packages/core/src/policy.test.ts`).
-    expect(decided.proposal?.reviewReason).toBe(
-      'The household wants the technician out before the next billing cycle.',
-    );
-
-    // Re-submitting the identical commandId is a pure idempotent replay --
-    // no second `proposal.reviewed` event, no change to acceptedSequence.
-    const replay = commandService.reviewProposal('cmd-approve', {
-      caseId,
-      proposalId,
-      actor: 'human',
-      decision: 'approve',
-      reason: 'The household wants the technician out before the next billing cycle.',
-      expectedSequence: beforeApproval.eventSequence,
-    });
-    requireOkCommand(replay);
-    expect(replay.value.acceptedSequence).toBe(approveResult.value.acceptedSequence);
-    expect(caseStore.load(caseId)?.eventSequence).toBe(decided.eventSequence);
-
-    // `PublicActivityEvent.sequence` and `CaseState.eventSequence` are
-    // different monotonic counters (store/activity-store.ts's own header
-    // comment) -- proven concretely, not just by type, against this real
-    // run: the activity stream's own sequence numbers are contiguous from 1
-    // for THIS case's activity events alone, while the case's event
-    // sequence reflects every underlying CaseEvent two full Swarm rounds
-    // plus the reweight plus this review produced, which is a materially
-    // different (larger) number.
-    const activity = activityStore.replayFrom(caseId, 0);
-    expect(activity.map((event) => event.sequence)).toEqual(
-      activity.map((_event, index) => index + 1),
-    );
-    expect(activity.at(-1)?.sequence).not.toBe(decided.eventSequence);
-    expect(activity.some((event) => event.summary === 'Proposal approved.')).toBe(true);
-  }, 30_000);
-
-  it('denies the live round-2 inspection proposal: case stays draft with no dangling obligation, recommendation still stands, reason kept', async () => {
-    const { stack, caseId } = await driveToPendingInspectionProposal();
-    const { caseStore, activityStore, commandService } = stack;
-
-    const beforeDenial = caseStore.load(caseId)!;
-    const proposalId = beforeDenial.proposal!.id;
-    // The obligation the round-2 recommendation itself rests on -- proven
-    // satisfied before the denial, so the "no dangling obligation" assertion
-    // below is a real before/after comparison, not an assumption.
-    const obligationBefore = beforeDenial.obligations.find(
-      (entry) => entry.id === 'energy.response_options',
-    );
-    expect(obligationBefore?.status).toBe('satisfied');
-
-    const denyResult = commandService.reviewProposal('cmd-deny', {
-      caseId,
-      proposalId,
-      actor: 'human',
-      decision: 'reject',
-      reason: 'Already have our own HVAC technician scheduled this week.',
-      expectedSequence: beforeDenial.eventSequence,
-    });
-    requireOkCommand(denyResult);
-    const denied = denyResult.value.snapshot!;
-
-    // A denial is not a silent no-op and not a case the product can never
-    // complete: the proposal itself is terminal (rejected)...
-    expect(denied.proposal?.status).toBe('rejected');
-    expect(denied.proposal?.reviewedByActor).toBe('human');
-    expect(denied.proposal?.reviewReason).toBe(
-      'Already have our own HVAC technician scheduled this week.',
-    );
-    // ...but 'decided' is reserved for approval alone (docs/specs/product.md
-    // "CaseStatus is a two-value type"), so the case correctly stays
-    // 'draft' rather than being stuck in some fourth, undocumented status.
-    expect(denied.status).toBe('draft');
-    // The recommendation the household can still act on was never touched
-    // by the denial -- only the separate, optional consequential proposal
-    // was.
-    expect(denied.recommendation?.status).toBe('ready');
-    expect(denied.recommendation?.favoredOptionId).toBe('request-hvac-inspection');
-    // No dangling obligation: the obligation the recommendation rests on is
-    // exactly as satisfied after the denial as it was before it -- denying
-    // the optional follow-up proposal cannot re-open completed
-    // investigation work.
-    const obligationAfter = denied.obligations.find(
-      (entry) => entry.id === 'energy.response_options',
-    );
-    expect(obligationAfter?.status).toBe('satisfied');
-    expect(obligationAfter?.attemptsUsed).toBe(obligationBefore?.attemptsUsed);
-
-    // The UI-facing activity stream says why the case landed here.
-    const activity = activityStore.replayFrom(caseId, 0);
-    expect(activity.some((event) => event.summary === 'Proposal rejected.')).toBe(true);
-
-    // Idempotent duplicate submit -- a second identical POST (e.g. a
-    // doubled network retry) never double-applies the denial.
-    const replay = commandService.reviewProposal('cmd-deny', {
-      caseId,
-      proposalId,
-      actor: 'human',
-      decision: 'reject',
-      reason: 'Already have our own HVAC technician scheduled this week.',
-      expectedSequence: beforeDenial.eventSequence,
-    });
-    requireOkCommand(replay);
-    expect(replay.value.acceptedSequence).toBe(denyResult.value.acceptedSequence);
-    expect(caseStore.load(caseId)?.eventSequence).toBe(denied.eventSequence);
-  }, 30_000);
-
-  it('restart durability: an approved live inspection proposal survives closing and reopening the real SQLite connection', async () => {
-    const { stack, caseId } = await driveToPendingInspectionProposal();
-    const { database, caseStore, commandService } = stack;
-
-    const beforeApproval = caseStore.load(caseId)!;
-    const proposalId = beforeApproval.proposal!.id;
-    const approveResult = commandService.reviewProposal('cmd-approve-restart', {
-      caseId,
-      proposalId,
-      actor: 'human',
-      decision: 'approve',
-      reason: 'Confirmed with the household by phone.',
-      expectedSequence: beforeApproval.eventSequence,
-    });
-    requireOkCommand(approveResult);
-    const beforeRestart = approveResult.value.snapshot!;
-    expect(beforeRestart.status).toBe('decided');
-
-    // A genuine restart, not a second wrapper over the same open handle
-    // (`sqlite-case-store.test.ts`'s existing "second store instance" test
-    // already covers that lighter case): close the real connection this
-    // stack wrote through, then open a brand-new one against the same
-    // on-disk file, mirroring `session-adapter.test.ts`'s own "a genuine
-    // round trip through the real filesystem" restore test for Strands
-    // session snapshots.
-    database.close();
-    const reopened = openDatabase(database.dir);
-    try {
-      const reopenedCaseStore = new SqliteCaseStore(reopened);
-      const restored = reopenedCaseStore.load(caseId);
-
-      expect(restored?.status).toBe('decided');
-      expect(restored?.proposal?.status).toBe('approved');
-      expect(restored?.proposal?.id).toBe(proposalId);
-      expect(restored?.proposal?.reviewedByActor).toBe('human');
-      expect(restored?.proposal?.reviewReason).toBe('Confirmed with the household by phone.');
-      expect(restored?.eventSequence).toBe(beforeRestart.eventSequence);
-      expect(restored?.recommendation?.favoredOptionId).toBe('request-hvac-inspection');
-
-      const reopenedActivityStore = new SqliteActivityStore(reopened);
-      const restoredActivity = reopenedActivityStore.replayFrom(caseId, 0);
-      expect(restoredActivity.some((event) => event.summary === 'Proposal approved.')).toBe(true);
-    } finally {
-      reopened.close();
-    }
-  }, 30_000);
 });
 
 describe('extractFavoredResponseOptionId', () => {

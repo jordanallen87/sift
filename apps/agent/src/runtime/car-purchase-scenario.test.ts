@@ -24,7 +24,7 @@ import type { RuntimeEvent } from './event-normalizer.js';
 import type { CarPurchaseGraphResult } from './car-purchase-graph.js';
 import {
   buildExecutionRequestFor,
-  rearFacingSeatObligationTemplate,
+  dogCrateObligationTemplate,
   drainGraph,
   ensureSourcesExist,
   entityLabelsById,
@@ -220,9 +220,9 @@ describe('humanizeDecisionText', () => {
   });
 });
 
-describe('rearFacingSeatObligationTemplate', () => {
-  it('is a well-formed case_extension ObligationTemplate for the rear-facing-seat concern', () => {
-    const template = rearFacingSeatObligationTemplate();
+describe('dogCrateObligationTemplate', () => {
+  it('is a well-formed case_extension ObligationTemplate for the dog-crate concern', () => {
+    const template = dogCrateObligationTemplate();
     expect(template.origin).toBe('case_extension');
     expect(template.acceptedUncertaintyAllowed).toBe(true);
     expect(template.preferredSpecialists).toContain('household-fit-analyst');

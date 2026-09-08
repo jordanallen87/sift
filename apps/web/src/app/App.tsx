@@ -19,7 +19,7 @@
  * active, re-registering its case-scoped tools whenever the active case
  * changes; every visible control calls through the one shared
  * `SiftCommands` instance from `useSiftCommands()` -- there is no parallel
- * mutation path (docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use
+ * mutation path (CLAUDE.md "Visible UI controls and WebMCP callbacks use
  * the same command implementation").
  *
  * TWO-MODE LAYOUT (rewritten this task per `docs/decisions/
@@ -212,7 +212,7 @@
  *
  * `readiness` is computed by calling the REAL `evaluateReadiness` from
  * `@sift/core` directly. This app never re-implements readiness, satisfying
- * docs/engineering-principles.md's "The deterministic core, not an LLM, owns ... readiness."
+ * CLAUDE.md's "The deterministic core, not an LLM, owns ... readiness."
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { z } from 'zod';
@@ -238,7 +238,7 @@ import { DisclosureSection } from '../components/DisclosureSection.js';
 import { RecommendationHero } from '../components/RecommendationHero.js';
 import type { CandidateDisposition, InteractionResponse, NextMove } from '@sift/contracts';
 import type { ApprovalCardReview } from '../components/ApprovalCard.js';
-import { deriveActiveRunId, deriveWorkspaceStatus } from '../components/workspace-status.js';
+import { deriveWorkspaceStatus } from '../components/workspace-status.js';
 import { ReadinessPanel } from '../components/ReadinessPanel.js';
 import { FindingsSheet } from '../components/FindingsSheet.js';
 import { BlindSpotReviewSheet } from '../components/BlindSpotReviewSheet.js';
@@ -259,7 +259,6 @@ import { deriveDecisionProfile } from '../components/decision-profile.js';
 import { CaseNotes } from '../components/CaseNotes.js';
 import { AddNoteForm } from '../components/AddNoteForm.js';
 import { CustomConcernForm } from '../components/CustomConcernForm.js';
-import { CriteriaEditor } from '../components/CriteriaEditor.js';
 import { CaseExtensionReviewCard } from '../components/CaseExtensionReviewCard.js';
 import type { LiveRunStatusReceipt } from '../components/LiveRunStatus.js';
 import { WebMcpStatus } from '../components/WebMcpStatus.js';
@@ -347,7 +346,7 @@ const InstalledPacksResponseSchema = z
  * has nothing to derive from -- a genuinely fresh case must still show the
  * real empty state, not a fabricated receipt.
  *
- * Task A9 (`docs/planning/plans/2026-08-30-generic-decision-workspace.md`
+ * Task A9 (`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`
  * Phase A): the commandId-only fallback above must NOT surface fixture/demo
  * seeding as if it were a real completed command the human asked for. Live
  * inspection at 430px caught the hero rendering "Nothing's been looked into
@@ -522,8 +521,6 @@ export function App() {
    * reopens exactly the content just dismissed.
    */
   const helpButtonRef = useRef<HTMLButtonElement>(null);
-  /** Set when the first-run guide is dismissed, cleared once focus reaches the Help control -- see the effect below. */
-  const [helpFocusPending, setHelpFocusPending] = useState(false);
   const [findingsSheetOpen, setFindingsSheetOpen] = useState(false);
   // ADR 0008 sheet-based entry points -- each replaces (expanded mode) or
   // supplements (narrow mode, via the app bar's now-uniform "Add option")
@@ -548,7 +545,6 @@ export function App() {
   // and its DOM ids. The inline copy is gone now (see the note where it used
   // to render), so one sheet is the whole story at every width.
   const [addConcernSheetOpen, setAddConcernSheetOpen] = useState(false);
-  const [prioritiesSheetOpen, setPrioritiesSheetOpen] = useState(false);
   // Filters live in a sheet reachable from BOTH layouts, not in the
   // expanded-only sidebar they used to occupy (ADR 0009). That placement is
   // what makes filtering exist at all in pane/WebMCP mode, where
@@ -597,7 +593,6 @@ export function App() {
     events,
     connectionState,
     error: streamError,
-    resolveEventSequence,
   } = useCaseEvents({ caseId: activeCaseId, ...apiConfig });
 
   // Primary workspace view switcher state (ADR 0004 item 5; ADR 0005;
@@ -883,41 +878,6 @@ export function App() {
   const activeCaseIdRef = useRef(activeCaseId);
   activeCaseIdRef.current = activeCaseId;
 
-  /**
-   * The `expectedSequence` every human-initiated command in this file sends.
-   *
-   * The two sources it combines are the only two that are authoritative, and
-   * neither is sufficient alone:
-   *
-   * - `resolveEventSequence()` (`use-case-events.ts`) is the case's real
-   *   `eventSequence`, re-read from the server in the window where the
-   *   coalesced snapshot refresh has not caught up with an event the stream
-   *   already delivered. That covers advances this client did not cause --
-   *   a run streaming its events as the graph progresses, or a WebMCP writer
-   *   working the same case.
-   * - `lastAcceptedSequenceRef` covers the opposite case, which no read can:
-   *   the receipt for a command THIS client just sent is newer than any
-   *   snapshot the stream has had time to deliver.
-   *
-   * Both are values the server has already confirmed, so this never invents a
-   * sequence and never hides a real conflict -- a write that genuinely raced
-   * another writer still gets its 409. What it removes is the class of 409
-   * that was purely an artifact of this client's own refresh schedule: press
-   * a button a moment after an investigation finishes and the command failed,
-   * visibly, for no reason the person could see or act on.
-   *
-   * Deliberately NOT applied to `register-sift-tools.ts`. A WebMCP tool's
-   * `expectedSequence` is supplied by the model, and it means "the case
-   * context I read before deciding to write this" -- bumping it to something
-   * fresher would accept a write built on a view that really had gone stale,
-   * which is the exact thing the field exists to refuse (webmcp.md
-   * "Cancellation and concurrency").
-   */
-  const resolveExpectedSequence = useCallback(async (): Promise<number> => {
-    const observed = await resolveEventSequence();
-    return Math.max(observed, lastAcceptedSequenceRef.current);
-  }, [resolveEventSequence]);
-
   // Serializes view writes so the LAST intent wins, not the last response.
   //
   // Three failed repair attempts got here, and the evidence that settled it
@@ -1002,9 +962,9 @@ export function App() {
           ...(intendedFilters !== undefined ? { filters: intendedFilters } : {}),
           mode,
         });
-        // The freshest sequence either side knows about -- see
-        // `resolveExpectedSequence`.
-        const expectedSequence = await resolveExpectedSequence();
+        // The freshest sequence either side knows about: the streamed
+        // snapshot, or the last receipt the server handed back.
+        const expectedSequence = Math.max(current.eventSequence, lastAcceptedSequenceRef.current);
         try {
           await commands.setView({ caseId, expectedSequence, view });
         } catch {
@@ -1028,12 +988,7 @@ export function App() {
             refreshed === null
               ? lastAcceptedSequenceRef.current
               : Math.max(refreshed.eventSequence, lastAcceptedSequenceRef.current);
-          // `>`, not `!==`: the first attempt already went out on the
-          // freshest sequence `resolveExpectedSequence` could obtain, so a
-          // re-read that comes back LOWER (the snapshot has not caught up
-          // yet) is not a newer view to retry against -- resending on it
-          // would only earn a second, certain conflict.
-          if (retrySequence > expectedSequence) {
+          if (retrySequence !== expectedSequence) {
             try {
               await commands.setView({
                 caseId,
@@ -1061,7 +1016,7 @@ export function App() {
     } finally {
       viewWriteInFlightRef.current = false;
     }
-  }, [commands, resolveExpectedSequence]);
+  }, [commands]);
 
   const handleViewModeChange = useCallback(
     (mode: WorkspaceViewMode) => {
@@ -1144,9 +1099,9 @@ export function App() {
           mode: intendedViewRef.current.mode ?? current.view?.mode ?? 'quick_pick',
           filters: nextFilters,
         });
-        // The freshest sequence either side knows about -- see
-        // `resolveExpectedSequence`.
-        const expectedSequence = await resolveExpectedSequence();
+        // The freshest sequence either side knows about: the streamed
+        // snapshot, or the last receipt the server handed back.
+        const expectedSequence = Math.max(current.eventSequence, lastAcceptedSequenceRef.current);
         try {
           await commands.setView({ caseId, expectedSequence, view });
         } catch {
@@ -1161,7 +1116,7 @@ export function App() {
     } finally {
       filtersWriteInFlightRef.current = false;
     }
-  }, [commands, resolveExpectedSequence]);
+  }, [commands]);
 
   const handleFiltersChange = useCallback(
     (nextFilters: WorkspaceFilter[]) => {
@@ -1321,82 +1276,6 @@ export function App() {
   );
 
   /**
-   * How far down `case-workspace-scroll`'s "optimal viewing region" has to
-   * start, so that scrolling something to the top of the pane does not park
-   * it underneath the sticky chrome that is already there.
-   *
-   * `DecisionOrientationShell`'s pinned row is `position: sticky; top: 0`
-   * inside that scroller (see its own "Sticky positioning" section). That is
-   * correct and stays: it keeps the row in flow, and content passing *under*
-   * it while a person free-scrolls is what a sticky header is for. The defect is
-   * narrower and only shows up when the product scrolls on the person's
-   * behalf. `handleReviewDecidedCase` and `handleConfirmShortlist` below both
-   * call `scrollIntoView({block: 'start'})`, which aligns the target's top
-   * edge with the scrollport's top edge -- which is precisely where the shell
-   * is parked. Measured in Chromium at 430px, on the real
-   * `confirm_shortlist` dock button ("Confirm what moves forward", the one
-   * control in the product wearing a "Your decision" badge): the hero landed
-   * at `top: -0.25` with the shell spanning `0.19 -> 133.75`, so its first
-   * 134px sat behind the shell and its heading -- "Leading so far: 2022
-   * Toyota RAV4 XLE Hybrid AWD", the entire point of going there -- was
-   * *completely* hidden, at `15.75 -> 66.13`. Focus landed on it too, so a
-   * screen-reader user was placed on a region a sighted user could not see.
-   *
-   * `scroll-padding-top` on the scroll container, rather than
-   * `scroll-margin-top` on each target: it is one declaration on the element
-   * that owns the scrollport instead of one per target that a future target
-   * can forget, and it applies to every way a box gets scrolled into that
-   * region -- `scrollIntoView`, focus, fragment navigation -- not only to the
-   * two call sites known to be broken today.
-   *
-   * The value is measured rather than declared because the shell's height is
-   * genuinely variable: it changes with `layout`, with the host's font, and
-   * with how many lines the summary row wraps to in a 390px pane. A constant
-   * would be right in one state and wrong in the others, which is how this
-   * class of bug comes back. Verified after the fix by the same measurement:
-   * `coveredPx: 0`, heading visible.
-   *
-   * What it no longer changes with is the shell's own disclosure. The two
-   * qualification lines and the expanded detail now render *below* the
-   * sticky element instead of inside it (`DecisionOrientationShell`'s "What
-   * is pinned" -- they are still unconditionally visible, they simply scroll
-   * with the content they qualify), so `containerRef` lands on a box that is
-   * exactly the pinned chrome and nothing else. Re-measured at 390px on a
-   * case carrying a provisional qualification: 133.56px collapsed and
-   * 183.94px expanded before, 72px in both states after. The unpinned block
-   * must stay out of this number -- it never covers a scrolled-to region, so
-   * counting it would push every one of them down by a band of clear space.
-   *
-   * `ResizeObserver` is feature-detected because jsdom -- the environment the
-   * component tests run in -- does not implement it. There it is simply
-   * absent, the effect measures once and stops, and the measurement is `0`
-   * anyway since jsdom computes no layout. Nothing about this is load-bearing
-   * in a unit test; the regression that guards it is a real-browser one
-   * (`assertScrollIntoViewClearsStickyChrome`).
-   */
-  const orientationShellRef = useRef<HTMLElement | null>(null);
-  const [workspaceScrollPaddingPx, setWorkspaceScrollPaddingPx] = useState(0);
-  const orientationShellRendered =
-    decisionOrientation !== null && snapshot?.discovery !== undefined;
-  useEffect(() => {
-    const node = orientationShellRef.current;
-    if (!orientationShellRendered || node === null) {
-      setWorkspaceScrollPaddingPx(0);
-      return;
-    }
-    const measure = (): void => {
-      setWorkspaceScrollPaddingPx(node.getBoundingClientRect().height);
-    };
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => {
-      observer.disconnect();
-    };
-  }, [orientationShellRendered, layout]);
-
-  /**
    * The blind-spot prompts this case is actually being offered, in pack
    * order, resolved from the same `deriveDiscoveryReadiness` the dock's
    * `review_blind_spots` move and the WebMCP interaction context already
@@ -1552,27 +1431,7 @@ export function App() {
     // before this browser is nagged again.
     markFirstRunGuideSeen();
     setFirstRunGuideOpen(false);
-    setHelpFocusPending(true);
   }, []);
-
-  // The guide can be dismissed before the workspace has finished loading,
-  // and the app bar -- which owns the Help control focus is handed back to
-  // -- only renders once `snapshot` is non-null. Dismiss in that window and
-  // `helpButtonRef.current` is genuinely null, so `FirstRunGuide`'s
-  // `onCloseAutoFocus` hands back to Radix, which sends focus to `<body>`:
-  // a keyboard user is left nowhere, with no visible cause, and nothing
-  // ever recovers it because the Help control mounts afterwards.
-  //
-  // This claims the focus once the control actually exists. It fires only
-  // after a real dismissal, and clears itself immediately, so it can never
-  // steal focus from something a person chose later.
-  useEffect(() => {
-    if (!helpFocusPending) return;
-    const target = helpButtonRef.current;
-    if (target === null) return;
-    if (document.activeElement !== target) target.focus();
-    setHelpFocusPending(false);
-  }, [helpFocusPending, snapshot]);
 
   // Runtime Inspector open/close/navigate handlers (Task A5 / I2b). Every
   // entry point funnels through these three so `runtimeInspectorOpen`/
@@ -1633,16 +1492,6 @@ export function App() {
     () => events.filter((event) => event.caseId === activeCaseId),
     [events, activeCaseId],
   );
-
-  // Returns to the launcher. The storage effect above already handles the
-  // pointer ("Also fires on a reset-demo/return-to-launcher transition") --
-  // that transition simply had no control to trigger it until now, so a
-  // person who opened one demo was stuck in it for the life of the browser
-  // profile.
-  const handleSwitchDecision = useCallback(() => {
-    setActiveCaseId(null);
-    setLastRunReceipt(null);
-  }, []);
 
   const handleResetDemo = useCallback(() => {
     if (snapshot === null) return;
@@ -1707,36 +1556,26 @@ export function App() {
             );
           });
       };
-      // The first attempt already goes out on the freshest sequence this
-      // client can obtain (`resolveExpectedSequence`), so the retry above is
-      // now what its own comment always said it was -- recovery from a
-      // genuine race with another writer -- rather than routine cleanup after
-      // this client's own snapshot lag.
-      void resolveExpectedSequence().then((expectedSequence) => {
-        attempt(expectedSequence, false);
-      });
+      attempt(snapshot.eventSequence, false);
     },
-    [commands, snapshot, activeCaseId, resolveExpectedSequence],
+    [commands, snapshot, activeCaseId],
   );
 
   const handleReviewProposal = useCallback(
     (review: ApprovalCardReview) => {
       if (!snapshot?.proposal || activeCaseId === null) return;
-      const proposalId = snapshot.proposal.id;
       setProposalReviewPending(true);
       setProposalReviewError(null);
-      resolveExpectedSequence()
-        .then((expectedSequence) =>
-          commands.reviewProposal({
-            caseId: activeCaseId,
-            proposalId,
-            actor: review.actor,
-            decision: review.decision,
-            expectedSequence,
-            ...(review.instructions !== undefined ? { instructions: review.instructions } : {}),
-            ...(review.reason !== undefined ? { reason: review.reason } : {}),
-          }),
-        )
+      commands
+        .reviewProposal({
+          caseId: activeCaseId,
+          proposalId: snapshot.proposal.id,
+          actor: review.actor,
+          decision: review.decision,
+          expectedSequence: snapshot.eventSequence,
+          ...(review.instructions !== undefined ? { instructions: review.instructions } : {}),
+          ...(review.reason !== undefined ? { reason: review.reason } : {}),
+        })
         .then(() => {
           setProposalReviewPending(false);
         })
@@ -1747,7 +1586,7 @@ export function App() {
           );
         });
     },
-    [commands, snapshot, activeCaseId, resolveExpectedSequence],
+    [commands, snapshot, activeCaseId],
   );
 
   const handleSetDisposition = useCallback(
@@ -1755,16 +1594,14 @@ export function App() {
       if (snapshot === null || activeCaseId === null) return;
       setDispositionPendingId(evidenceId);
       setDispositionError(null);
-      resolveExpectedSequence()
-        .then((expectedSequence) =>
-          commands.setEvidenceDisposition({
-            caseId: activeCaseId,
-            evidenceId,
-            disposition,
-            reason,
-            expectedSequence,
-          }),
-        )
+      commands
+        .setEvidenceDisposition({
+          caseId: activeCaseId,
+          evidenceId,
+          disposition,
+          reason,
+          expectedSequence: snapshot.eventSequence,
+        })
         .then(() => {
           setDispositionPendingId(null);
         })
@@ -1775,12 +1612,12 @@ export function App() {
           );
         });
     },
-    [commands, snapshot, activeCaseId, resolveExpectedSequence],
+    [commands, snapshot, activeCaseId],
   );
 
   // Real WebMCP-parity focus wiring (change-set §30 "WebMCP should control
   // focus"): the same `focusOption` command a `sift_focus_option` tool call
-  // uses (docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use the same
+  // uses (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same
   // command implementation"). Deliberately fire-and-forget with no pending/
   // error UI state of its own: ADR 0005 designed `focusOption` to route
   // through `updateSelection()` specifically so a presentation-only action
@@ -1792,13 +1629,11 @@ export function App() {
   const handleFocusOption = useCallback(
     (optionId: string) => {
       if (snapshot === null || activeCaseId === null) return;
-      void resolveExpectedSequence()
-        .then((expectedSequence) =>
-          commands.focusOption({ caseId: activeCaseId, optionId, expectedSequence }),
-        )
+      commands
+        .focusOption({ caseId: activeCaseId, optionId, expectedSequence: snapshot.eventSequence })
         .catch(() => undefined);
     },
-    [commands, snapshot, activeCaseId, resolveExpectedSequence],
+    [commands, snapshot, activeCaseId],
   );
 
   const handleQuickPickAdvance = useCallback(() => {
@@ -1820,16 +1655,14 @@ export function App() {
   const handleQuickPickDisposition = useCallback(
     (optionId: string, disposition: CandidateDisposition) => {
       if (snapshot === null || activeCaseId === null) return;
-      resolveExpectedSequence()
-        .then((expectedSequence) =>
-          commands.setCandidateDisposition({
-            caseId: activeCaseId,
-            expectedSequence,
-            actor: 'human',
-            entityId: optionId,
-            disposition,
-          }),
-        )
+      commands
+        .setCandidateDisposition({
+          caseId: activeCaseId,
+          expectedSequence: Math.max(snapshot.eventSequence, lastAcceptedSequenceRef.current),
+          actor: 'human',
+          entityId: optionId,
+          disposition,
+        })
         .then((receipt) => {
           lastAcceptedSequenceRef.current = Math.max(
             lastAcceptedSequenceRef.current,
@@ -1841,7 +1674,7 @@ export function App() {
       // it; every other judgment advances.
       if (disposition !== 'unreviewed') handleQuickPickAdvance();
     },
-    [commands, snapshot, activeCaseId, handleQuickPickAdvance, resolveExpectedSequence],
+    [commands, snapshot, activeCaseId, handleQuickPickAdvance],
   );
 
   /**
@@ -1876,14 +1709,12 @@ export function App() {
       });
       if (request === null) return;
       setInteractionError(null);
-      resolveExpectedSequence()
-        .then((expectedSequence) =>
-          commands.requestInteraction({
-            caseId: current.id,
-            expectedSequence,
-            interaction: request,
-          }),
-        )
+      commands
+        .requestInteraction({
+          caseId: current.id,
+          expectedSequence: Math.max(current.eventSequence, lastAcceptedSequenceRef.current),
+          interaction: request,
+        })
         .then((receipt) => {
           lastAcceptedSequenceRef.current = Math.max(
             lastAcceptedSequenceRef.current,
@@ -1901,21 +1732,19 @@ export function App() {
           );
         });
     },
-    [activePack, commands, resolveExpectedSequence],
+    [activePack, commands],
   );
 
   const handleInteractionResponse = useCallback(
     (response: InteractionResponse) => {
       const current = snapshotRef.current;
       if (current === null) return;
-      resolveExpectedSequence()
-        .then((expectedSequence) =>
-          commands.submitInteractionResponse({
-            caseId: current.id,
-            expectedSequence,
-            response,
-          }),
-        )
+      commands
+        .submitInteractionResponse({
+          caseId: current.id,
+          expectedSequence: Math.max(current.eventSequence, lastAcceptedSequenceRef.current),
+          response,
+        })
         .then((receipt) => {
           lastAcceptedSequenceRef.current = Math.max(
             lastAcceptedSequenceRef.current,
@@ -1924,7 +1753,7 @@ export function App() {
         })
         .catch(() => undefined);
     },
-    [commands, resolveExpectedSequence],
+    [commands],
   );
 
   // Scroll/focus target for the `review_question` dock action -- see
@@ -1973,7 +1802,7 @@ export function App() {
    *
    * It navigates. It does not act. The controls this move points at
    * (`ApprovalCard`'s Approve / Reject / Request revision) are already on
-   * the page whenever this move exists, and docs/engineering-principles.md is explicit that no
+   * the page whenever this move exists, and CLAUDE.md is explicit that no
    * automatic path may approve a consequential decision: "The model may
    * propose candidate events and recommendations. It may never approve a
    * consequential decision." A dock button that pressed Approve on the
@@ -2018,19 +1847,17 @@ export function App() {
       if (offeredPromptIds.length === 0) return;
       setBlindSpotReviewError(null);
       setBlindSpotReviewPending(true);
-      resolveExpectedSequence()
-        .then((expectedSequence) =>
-          commands.completeBlindSpotReview({
-            caseId: current.id,
-            expectedSequence,
-            // The literal, never a variable: `CompleteBlindSpotReviewInput`
-            // refuses any other actor, and nobody but the person can say what
-            // they did not think of.
-            actor: 'human',
-            offeredPromptIds,
-            selectedPromptIds,
-          }),
-        )
+      commands
+        .completeBlindSpotReview({
+          caseId: current.id,
+          expectedSequence: Math.max(current.eventSequence, lastAcceptedSequenceRef.current),
+          // The literal, never a variable: `CompleteBlindSpotReviewInput`
+          // refuses any other actor, and nobody but the person can say what
+          // they did not think of.
+          actor: 'human',
+          offeredPromptIds,
+          selectedPromptIds,
+        })
         .then((receipt) => {
           lastAcceptedSequenceRef.current = Math.max(
             lastAcceptedSequenceRef.current,
@@ -2051,7 +1878,7 @@ export function App() {
           setBlindSpotReviewPending(false);
         });
     },
-    [applicableBlindSpotPrompts, commands, resolveExpectedSequence],
+    [applicableBlindSpotPrompts, commands],
   );
 
   const handleDockAction = useCallback(
@@ -2285,16 +2112,9 @@ export function App() {
       : readiness.ready
         ? 'All checked'
         : `${remainingObligationCount} still open`;
-  // Derived from the newest run's own lifecycle (`deriveActiveRunId`), not
-  // from whatever phase the single most recent event happens to carry: a
-  // real run's `tool.completed`/`skill.activated`/`specialist.completed`
-  // events all report `phase: 'completed'` mid-run, so the old
-  // last-event-phase test flickered false roughly every other event and the
-  // hero reverted to "Nothing's been looked into yet." in the middle of an
-  // investigation. Case-scoped for the same reason `derivedRunReceipt` is
-  // (a case switch can leave the outgoing case's events in `events` for one
-  // frame).
-  const isRunActive = deriveActiveRunId(caseScopedActivityEvents) !== null;
+  const isRunActive =
+    lastEvent !== null &&
+    (lastEvent.phase === 'active' || lastEvent.phase === 'queued' || lastEvent.phase === 'waiting');
 
   // "What Sift found" urgency signal (round-2 design review): a real count
   // of findings that are not fully verified or have aged past their
@@ -2454,8 +2274,6 @@ export function App() {
               setNotesSheetOpen(true);
             }}
             onAddConcern={() => setAddConcernSheetOpen(true)}
-            onAdjustPriorities={() => setPrioritiesSheetOpen(true)}
-            onSwitchDecision={handleSwitchDecision}
             onReviewFindings={() => setFindingsSheetOpen(true)}
             onOpenReferenceLibrary={() => setReferenceLibraryOpen(true)}
             referenceCount={snapshot?.sources.length ?? 0}
@@ -2512,10 +2330,6 @@ export function App() {
       */}
       <div
         data-testid="case-workspace-scroll"
-        // Measured, not declared -- see `workspaceScrollPaddingPx` above for
-        // why this exists and why the number cannot be a constant. `0` when
-        // no sticky shell is rendered, which is the same as not setting it.
-        style={{ scrollPaddingTop: `${String(workspaceScrollPaddingPx)}px` }}
         className="flex min-h-0 flex-1 flex-col gap-[var(--space-4)] overflow-y-auto overflow-x-hidden px-[var(--space-4)] pb-[var(--space-4)]"
       >
         {/*
@@ -2546,10 +2360,9 @@ export function App() {
           />
         )}
 
-        {orientationShellRendered && decisionOrientation !== null && (
+        {decisionOrientation !== null && snapshot?.discovery !== undefined && (
           <DecisionOrientationShell
             orientation={decisionOrientation}
-            containerRef={orientationShellRef}
             layout={layout}
             workInFlight={workInFlight}
             // `WorkspaceAppBar` directly above already names the decision.
@@ -2919,7 +2732,7 @@ export function App() {
           <SheetBody>
             <OptionEditor
               caseId={activeCaseId}
-              resolveExpectedSequence={resolveExpectedSequence}
+              expectedSequence={snapshot?.eventSequence ?? 0}
               optionKind={optionKind}
               optionLabel={optionLabel}
               attributeDefinitions={snapshot?.attributeDefinitions ?? []}
@@ -2977,38 +2790,7 @@ export function App() {
               it is visible without opening anything -- rendering it here too
               would put two `case-notes` sections and two identical
               `id="case-notes-heading"` values in the document at once. */}
-            <AddNoteForm caseId={activeCaseId} resolveExpectedSequence={resolveExpectedSequence} />
-          </SheetBody>
-        </SheetContent>
-      </Sheet>
-
-      {/*
-        Weights. The only surface in the product that can change what the
-        decision actually optimises for -- before this existed, the reweight
-        both demo scripts turn on was reachable only through WebMCP or a
-        console call against the same command endpoint.
-      */}
-      <Sheet open={prioritiesSheetOpen} onOpenChange={setPrioritiesSheetOpen}>
-        <SheetContent data-testid="workspace-priorities-sheet">
-          <SheetHeader>
-            <SheetTitle>Priorities</SheetTitle>
-          </SheetHeader>
-          <SheetBody className="flex flex-col gap-[var(--space-4)]">
-            <CriteriaEditor
-              caseId={activeCaseId}
-              criteria={snapshot?.criteria ?? []}
-              // The pack's protected-criterion list is not projected into
-              // `CaseState`, and it does not need to be: a protected
-              // criterion is a hard constraint, which `CriteriaEditor`
-              // already refuses to offer as a weight. Anything the server
-              // still rejects surfaces as a real error on the form rather
-              // than being predicted here from a second source of truth.
-              protectedCriterionIds={[]}
-              resolveExpectedSequence={resolveExpectedSequence}
-              onDone={() => {
-                setPrioritiesSheetOpen(false);
-              }}
-            />
+            <AddNoteForm caseId={activeCaseId} expectedSequence={snapshot?.eventSequence ?? 0} />
           </SheetBody>
         </SheetContent>
       </Sheet>
@@ -3021,13 +2803,13 @@ export function App() {
           <SheetBody className="flex flex-col gap-[var(--space-4)]">
             <CustomConcernForm
               caseId={activeCaseId}
-              resolveExpectedSequence={resolveExpectedSequence}
+              expectedSequence={snapshot?.eventSequence ?? 0}
               applicableKinds={applicableKinds}
             />
             {pendingExtension !== null ? (
               <CaseExtensionReviewCard
                 caseId={activeCaseId}
-                resolveExpectedSequence={resolveExpectedSequence}
+                expectedSequence={snapshot?.eventSequence ?? 0}
                 extension={pendingExtension}
               />
             ) : null}

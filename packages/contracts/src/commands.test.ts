@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   AddNoteInputSchema,
-  CheckEnergyBillFeedInputSchema,
   CommandReceiptSchema,
   DefineCaseAttributeInputSchema,
-  EnergyBillFeedCheckResultSchema,
   FocusEvidenceInputSchema,
   FocusOptionInputSchema,
   GetCaseContextInputSchema,
@@ -32,10 +30,9 @@ import {
 import { z } from 'zod';
 
 describe('StartDemoInputSchema', () => {
-  it('accepts the three demo launcher options', () => {
+  it('accepts the two demo launcher options', () => {
     expect(StartDemoInputSchema.safeParse({ demoId: 'car-purchase' }).success).toBe(true);
     expect(StartDemoInputSchema.safeParse({ demoId: 'home-energy-guardian' }).success).toBe(true);
-    expect(StartDemoInputSchema.safeParse({ demoId: 'bid-comparison' }).success).toBe(true);
   });
 
   it('rejects an unlisted demo id', () => {
@@ -57,72 +54,6 @@ describe('StartCaseInputSchema', () => {
     expect(StartCaseInputSchema.safeParse({ packId: 'car-purchase', extra: 1 }).success).toBe(
       false,
     );
-  });
-});
-
-describe('CheckEnergyBillFeedInputSchema', () => {
-  it('accepts the two bill-feed ids the deterministic gate can be pointed at', () => {
-    expect(CheckEnergyBillFeedInputSchema.safeParse({ billFeedId: 'anomalous' }).success).toBe(
-      true,
-    );
-    expect(CheckEnergyBillFeedInputSchema.safeParse({ billFeedId: 'normal' }).success).toBe(true);
-  });
-
-  it('rejects an unlisted bill feed id', () => {
-    expect(CheckEnergyBillFeedInputSchema.safeParse({ billFeedId: 'made-up' }).success).toBe(false);
-  });
-
-  it('rejects a missing billFeedId', () => {
-    expect(CheckEnergyBillFeedInputSchema.safeParse({}).success).toBe(false);
-  });
-
-  it('rejects an unknown field (strict)', () => {
-    expect(
-      CheckEnergyBillFeedInputSchema.safeParse({ billFeedId: 'normal', extra: 1 }).success,
-    ).toBe(false);
-  });
-});
-
-describe('EnergyBillFeedCheckResultSchema', () => {
-  it('parses a "no case opened" outcome with no receipt', () => {
-    expect(
-      EnergyBillFeedCheckResultSchema.safeParse({
-        commandId: 'cmd-1',
-        billFeedId: 'normal',
-        caseOpened: false,
-        percentAboveBaseline: 4.42,
-        thresholdPercent: 15,
-        reason: 'Your bill looks normal this month; no case opened.',
-      }).success,
-    ).toBe(true);
-  });
-
-  it('parses a "case opened" outcome carrying a real CommandReceipt', () => {
-    expect(
-      EnergyBillFeedCheckResultSchema.safeParse({
-        commandId: 'cmd-1',
-        billFeedId: 'anomalous',
-        caseOpened: true,
-        percentAboveBaseline: 42,
-        thresholdPercent: 15,
-        reason: 'Materially abnormal. Opening a case.',
-        receipt: { commandId: 'cmd-1', caseId: 'case-1', acceptedSequence: 3 },
-      }).success,
-    ).toBe(true);
-  });
-
-  it('rejects an unknown field (strict)', () => {
-    expect(
-      EnergyBillFeedCheckResultSchema.safeParse({
-        commandId: 'cmd-1',
-        billFeedId: 'normal',
-        caseOpened: false,
-        percentAboveBaseline: 4.42,
-        thresholdPercent: 15,
-        reason: 'no case opened',
-        extra: 1,
-      }).success,
-    ).toBe(false);
   });
 });
 
@@ -534,90 +465,6 @@ describe('FocusOptionInputSchema / FocusEvidenceInputSchema', () => {
 });
 
 describe('DefineCaseAttributeInputSchema', () => {
-  /**
-   * A model-defined enum column is only worth having if it can be scored,
-   * and `scoring.ts` rule 3 refuses to rank enum grades until something
-   * declares their order -- deliberately not reading one out of
-   * `allowedValues`, which is a membership set. These cover the ordering
-   * channel that makes "fits two crates beats fits one" a fact the engine
-   * may act on rather than one it has to guess.
-   */
-  describe('orderedValues', () => {
-    const enumDraft = (overrides: Record<string, unknown> = {}) => ({
-      caseId: 'case-1',
-      expectedSequence: 4,
-      definition: {
-        id: 'custom.dog_crate_fit',
-        label: 'Dog crate fit',
-        valueType: 'enum',
-        appliesTo: ['car'],
-        allowedValues: ['none', 'one crate', 'two crates'],
-        orderedValues: ['none', 'one crate', 'two crates'],
-        evidenceExpectation: 'assertion',
-        comparison: 'higher_better',
-        reason: 'Two dog crates must fit behind the second row.',
-        ...overrides,
-      },
-    });
-    const reason = (result: ReturnType<typeof DefineCaseAttributeInputSchema.safeParse>) =>
-      result.success ? '' : result.error.issues.map((issue) => issue.message).join(' | ');
-
-    it('accepts a scoreable enum: every allowed grade placed worst to best', () => {
-      const result = DefineCaseAttributeInputSchema.safeParse(enumDraft());
-      expect(result.success, reason(result)).toBe(true);
-    });
-
-    it('stays optional, so a field that never needs ranking is unaffected', () => {
-      const result = DefineCaseAttributeInputSchema.safeParse(
-        enumDraft({ orderedValues: undefined }),
-      );
-      expect(result.success, reason(result)).toBe(true);
-    });
-
-    it('rejects an ordering on a type that already ranks itself', () => {
-      const result = DefineCaseAttributeInputSchema.safeParse(
-        enumDraft({ valueType: 'number', allowedValues: undefined }),
-      );
-      expect(result.success).toBe(false);
-      expect(reason(result)).toContain('only applies to an enum');
-    });
-
-    it('rejects an ordering over grades that cannot be selected', () => {
-      const result = DefineCaseAttributeInputSchema.safeParse(
-        enumDraft({ allowedValues: undefined }),
-      );
-      expect(result.success).toBe(false);
-      expect(reason(result)).toContain('requires allowedValues');
-    });
-
-    it('rejects a grade given two positions on the scale', () => {
-      const result = DefineCaseAttributeInputSchema.safeParse(
-        enumDraft({ orderedValues: ['none', 'one crate', 'none'] }),
-      );
-      expect(result.success).toBe(false);
-      expect(reason(result)).toContain('must not repeat a grade');
-    });
-
-    it('rejects a partial ordering, which would silently refuse to score some options', () => {
-      // "two crates" stays selectable but unrankable, so any vehicle graded
-      // that way scores as an unlisted grade -- a column that works for some
-      // rows and not others, which is worse than one that plainly does not.
-      const result = DefineCaseAttributeInputSchema.safeParse(
-        enumDraft({ orderedValues: ['none', 'one crate'] }),
-      );
-      expect(result.success).toBe(false);
-      expect(reason(result)).toContain('two crates');
-    });
-
-    it('rejects ranking a grade nobody can choose', () => {
-      const result = DefineCaseAttributeInputSchema.safeParse(
-        enumDraft({ orderedValues: ['none', 'one crate', 'two crates', 'three crates'] }),
-      );
-      expect(result.success).toBe(false);
-      expect(reason(result)).toContain('not selectable');
-    });
-  });
-
   it('parses a valid case-attribute draft matching sift_define_case_attribute', () => {
     const result = DefineCaseAttributeInputSchema.safeParse({
       caseId: 'case-1',

@@ -11,11 +11,7 @@ function renderForm(commandsOverrides: Parameters<typeof createFakeSiftCommands>
   const commands = createFakeSiftCommands(commandsOverrides);
   const utils = render(
     <AppProviders commandsClient={commands}>
-      <CustomConcernForm
-        caseId="case-1"
-        resolveExpectedSequence={() => Promise.resolve(7)}
-        applicableKinds={['car']}
-      />
+      <CustomConcernForm caseId="case-1" expectedSequence={7} applicableKinds={['car']} />
     </AppProviders>,
   );
   return { ...utils, commands };
@@ -204,11 +200,7 @@ describe('CustomConcernForm', () => {
     const commands = createFakeSiftCommands();
     const { overflowRisks } = renderAtNarrowWidth(
       <AppProviders commandsClient={commands}>
-        <CustomConcernForm
-          caseId="case-1"
-          resolveExpectedSequence={() => Promise.resolve(1)}
-          applicableKinds={['car']}
-        />
+        <CustomConcernForm caseId="case-1" expectedSequence={1} applicableKinds={['car']} />
       </AppProviders>,
     );
     expect(overflowRisks).toEqual([]);

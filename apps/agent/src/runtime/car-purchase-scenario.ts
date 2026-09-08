@@ -22,11 +22,10 @@
  * `runCarPurchaseScenario` runs the real six-node car-purchase Graph exactly
  * twice: `round1` (the initial investigation, before the household
  * interacts) and `round2` (after the household's WebMCP-driven criteria
- * reweight and `custom.rear_facing_seat_behind_driver` concern). Every other
- * required beat (pack routing, candidate seeding, focus, criteria update,
- * case-attribute definition/confirmation, human proposal review,
- * reload/replay) drives the real, already-built
- * `CommandService`/`RunService`/`CaseStore` directly.
+ * reweight and `custom.dog_crate_fit` concern). Every other required beat
+ * (pack routing, candidate seeding, focus, criteria update, case-attribute
+ * definition/confirmation, human proposal review, reload/replay) drives the
+ * real, already-built `CommandService`/`RunService`/`CaseStore` directly.
  *
  * --- Two real, confirmed gaps this engine works around (both documented in
  * the dated docs/build-log.md entry for this task; both are additive fixes
@@ -58,7 +57,7 @@
  * against each candidate's true out-the-door price is the only
  * discriminating fact -- a plain deterministic filter this engine computes
  * directly, once the final normalized prices are known (after round 2),
- * matching docs/engineering-principles.md's "the deterministic core, not an LLM, owns ...
+ * matching CLAUDE.md's "the deterministic core, not an LLM, owns ...
  * readiness."
  */
 import {
@@ -106,7 +105,7 @@ import {
 } from './car-purchase-graph.js';
 import {
   buildCarPurchaseScriptedProviders,
-  REAR_FACING_SEAT_OBLIGATION_ID,
+  DOG_CRATE_FIT_OBLIGATION_ID,
   scriptedModelFor,
   setScenarioBeat,
   type CarPurchaseScriptedProviders,
@@ -178,7 +177,7 @@ export function publisherFor(sourceId: string): string {
  * `Source` record in `caseState.sources`, via the real `CaseStore.
  * updateSelection` (the same non-event-sourced path `submitSource` uses).
  * Every constructed source is `verification: 'verified'` -- deterministic
- * fixture-mode sources are pre-vetted for this demo (docs/engineering-principles.md's "fixture
+ * fixture-mode sources are pre-vetted for this demo (CLAUDE.md's "fixture
  * mode must execute the complete product" posture), which also makes E1-\>E2
  * evidence synthesis (`achievedEvidenceLevel`'s "one authoritative source"
  * rule, `@sift/core` `evidence.ts`) deterministic and independent of whether
@@ -269,7 +268,7 @@ function captureNewEvents(
 export interface FoldOptions {
   /** How many attempts to record against `obligationId` before recomputing its status. */
   attemptsToRecord: number;
-  /** Overrides which obligationId the evidence/claims attach to (used to route household-fit-analyst's round-2 findings to the new rear-facing-seat obligation instead of the pack's `car.household_fit`). */
+  /** Overrides which obligationId the evidence/claims attach to (used to route household-fit-analyst's round-2 findings to the new dog-crate obligation instead of the pack's `car.household_fit`). */
   obligationIdOverride?: string;
 }
 
@@ -595,32 +594,13 @@ export function buildGraphDeps(
   };
 }
 
-/**
- * The household's own grade scale for `custom.rear_facing_seat_behind_driver`,
- * WORST FIRST, per `AttributeDefinition.orderedValues`'s contract
- * (`@sift/contracts` attributes.ts): the field supplies the SCALE, the
- * attribute's `comparison: 'higher_better'` supplies the DIRECTION. Three
- * grades rather than a boolean because "fits, but only once you give up
- * driver legroom" is a genuinely different answer from either yes or no, and
- * collapsing it into a boolean is exactly the kind of invented certainty this
- * product exists to refuse.
- *
- * Shared by the attribute definition and its criterion so the two can never
- * drift apart into a column that renders but cannot be scored.
- */
-export const REAR_FACING_SEAT_GRADES = [
-  'Driver seat must move forward',
-  'Fits with driver seat back',
-  'Fits with room to spare',
-] as const;
-
-/** Synthesizes the `case_extension`-origin `ObligationTemplate` for `custom.rear_facing_seat_behind_driver`, per pack-authoring.md's "userConcern template" pattern (`command-service.ts`'s own documented gap -- see module header). */
-export function rearFacingSeatObligationTemplate(): ObligationTemplate {
+/** Synthesizes the `case_extension`-origin `ObligationTemplate` for `custom.dog_crate_fit`, per pack-authoring.md's "userConcern template" pattern (`command-service.ts`'s own documented gap -- see module header). */
+export function dogCrateObligationTemplate(): ObligationTemplate {
   return {
-    id: REAR_FACING_SEAT_OBLIGATION_ID,
-    label: 'Rear-facing seat fits behind the driver',
+    id: DOG_CRATE_FIT_OBLIGATION_ID,
+    label: 'Two dog crates fit behind the second row',
     question:
-      "Does a rear-facing seat fit behind the driver without moving the driver's seat forward?",
+      'Do both of the household dog travel crates (36 in x 24 in x 27 in each) fit behind the second row without folding either seat?',
     category: 'user_concern',
     required: true,
     priority: 65,
@@ -850,19 +830,7 @@ export async function runCarPurchaseScenario(
   captureNewEvents(caseStore, caseId, beforeComfort, trajectory);
   snapshot = comfortResult.value.snapshot;
 
-  // --- 9. A rear-facing car seat behind the driver -> sift_define_case_attribute + sift_update_criteria ---
-  //
-  // The column is declared with its full ordered grade scale but WITHOUT
-  // per-candidate `values`. That is the point of this concern rather than an
-  // omission: nobody publishes rear-facing-seat clearance, so no specialist
-  // and no source in this fixture can establish it, and the scenario proves
-  // the honest-unknown path -- the criterion carries real weight, every
-  // candidate stays `unknown`, and the score reports the gap instead of
-  // filling it. `orderedValues` still has to be here: without it
-  // `scoreCase` refuses to treat the enum as ordinal (packages/core
-  // `scoring.ts`), so a run that later DOES answer the question (the live
-  // WebMCP demo does, in one `sift_define_case_attribute` call carrying
-  // `values`) ranks against the same declared scale this case already pins.
+  // --- 9. Two dog crates -> sift_define_case_attribute + sift_update_criteria ---
   const beforeDefine = snapshot.eventSequence;
   const defineResult = commandService.defineCaseAttribute(
     deps.idGenerator.next('cmd'),
@@ -870,16 +838,14 @@ export async function runCarPurchaseScenario(
       caseId,
       expectedSequence: snapshot.eventSequence,
       definition: {
-        id: 'custom.rear_facing_seat_behind_driver',
-        label: 'Rear-facing seat fits behind the driver',
-        valueType: 'enum',
+        id: 'custom.dog_crate_fit',
+        label: 'Both dog crates fit behind the second row',
+        valueType: 'boolean',
         appliesTo: ['candidate'],
-        allowedValues: [...REAR_FACING_SEAT_GRADES],
-        orderedValues: [...REAR_FACING_SEAT_GRADES],
         evidenceExpectation: 'verification',
-        comparison: 'higher_better',
+        comparison: 'target',
         reason:
-          "A second child arrives in three months; a rear-facing seat has to go behind the driver without pushing the driver's seat forward. No manufacturer publishes this, so it is not derivable from specifications.",
+          'The household needs two 36in x 24in x 27in dog travel crates to fit behind the second row without folding either seat. This is not derivable from published specifications alone.',
       },
     },
     'agent_proposed',
@@ -890,12 +856,10 @@ export async function runCarPurchaseScenario(
   captureNewEvents(caseStore, caseId, beforeDefine, trajectory);
   snapshot = defineResult.value.snapshot;
   const extension = snapshot.caseExtensions.find(
-    (entry) => entry.definition.id === 'custom.rear_facing_seat_behind_driver',
+    (entry) => entry.definition.id === 'custom.dog_crate_fit',
   );
   if (extension === undefined) {
-    throw new Error(
-      'car-purchase-scenario: custom.rear_facing_seat_behind_driver extension was not created',
-    );
+    throw new Error('car-purchase-scenario: custom.dog_crate_fit extension was not created');
   }
   trajectory.extensionsDefined.push({
     definitionId: extension.definition.id,
@@ -913,9 +877,7 @@ export async function runCarPurchaseScenario(
   if (confirmResult.status !== 'ok' || confirmResult.value.snapshot === undefined) {
     throw new Error(`car-purchase-scenario: reviewCaseExtension failed: ${confirmResult.status}`);
   }
-  trajectory.humanActions.push({
-    action: 'confirm_case_extension:custom.rear_facing_seat_behind_driver',
-  });
+  trajectory.humanActions.push({ action: 'confirm_case_extension:custom.dog_crate_fit' });
   captureNewEvents(caseStore, caseId, beforeConfirm, trajectory);
   snapshot = confirmResult.value.snapshot;
 
@@ -927,47 +889,43 @@ export async function runCarPurchaseScenario(
       {
         op: 'add',
         criterion: {
-          id: 'custom.rear_facing_seat_behind_driver',
-          label: 'Rear-facing seat fits behind the driver',
+          id: 'custom.dog_crate_fit',
+          label: 'Both dog crates fit behind the second row',
           kind: 'hard_constraint',
           weight: 20,
           direction: 'higher_better',
-          appliesToAttribute: 'custom.rear_facing_seat_behind_driver',
+          appliesToAttribute: 'custom.dog_crate_fit',
           question:
-            "Does a rear-facing seat fit behind the driver without moving the driver's seat forward?",
+            'Do both dog travel crates fit behind the second row without folding either seat?',
         },
       },
     ],
   });
   if (criteriaResult.status !== 'ok' || criteriaResult.value.snapshot === undefined) {
     throw new Error(
-      `car-purchase-scenario: updateCriteria(rear-facing seat) failed: ${criteriaResult.status}`,
+      `car-purchase-scenario: updateCriteria(dog crate) failed: ${criteriaResult.status}`,
     );
   }
-  trajectory.humanActions.push({
-    action: 'update_criteria:add_custom.rear_facing_seat_behind_driver',
-  });
+  trajectory.humanActions.push({ action: 'update_criteria:add_custom.dog_crate_fit' });
   captureNewEvents(caseStore, caseId, beforeCriteria2, trajectory);
   snapshot = criteriaResult.value.snapshot;
 
   // Derive the case obligation the criterion needs (documented gap #2).
-  const rearFacingSeatTemplate: CaseExtensionObligationTemplate = {
-    template: rearFacingSeatObligationTemplate(),
-    criterionId: 'custom.rear_facing_seat_behind_driver',
+  const dogCrateTemplate: CaseExtensionObligationTemplate = {
+    template: dogCrateObligationTemplate(),
+    criterionId: 'custom.dog_crate_fit',
   };
   const nextObligations = deriveObligations(
     pack,
-    [rearFacingSeatTemplate],
+    [dogCrateTemplate],
     snapshot.obligations,
     deps.clock,
   );
-  const rearFacingSeatObligation = nextObligations.find(
-    (entry) => entry.id === REAR_FACING_SEAT_OBLIGATION_ID,
+  const dogCrateObligation = nextObligations.find(
+    (entry) => entry.id === DOG_CRATE_FIT_OBLIGATION_ID,
   );
-  if (rearFacingSeatObligation === undefined) {
-    throw new Error(
-      'car-purchase-scenario: failed to derive the custom.rear_facing_seat_behind_driver obligation',
-    );
+  if (dogCrateObligation === undefined) {
+    throw new Error('car-purchase-scenario: failed to derive the custom.dog_crate_fit obligation');
   }
   const obligationEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
@@ -975,18 +933,16 @@ export async function runCarPurchaseScenario(
     sequence: snapshot.eventSequence + 1,
     timestamp: deps.clock.now(),
     type: 'obligation.updated',
-    payload: { obligation: rearFacingSeatObligation },
+    payload: { obligation: dogCrateObligation },
   };
   const obligationAppend = caseStore.append(caseId, [obligationEvent], snapshot.eventSequence);
   if (obligationAppend.status !== 'applied') {
-    throw new Error(
-      'car-purchase-scenario: failed to append the custom.rear_facing_seat_behind_driver obligation',
-    );
+    throw new Error('car-purchase-scenario: failed to append the custom.dog_crate_fit obligation');
   }
   trajectory.caseEvents.push(obligationEvent);
   trajectory.obligationsCreated.push({
-    obligationId: REAR_FACING_SEAT_OBLIGATION_ID,
-    criterionId: 'custom.rear_facing_seat_behind_driver',
+    obligationId: DOG_CRATE_FIT_OBLIGATION_ID,
+    criterionId: 'custom.dog_crate_fit',
   });
   snapshot = obligationAppend.snapshot;
 
@@ -997,14 +953,12 @@ export async function runCarPurchaseScenario(
   // overwrite the human's confirmation back to `pending`.
   const confirmedExtension = snapshot.caseExtensions.find((entry) => entry.id === extension.id);
   if (confirmedExtension === undefined) {
-    throw new Error(
-      'car-purchase-scenario: confirmed custom.rear_facing_seat_behind_driver extension went missing',
-    );
+    throw new Error('car-purchase-scenario: confirmed custom.dog_crate_fit extension went missing');
   }
   const linkedExtension = {
     ...confirmedExtension,
-    linkedCriterionId: 'custom.rear_facing_seat_behind_driver',
-    linkedObligationId: REAR_FACING_SEAT_OBLIGATION_ID,
+    linkedCriterionId: 'custom.dog_crate_fit',
+    linkedObligationId: DOG_CRATE_FIT_OBLIGATION_ID,
   };
   const linkEvent: CaseEvent = {
     eventId: deps.idGenerator.next('event'),
@@ -1016,9 +970,7 @@ export async function runCarPurchaseScenario(
   };
   const linkAppend = caseStore.append(caseId, [linkEvent], snapshot.eventSequence);
   if (linkAppend.status !== 'applied') {
-    throw new Error(
-      'car-purchase-scenario: failed to link the custom.rear_facing_seat_behind_driver extension',
-    );
+    throw new Error('car-purchase-scenario: failed to link the custom.dog_crate_fit extension');
   }
   trajectory.caseEvents.push(linkEvent);
   snapshot = linkAppend.snapshot;
@@ -1080,7 +1032,7 @@ export async function runCarPurchaseScenario(
   }
   foldExecutionResult(caseStore, activityStore, caseId, householdFitRound2, deps, trajectory, {
     attemptsToRecord: 2,
-    obligationIdOverride: REAR_FACING_SEAT_OBLIGATION_ID,
+    obligationIdOverride: DOG_CRATE_FIT_OBLIGATION_ID,
   });
 
   const challengeRound2 = round2Result.executionResults['source-challenger'];
@@ -1208,20 +1160,9 @@ export async function runCarPurchaseScenario(
         facts: scoredRound2.facts,
         hypotheses: [],
         confidence: scoredRound2.confidence,
-        // Two hand-written lines, merged AHEAD of the derived ones
-        // (`mergeLimitations`). They stay hand-written here rather than
-        // reusing `car-purchase-engine.ts`'s
-        // `deriveUnestablishedAttributeLimitations`: that module already
-        // imports this one (`buildGraphDeps`, `foldExecutionResult`,
-        // `carPurchaseCapabilityCatalog`), so importing it back would make
-        // the pair mutually recursive for the sake of two sentences. Both
-        // lines below are true of this specific scripted run -- neither
-        // question is answered anywhere in it, for any candidate -- and the
-        // derived lines `scoredRound2.limitations` contributes state the
-        // same gap in the scoreboard's own weight-aware vocabulary.
         limitations: mergeLimitations(
           [
-            'Whether a rear-facing seat fits behind the driver remains unverified for every candidate -- it is a fit check in the car, not a published specification.',
+            'Whether both dog crates fit behind the second row remains unverified for every candidate.',
             'Driving comfort remains unverified for every candidate.',
           ],
           scoredRound2.limitations,
@@ -1232,7 +1173,7 @@ export async function runCarPurchaseScenario(
           'car.deal_normalization',
           'car.ownership_cost',
           'car.household_fit',
-          REAR_FACING_SEAT_OBLIGATION_ID,
+          DOG_CRATE_FIT_OBLIGATION_ID,
           'car.shortlist',
         ],
         acceptedUncertaintyObligationIds: ['car.safety_reliability'],

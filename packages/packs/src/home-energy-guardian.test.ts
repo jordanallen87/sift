@@ -5,7 +5,7 @@
  * capability catalog covering every declared skill/specialist/tool, that
  * `compiledHash` is deterministic, that the compiled pack passes the exact
  * same shared conformance suite `conformance.ts` runs for every built-in
- * pack (per docs/engineering-principles.md: "Every built-in or authoring-fixture pack must
+ * pack (per docs/CLAUDE.md: "Every built-in or authoring-fixture pack must
  * pass the shared compiler/conformance suite"), that every required
  * obligation from docs/specs/packs-and-routing.md "Home Energy Guardian
  * Decision Pack" -> "Required obligations" is present with the exact
@@ -338,30 +338,21 @@ describe('orchestration (strands-runtime.md "Energy Swarm")', () => {
 });
 
 describe('criteria.defaults (packs-and-routing.md "energy.response_options" and required adaptive moments)', () => {
-  // The split is cost-heavy, not balanced. A case opens because a bill
-  // arrived 42% over baseline, so the household starts wanting the number
-  // smaller and reweights toward conservation only after the investigation
-  // finds a root cause -- which is the adaptive moment this pack exists to
-  // demonstrate. It is also the weighting round 1's recommendation narrates
-  // and the deterministic scorer agrees with; at the previous 50/50 the two
-  // disagreed on screen. See the manifest's own comment and
-  // `scripted-beats/home-energy-guardian.test.ts` ("the pack default
-  // weighting and round 1 narration agree"), which fails if they drift.
-  it('declares the cost and conservation preference criteria, cost-weighted and summing to 100', () => {
+  it('declares the cost and conservation preference criteria, summing to 100', () => {
     const byId = new Map(
       HOME_ENERGY_GUARDIAN_MANIFEST.criteria.defaults.map((criterion) => [criterion.id, criterion]),
     );
 
     expect(byId.get('energy.cost')).toMatchObject({
       kind: 'preference',
-      weight: 80,
+      weight: 50,
       direction: 'lower_better',
       origin: 'pack',
       status: 'active',
     });
     expect(byId.get('energy.conservation')).toMatchObject({
       kind: 'preference',
-      weight: 20,
+      weight: 50,
       direction: 'higher_better',
       origin: 'pack',
       status: 'active',

@@ -4,7 +4,7 @@
  * names this file directly:
  * `apps/web/src/api/sift-client.ts   Same-origin typed HTTP client`).
  *
- * docs/engineering-principles.md's "Non-negotiable product truths" requires that "Visible UI
+ * CLAUDE.md's "Non-negotiable product truths" requires that "Visible UI
  * controls and WebMCP callbacks use the same command implementation." This
  * module is that one implementation: every method validates its input
  * against the real `@sift/contracts` Zod schema *before* sending anything
@@ -53,10 +53,8 @@ import {
   SubmitInteractionResponseInputSchema,
   SetCandidateDispositionInputSchema,
   CompleteBlindSpotReviewInputSchema,
-  CheckEnergyBillFeedInputSchema,
   CommandReceiptSchema,
   DefineCaseAttributeInputSchema,
-  EnergyBillFeedCheckResultSchema,
   FocusEvidenceInputSchema,
   FocusOptionInputSchema,
   HttpConflictResponseSchema,
@@ -82,11 +80,9 @@ import {
   type SetCandidateDispositionInput,
   type CompleteBlindSpotReviewInput,
   type CaseState,
-  type CheckEnergyBillFeedInput,
   type CommandOrigin,
   type CommandReceipt,
   type DefineCaseAttributeInput,
-  type EnergyBillFeedCheckResult,
   type FocusEvidenceInput,
   type FocusOptionInput,
   type RequestInvestigationInput,
@@ -163,20 +159,6 @@ export interface SiftCommands {
   startDemo: (input: StartDemoInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
   /** Docs/decisions/0003: a normal, non-demo case-creation entry point pinned to any registered pack id -- see `POST /api/cases`. */
   startCase: (input: StartCaseInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
-  /**
-   * The deterministic Home Energy Guardian case-creation gate
-   * (`packages/scenarios/src/tools/bill-feed-gate.ts`,
-   * `CommandService.checkEnergyBillFeed`): evaluates a real bill feed and
-   * only opens a case when it is materially abnormal. Returns
-   * `EnergyBillFeedCheckResult`, not `CommandReceipt` -- unlike every other
-   * method here, a call can genuinely succeed with no case created at all
-   * (`caseOpened: false`, no `receipt`), which `CommandReceipt`'s required
-   * `caseId` cannot represent.
-   */
-  checkEnergyBillFeed: (
-    input: CheckEnergyBillFeedInput,
-    options?: CommandCallOptions,
-  ) => Promise<EnergyBillFeedCheckResult>;
   selectPack: (input: SelectPackInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
   upsertOption: (input: UpsertOptionInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
   focusOption: (input: FocusOptionInput, options?: CommandCallOptions) => Promise<CommandReceipt>;
@@ -503,16 +485,6 @@ export function createSiftClient(options: CreateSiftClientOptions = {}): SiftCom
         CommandReceiptSchema,
         options,
       ) as Promise<CommandReceipt>;
-    },
-    checkEnergyBillFeed: async (input, options) => {
-      const validated = validate(CheckEnergyBillFeedInputSchema, input) as CheckEnergyBillFeedInput;
-      return postJson(
-        fetchImpl,
-        `${baseUrl}/api/cases/energy-bill-feed-check`,
-        validated,
-        EnergyBillFeedCheckResultSchema,
-        options,
-      ) as Promise<EnergyBillFeedCheckResult>;
     },
     requestInvestigation: async (input, options) => {
       const validated = validate(

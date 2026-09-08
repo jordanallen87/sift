@@ -9,12 +9,10 @@ const DEFAULTS = {
   dataDir: '.sift-data',
   authoringEnabled: false,
   debugEnabled: true,
-  tracingEnabled: true,
   debugPayloadMode: 'metadata-only',
   debugRetentionDays: 7,
   modelId: 'global.anthropic.claude-sonnet-4-6',
   awsRegion: 'us-east-1',
-  demoPacingMs: 0,
   publicOrigin: undefined,
 } as const;
 
@@ -30,7 +28,6 @@ describe('loadConfig', () => {
       SIFT_DATA_DIR: '/data',
       SIFT_AUTHORING_ENABLED: 'true',
       SIFT_DEBUG_ENABLED: 'false',
-      SIFT_TRACING_ENABLED: 'false',
       SIFT_DEBUG_PAYLOAD_MODE: 'fixture-full',
       SIFT_DEBUG_RETENTION_DAYS: '14',
       SIFT_MODEL_ID: 'global.anthropic.claude-sonnet-4-7',
@@ -43,12 +40,10 @@ describe('loadConfig', () => {
       dataDir: '/data',
       authoringEnabled: true,
       debugEnabled: false,
-      tracingEnabled: false,
       debugPayloadMode: 'fixture-full',
       debugRetentionDays: 14,
       modelId: 'global.anthropic.claude-sonnet-4-7',
       awsRegion: 'eu-west-1',
-      demoPacingMs: 0,
       publicOrigin: 'https://sift.example.com',
     });
   });

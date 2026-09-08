@@ -23,7 +23,7 @@ function Tabs({
 }
 
 const tabsListVariants = cva(
-  'group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-[orientation=horizontal]/tabs:h-fit group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col data-[variant=line]:rounded-none',
+  'group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-[orientation=horizontal]/tabs:h-9 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col data-[variant=line]:rounded-none',
   {
     variants: {
       variant: {
@@ -71,25 +71,7 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
         // ("secondary text, supporting copy"). It is also opacity-
         // independent, so it cannot silently drop below AA again if a
         // caller places tabs on a different surface.
-        //
-        // Height is a touch-target floor, not a fixed `h-9`. The upstream
-        // default gave the list a hard 36px and the trigger
-        // `h-[calc(100%-1px)]`, which measured ~42px in
-        // `WorkspaceViewSwitcher` -- under the 44px floor that
-        // `--size-touch-target-min` defines and that 53 other files in this
-        // app already honor (WCAG 2.5.8 Target Size (Minimum), AA). No spec,
-        // unit or e2e, had ever asserted on it, in any of the three packs.
-        // The trigger carries the height floor directly and the list grows
-        // to fit it. Width was the axis actually failing -- "List" is short
-        // enough that its trigger measured 42.2px wide -- and it is bought
-        // with horizontal padding rather than a `min-w`. A
-        // `min-w-[var(--size-touch-target-min)]` here fights `flex-1`
-        // (`flex: 1 1 0%`), which divides the strip evenly: it pushed the
-        // longest label, "Quick pick", 4px past its own 66px box, an
-        // overflow `html, body { overflow-x: hidden }` would have hidden
-        // rather than fixed. `px-3` clears 44px on the shortest label while
-        // letting the flex line keep sizing itself.
-        "relative inline-flex h-[calc(100%-1px)] min-h-[var(--size-touch-target-min)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-3 py-1 text-sm font-medium whitespace-nowrap text-[var(--color-ink-secondary)] transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap text-[var(--color-ink-secondary)] transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none dark:text-muted-foreground dark:hover:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         'group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:border-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent',
         'data-[state=active]:bg-background data-[state=active]:text-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 dark:data-[state=active]:text-foreground',
         'after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-[orientation=horizontal]/tabs:after:inset-x-0 group-data-[orientation=horizontal]/tabs:after:bottom-[-5px] group-data-[orientation=horizontal]/tabs:after:h-0.5 group-data-[orientation=vertical]/tabs:after:inset-y-0 group-data-[orientation=vertical]/tabs:after:-right-1 group-data-[orientation=vertical]/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-[state=active]:after:opacity-100',

@@ -1,6 +1,6 @@
 /**
  * Semantic page-object wrapper over the real right-pane workspace
- * (docs/planning/plans/2026-08-26-pax-hackathon-build.md Task 12:
+ * (docs/superpowers/plans/2026-08-26-pax-hackathon-build.md Task 12:
  * "`SiftPage` exposes semantic methods for launch, investigate, ... review
  * proposal, ..., and read case context"). Every method drives the exact
  * same visible controls a real user clicks -- there is no shortcut that
@@ -10,7 +10,7 @@
  * hit the exact same `/api/cases/:caseId/commands/:commandName` route
  * `apps/web/src/api/sift-client.ts` (and therefore every visible control and
  * every WebMCP tool callback) sends every command through
- * (docs/engineering-principles.md "Visible UI controls and WebMCP callbacks use the same command
+ * (CLAUDE.md "Visible UI controls and WebMCP callbacks use the same command
  * implementation") -- used for the two real product beats that currently
  * have no dedicated visible control (`updateCriteria` -- there is no
  * criteria-editing UI yet, only the WebMCP tool and this same HTTP route)
@@ -94,40 +94,6 @@ export const HOME_ENERGY_CRITERION_IDS = {
 export const HOME_ENERGY_RESPONSE_OPTIONS_OBLIGATION_ID = 'energy.response_options';
 
 /**
- * Real, stable Bid Comparison fixture entity ids (`packages/scenarios/src/seeds.ts`
- * `buildBidComparisonEntities`), confirmed directly against the real running app. Unlike
- * `HOME_ENERGY_RESPONSE_OPTION_IDS` above, this array needs no separate "real entity order"
- * export: `buildBidComparisonEntities` maps directly over `BID_FIXTURE_NAMES`
- * (`packages/scenarios/src/tools/bid-reader.ts`), whose own declared order already IS this
- * array's order (`bid-reader.test.ts` pins it: `['bid-northgate', 'bid-cedar', 'bid-tworivers']`)
- * -- so it is safe to index directly (e.g. `[0]`/`[1]`) for `OptionCompareView`'s narrow-layout
- * head-to-head selection, the same way `CAR_PURCHASE_CANDIDATE_IDS` is.
- */
-export const BID_COMPARISON_ENTITY_IDS = ['bid-northgate', 'bid-cedar', 'bid-tworivers'] as const;
-
-/** Every real obligation id `packages/packs/src/bid-comparison.ts` declares, in the manifest's own declared order. */
-export const BID_COMPARISON_OBLIGATION_IDS = [
-  'bid.scope_normalization',
-  'bid.price_verification',
-  'bid.credential_verification',
-  'bid.schedule_feasibility',
-  'bid.award_recommendation',
-] as const;
-
-/** The one obligation id Bid Comparison's `dependsOnCriteria: true` synthesis carries (`packages/packs/src/bid-comparison.ts`) -- the only obligation a criteria reweight may reopen. */
-export const BID_COMPARISON_AWARD_RECOMMENDATION_OBLIGATION_ID = 'bid.award_recommendation';
-
-/** Real pack-declared criterion ids `packages/packs/src/bid-comparison.ts`'s `criteria.defaults` carries, including the one protected hard constraint (`bid.credentials_valid`, `protectedCriterionIds`). */
-export const BID_COMPARISON_CRITERION_IDS = {
-  adjustedTotal: 'bid.adjusted_total',
-  scopeCompleteness: 'bid.scope_completeness',
-  paymentRisk: 'bid.payment_risk',
-  scheduleFit: 'bid.schedule_fit',
-  warranty: 'bid.warranty',
-  credentialsValid: 'bid.credentials_valid',
-} as const;
-
-/**
  * `docs/decisions/0008-two-mode-product-architecture.md`'s narrow/expanded boundary.
  *
  * This was a local `= 480` literal whose comment claimed it mirrored the app's own constant.
@@ -143,15 +109,6 @@ export { NARROW_MAX_WIDTH_PX } from '../../../apps/web/src/hooks/width-mode-cons
 
 /** The product's real first-run-guide storage key, imported rather than duplicated -- see `seedFirstRunGuideDismissed` below. */
 export { FIRST_RUN_GUIDE_STORAGE_KEY };
-
-/**
- * The product's own `PublicActivityEventType` -> consumer label/tone lookup, imported rather than
- * duplicated (matching `NARROW_MAX_WIDTH_PX`/`FIRST_RUN_GUIDE_STORAGE_KEY` above) -- used by
- * `bid-comparison-journey.spec.ts` to assert the real, product-declared "Action blocked" label for
- * `intervention.denied` rather than a copy of that string that could silently drift from
- * `activity-labels.ts`'s own (product.md terminology table, verbatim) mapping.
- */
-export { getActivityLabel } from '../../../apps/web/src/components/activity-labels.js';
 
 /** `true` at the narrow/pane-mode viewports (390/430/480/640), `false` at `expanded-820` and `desktop-1440`. */
 export function isNarrowLayout(page: Page): boolean {
@@ -259,40 +216,6 @@ export async function getCaseState(
   return (await response.json()) as Record<string, unknown>;
 }
 
-/**
- * Fetches every real `PublicActivityEvent` recorded for `caseId` via the exact
- * `GET /api/cases/:caseId/events?mode=poll` route (`apps/agent/src/routes/events.ts`) the app's
- * own browser uses for its documented polling-fallback transport -- the genuinely public,
- * sanitized activity stream (docs/engineering-principles.md "Persist a replayable sanitized
- * public activity stream ... separately from ... detailed runtime events"), NOT the developer-only
- * `GET /api/debug/runs/:runId` the Runtime Inspector reads.
- *
- * Used in `bid-comparison-journey.spec.ts` to prove a real `intervention.denied` ("Action
- * blocked") landed in this stream. A live DOM assertion cannot do this honestly here: this
- * deterministic test server runs with no `demoPacingMs` (0, matching every other gate in this
- * suite), so a whole six-specialist Swarm round streams and settles in well under 100ms end to
- * end -- confirmed directly against the real running app (`price-analyst`'s `license-lookup`
- * denial and its very next tool call land two sequence numbers apart in the same burst) -- so any
- * live-DOM read of the single most-recent-event region (`LiveRunStatus`) would be racing a
- * sub-100ms transition rather than asserting a real, settled state. This route is the same
- * transport a real polling-fallback browser session would read after the run settles, so it is
- * the honest way to prove the event landed, not a bypass of the real contract.
- */
-export async function getPublicActivityEvents(
-  request: APIRequestContext,
-  caseId: string,
-): Promise<Record<string, unknown>[]> {
-  const response = await request.get(
-    `/api/cases/${encodeURIComponent(caseId)}/events?mode=poll&afterSequence=0`,
-  );
-  expect(
-    response.ok(),
-    `GET /api/cases/${caseId}/events?mode=poll failed with status ${response.status()}`,
-  ).toBe(true);
-  const body = (await response.json()) as { events: Record<string, unknown>[] };
-  return body.events;
-}
-
 export class SiftPage {
   constructor(readonly page: Page) {}
 
@@ -362,33 +285,12 @@ export class SiftPage {
    * for `vehicle-add-veh-...`). Waits for its results-list card to exist
    * first -- the search results are real, debounced, network-driven state,
    * never a fixed sleep.
-   *
-   * Confirmation is the row's own Add control flipping to its added state,
-   * not a shortlist entry: the shortlist is a collapsed bar whose list Radix
-   * unmounts until it is expanded, so asserting on `shortlist-item-*` here
-   * would force every caller to open the panel just to add a vehicle. Use
-   * `expandShortlist()` when the entry itself is the thing under test.
    */
   async addVehicleToShortlist(vehicleId: string): Promise<void> {
     const addButton = this.page.getByTestId(`vehicle-add-${vehicleId}`);
     await expect(addButton).toBeVisible();
     await addButton.click();
-    await expect(addButton).toBeDisabled();
-    await expect(this.page.getByTestId('vehicle-catalog-shortlist')).toBeVisible();
-  }
-
-  /**
-   * Opens the shortlist bar's panel, which is where its per-vehicle entries
-   * and Remove controls live. Idempotent: already-expanded is a no-op, so a
-   * test can call it without tracking the bar's state.
-   */
-  async expandShortlist(): Promise<void> {
-    const trigger = this.page.getByTestId('shortlist-bar-trigger');
-    await expect(trigger).toBeVisible();
-    if ((await trigger.getAttribute('aria-expanded')) !== 'true') {
-      await trigger.click();
-    }
-    await expect(this.page.getByTestId('vehicle-catalog-shortlist-list')).toBeVisible();
+    await expect(this.page.getByTestId(`shortlist-item-${vehicleId}`)).toBeVisible();
   }
 
   /** Clicks "Start comparison" and waits for the real `POST /api/cases` response, returning its `caseId`. The subsequent per-vehicle `upsertOption` calls happen after this resolves; callers that need to wait for the full case body should also wait for `case-workspace`. */
@@ -404,48 +306,13 @@ export class SiftPage {
     return { caseId: body.caseId };
   }
 
-  /**
-   * Clicks "Investigate my energy bill" and waits for the real
-   * `POST /api/cases/energy-bill-feed-check` response -- the deterministic
-   * bill-feed gate this button always goes through now, not
-   * `POST /api/cases/demo` directly (`DemoLauncher.tsx`'s own header
-   * comment). Its success body is an `EnergyBillFeedCheckResult`, so the
-   * `caseId` this returns comes from `body.receipt.caseId`, not a bare
-   * top-level field -- the default click's real 42%-above-baseline fixture
-   * always clears the threshold and opens a case, so `receipt` is always
-   * present here.
-   */
+  /** Clicks "Investigate my energy bill" and waits for the real `POST /api/cases/demo` response, returning its `caseId`. */
   async launchHomeEnergyGuardian(): Promise<LaunchedCase> {
-    const [response] = await Promise.all([
-      this.page.waitForResponse(
-        (res) =>
-          res.url().includes('/api/cases/energy-bill-feed-check') &&
-          res.request().method() === 'POST',
-      ),
-      this.page.getByTestId('demo-launcher-home-energy-guardian').click(),
-    ]);
-    const body = (await response.json()) as { receipt?: { caseId: string } };
-    if (body.receipt === undefined) {
-      throw new Error(
-        'launchHomeEnergyGuardian: the bill-feed gate did not open a case (unexpected -- the default click always uses the anomalous fixture).',
-      );
-    }
-    await expect(this.page.getByTestId('case-workspace')).toBeVisible();
-    return { caseId: body.receipt.caseId };
-  }
-
-  /**
-   * Clicks "Compare these bids" and waits for the real `POST /api/cases/demo` response, returning
-   * its `caseId`. Structurally identical to `launchCarPurchase` above -- `bid-comparison` goes
-   * through the same plain `startDemo` path `DemoLauncher.tsx`'s own header comment describes;
-   * only `home-energy-guardian` diverts through the deterministic bill-feed gate.
-   */
-  async launchBidComparison(): Promise<LaunchedCase> {
     const [response] = await Promise.all([
       this.page.waitForResponse(
         (res) => res.url().includes('/api/cases/demo') && res.request().method() === 'POST',
       ),
-      this.page.getByTestId('demo-launcher-bid-comparison').click(),
+      this.page.getByTestId('demo-launcher-home-energy-guardian').click(),
     ]);
     const body = (await response.json()) as { caseId: string };
     await expect(this.page.getByTestId('case-workspace')).toBeVisible();
@@ -511,24 +378,9 @@ export class SiftPage {
     await expect
       .poll(
         async () => {
-          // A transient transport failure is not an answer about the run, so
-          // it is treated the same way a non-ok response already is: return
-          // null and let the poll ask again. Without this the whole spec died
-          // on a single `read ECONNRESET` against this debug route while the
-          // full suite ran four workers in parallel -- a connection the
-          // server dropped under load, reported as though the investigation
-          // had failed. This is deliberately NOT a blanket catch that hides a
-          // real problem: the poll still fails after its 30s ceiling with the
-          // message below, and the UI assertion that follows still has to
-          // pass on its own. It is the same lesson as the 409 that a
-          // `response.ok()` filter once hid behind a 30-second timeout --
-          // report the real cause, retry only what is genuinely transient.
-          let response;
-          try {
-            response = await this.page.request.get(`/api/debug/runs/${encodeURIComponent(runId)}`);
-          } catch {
-            return null;
-          }
+          const response = await this.page.request.get(
+            `/api/debug/runs/${encodeURIComponent(runId)}`,
+          );
           if (!response.ok()) return null;
           const body = (await response.json()) as { overview: { status: string } };
           return body.overview.status;
@@ -720,24 +572,9 @@ export class SiftPage {
     const menu = this.page.getByTestId('workspace-app-bar-create-menu-content');
     await expect(async () => {
       if (!(await menu.isVisible().catch(() => false))) {
-        // Settle to a known-closed state before clicking. Without this, a
-        // menu that was merely SLOW to open (contended machine, 2s inner
-        // timeout) is misread as "did not open", and the retry's click
-        // toggles shut the menu the first click had just opened -- leaving
-        // the open/closed state a function of how many retries happened to
-        // run. That is the race behind the intermittent
-        // `awaiting-approval` screenshot failures, where the dropdown is
-        // captured hanging open over the recommendation: the assertion that
-        // the menu is hidden after the reweight genuinely passes, and a
-        // still-in-flight toggle from an earlier retry reopens it
-        // afterwards. Escape on an already-closed menu is a no-op.
-        await this.page.keyboard.press('Escape');
-        await expect(menu).toBeHidden({ timeout: 2_000 });
         await trigger.click();
       }
-      // 5s, not 2s: long enough that a slow open is waited out rather than
-      // retried into a toggle.
-      await expect(menu).toBeVisible({ timeout: 5_000 });
+      await expect(menu).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: 20_000 });
     await this.page.getByTestId(itemTestId).click();
     await expect(sheet).toBeVisible();
@@ -843,35 +680,6 @@ export class SiftPage {
   }
 
   /**
-   * Opens "Decision readiness" (`ReadinessPanel`) -- pane mode's pre-existing
-   * `disclosure-still-checking` row, or web-app mode's Sheet, reached through
-   * `WorkspaceSidebar`'s own `workspace-sidebar-still-checking-button` trigger (`onOpenQuestions`).
-   * The identical layout branch `openDecisionProfile` above documents, for the identical reason:
-   * ADR 0008 kept the narrow disclosure in place but moved the same content behind a Sheet-opening
-   * button in the wider shell rather than a second inline disclosure.
-   */
-  async openReadiness(): Promise<Locator> {
-    if (isNarrowLayout(this.page)) {
-      await this.openDisclosure('still-checking');
-      return this.page.getByTestId('disclosure-still-checking');
-    }
-    await this.openSheetVia(
-      'workspace-sidebar-still-checking-button',
-      'workspace-still-checking-sheet',
-    );
-    return this.page.getByTestId('workspace-still-checking-sheet');
-  }
-
-  /** The `openReadiness` counterpart -- see `closeDecisionProfile` above for why only the Sheet form is a real modal that must be closed before an unrelated control elsewhere on the page can be clicked. */
-  async closeReadiness(): Promise<void> {
-    if (isNarrowLayout(this.page)) {
-      await this.closeDisclosure('still-checking');
-      return;
-    }
-    await this.closeSheet('workspace-still-checking-sheet');
-  }
-
-  /**
    * Opens the notes region (`CaseNotes` + `AddNoteForm`) -- the create
    * menu's "Add a note" item, so identical at every viewport, unlike
    * `openDecisionProfile` above.
@@ -905,57 +713,6 @@ export class SiftPage {
    */
   async openAddConcern(): Promise<void> {
     await this.openViaCreateMenu('workspace-app-bar-add-concern', 'workspace-add-concern-sheet');
-  }
-
-  /** Opens the "Adjust priorities" Sheet (`CriteriaEditor`) via the app bar's create menu, identically at every viewport. */
-  async openPriorities(): Promise<void> {
-    await this.openViaCreateMenu('workspace-app-bar-priorities', 'workspace-priorities-sheet');
-  }
-
-  /**
-   * Reweights criteria through the real control a person uses, and waits for
-   * the command the page itself issues.
-   *
-   * Specs used to reweight by POSTing `updateCriteria` out of band, because
-   * no criteria UI existed. That left the page's cached snapshot behind the
-   * case it was about to write to, and the next UI write raced it: the
-   * catalog journey failed roughly one run in three with a 409 on an
-   * unrelated `defineCaseAttribute`. Driving the reweight through the page
-   * removes the out-of-band mutation, so there is no divergence to race.
-   */
-  async reweightCriteria(weights: Record<string, number>): Promise<void> {
-    await this.openPriorities();
-    for (const [criterionId, weight] of Object.entries(weights)) {
-      await this.page.getByTestId(`criteria-editor-weight-${criterionId}`).fill(String(weight));
-    }
-    const responsePromise = this.page.waitForResponse(
-      (response) =>
-        response.url().includes('/commands/updateCriteria') &&
-        response.request().method() === 'POST',
-      { timeout: 30_000 },
-    );
-    await this.page.getByTestId('criteria-editor-save').click();
-    const response = await responsePromise;
-    if (!response.ok()) {
-      throw new Error(
-        `updateCriteria was rejected with ${String(response.status())}: ${(
-          await response.text()
-        ).slice(0, 400)}`,
-      );
-    }
-    await expect(this.page.getByTestId('workspace-priorities-sheet')).toBeHidden();
-    // The Sheet closing is not the end of the interaction. "Adjust
-    // priorities" is reached through the app bar's "Add or adjust" dropdown,
-    // and Radix returns focus to that trigger when the Sheet unmounts. Under
-    // a loaded run (the full suite uses four workers) the menu could still be
-    // painted when the next screenshot was taken, which is exactly how this
-    // surfaced: `awaiting-approval.png` failed in the full e2e stage with the
-    // menu covering the recommendation, while the same spec passed three for
-    // three in isolation. Waiting on the menu's real dismissal -- not a
-    // sleep, and not a retry around the screenshot -- removes the race at its
-    // source, the same way `reweightCriteria` itself replaced the out-of-band
-    // POST that used to race the page's cached snapshot.
-    await expect(this.page.getByTestId('workspace-app-bar-create-menu-content')).toBeHidden();
   }
 
   /** The `openAddConcern` counterpart -- see `closeNotes` above for why closing is no longer optional in pane mode. */
@@ -1013,33 +770,15 @@ export class SiftPage {
    * longer bound to match -- neither wait replaces or weakens the other.
    */
   async submitCustomConcern(input: CustomConcernInput): Promise<void> {
-    // Deliberately NOT filtered on `response.ok()`.
-    //
-    // Requiring a 2xx here meant a REJECTED write matched nothing, so the
-    // wait ran its full 30s and reported "the server never answered" about a
-    // server that had answered immediately and said no. That is the single
-    // most misleading shape a test failure can take: it sends whoever reads
-    // it looking at latency when the actual answer is a status code, and it
-    // costs 30 seconds per occurrence to say nothing.
-    //
-    // Matching any response to this endpoint and asserting the status
-    // afterwards keeps exactly the same guarantee and turns a blind timeout
-    // into the real reason.
     const responsePromise = this.page.waitForResponse(
       (response) =>
         response.url().includes('/commands/defineCaseAttribute') &&
-        response.request().method() === 'POST',
+        response.request().method() === 'POST' &&
+        response.ok(),
       { timeout: 30_000 },
     );
     await this.fillAndSubmitCustomConcern(input);
-    const response = await responsePromise;
-    if (!response.ok()) {
-      throw new Error(
-        `defineCaseAttribute was rejected with ${String(response.status())}: ${(
-          await response.text()
-        ).slice(0, 400)}`,
-      );
-    }
+    await responsePromise;
     await expect(
       this.page.getByTestId('custom-concern-form').getByTestId('custom-concern-form-success'),
     ).toBeVisible({ timeout: 30_000 });

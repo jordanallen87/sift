@@ -23,7 +23,7 @@
  * correctly render their own populated states, and `ApprovalCard` in
  * particular has NO `actor` prop at all -- reusing it here, rather than
  * hand-rolling new approve/reject/revise controls, is what keeps
- * docs/engineering-principles.md's "human approval stays human-only" guarantee intact without
+ * CLAUDE.md's "human approval stays human-only" guarantee intact without
  * this file needing to re-earn it. Per change-set §5 ("Do not render an
  * empty conceptual region merely because CaseState contains a corresponding
  * field"), this component mounts each of the four real Sift regions it
@@ -47,7 +47,6 @@ import { Button } from '@/components/ui/button';
 import { ApprovalCard, type ApprovalCardReview } from './ApprovalCard.js';
 import { RecommendationCard, type RecommendationWithheld } from './RecommendationCard.js';
 import { LiveRunStatus, type LiveRunStatusReceipt } from './LiveRunStatus.js';
-import { SpecialistActivityPanel } from './SpecialistActivityPanel.js';
 import type { WorkspaceStatus } from './workspace-status.js';
 
 export interface RecommendationHeroProps {
@@ -90,7 +89,7 @@ export interface RecommendationHeroProps {
    * Approve/Reject/Request-revision controls specifically, which can sit
    * well below the fold of this region in a 390px pane. It moves focus
    * there and does nothing else; no automatic path may approve a
-   * consequential decision (docs/engineering-principles.md), and `ApprovalCard` has no `actor`
+   * consequential decision (CLAUDE.md), and `ApprovalCard` has no `actor`
    * prop through which one could try.
    *
    * `undefined` whenever `proposal` is `null`, since no `ApprovalCard`
@@ -199,21 +198,6 @@ export function RecommendationHero({
       ) : null}
 
       <LiveRunStatus receipt={liveRunReceipt} events={liveEvents} />
-
-      {/*
-        Who actually did the work. `LiveRunStatus` answers "where is this run"
-        in one line; this names the specialists underneath it and what each
-        one settled. It renders nothing until a specialist has reported, so a
-        case that has never been investigated is unaffected.
-
-        Scoped to the live run when there is one: without `runId` the panel
-        would accumulate every specialist across every round, which reads as
-        a growing pile rather than "here is who looked at this."
-      */}
-      <SpecialistActivityPanel
-        events={liveEvents}
-        {...(liveRunReceipt?.runId !== undefined ? { runId: liveRunReceipt.runId } : {})}
-      />
 
       {liveRunReceipt?.runId !== undefined ? (
         <Button

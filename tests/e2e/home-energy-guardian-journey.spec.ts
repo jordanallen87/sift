@@ -43,7 +43,7 @@
  * `POST /api/cases/:caseId/run` route and `RequestInvestigationInput`
  * contract (including its real, documented `obligationId` field) the
  * visible control itself calls -- genuinely the same command
- * implementation, not a bypass of it (docs/engineering-principles.md "Visible UI controls and
+ * implementation, not a bypass of it (CLAUDE.md "Visible UI controls and
  * WebMCP callbacks use the same command implementation") -- see
  * `sift-page.ts`'s `postRunRequest`/`waitForRecommendationRationaleContains`
  * for the full mechanics.
@@ -84,41 +84,6 @@ import {
   postCommand,
   postRunRequest,
 } from './pages/sift-page.js';
-
-test.describe('switching between decisions', () => {
-  // The demo script's closing beat asks the recorder to "switch demos --
-  // reset to Choose our next car", and until 2026-09-05 the product could
-  // not do it: "Reset demo" restarts the *same* pack, the launcher renders
-  // only when no case is active, and the active case id is restored from
-  // localStorage on every load. Anyone evaluating the deployed app saw
-  // whichever pack they opened first and no other, for the life of that
-  // browser profile.
-  test('a person can leave one decision and start the other, without clearing site data', async ({
-    page,
-  }) => {
-    const sift = new SiftPage(page);
-
-    await sift.openAsFirstTimeVisitor();
-    await sift.launchHomeEnergyGuardian();
-    // The first-run guide is a modal over the bar on a first visit.
-    await sift.dismissFirstRunGuide();
-    await expect(page.getByTestId('workspace-app-bar')).toBeVisible();
-
-    await page.getByTestId('workspace-app-bar-create-menu').click();
-    await page.getByTestId('workspace-app-bar-switch-decision').click();
-
-    // Back at the launcher, with both packs offered again.
-    await expect(page.getByTestId('demo-launcher')).toBeVisible();
-
-    // And the other pack genuinely starts, rather than the launcher being a
-    // dead end that reopens the case we just left.
-    await sift.launchCarPurchase();
-    await expect(page.getByTestId('workspace-app-bar')).toBeVisible();
-    // "Choose our next car" is the launcher's button label; the case it
-    // creates is titled from the pack identity, "Vehicle Selection".
-    await expect(page.getByTestId('workspace-app-bar')).toContainText('Vehicle Selection');
-  });
-});
 
 test.describe('Home Energy Guardian -- full demo journey', () => {
   test('launch, investigate, recommend, reweight, revise, approve', async ({ page }) => {
@@ -168,7 +133,7 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
 
     // Real WebMCP is genuinely unavailable in this browser -- the page must
     // say so and stay fully usable through visible controls (webmcp.md
-    // "Browser adapter"; docs/engineering-principles.md "Non-negotiable product truths").
+    // "Browser adapter"; CLAUDE.md "Non-negotiable product truths").
     await expect(page.getByTestId('webmcp-status-unsupported')).toBeVisible();
 
     // --- 4 seeded response options (ADR 0004: "Manage options" -- renamed
@@ -361,8 +326,7 @@ test.describe('Home Energy Guardian -- full demo journey', () => {
 
     // Recommendation carries a rationale and cited, source-linked evidence,
     // and (per the real proven scenario trajectory) favors monitoring for
-    // one more billing cycle at the pack's default 80/20 cost-favoring
-    // weighting (energy.cost 80 / energy.conservation 20).
+    // one more billing cycle at the pack's default 50/50 weighting.
     await expect(page.getByTestId('recommendation-card-rationale')).toContainText(
       'monitor-one-cycle',
     );

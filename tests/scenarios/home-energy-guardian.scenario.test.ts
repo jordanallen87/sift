@@ -5,7 +5,7 @@
  * store, and API in process") and proves every required assertion from
  * docs/specs/demos-and-submission.md "Home Energy Guardian scenario" ->
  * "Required final assertions" genuinely passes against the real causal
- * trajectory -- not a scripted final-result shortcut (docs/engineering-principles.md).
+ * trajectory -- not a scripted final-result shortcut (CLAUDE.md).
  *
  * Writes the final snapshot, event log, trajectory, and assertion report to
  * `artifacts/verification/scenarios/home-energy-guardian/` (testing.md
@@ -167,8 +167,7 @@ describe('Home Energy Guardian scenario: real causal trajectory', () => {
     expect(conservation?.status).toBe('scored');
     expect(conservation?.score).toBe(1);
     // The reweight put 80% of the case's weight here; if this drops back to
-    // the pack's seeded 80/20 cost-favoring default (energy.conservation at
-    // 20%, not this reweighted 80%) the beat has silently stopped happening.
+    // the seeded 50/50 split the beat has silently stopped happening.
     expect(conservation?.weight).toBeCloseTo(0.8, 10);
 
     // The deterministic leader and the Swarm's own favorite agree, so no

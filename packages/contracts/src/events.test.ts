@@ -71,7 +71,6 @@ describe('PublicActivityEventSchema', () => {
       'tool.failed',
       'intervention.guided',
       'intervention.confirmation_required',
-      'intervention.denied',
       'evidence.accepted',
       'evidence.conflicted',
       'obligation.updated',

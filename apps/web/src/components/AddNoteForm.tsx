@@ -6,7 +6,7 @@
  * (`register-sift-tools.ts`) were all already built before this component
  * existed -- ChatGPT could add a note, but a person at the keyboard had no
  * way to. This form closes that gap by calling the exact same
- * `commands.addNote` a WebMCP call reaches (docs/engineering-principles.md "Visible UI controls
+ * `commands.addNote` a WebMCP call reaches (CLAUDE.md "Visible UI controls
  * and WebMCP callbacks use the same command implementation").
  *
  * A separate component, not folded into `CaseNotes.tsx`: `CaseNotes` renders
@@ -68,25 +68,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export interface AddNoteFormProps {
   caseId: string;
-  /**
-   * Resolves the `expectedSequence` this write must carry, at SUBMIT time.
-   *
-   * A plain `expectedSequence: number` prop was a render-time value used for
-   * a submit-time decision, and the gap between the two is real: the pane's
-   * canonical snapshot refreshes on a coalescing throttle, so between the
-   * events of a live run it is legitimately behind the server and this form
-   * would send a sequence the case had already moved past -- a visible,
-   * unexplainable failure for the person, on a write nothing had actually
-   * invalidated. `App.tsx`'s `resolveExpectedSequence` answers with the
-   * sequence the server confirms, reading it only when the client knows it
-   * is behind.
-   */
-  resolveExpectedSequence: () => Promise<number>;
+  expectedSequence: number;
 }
 
 const neutralTone = STATUS_TONE_META.neutral;
 
-export function AddNoteForm({ caseId, resolveExpectedSequence }: AddNoteFormProps) {
+export function AddNoteForm({ caseId, expectedSequence }: AddNoteFormProps) {
   const commands = useSiftCommands();
   const [body, setBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -102,14 +89,12 @@ export function AddNoteForm({ caseId, resolveExpectedSequence }: AddNoteFormProp
     setSuccess(false);
 
     // Deliberately no `origin` key here -- see this file's header comment.
-    resolveExpectedSequence()
-      .then((expectedSequence) =>
-        commands.addNote({
-          caseId,
-          expectedSequence,
-          note: { body: body.trim() },
-        }),
-      )
+    commands
+      .addNote({
+        caseId,
+        expectedSequence,
+        note: { body: body.trim() },
+      })
       .then(() => {
         setSubmitting(false);
         setSuccess(true);

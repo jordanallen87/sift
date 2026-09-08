@@ -50,7 +50,7 @@
  * `car.rear_cargo_crate_fit` and `car.driving_comfort_rating` are seeded
  * `status: 'unknown'` with no `value` for every candidate, translated from
  * `household-fit-matrix`'s own `unknown.rear_cargo_crate_compatibility` /
- * `unknown.driving_comfort` -- docs/engineering-principles.md: "It may never ... fabricate."
+ * `unknown.driving_comfort` -- CLAUDE.md: "It may never ... fabricate."
  */
 import type { Clock, IdGenerator } from '@sift/core';
 import { createAttributeRecord, instantiateCase, type PackSelection } from '@sift/core';
@@ -63,21 +63,13 @@ import type {
   EntityRecord,
 } from '@sift/contracts';
 import {
-  calculateBidEconomics,
   calculateOwnershipCost,
   loadFixture,
   lookupHouseholdFit,
-  lookupLicense,
   lookupSafetyReliability,
-  readBid,
   readListing,
-  BID_FIXTURE_NAMES,
-  type BidCalculatorResult,
-  type BidFixtureName,
-  type BidReaderResult,
   type CandidateDealerOfferFacts,
   type CandidateListingFacts,
-  type LicenseLookupFacts,
   type OwnershipCostResult,
   type ResponseOption,
 } from './tools/index.js';
@@ -713,210 +705,4 @@ export function buildCarPurchaseSeedEvents(
   );
 
   return { caseState, events };
-}
-
-// --- Bid Comparison entity seeding ---
-//
-// Mirrors `buildCarPurchaseCandidateEntities`'s own "no two competing
-// sources of truth for one fixture fact" discipline (see this module's own
-// header): every attribute below is the REAL output of the real fixture
-// tools (`bid-reader`/`bid-calculator`/`license-lookup`), so a freshly
-// seeded case already shows the same numbers the live `bid-comparison`
-// Swarm investigation independently re-derives.
-
-/**
- * Bids whose scope-normalized adjusted total needs plug numbers for the
- * required scope items `scope-differ`/`bid-calculator` find absent
- * (`bid-calculator.ts`'s own honesty rule: an absent item with no supplied
- * plug number leaves `adjustedTotal` an explicit unknown, never a silent
- * `$0` or the quoted total standing in for it). `bid-cedar` is the only bid
- * in this fixture set missing required scope items -- permits and
- * inspections, the shower-valve rough-in, and debris haul-away. Every
- * dollar figure here is Northgate Plumbing's own real priced line-item
- * amount for that exact scope item (`bid-northgate.json`) -- the same real,
- * non-invented plug numbers the scripted `price-analyst` beat itself
- * supplies (`apps/agent/src/runtime/scripted-beats/bid-comparison.ts`'s
- * `buildPriceAnalystProvider`), so this seed's adjusted total matches the
- * live investigation's exactly.
- */
-const BID_COMPARISON_PLUG_NUMBERS: Readonly<Record<string, Record<string, number>>> = {
-  'bid-cedar': {
-    'permits-inspections': 1200,
-    'shower-valve-rough-in': 2100,
-    'debris-haul-away': 400,
-  },
-};
-
-/** Every attribute the `bid-comparison` pack manifest declares on its one `bid` entity kind, computed from one bid's real `readBid`/`calculateBidEconomics`/`lookupLicense` results. */
-function bidComparisonAttributes(
-  clock: Clock,
-  bid: BidReaderResult,
-  calculated: BidCalculatorResult,
-  license: LicenseLookupFacts,
-): Record<string, AttributeRecord> {
-  const bidSourceId = `source-${bid.bidId}`;
-  const adjustedTotalSourceId = `source-bid-calculator-${bid.bidId}-adjusted-total`;
-  const scopeCompletenessSourceId = `source-bid-calculator-${bid.bidId}-scope-completeness`;
-  const licenseSourceId = `source-license-${license.licenseNumber}`;
-  const namedInsuredSourceId = `${licenseSourceId}-named-insured`;
-
-  return {
-    'bid.quoted_total': record(clock, {
-      definitionId: 'bid.quoted_total',
-      label: 'Quoted total',
-      sourceIds: [bidSourceId],
-      status: 'asserted',
-      value: { type: 'money', amount: bid.total.amount, currency: bid.total.currency },
-    }),
-    'bid.deposit_percent': record(clock, {
-      definitionId: 'bid.deposit_percent',
-      label: 'Deposit requested',
-      sourceIds: [bidSourceId],
-      status: 'asserted',
-      value: { type: 'number', value: bid.depositPercent, unit: '%' },
-    }),
-    'bid.start_weeks': record(clock, {
-      definitionId: 'bid.start_weeks',
-      label: 'Weeks until work can start',
-      sourceIds: [bidSourceId],
-      status: 'asserted',
-      value: { type: 'number', value: bid.startInWeeks, unit: 'weeks' },
-    }),
-    'bid.duration_days': record(clock, {
-      definitionId: 'bid.duration_days',
-      label: 'Estimated project duration',
-      sourceIds: [bidSourceId],
-      status: 'asserted',
-      value: { type: 'number', value: bid.durationWorkingDays, unit: 'days' },
-    }),
-    'bid.license_status': record(clock, {
-      definitionId: 'bid.license_status',
-      label: 'License status',
-      sourceIds: [licenseSourceId],
-      status: 'asserted',
-      value: { type: 'enum', value: license.status },
-    }),
-    'bid.insurance_named_insured_match': record(clock, {
-      definitionId: 'bid.insurance_named_insured_match',
-      label: 'Insurance named insured matches license holder',
-      sourceIds: [namedInsuredSourceId],
-      status: 'asserted',
-      value: { type: 'boolean', value: license.insurance.matchesLicenseHolder },
-    }),
-    // `credentials_valid` gates `packages/packs/src/bid-comparison.ts`'s
-    // protected hard constraint -- derived here from the two recorded
-    // registry facts (never itself a single raw fact), matching that
-    // manifest's own module header ("`credential-checker`'s
-    // `credential-verification` skill derives it from the two recorded
-    // facts ... rather than either recorded fact being the gate on its
-    // own").
-    'bid.credentials_valid': record(clock, {
-      definitionId: 'bid.credentials_valid',
-      label: 'License and insurance credentials fully valid',
-      sourceIds: [licenseSourceId, namedInsuredSourceId],
-      status: 'asserted',
-      value: {
-        type: 'boolean',
-        value:
-          license.isActive &&
-          license.classCoversScope &&
-          license.insurance.isActive &&
-          license.insurance.matchesLicenseHolder,
-      },
-    }),
-    'bid.scope_completeness': record(clock, {
-      definitionId: 'bid.scope_completeness',
-      label: 'Scope completeness',
-      sourceIds: [scopeCompletenessSourceId],
-      status: 'asserted',
-      value: {
-        type: 'number',
-        // A percentage NUMBER (62.5, not 0.625) -- the same convention this
-        // package already uses for every other `unit: '%'` attribute (e.g.
-        // `bid.deposit_percent` below), matching `bid-calculator.ts`'s own
-        // `(scopeCompleteness * 100).toFixed(1)` display formatting.
-        value: Number((calculated.scopeCompleteness * 100).toFixed(1)),
-        unit: '%',
-      },
-    }),
-    'bid.adjusted_total':
-      calculated.adjustedTotal.status === 'known'
-        ? record(clock, {
-            definitionId: 'bid.adjusted_total',
-            label: 'Scope-normalized adjusted total',
-            sourceIds: [adjustedTotalSourceId],
-            status: 'asserted',
-            value: {
-              type: 'money',
-              amount: calculated.adjustedTotal.value.amount,
-              currency: calculated.adjustedTotal.value.currency,
-            },
-          })
-        : // Never reachable for this fixture set (`BID_COMPARISON_PLUG_NUMBERS`
-          // supplies every plug number `bid-cedar` needs), but never
-          // silently coalesced to the quoted total or `$0` if a future bid
-          // ever left an item genuinely unpriced -- docs/engineering-principles.md
-          // "It may never ... fabricate."
-          record(clock, {
-            definitionId: 'bid.adjusted_total',
-            label: 'Scope-normalized adjusted total',
-            sourceIds: [],
-            status: 'unknown',
-          }),
-    // Cedar & Sons' bid mentions a workmanship warranty but states no term
-    // in writing (`bid-cedar.json`'s `warranty.termMonths: null`). This
-    // stays an explicit unknown -- never a fabricated 0-month warranty
-    // (docs/engineering-principles.md "It may never ... fabricate").
-    'bid.warranty_months':
-      bid.warranty.termMonths === null
-        ? record(clock, {
-            definitionId: 'bid.warranty_months',
-            label: 'Warranty term',
-            sourceIds: [],
-            status: 'unknown',
-          })
-        : record(clock, {
-            definitionId: 'bid.warranty_months',
-            label: 'Warranty term',
-            sourceIds: [bidSourceId],
-            status: 'asserted',
-            value: { type: 'number', value: bid.warranty.termMonths, unit: 'months' },
-          }),
-  };
-}
-
-/**
- * Builds the three Bid Comparison `EntityRecord`s (`bid-northgate`,
- * `bid-cedar`, `bid-tworivers`), kind `'bid'` (the pack manifest's one
- * declared entity kind -- `packages/packs/src/bid-comparison.ts`'s
- * `entities: [{ id: 'bid', ... }]`), from the real fixture tools. See this
- * section's own header comment for the full grounding.
- */
-export function buildBidComparisonEntities(clock: Clock): EntityRecord[] {
-  const now = clock.now();
-  return BID_FIXTURE_NAMES.map((bidId: BidFixtureName): EntityRecord => {
-    const bid = unwrapOk<BidReaderResult>(readBid({ bidId }), `reading bid "${bidId}"`);
-    const calculated = unwrapOk<BidCalculatorResult>(
-      calculateBidEconomics({
-        bidId,
-        ...(BID_COMPARISON_PLUG_NUMBERS[bidId] !== undefined
-          ? { plugNumbers: BID_COMPARISON_PLUG_NUMBERS[bidId] }
-          : {}),
-      }),
-      `calculating bid economics for "${bidId}"`,
-    );
-    const license = unwrapOk<{ license: LicenseLookupFacts }>(
-      lookupLicense({ licenseNumber: bid.licenseNumber }),
-      `looking up the license for "${bidId}"`,
-    ).license;
-
-    return {
-      id: bidId,
-      kind: 'bid',
-      label: bid.contractorName,
-      attributes: bidComparisonAttributes(clock, bid, calculated, license),
-      createdAt: now,
-      updatedAt: now,
-    };
-  });
 }

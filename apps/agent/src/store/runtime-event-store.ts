@@ -47,7 +47,7 @@
  * `payload` -- every event reaching this store today came from
  * `event-normalizer.ts`, which already redacted the one field genuinely
  * capable of carrying arbitrary tool/model content -- but it is the one
- * place this codebase can honestly claim docs/engineering-principles.md's "Never persist
+ * place this codebase can honestly claim CLAUDE.md's "Never persist
  * credentials, authorization headers, cookies, secret canaries, raw private
  * reasoning, or unredacted user-entered notes in runtime telemetry" for
  * *every* field that reaches durable `runtime_events` storage, including
@@ -79,18 +79,6 @@ export interface RuntimeEventListFilter {
 export interface RuntimeEventStore {
   /** Redacts (the "Redactor" stage, see header comment), durably persists, and returns one `RuntimeDebugEvent` with its synthetic `id` attached. Throws on a duplicate `(runId, sequence)`. */
   append(event: RuntimeDebugEvent): PersistedRuntimeEvent;
-  /**
-   * `append` for a whole batch, applied atomically. Every event goes through
-   * the identical validation and Redactor stage; the batch either lands
-   * whole or not at all, so a mid-batch duplicate `(runId, sequence)` never
-   * leaves a partially written group behind.
-   *
-   * Exists because `runtime/otel-span-recorder.ts` flushes a run's whole
-   * buffered span batch at once (roughly one span per model call, tool call,
-   * agent loop cycle, Graph/Swarm node, and orchestrator invocation), and one
-   * `INSERT` per span would be one WAL commit per span.
-   */
-  appendMany(events: readonly RuntimeDebugEvent[]): readonly PersistedRuntimeEvent[];
   /** Every persisted event for `runId`, in `sequence` order, optionally narrowed by `category`/`level`. Empty array for an unknown `runId`. */
   listByRun(runId: string, filter?: RuntimeEventListFilter): readonly PersistedRuntimeEvent[];
 }
@@ -141,27 +129,6 @@ export class InMemoryRuntimeEventStore implements RuntimeEventStore {
     }
     const persisted: PersistedRuntimeEvent = { id: randomUUID(), ...validated };
     this.byRun.set(validated.runId, [...existing, persisted]);
-    return persisted;
-  }
-
-  /** Atomic by construction: every event is validated and staged before any of them is visible, so a rejected event leaves the store untouched. */
-  appendMany(events: readonly RuntimeDebugEvent[]): readonly PersistedRuntimeEvent[] {
-    const staged = new Map<string, PersistedRuntimeEvent[]>();
-    const persisted: PersistedRuntimeEvent[] = [];
-    for (const event of events) {
-      const validated = RuntimeDebugEventSchema.parse(redactRuntimeEvent(event));
-      const forRun = staged.get(validated.runId) ?? [...(this.byRun.get(validated.runId) ?? [])];
-      if (forRun.some((entry) => entry.sequence === validated.sequence)) {
-        throw new Error(
-          `InMemoryRuntimeEventStore: duplicate sequence ${validated.sequence} for run "${validated.runId}"`,
-        );
-      }
-      const row: PersistedRuntimeEvent = { id: randomUUID(), ...validated };
-      forRun.push(row);
-      staged.set(validated.runId, forRun);
-      persisted.push(row);
-    }
-    for (const [runId, rows] of staged) this.byRun.set(runId, rows);
     return persisted;
   }
 
@@ -249,66 +216,40 @@ function rowToEvent(row: RuntimeEventRow): PersistedRuntimeEvent {
   return { id: row.id, ...validated };
 }
 
-const INSERT_RUNTIME_EVENT_SQL = `INSERT INTO runtime_events
-          (id, run_id, case_id, sequence, category, name, phase, level, trace_id, span_id, parent_span_id, session_id, obligation_id, agent_id, duration_ms, summary, created_at, data)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-/** The positional bind values for `INSERT_RUNTIME_EVENT_SQL`, in column order. */
-function insertParameters(id: string, event: RuntimeDebugEvent): unknown[] {
-  return [
-    id,
-    event.runId,
-    event.caseId,
-    event.sequence,
-    event.category,
-    event.name,
-    event.phase,
-    event.level,
-    event.traceId,
-    event.spanId ?? null,
-    event.parentSpanId ?? null,
-    event.sessionId ?? null,
-    event.obligationId ?? null,
-    event.agentId ?? null,
-    event.durationMs ?? null,
-    event.summary,
-    event.timestamp,
-    JSON.stringify(toDataBlob(event)),
-  ];
-}
-
 export class SqliteRuntimeEventStore implements RuntimeEventStore {
   constructor(private readonly database: SiftDatabase) {}
 
   append(event: RuntimeDebugEvent): PersistedRuntimeEvent {
     const validated = RuntimeDebugEventSchema.parse(redactRuntimeEvent(event));
     const id = randomUUID();
-    this.database.sqlite.prepare(INSERT_RUNTIME_EVENT_SQL).run(...insertParameters(id, validated));
+    const data = JSON.stringify(toDataBlob(validated));
+    this.database.sqlite
+      .prepare(
+        `INSERT INTO runtime_events
+          (id, run_id, case_id, sequence, category, name, phase, level, trace_id, span_id, parent_span_id, session_id, obligation_id, agent_id, duration_ms, summary, created_at, data)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        validated.runId,
+        validated.caseId,
+        validated.sequence,
+        validated.category,
+        validated.name,
+        validated.phase,
+        validated.level,
+        validated.traceId,
+        validated.spanId ?? null,
+        validated.parentSpanId ?? null,
+        validated.sessionId ?? null,
+        validated.obligationId ?? null,
+        validated.agentId ?? null,
+        validated.durationMs ?? null,
+        validated.summary,
+        validated.timestamp,
+        data,
+      );
     return { id, ...validated };
-  }
-
-  /**
-   * One prepared statement, one `better-sqlite3` transaction, one WAL
-   * commit for the whole batch. Validation and redaction run *before* the
-   * transaction opens so a malformed event fails without ever having taken
-   * a write lock; a constraint violation inside the transaction rolls the
-   * whole batch back.
-   */
-  appendMany(events: readonly RuntimeDebugEvent[]): readonly PersistedRuntimeEvent[] {
-    const prepared = events.map((event) => ({
-      id: randomUUID(),
-      event: RuntimeDebugEventSchema.parse(redactRuntimeEvent(event)),
-    }));
-    if (prepared.length === 0) return [];
-
-    const statement = this.database.sqlite.prepare(INSERT_RUNTIME_EVENT_SQL);
-    const insertAll = this.database.sqlite.transaction(() => {
-      for (const { id, event } of prepared) {
-        statement.run(...insertParameters(id, event));
-      }
-    });
-    insertAll();
-    return prepared.map(({ id, event }) => ({ id, ...event }));
   }
 
   listByRun(runId: string, filter?: RuntimeEventListFilter): readonly PersistedRuntimeEvent[] {

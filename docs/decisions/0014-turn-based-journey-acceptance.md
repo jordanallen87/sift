@@ -26,7 +26,7 @@ Both hero demo scripts describe assistant actions (`sift_update_criteria`, `sift
 
 The third kind is the contribution. A journey can pass `data` and `ui` independently while showing a person a number the server disagrees with.
 
-**2. Turns have an actor.** A turn is taken by the **person**, through visible controls, or by the **assistant**, through a real WebMCP tool call. Both reach the same command implementation (docs/engineering-principles.md), and interleaving them in one case is the only way to test that claim rather than assert it.
+**2. Turns have an actor.** A turn is taken by the **person**, through visible controls, or by the **assistant**, through a real WebMCP tool call. Both reach the same command implementation (CLAUDE.md), and interleaving them in one case is the only way to test that claim rather than assert it.
 
 **3. Four journeys**, 92 checks:
 
@@ -58,8 +58,6 @@ Six defects on the first four runs. **None was reachable by any existing test**,
 5. **The pane named a product it could not detect.** Covered by ADR 0013; a second instance, the dock's human-only note, was found here and fixed the same way.
 
 6. **Two demo documents disagreed about the same beat.** `aws-script.md` beat 4 told a recorder to film a "genuine validator rejection, not a scripted UI state"; `demo-script.md` Flagged gap #1 documents that GoalLoop validates on attempt 1 in the live click-through and the rejection never fires. `aws-script.md` now carries the warning, and `aws-hero` asserts that nothing claims a "Draft withheld" that did not happen.
-
-   **Superseded 2026-09-05.** The underlying limitation was fixed rather than narrated around: round 1's scripted beats now emit an uncited draft first, so GoalLoop genuinely refuses it (`goal.validation_failed` on attempt 1) and the corrected retry validates on attempt 2. The "Draft withheld" beat can therefore be filmed live, `demo-script.md`'s "Flagged gap #1" section no longer exists, and `aws-hero`'s check now reports a *missing* rejection as a regression instead of as an expected condition. The record above is kept as written because it describes what was true when this decision was taken.
 
 Findings 1–4 were found by the `agreement` and `ui` checks; 4 and the UX observations came from **reading the rendered screenshots**, which the harness captures per turn precisely so that a person or a model can.
 

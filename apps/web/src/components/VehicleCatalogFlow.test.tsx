@@ -109,26 +109,6 @@ async function waitForResults() {
   });
 }
 
-/**
- * The four facets moved behind a sheet and no longer apply as you change
- * them: the sheet holds a draft and commits it on Apply, so a test that
- * only selects an option is asserting nothing about the search.
- */
-async function applyFacet(
-  user: ReturnType<typeof userEvent.setup>,
-  label: string,
-  value: string,
-): Promise<void> {
-  await user.click(screen.getByTestId('vehicle-filter-open'));
-  await user.selectOptions(await screen.findByLabelText(label), value);
-  await user.click(screen.getByTestId('vehicle-filter-sheet-apply'));
-}
-
-/** The shortlist is a collapsed bar; Radix unmounts its list until expanded. */
-async function expandShortlist(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.click(screen.getByTestId('shortlist-bar-trigger'));
-}
-
 describe('VehicleCatalogFlow', () => {
   it('loads and renders search results from the catalog routes', async () => {
     installCatalogHandlers();
@@ -180,13 +160,9 @@ describe('VehicleCatalogFlow', () => {
     expect(screen.getByTestId('vehicle-add-veh-camry-1')).toBeDisabled();
     expect(screen.getByTestId('vehicle-add-veh-camry-1')).toHaveTextContent('Added');
 
-    await expandShortlist(user);
     await user.click(screen.getByTestId('shortlist-remove-veh-camry-1'));
-
-    // An empty shortlist retires the whole bar rather than leaving an empty
-    // one pinned over the list, so "empty" is the bar's absence.
-    expect(screen.queryByTestId('vehicle-catalog-shortlist')).toBeNull();
-    expect(screen.getByTestId('vehicle-add-veh-camry-1')).toBeEnabled();
+    expect(screen.getByTestId('shortlist-count')).toHaveTextContent(`0 of ${MAX_SHORTLIST_SIZE}`);
+    expect(screen.getByTestId('vehicle-catalog-shortlist-empty')).toBeInTheDocument();
   });
 
   it('disables further Add buttons once the shortlist reaches its maximum size', async () => {
@@ -213,9 +189,7 @@ describe('VehicleCatalogFlow', () => {
     renderFlow();
     await waitForResults();
 
-    // With nothing shortlisted there is no bar at all, so there is nothing
-    // to press; one vehicle raises the bar with its action still unavailable.
-    expect(screen.queryByTestId('vehicle-catalog-start-comparison')).toBeNull();
+    expect(screen.getByTestId('vehicle-catalog-start-comparison')).toBeDisabled();
     await user.click(screen.getByTestId('vehicle-add-veh-camry-1'));
     expect(screen.getByTestId('vehicle-catalog-start-comparison')).toBeDisabled();
     expect(MIN_SHORTLIST_SIZE).toBeGreaterThan(1);
@@ -326,10 +300,11 @@ describe('VehicleCatalogFlow', () => {
     renderFlow();
     await waitForResults();
 
-    await applyFacet(user, 'Make', 'Honda');
+    const makeSelect = screen.getByLabelText('Make');
+    await user.selectOptions(makeSelect, 'Honda');
 
     await waitFor(() => {
-      expect(screen.getByTestId('vehicle-filter-chips')).toHaveTextContent('Honda');
+      expect(makeSelect).toHaveValue('Honda');
     });
   });
 
@@ -338,8 +313,7 @@ describe('VehicleCatalogFlow', () => {
     renderFlow();
     await waitForResults();
 
-    await userEvent.setup().click(screen.getByTestId('vehicle-filter-open'));
-    const fuelTypeSelect = await screen.findByLabelText('Fuel type');
+    const fuelTypeSelect = screen.getByLabelText('Fuel type');
     expect(
       within(fuelTypeSelect).getByRole('option', { name: 'Any fuel type' }),
     ).toBeInTheDocument();
@@ -360,9 +334,11 @@ describe('VehicleCatalogFlow', () => {
     renderFlow();
     await waitForResults();
 
-    await applyFacet(user, 'Fuel type', 'Hybrid');
+    const fuelTypeSelect = screen.getByLabelText('Fuel type');
+    await user.selectOptions(fuelTypeSelect, 'Hybrid');
 
     await waitFor(() => {
+      expect(fuelTypeSelect).toHaveValue('Hybrid');
       expect(new URL(capturedUrl, 'http://localhost').searchParams.get('fuelType')).toBe('Hybrid');
     });
   });
@@ -380,11 +356,9 @@ describe('VehicleCatalogFlow', () => {
     renderFlow();
     await waitForResults();
 
-    await user.click(screen.getByTestId('vehicle-filter-open'));
-    const yearSelect = await screen.findByLabelText('Model year');
+    const yearSelect = screen.getByLabelText('Model year');
     expect(within(yearSelect).getByRole('option', { name: '2026' })).toBeInTheDocument();
     await user.selectOptions(yearSelect, '2025');
-    await user.click(screen.getByTestId('vehicle-filter-sheet-apply'));
 
     await waitFor(() => {
       expect(new URL(capturedUrl, 'http://localhost').searchParams.get('year')).toBe('2025');
@@ -416,7 +390,6 @@ describe('VehicleCatalogFlow', () => {
     await waitForResults();
 
     await user.click(screen.getByTestId('vehicle-add-veh-camry-1'));
-    await expandShortlist(user);
     const shortlistItem = screen.getByTestId('shortlist-item-veh-camry-1');
     expect(within(shortlistItem).getByText('2025 Toyota Camry XLE')).toBeInTheDocument();
   });
@@ -433,48 +406,37 @@ describe('VehicleCatalogFlow', () => {
     expect(screen.getByTestId('vehicle-catalog-results-list')).toHaveClass('option-grid');
   });
 
-  it('opens a full spec sheet from a row, with fields the browse line has no room for', async () => {
-    // These fields used to sit in a grid under every card at expanded width,
-    // which made the list longest exactly where more of the list should fit.
-    // They are the same facts; the surface changed.
+  it("gives each result card an expanded-width detail grid with fields the narrow spec line doesn't show, omitting whatever the catalog doesn't know", async () => {
     installCatalogHandlers({
       vehicles: [record({ fuelEconomyScore: 8, luggageVolumeCuFt: 15 }), CRV],
       total: 2,
     });
-    const user = userEvent.setup();
     renderFlow();
     await waitForResults();
 
-    await user.click(screen.getByTestId('vehicle-details-veh-camry-1'));
-    const sheet = await screen.findByTestId('vehicle-detail-sheet');
+    const details = screen.getByTestId('vehicle-card-details-veh-camry-1');
+    // Structural assertions, not computed-style ones: jsdom applies no
+    // stylesheet, so the expanded detail grid is always present in the DOM --
+    // these two classes are what `global.css`'s `min-[481px]` boundary (the
+    // same one `.page-shell` already uses) relies on to keep it invisible and
+    // out of layout below 481px.
+    expect(details).toHaveClass('hidden');
+    expect(details).toHaveClass('min-[481px]:grid');
 
-    expect(within(sheet).getByText('EPA fuel economy score')).toBeInTheDocument();
-    expect(within(sheet).getByText('8/10')).toBeInTheDocument();
-    expect(within(sheet).getByText('Cargo volume')).toBeInTheDocument();
-    expect(within(sheet).getByText('15 cu ft')).toBeInTheDocument();
-    expect(within(sheet).getByText('Body style')).toBeInTheDocument();
-    expect(within(sheet).getByText('Sedan')).toBeInTheDocument();
+    expect(within(details).getByText('EPA fuel economy score')).toBeInTheDocument();
+    expect(within(details).getByText('8/10')).toBeInTheDocument();
+    expect(within(details).getByText('Cargo volume')).toBeInTheDocument();
+    expect(within(details).getByText('15 cu ft')).toBeInTheDocument();
+    expect(within(details).getByText('Body style')).toBeInTheDocument();
+    expect(within(details).getByText('Sedan')).toBeInTheDocument();
 
     // `annualFuelCostUsd` is null on this record (the shared `record()`
     // helper leaves it unset) -- the catalog's "unknown stays unknown, never
     // fabricated" rule means that row is simply absent, not a placeholder.
-    expect(within(sheet).queryByText('Est. annual fuel cost')).not.toBeInTheDocument();
+    expect(within(details).queryByText('Est. annual fuel cost')).not.toBeInTheDocument();
   });
 
-  it('keeps the browse row terse, leaving the long tail to the spec sheet', async () => {
-    installCatalogHandlers({
-      vehicles: [record({ fuelEconomyScore: 8, luggageVolumeCuFt: 15 })],
-      total: 1,
-    });
-    renderFlow();
-    await waitForResults();
-
-    const card = screen.getByTestId('vehicle-card-veh-camry-1');
-    expect(within(card).queryByText('EPA fuel economy score')).not.toBeInTheDocument();
-    expect(within(card).queryByText('Cargo volume')).not.toBeInTheDocument();
-  });
-
-  it('shows a record with nothing beyond identity without inventing rows for it', async () => {
+  it('renders no expanded-width detail grid when the catalog has no data beyond identity', async () => {
     const bare = buildVehicleCatalogRecord({
       id: 'veh-bare-1',
       year: 2025,
@@ -482,37 +444,9 @@ describe('VehicleCatalogFlow', () => {
       model: 'Rio',
     });
     installCatalogHandlers({ vehicles: [bare], total: 1 });
-    const user = userEvent.setup();
     renderFlow();
     await waitForResults();
 
-    await user.click(screen.getByTestId('vehicle-details-veh-bare-1'));
-    const sheet = await screen.findByTestId('vehicle-detail-sheet');
-    expect(within(sheet).queryByText('Cargo volume')).not.toBeInTheDocument();
-    expect(within(sheet).queryByText('EPA fuel economy score')).not.toBeInTheDocument();
-    // Identity still resolves, so the sheet is usable rather than blank.
-    expect(within(sheet).getByText(/2025 Kia Rio/)).toBeInTheDocument();
-  });
-
-  it('paginates the catalog instead of stranding the reader on the first 20', async () => {
-    let capturedUrl = '';
-    installCatalogHandlers();
-    server.use(
-      http.get('/api/catalog/vehicles', ({ request }) => {
-        capturedUrl = request.url;
-        return HttpResponse.json({ records: [CAMRY, CRV], total: 853 });
-      }),
-    );
-    const user = userEvent.setup();
-    renderFlow();
-    await waitForResults();
-
-    await user.click(screen.getByTestId('catalog-pagination-next'));
-
-    await waitFor(() => {
-      const params = new URL(capturedUrl, 'http://localhost').searchParams;
-      expect(params.get('offset')).toBe('20');
-      expect(params.get('limit')).toBe('20');
-    });
+    expect(screen.queryByTestId('vehicle-card-details-veh-bare-1')).not.toBeInTheDocument();
   });
 });

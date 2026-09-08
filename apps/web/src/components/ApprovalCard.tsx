@@ -5,7 +5,7 @@
  * controls.
  *
  * Adapted from
- * `praetor:apps/web/src/components/strata19/inline/renderers/ApprovalGateCard.tsx`'s
+ * `/Users/jordanallen/IdeaProjects/praetor/apps/web/src/components/strata19/inline/renderers/ApprovalGateCard.tsx`'s
  * "one clear primary action" idea -- "the approve/reject control itself is
  * the envelope's single `primaryAction`; the card never invents a second
  * one, which is also how 'no self-approval' stays enforceable server-side
@@ -16,7 +16,7 @@
  * secondary, matching product.md's requirement for "explicit
  * approve/revise/reject controls" while keeping one clear default. The
  * settled-state stamp is a solid tinted fill rather than a bordered
- * signature element -- docs/engineering-principles.md's flat-design mandate applies even to this
+ * signature element -- CLAUDE.md's flat-design mandate applies even to this
  * "a human stamps the case; the agent never does" moment
  * (docs/design-system.md); background-color contrast alone carries the
  * weight a border used to.
@@ -67,7 +67,7 @@ export interface ApprovalCardProps {
    * `confirm_shortlist` dock action -- the one `humanOnly` move Sift derives
    * -- does exactly that in `App.tsx`'s `handleDockAction`: it brings the
    * person to these controls and stops, because no automatic path may
-   * approve a consequential decision (docs/engineering-principles.md). This ref grants no new
+   * approve a consequential decision (CLAUDE.md). This ref grants no new
    * power to do so; `ApprovalCardProps` still has no `actor` field, and
    * `submit()` below is still the only place `actor: 'human'` is
    * constructed.
@@ -166,26 +166,6 @@ export function ApprovalCard({
                   className="text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
                 >
                   {proposal.revisionInstructions}
-                </p>
-              ) : null}
-              {proposal.reviewReason ? (
-                // The reviewer's own stated reason for approving, rejecting,
-                // or requesting revision (`DecisionProposal.reviewReason`,
-                // packages/contracts/src/case.ts) -- optional and frequently
-                // absent, so this renders nothing at all rather than an
-                // empty region when there is none (product.md "Empty
-                // regions"). "You said:" attributes it to the human, not
-                // Sift -- the same voice `decision-orientation.ts`'s
-                // `latestChangeOf` already uses for the person's own words.
-                // `break-words` (not `whitespace-nowrap`) is what keeps a
-                // long reason (up to 2000 schema-valid characters) wrapping
-                // inside the card instead of overflowing at the 390/430px
-                // canonical widths.
-                <p
-                  data-testid="approval-card-review-reason"
-                  className="whitespace-pre-wrap break-words text-[length:var(--font-size-sm)] text-[var(--color-ink-secondary)]"
-                >
-                  You said: {proposal.reviewReason}
                 </p>
               ) : null}
             </div>

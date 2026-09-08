@@ -188,7 +188,7 @@
  * Those two pull in opposite directions -- three create actions cannot each
  * take a slot in a row that is already tight at 390px -- and a menu is what
  * resolves them, which is also what was asked for by name. The single "Add
- * option" button is now a `DropdownMenu` trigger ("Add or adjust") over
+ * option" button is now a `DropdownMenu` trigger ("Add to this case") over
  * three items: **Add option**, **Add a note**, and **Add a question**. Each
  * item calls a plain callback prop, exactly as the button did; this component
  * still owns no state and still fetches nothing. The pane gets *shorter*
@@ -222,10 +222,8 @@ import {
   LibraryIcon,
   NotebookPenIcon,
   PlusIcon,
-  ArrowLeftIcon,
   RotateCcwIcon,
   SearchCheckIcon,
-  SlidersHorizontalIcon,
   TerminalIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -234,7 +232,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
@@ -261,18 +258,6 @@ export interface WorkspaceAppBarProps {
   onAddNote: () => void;
   /** The create menu's third item -- opens the caller's "add a question" surface (formerly a bottom-of-stack disclosure row). */
   onAddConcern: () => void;
-  /**
-   * Opens the weights surface. Optional, and rendered as nothing rather
-   * than as a disabled control when a caller has not wired it -- the same
-   * rule `onOpenReferenceLibrary` follows.
-   *
-   * It lives in the bar rather than in `WorkspaceSidebar`'s Priorities
-   * region because the sidebar does not render at all in the narrow pane,
-   * and the narrow pane is where this product is actually used.
-   */
-  onAdjustPriorities?: (() => void) | undefined;
-  /** Returns to the demo launcher so a different decision can be started. Omitted (and the item unrendered) when there is nowhere to go back to. */
-  onSwitchDecision?: (() => void) | undefined;
   onReviewFindings: () => void;
   onOpenDeveloperView: () => void;
   /** Omitted entirely (not merely disabled) when the caller has no reset affordance to offer -- matches `docs/specs/product.md`'s "Empty regions" rule against rendering a control with nothing behind it. */
@@ -325,9 +310,7 @@ const TOUCH_TARGET_ICON = `${TOUCH_TARGET} min-w-[var(--size-touch-target-min)]`
  * requires the visible text to be CONTAINED in the accessible name, which
  * "Add" is.
  */
-const CREATE_MENU_LABEL = 'Add or adjust';
-const PRIORITIES_LABEL = 'Adjust priorities';
-const SWITCH_DECISION_LABEL = 'Start a different decision';
+const CREATE_MENU_LABEL = 'Add to this case';
 
 /**
  * A pointer-only label for a control that is currently rendering as a bare
@@ -382,8 +365,6 @@ export function WorkspaceAppBar({
   onAddOption,
   onAddNote,
   onAddConcern,
-  onAdjustPriorities,
-  onSwitchDecision,
   onReviewFindings,
   onOpenDeveloperView,
   onResetDemo,
@@ -416,60 +397,12 @@ export function WorkspaceAppBar({
       className="sticky top-0 z-[var(--z-sticky)] flex flex-wrap items-center justify-between gap-[var(--space-3)] rounded-[var(--radius-lg)] bg-card p-[var(--space-3)] shadow-[var(--shadow-soft)]"
     >
       <div className="flex min-w-0 flex-col gap-[var(--space-1)]">
-        {/* The symbol, beside the case title, as the workspace's only
-            persistent statement of whose software this is. Sift's canonical
-            surface is a pane docked inside somebody else's product, where
-            there is no browser chrome, no tab strip and no page header to
-            supply that -- the case title names the decision, and nothing
-            names the tool.
-
-            Measured before it was added rather than after, because this row
-            is genuinely tight (see fix 2 above). At 390px the bar already
-            wraps into two rows -- identity above, toolbar below -- and the
-            identity row uses 156 of the 358px available to it. A 24px mark
-            plus a `--space-2` gap grows that row to ~188px and leaves the
-            bar's height, the toolbar's row and the title's own truncation
-            point unchanged; nothing moves and no control loses its place.
-
-            `shrink-0` next to the title's existing `min-w-0 truncate` is
-            what keeps that true for a long title: the title absorbs the
-            squeeze by truncating, exactly as it does today, instead of
-            crushing the mark.
-
-            The one-colour `sift-mark.svg` (`symbol-green`), not the
-            multi-tone `symbol-primary`, and not `symbol-core`:
-            docs/brand/BRAND-GUIDE.md "Small sizes" calls for the one-colour
-            symbol below ~48px, and `symbol-core-*` -- which the same section
-            recommends below ~64px -- turns out to be a single-path master
-            that renders as a bare crescent rather than a legible S, so it is
-            not usable in the product as exported. 24px (`--space-6`) is
-            where the particle field was still reading cleanly when the
-            variants were rendered and inspected side by side.
-
-            `alt=""`: the `<h1>` beside it is the accessible name of this
-            banner, and it names the case, which is what someone arriving
-            here needs. The product is already named by the document title.
-            A branded image announcing "Sift" ahead of every case title is
-            noise a sighted user can skip and a screen-reader user cannot.
-
-            `width`/`height` are the viewBox's, for aspect ratio before load
-            (`h-[...] w-auto` sets the real size) -- see `DemoLauncher`. */}
-        <div className="flex min-w-0 items-center gap-[var(--space-2)]">
-          <img
-            src="/brand/sift-mark.svg"
-            alt=""
-            width={290}
-            height={277}
-            data-testid="workspace-app-bar-brand-mark"
-            className="h-[var(--space-6)] w-auto shrink-0"
-          />
-          <h1
-            data-testid="workspace-app-bar-title"
-            className="min-w-0 truncate text-[length:var(--font-size-lg)]"
-          >
-            {title}
-          </h1>
-        </div>
+        <h1
+          data-testid="workspace-app-bar-title"
+          className="min-w-0 truncate text-[length:var(--font-size-lg)]"
+        >
+          {title}
+        </h1>
         <div className="flex flex-wrap items-center gap-[var(--space-2)]">
           <Badge
             data-testid="workspace-app-bar-connection-status"
@@ -569,46 +502,6 @@ export function WorkspaceAppBar({
                 <CircleQuestionMarkIcon aria-hidden="true" />
                 Add a question
               </DropdownMenuItem>
-              {/* Not a create action, which is why the menu is named "Add or
-                  adjust" rather than "Add to this case". It lives here
-                  because the bar is genuinely full at 390px -- see the
-                  header's note on crowding -- and a seventh always-mounted
-                  icon overflowed the pane by 34px. This is a new capability
-                  arriving behind a menu, not an existing one being moved
-                  there, so ADR 0008's "no capability moves behind a menu"
-                  rule is untouched. */}
-              {onAdjustPriorities !== undefined ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    data-testid="workspace-app-bar-priorities"
-                    onSelect={onAdjustPriorities}
-                  >
-                    <SlidersHorizontalIcon aria-hidden="true" />
-                    {PRIORITIES_LABEL}
-                  </DropdownMenuItem>
-                </>
-              ) : null}
-              {/* Same placement reasoning as Adjust priorities directly
-                  above: a new capability arriving behind an already-full
-                  bar, not an existing one being demoted, so ADR 0008's "no
-                  capability moves behind a menu" rule is untouched.
-                  Without it there is no way out of a case at all -- "Reset
-                  demo" restarts the same pack, and the launcher only renders
-                  when no case is active, whose id survives reloads in
-                  localStorage. */}
-              {onSwitchDecision !== undefined ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    data-testid="workspace-app-bar-switch-decision"
-                    onSelect={onSwitchDecision}
-                  >
-                    <ArrowLeftIcon aria-hidden="true" />
-                    {SWITCH_DECISION_LABEL}
-                  </DropdownMenuItem>
-                </>
-              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
 

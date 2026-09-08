@@ -1,7 +1,7 @@
 # Completion report — Generic Decision Workspace (2026-08-30)
 
 Covers the work driven by `docs/change-sets/2026-08-30-generic-decision-workspace.md` and planned in
-`docs/planning/plans/2026-08-30-generic-decision-workspace.md`. The earlier build's report is
+`docs/superpowers/plans/2026-08-30-generic-decision-workspace.md`. The earlier build's report is
 `docs/completion-report.md` and remains accurate for the work it describes; this is the follow-on.
 
 **Final verified git SHA:** `0b82c6b6cdfa7da1c6a0255b7607c6021af2bc7f` — the tree the passing
@@ -19,7 +19,7 @@ generic decision workspace where ChatGPT is a first-class collaborator.
 The pre-implementation audit (`docs/audits/2026-08-30-...`) found the engine sound and the
 presentation broken. Its headline finding was a process failure, not a coding one: `product.md`
 specified **nine** UI regions, **eleven** shipped, and two of those appeared in no spec and no ADR.
-docs/engineering-principles.md's rule — *specs are updated before acceptance behavior changes* — had been violated, and
+CLAUDE.md's rule — *specs are updated before acceptance behavior changes* — had been violated, and
 that is what let the interface drift until the answer sat ~950px down a 2040px page.
 
 ---
@@ -160,7 +160,7 @@ against a stale server is worse than no baseline at all.
 | Service | `pax-hackathon` (`e98affa7-2756-4f5a-bbae-d3e84a06ced7`) |
 | Environment | `production` (`9e0c95c9-2f33-431a-93c3-1a592a069d00`) |
 | Deployment | `50517e5b-1f11-4431-8b52-a13bbc18d7b3`, instance `RUNNING` |
-| Public URL | https://sift-hackathon-production.up.railway.app |
+| Public URL | https://pax-hackathon-production.up.railway.app |
 | Volume mount | `/data` |
 
 The `pax-` prefix is deliberate and must not be "corrected": these are live identifiers already

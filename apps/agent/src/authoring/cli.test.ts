@@ -108,7 +108,7 @@ describe('runPackAuthorCli', () => {
         draftRoot,
         '--publish',
         '--confirmed-by',
-        'pack-author@example.com',
+        'jordan.allen.tech@gmail.com',
       ],
       { io, env: { SIFT_AUTHORING_ENABLED: 'true' }, registry, clock: FIXED_CLOCK },
     );

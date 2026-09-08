@@ -48,7 +48,7 @@
  *     does not exist yet; populating it (repository/deploy/video URLs,
  *     Builder ID, AgentCore identifiers) is the later, distinct "Task 14"
  *     submission-packaging work in
- *     docs/planning/plans/2026-08-26-pax-hackathon-build.md, not this
+ *     docs/superpowers/plans/2026-08-26-pax-hackathon-build.md, not this
  *     tooling task.
  */
 import { execFileSync } from 'node:child_process';
@@ -370,11 +370,7 @@ export function checkFixtureAttribution(rootDir: string): SubmissionCheckResult 
 }
 
 // --- 7. Deterministic scenario reports present and passed ---
-export const HERO_SCENARIO_IDS = [
-  'car-purchase',
-  'home-energy-guardian',
-  'bid-comparison',
-] as const;
+export const HERO_SCENARIO_IDS = ['car-purchase', 'home-energy-guardian'] as const;
 
 export function checkScenarioReport(rootDir: string, scenarioId: string): SubmissionCheckResult {
   const name = `scenario-report:${scenarioId}`;

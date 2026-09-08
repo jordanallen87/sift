@@ -5,7 +5,7 @@
  * store, and API in process") and proves every required assertion from
  * docs/specs/demos-and-submission.md "Choose Our Next Car scenario" ->
  * "Required final assertions" genuinely passes against the real causal
- * trajectory -- not a scripted final-result shortcut (docs/engineering-principles.md).
+ * trajectory -- not a scripted final-result shortcut (CLAUDE.md).
  *
  * Writes the final snapshot, event log, trajectory, and assertion report to
  * `artifacts/verification/scenarios/car-purchase/` (testing.md "Scenario
@@ -22,7 +22,7 @@ import {
 import { checkAssertion, checkAssertions } from '../../packages/scenarios/src/assertions.js';
 import { writeScenarioArtifacts } from '../../packages/scenarios/src/artifact-writer.js';
 import { runCarPurchaseScenario } from '../../apps/agent/src/runtime/car-purchase-scenario.js';
-import { REAR_FACING_SEAT_OBLIGATION_ID } from '../../apps/agent/src/runtime/scripted-beats/car-purchase.js';
+import { DOG_CRATE_FIT_OBLIGATION_ID } from '../../apps/agent/src/runtime/scripted-beats/car-purchase.js';
 import { CAR_PURCHASE_DEMO_SCENARIO } from './car-purchase.scenario.js';
 
 const SKILLS_ROOT_DIR = new URL('../../apps/agent/skills', import.meta.url).pathname;
@@ -102,51 +102,27 @@ describe('Choose Our Next Car scenario: real causal trajectory', () => {
     expect(finalCaseState.selectedOptionId).toBe('candidate-rav4');
 
     // --- "a subjective unknown becomes a test-drive question rather than an invented score" ---
-    //
-    // Three separate unknowns, and all three must survive the whole run:
-    // the pack's own `car.rear_cargo_crate_fit` and
-    // `car.driving_comfort_rating` (seeded unknown, never fabricated), plus
-    // the case's own `custom.rear_facing_seat_behind_driver` column, which
-    // nobody publishes and no specialist in this fixture can establish.
-    // The last one is the one the demo rests on: it carries real weight and
-    // stays explicitly unanswered for EVERY candidate, including the one
-    // the recommendation ends up favoring.
     for (const candidate of finalCaseState.entities) {
       const comfort = candidate.attributes['car.driving_comfort_rating'];
       const crateFit = candidate.attributes['car.rear_cargo_crate_fit'];
-      const seatFit = candidate.attributes['custom.rear_facing_seat_behind_driver'];
       expect(comfort?.status).toBe('unknown');
       expect('value' in (comfort ?? {})).toBe(false);
       expect(crateFit?.status).toBe('unknown');
       expect('value' in (crateFit ?? {})).toBe(false);
-      expect(seatFit === undefined || seatFit.status === 'unknown').toBe(true);
-      expect('value' in (seatFit ?? {})).toBe(false);
     }
-    const rearFacingSeatObligation = finalCaseState.obligations.find(
-      (obligation) => obligation.id === REAR_FACING_SEAT_OBLIGATION_ID,
+    const dogCrateObligation = finalCaseState.obligations.find(
+      (obligation) => obligation.id === DOG_CRATE_FIT_OBLIGATION_ID,
     );
-    expect(rearFacingSeatObligation?.question).toMatch(/behind the driver/i);
+    expect(dogCrateObligation?.question).toMatch(/fit behind the second row/i);
 
-    // The household's own grade scale is pinned on the case, worst first, so
-    // a later run that DOES answer the question ranks against a declared
-    // ordinal scale rather than an inferred one (`scoreCase` refuses to read
-    // an order out of `allowedValues`).
-    const seatExtension = finalCaseState.caseExtensions.find(
-      (item) => item.definition.id === 'custom.rear_facing_seat_behind_driver',
-    );
-    expect(seatExtension?.definition.valueType).toBe('enum');
-    expect(seatExtension?.definition.orderedValues).toEqual([
-      'Driver seat must move forward',
-      'Fits with driver seat back',
-      'Fits with room to spare',
-    ]);
-
-    // --- "custom.rear_facing_seat_behind_driver persists as a typed case extension, creates
+    // --- "custom.dog_crate_fit persists as a typed case extension, creates
     // a case obligation, and does not change the compiled pack hash" ---
-    const extension = seatExtension;
+    const extension = finalCaseState.caseExtensions.find(
+      (item) => item.definition.id === 'custom.dog_crate_fit',
+    );
     expect(extension?.definition.confirmation).toBe('confirmed');
-    expect(extension?.linkedObligationId).toBe(REAR_FACING_SEAT_OBLIGATION_ID);
-    expect(rearFacingSeatObligation).toBeDefined();
+    expect(extension?.linkedObligationId).toBe(DOG_CRATE_FIT_OBLIGATION_ID);
+    expect(dogCrateObligation).toBeDefined();
     const packHashesSeen = new Set(
       trajectory.caseEvents
         .filter(
@@ -174,7 +150,7 @@ describe('Choose Our Next Car scenario: real causal trajectory', () => {
 
     // --- The ranking is the deterministic core's, not the model's ---
     //
-    // docs/engineering-principles.md gives the core "case state, evidence validity, readiness,
+    // CLAUDE.md gives the core "case state, evidence validity, readiness,
     // and human authority", and a ranking is a claim about a case. Until
     // `scoreCase` existed, the persisted recommendation carried
     // `confidence: 0.85` and `facts: []` -- a constant and an empty list,
@@ -206,7 +182,7 @@ describe('Choose Our Next Car scenario: real causal trajectory', () => {
 
     // --- "an unknown is never a zero", proven against real fixture data ---
     //
-    // The scenario deliberately leaves driving comfort and seat fit as
+    // The scenario deliberately leaves driving comfort and crate fit as
     // explicit unknowns (asserted above). The criteria that measure them
     // must therefore be reported as UNSCORED rather than scored zero, and
     // the resulting shortfall must show up as reduced coverage. A scorer
@@ -249,8 +225,7 @@ describe('Choose Our Next Car scenario: real causal trajectory', () => {
     //
     // Worth pinning as a scenario assertion rather than treating as an
     // accident of the fixtures: the model recommends the CR-V on grounds
-    // (driving comfort, rear-facing seat fit) that nobody has established,
-    // while the
+    // (driving comfort, crate fit) that nobody has established, while the
     // Outback leads everything that WAS measured. Silently overwriting the
     // model's pick, or silently accepting it, would each hide a real
     // disagreement between two things this product asks people to trust.

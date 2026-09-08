@@ -97,7 +97,6 @@ import {
   SetEvidenceDispositionInputSchema,
   SetOptionAttributeInputSchema,
   SetViewInputSchema,
-  CheckEnergyBillFeedInputSchema,
   StartCaseInputSchema,
   StartDemoInputSchema,
   SubmitSourceInputSchema,
@@ -115,7 +114,6 @@ import {
   type CommandOrigin,
   PRESENTATION_ONLY_ACTIVITY_DETAIL,
   type CommandReceipt,
-  type EnergyBillFeedCheckResult,
   type CompiledDecisionPack,
   type Criterion,
   type EntityRecord,
@@ -156,7 +154,6 @@ import {
   planDiscoveryResponse,
 } from '@sift/core';
 import type { PackRegistry } from '@sift/packs';
-import { loadAndEvaluateBillFeed } from '@sift/scenarios';
 import type { RunPlanRevisionCause } from '../runtime/run-plan.js';
 import type { ActivityStore } from '../store/activity-store.js';
 import type { AppendResult, CaseStore } from '../store/case-store.js';
@@ -187,7 +184,7 @@ export interface CommandServiceDeps {
    * `upsertOption` cannot be reused to seed these instead:
    * `OptionAttributeInputSchema.value` is required and the handler
    * hardcodes `status: 'asserted'`, so an entity carrying a legitimately
-   * `status: 'unknown'` attribute (no value -- docs/engineering-principles.md "never fabricate")
+   * `status: 'unknown'` attribute (no value -- CLAUDE.md "never fabricate")
    * can only be expressed as a direct `option.upserted` event, which is
    * exactly what `startDemo` appends here.
    */
@@ -402,79 +399,6 @@ export class CommandService {
       }
     }
     return this.toReceipt(commandId, result);
-  }
-
-  /**
-   * `checkEnergyBillFeed`: the deterministic Home Energy Guardian
-   * case-creation gate. Decides, from the real bill-feed arithmetic
-   * (`@sift/scenarios`'s `loadAndEvaluateBillFeed`/`evaluateBillFeed`,
-   * `bill-feed-gate.ts`, itself built on `energy-calculator.ts`'s
-   * `determineAnomaly` -- the one place the 15% "materially abnormal"
-   * threshold is defined), whether a case is opened at all -- not merely a
-   * computation that runs *inside* an already-created case.
-   *
-   * A sibling command to `startDemo`, not an overload of it: `startDemo`'s
-   * own "reset to the fixture, unconditionally" semantics for every demo
-   * (including `home-energy-guardian`) are left completely intact, and
-   * this command's result cannot be represented as a bare `CommandReceipt`
-   * -- that schema requires a non-empty `caseId`, which does not exist
-   * when the gate declines. See `EnergyBillFeedCheckResultSchema`'s own
-   * doc comment in `packages/contracts/src/commands.ts`.
-   *
-   * `billFeedId: 'anomalous'` points at the real, checked-in
-   * `current-bill.json` (42% above baseline -- always opens a case, by the
-   * same arithmetic `energy-calculator.test.ts` already proves).
-   * `billFeedId: 'normal'` points at `current-bill-normal.json` (within
-   * the default 15% threshold -- never opens a case). When the gate opens
-   * a case, it delegates the actual case creation to `this.startDemo`
-   * (identical pack resolution, seed entities, event sequence, and
-   * idempotency as the existing `home-energy-guardian` demo path) rather
-   * than duplicating that construction -- so a person who reaches an
-   * opened case through this command sees exactly the same case shape as
-   * the unconditional launcher button produces.
-   */
-  checkEnergyBillFeed(
-    commandId: string,
-    rawInput: unknown,
-  ): ServiceResult<EnergyBillFeedCheckResult> {
-    const parsed = CheckEnergyBillFeedInputSchema.safeParse(rawInput);
-    if (!parsed.success) {
-      return validationFailure(
-        'Invalid checkEnergyBillFeed input.',
-        formatZodIssues(parsed.error.issues),
-      );
-    }
-    const input = parsed.data;
-
-    // Pure and deterministic (no side effects) -- safe to recompute on
-    // every call, including an idempotent retry of a "no case opened"
-    // result, without needing its own idempotency record.
-    const fixtureName = input.billFeedId === 'anomalous' ? 'current-bill' : 'current-bill-normal';
-    const decision = loadAndEvaluateBillFeed(fixtureName);
-
-    if (!decision.caseShouldOpen) {
-      return ok({
-        commandId,
-        billFeedId: input.billFeedId,
-        caseOpened: false,
-        percentAboveBaseline: decision.percentAboveBaseline,
-        thresholdPercent: decision.thresholdPercent,
-        reason: decision.reason,
-      });
-    }
-
-    const startResult = this.startDemo(commandId, { demoId: 'home-energy-guardian' });
-    if (startResult.status !== 'ok') return startResult;
-
-    return ok({
-      commandId,
-      billFeedId: input.billFeedId,
-      caseOpened: true,
-      percentAboveBaseline: decision.percentAboveBaseline,
-      thresholdPercent: decision.thresholdPercent,
-      reason: decision.reason,
-      receipt: startResult.value,
-    });
   }
 
   /**
@@ -932,7 +856,7 @@ export class CommandService {
    * `setOptionAttribute`/`updateCriteria`/`setEvidenceDisposition`/
    * `reviewCaseExtension`) never appends a `recommendation.invalidated`
    * event either. This absence is the concrete mechanism behind "notes
-   * never auto-promote to evidence" (docs/engineering-principles.md's deterministic-core
+   * never auto-promote to evidence" (CLAUDE.md's deterministic-core
    * ownership of evidence validity/readiness/human authority): adding a
    * note can never satisfy an obligation, invalidate a `ready`
    * recommendation, or appear as a `Source`, because the command that
@@ -970,17 +894,7 @@ export class CommandService {
     const duplicate = this.checkIdempotent(commandId);
     if (duplicate !== undefined) return duplicate;
 
-    // Sequence-independent (see `loadForIndependentMutation`). A note is the
-    // author's own observation: it satisfies no obligation, invalidates no
-    // recommendation, links to no evidence, and -- as this method's own
-    // comment above already states in full -- has "no code path that reads or
-    // writes any of those fields". There is therefore no case state a
-    // bystander event could change that would make the note the person just
-    // wrote the wrong note. Its only references to the case, `optionIds` and
-    // `obligationId`, are validated immediately below against the snapshot
-    // handed back here, which is the CURRENT one -- so accepting a caller
-    // that is behind cannot let a dangling id through.
-    const loaded = this.loadForIndependentMutation(input.caseId, input.expectedSequence);
+    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
     if (loaded.status !== 'ok') return loaded;
     const snapshot = loaded.value;
 
@@ -1027,11 +941,7 @@ export class CommandService {
       },
     ];
 
-    // `snapshot.eventSequence`, not `input.expectedSequence`: the caller is
-    // allowed to be behind here, and the event above is numbered off the
-    // current snapshot. `append` still does its own atomic check inside the
-    // transaction, so a genuine interleave is still refused.
-    const result = this.deps.caseStore.append(input.caseId, events, snapshot.eventSequence, {
+    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
       idempotency: { commandId, commandName: 'addNote' },
     });
     if (result.status === 'applied') {
@@ -1276,9 +1186,6 @@ export class CommandService {
       ...(input.definition.unit !== undefined ? { unit: input.definition.unit } : {}),
       ...(input.definition.allowedValues !== undefined
         ? { allowedValues: input.definition.allowedValues }
-        : {}),
-      ...(input.definition.orderedValues !== undefined
-        ? { orderedValues: input.definition.orderedValues }
         : {}),
     };
 
@@ -2017,47 +1924,6 @@ export class CommandService {
       });
     }
 
-    // Marking the recommendation stale says the old answer is wrong. It does
-    // not, on its own, give anything the ability to produce a new one:
-    // `selectNextObligation` only considers `open` obligations, so a case
-    // whose obligations were all satisfied had nothing left to investigate
-    // and a re-run failed outright with "No open obligation remains to
-    // select."
-    //
-    // A criteria change does not invalidate a *measurement* -- how much of
-    // the bill came from a tariff change is unaffected by how much the
-    // household now cares about long-term waste. It does invalidate an
-    // answer that was a synthesis over those criteria, which is exactly what
-    // `dependsOnCriteria` marks. Those obligations, and only those, reopen,
-    // so the re-run re-synthesizes against the new weights while every
-    // measured finding stands.
-    //
-    // `attemptsUsed` is deliberately NOT reset: reopening restores the
-    // ability to try again within the budget the pack already granted, and
-    // resetting it would let repeated reweights loop forever.
-    const reopenedObligations = !invalidatesRecommendation
-      ? []
-      : snapshot.obligations.filter(
-          (obligation) =>
-            obligation.dependsOnCriteria === true &&
-            (obligation.status === 'satisfied' || obligation.status === 'accepted_uncertainty') &&
-            obligation.attemptsUsed < obligation.maxAttempts,
-        );
-    for (const obligation of reopenedObligations) {
-      nextSequence += 1;
-      events.push({
-        eventId: this.deps.idGenerator.next('event'),
-        caseId: input.caseId,
-        sequence: nextSequence,
-        timestamp: now,
-        commandId,
-        type: 'obligation.updated',
-        payload: {
-          obligation: { ...obligation, status: 'open', updatedAt: now },
-        },
-      });
-    }
-
     const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
       idempotency: { commandId, commandName: 'updateCriteria' },
     });
@@ -2703,7 +2569,7 @@ export class CommandService {
    *    the weakest level that still requires an actual source --
    *    appropriate for a concern the pack never anticipated and has no
    *    specialist wired to investigate.
-   *  - `maxAttempts: 2`: docs/engineering-principles.md's own canonical GoalLoop bound
+   *  - `maxAttempts: 2`: CLAUDE.md's own canonical GoalLoop bound
    *    ("GoalLoop with a callable recommendation validator and
    *    `maxAttempts: 2`"), and the same value every existing
    *    case-extension template in this codebase already uses
@@ -2759,81 +2625,6 @@ export class CommandService {
     if (snapshot.eventSequence !== expectedSequence) {
       return conflict(
         'The case has advanced since expectedSequence was read; refresh and retry.',
-        expectedSequence,
-        snapshot.eventSequence,
-        snapshot,
-      );
-    }
-    return ok(snapshot);
-  }
-
-  /**
-   * `loadForMutation`'s counterpart for the few commands whose effect no other
-   * event can invalidate. Named for what it asserts, and used by exactly two
-   * commands today (`addNote`, `setCandidateDisposition`) -- each with its own
-   * justification recorded at its call site.
-   *
-   * --- Why a second rule exists at all ---
-   *
-   * `expectedSequence` "exists so a mutation can be rejected when it was
-   * written against a stale view" (docs/specs/webmcp.md "Cancellation and
-   * concurrency"). `loadForMutation` implements that as case-wide equality,
-   * which conflates two different things: a competing WRITE to what this
-   * command is changing, and a BYSTANDER event that merely moved the case's
-   * counter. That conflation was harmless while a run drained its events in
-   * one burst at the end. It is not harmless now: the runtime streams events
-   * as the graph progresses, so an ordinary investigation advances the case
-   * steadily for several seconds, and a person who presses a button during
-   * that window gets a hard refusal caused by work they were only watching.
-   *
-   * The client cannot close this window, and it is worth being precise about
-   * why rather than adding retries until it looks closed. A browser learns
-   * that the case moved from the SSE activity stream, whose `sequence` is "a
-   * wholly separate monotonic counter from `CaseEvent.sequence`"
-   * (`store/activity-store.ts`), so it must re-read the canonical snapshot to
-   * learn the real number -- and between that read and the command arriving
-   * here, the run can append again. `apps/web`'s `resolveEventSequence`
-   * narrows that window to network latency and removes the great majority of
-   * these refusals; it cannot remove the last of them, because no read
-   * performed before a request can describe the state at the moment the
-   * request lands. A guard that a correct client cannot satisfy is not
-   * protecting anything -- it is just intermittently failing.
-   *
-   * --- What this rule actually permits ---
-   *
-   * Only being BEHIND. A caller may present a sequence the case has already
-   * passed; it may never present one the case has not reached, which is not a
-   * stale read but a wrong one (a fabricated sequence, or a request aimed at a
-   * different case's history), and still conflicts.
-   *
-   * Everything else stays exactly as strict as it was. This is not a relaxed
-   * default: every other command still goes through `loadForMutation`, and
-   * adding a command here requires showing that its effect depends on no case
-   * state a bystander event could change. A command that reads the case to
-   * decide what to write -- `reviewProposal` acting on a proposal,
-   * `setEvidenceDisposition` judging a specific finding, `updateCriteria`
-   * reweighting a set it just read, `upsertOption`/`setOptionAttribute`
-   * writing a field another writer may also be writing -- does not qualify
-   * and must keep the strict check.
-   *
-   * The returned snapshot is the CURRENT one, so the handler validates and
-   * derives against present state; its caller must append at
-   * `snapshot.eventSequence` rather than at the caller's own stale
-   * `expectedSequence`. `CaseStore.append` still performs its own atomic
-   * check-and-write inside the transaction, so a genuine interleaving between
-   * this load and that append is still refused.
-   */
-  private loadForIndependentMutation(
-    caseId: string,
-    expectedSequence: number,
-  ): ServiceResult<CaseState> {
-    const snapshot = this.deps.caseStore.load(caseId);
-    if (snapshot === undefined) {
-      return notFound(`Case "${caseId}" was not found.`);
-    }
-    if (expectedSequence > snapshot.eventSequence) {
-      return conflict(
-        'expectedSequence is ahead of this case; refresh and retry.',
         expectedSequence,
         snapshot.eventSequence,
         snapshot,
@@ -3231,26 +3022,7 @@ export class CommandService {
     const duplicate = this.checkIdempotent(commandId);
     if (duplicate !== undefined) return duplicate;
 
-    // Sequence-independent (see `loadForIndependentMutation`), and the one
-    // command where the strict rule was actively harmful: Quick Pick triage
-    // is what a person does WHILE an investigation streams, and a refusal
-    // here is swallowed by design on the client (`App.tsx`'s
-    // `handleQuickPickDisposition`), so the strict check turned a bystander
-    // event into a judgment that silently vanished.
-    //
-    // It qualifies on its own terms, not merely because failing was ugly.
-    // The command carries the COMPLETE desired value of one entity's own
-    // disposition field rather than a delta, so nothing about it is computed
-    // from a view that could have gone stale; disposition is last-writer-wins
-    // per candidate by construction (undo is expressed as another forward
-    // command, `unreviewed`, precisely so the history of what someone
-    // considered survives); and a person saying "keep looking at this one" is
-    // an act of authority over their own triage, not a claim about facts that
-    // new evidence could contradict. `previousDisposition` below is derived
-    // from the snapshot handed back here -- the CURRENT one -- so a caller
-    // that is behind produces a MORE accurate record than a stale read would,
-    // not a less accurate one.
-    const loaded = this.loadForIndependentMutation(input.caseId, input.expectedSequence);
+    const loaded = this.loadForMutation(input.caseId, input.expectedSequence);
     if (loaded.status !== 'ok') return loaded;
     const snapshot = loaded.value;
 
@@ -3285,9 +3057,7 @@ export class CommandService {
       },
     ];
 
-    // See `addNote`'s matching comment: the caller may be behind, so the
-    // append is anchored to the snapshot these events were numbered from.
-    const result = this.deps.caseStore.append(input.caseId, events, snapshot.eventSequence, {
+    const result = this.deps.caseStore.append(input.caseId, events, input.expectedSequence, {
       idempotency: { commandId, commandName: 'setCandidateDisposition' },
     });
     if (result.status === 'applied') {

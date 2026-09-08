@@ -177,50 +177,6 @@ describe('ScriptedModelProvider driving a real Strands Agent end to end', () => 
   });
 });
 
-describe('ScriptedModelProvider turn pacing', () => {
-  // Off unless asked for: every test and every release gate runs at 0, so
-  // suite runtime and determinism are untouched.
-  it('serves turns with no added latency by default', async () => {
-    const provider = new ScriptedModelProvider({ beats: { b: [{ text: 'one' }] } });
-    provider.setBeat('b');
-
-    const started = Date.now();
-    for await (const _ of provider.stream([])) {
-      // drain
-    }
-    expect(Date.now() - started).toBeLessThan(50);
-  });
-
-  it('waits the configured delay before serving a turn, so a scripted run can be watched at human speed', async () => {
-    const provider = new ScriptedModelProvider({
-      beats: { b: [{ text: 'one' }] },
-      turnDelayMs: 120,
-    });
-    provider.setBeat('b');
-
-    const started = Date.now();
-    for await (const _ of provider.stream([])) {
-      // drain
-    }
-    expect(Date.now() - started).toBeGreaterThanOrEqual(100);
-  });
-
-  it('changes nothing about what is served -- same events, same order, paced or not', async () => {
-    const turn = { text: 'hello', toolCalls: [{ name: 'bill-reader', input: {} }] };
-    const collect = async (turnDelayMs: number): Promise<string[]> => {
-      const provider = new ScriptedModelProvider({ beats: { b: [turn] }, turnDelayMs });
-      provider.setBeat('b');
-      const seen: string[] = [];
-      for await (const event of provider.stream([])) {
-        seen.push(Object.keys(event)[0] ?? 'unknown');
-      }
-      return seen;
-    };
-
-    expect(await collect(30)).toEqual(await collect(0));
-  });
-});
-
 describe('createBedrockModel / resolveModelProvider', () => {
   it('createBedrockModel builds a real BedrockModel from Sift config', () => {
     const model = createBedrockModel({
