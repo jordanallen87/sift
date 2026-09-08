@@ -300,3 +300,153 @@ Ordered. Stop wherever the clock says.
 - Do not touch the energy or car trajectories. They are green, baselined, and the versatility beat.
 - Do not spend a day on the Everyday-vs-Professional question again. Build Standing Watch; it
   makes the pack strong in either track and strongest for the Grand Prize.
+
+---
+
+# Addendum, 2026-09-07 evening — research before building
+
+Three pushes from the user, answered against the installed SDK (`@strands-agents/sdk@1.14.0`,
+read from `node_modules`, not from memory) and against our own runtime.
+
+## A. Listener or loop?
+
+Both, unified as **triggers** — and the distinction is real, not semantic:
+
+| Change arrives by… | Right primitive | Example |
+| --- | --- | --- |
+| **Push** — something happens and tells us | listener on a feed event | a revised bid is submitted; a registry status changes |
+| **Time** — nothing happens, and that is the change | scheduler with an injectable clock | a 30-day price hold lapses; a bid goes stale |
+| **Query** — the source does not push and we must ask | scheduler that polls, cheaply and rarely | a licence registry with no webhook |
+
+A pack declares triggers; the runtime owns one dispatcher that feeds all three into the same
+place. In fixture mode the feed is a time-indexed fixture and the clock is fake in tests; the
+dispatcher is real.
+
+**What our runtime already has.** `RunService.requestInvestigation` starts the engine with
+`void runInSpanScope(runId, () => engine.trigger(...))` — runs are **already detached** from the
+request. Background execution is not new work; a non-click caller of `requestInvestigation` is.
+
+**What it does not have — four verified gaps that become bugs the moment triggers exist:**
+
+1. **No per-case run guard.** Nothing prevents two runs on one case interleaving. A person
+   clicking while a watch fires is the first thing that will happen on camera. Needs a per-case
+   queue (serialize) with a global concurrency cap (numerous agents, bounded).
+2. **SSE is per-case only** (`/api/cases/:caseId/events`). A case list saying "3 watched, 1 needs
+   you" needs a global stream or a `/api/cases` summary endpoint — neither exists.
+3. **No read marker.** "Since you were away" needs to know what the person has seen. Nothing
+   records it.
+4. **Two identical `Clock` interfaces** in `packages/core` (`attributes.ts`, `evidence.ts`). Harmless
+   today; the scheduler should use one, so unify first.
+
+## B. Strands features that fit Standing Watch — read from the SDK, not assumed
+
+We use `Agent`, `Swarm`, `Graph`, hooks, `AgentSkills`, `ContextInjector`, `GoalLoop`, sessions,
+OTel, structured output. The SDK ships considerably more that we have never touched, and several
+pieces are almost purpose-built for this:
+
+| SDK export | What it is | Where it lands |
+| --- | --- | --- |
+| **`vended-interventions/hitl`** — `HumanInTheLoop` | Pauses before a tool call; **defaults to interrupt/resume "for stateless deployments"**: the agent stops with `stopReason: 'interrupt'`, the caller later calls `agent.resume(interruptResponses)`. Has `allowedTools`, trust-for-session, and an **LLM risk classifier** (`createLlmRiskClassifier`). | **The background agent asks a human and waits.** A watch fires, work runs, `propose_award` is reached, the agent interrupts, the snapshot persists, the pane shows the pending ask, the person answers hours later, the run resumes. This is the single strongest Strands beat available to us and we have never called it. Our `ConsequenceGuard` decides *which* tools are consequential; HITL becomes the *mechanism*. |
+| **`vended-interventions/cedar`** — `CedarAuthorization` | Tool authorization from **Cedar policies** (AWS's policy language), with schema generation from tool definitions, a `principalResolver` that is **fail-closed** ("return `undefined` to deny"), and session context (`hour_utc`, `call_count`). | The `Deny` beat becomes **policy as data**: "price-analyst may not call license-lookup" written in Cedar, evaluated by the SDK. Background agents get a tighter principal than foreground ones — the same tool, different policy, because nobody is watching. For an AWS judge this is unusually legible. |
+| **`vended-interventions/steering`** — `LLMSteeringHandler` + `SteeringContextProvider` | Just-in-time guidance on `beforeToolCall`; providers "track agent activity and supply context data"; default provider is a `ToolLedgerProvider`. | **The triage mechanism, vended.** A `FeedDeltaProvider` supplies "what changed since the last run"; the handler decides whether the change is material enough to proceed. This is the subjective judgment the user described, in the SDK's own shape — and it stays a *steering* decision, never an *authority* one. |
+| **`memory` — `MemoryManager`** plugin + `vended-memory-stores/*` | Cross-session memory: `search_memory`/`add_memory` tools, an injection middleware that folds retrieved memory into each model call, OTel spans per operation, pluggable stores (file, test, Bedrock Knowledge Base). | "What the person has already seen and decided" as agent memory rather than a hand-built context blob. The digest note describes only the delta because the agent *remembers* the baseline. Bedrock Knowledge Base as the store is an AgentCore-shaped upgrade path. |
+| **`a2a`** — `A2AServer`, `A2AAgent`, `A2AExecutor`, `a2a/express` | Agent-to-Agent protocol: expose an agent as a network service (agent card, task store, `maxContexts`), call remote agents as if local. **Marked experimental by the SDK.** | "Numerous agents in the background" made literal: the watch/triage agent runs as its own A2A service, addressable, with its own task store — the Swarm calls it through `A2AAgent`. Also exactly the shape an AgentCore deployment wants. Prove it works with the scripted `Model` before committing; it may not. |
+| **`vended-plugins/context-offloader`** | Offloads oversized tool results to storage, leaves a preview + reference. | Real bid documents are long. Not a demo beat; a correctness one if we ever ingest real PDFs. |
+| **`storage`, `storage/search`, `session/s3-storage`** | Unified byte storage used by sessions, memory, offloading; keyword search default. | One `Storage` for snapshots, memory, and offloaded documents; S3 when deployed. |
+
+**Verified today:** nothing in `apps/agent` handles `stopReason: 'interrupt'` or calls `resume()`.
+A `SessionManager` is used in the energy scenario runtime. So interrupt/resume is genuinely
+unexplored and genuinely available.
+
+**First spike, before any build:** a 100-line test that runs a scripted-`Model` agent with
+`HumanInTheLoop` on one tool, asserts `stopReason === 'interrupt'`, persists the session,
+restores it in a fresh process, calls `resume()`, and asserts the tool then executes. If that
+passes, Standing Watch's human boundary is built on the SDK's own primitive. If it fails against
+the scripted provider, we know on day one.
+
+## C. Features only an agent can do
+
+The user's push: surface what is *only* possible because of agents, or would take a person
+forever. Ranked by how honestly we can demonstrate it:
+
+1. **Vigilance across many cases at once.** Five open jobs, fifteen bids, each with three triggers
+   — a human cannot watch that; a person does not even try. A case list with live "watching /
+   needs you" state, several watches firing in one demo, is the clearest agent-only capability
+   we can show, and it is deterministic to stage from fixtures.
+2. **A background agent that pauses for a human and resumes later** (HITL interrupt/resume).
+   Software that *waits* for you, with the work already done, is not something a spreadsheet
+   does.
+3. **Adversarial self-verification** — the source challenger re-deriving claims against sources.
+   Already exists; a human never re-checks their own comparison.
+4. **Scope normalization across unstructured bids.** Three bids, eight items, exclusions,
+   allowances, plug numbers — an hour of careful reading per job, done in seconds *with the work
+   shown*. **Honesty note:** in fixture mode the extraction is canned; the *diffing and
+   normalization* are real deterministic tools. Show extraction as agent work only if the Bedrock
+   path is wired and a real document is read on camera.
+5. **The delta note.** "Cedar revised its bid; permits are now priced; the ranking flipped back;
+   nothing else changed." Written by the model from memory + feed delta, validated by GoalLoop to
+   cite the changed document. Summarizing *what changed and why it matters* across sources is the
+   canonical agent task.
+6. **Sensitivity.** Deterministic, but nobody does it by hand: "which single fact flips this?"
+
+Things that are *not* agent-only and should not be pitched as such: the arithmetic, the ranking,
+the criteria reweight. Those are the deterministic core, and their honesty is the point.
+
+## D. Why not do most of it — and how to keep it coherent
+
+Most items are S. With parallel agents and seven days, most are buildable. The constraint is not
+typing speed; it is **coherence** and **verification cost** — every UI change means six-viewport
+baselines inspected by eye, every runtime change means the scenario and mutation gates, and the
+tree cannot be committed under agents mid-write.
+
+The way to do most of it without it reading as a feature pile is one spine:
+
+> **A decision is not a snapshot. It is a living case with unknowns, and the agent's job is to
+> keep it honest over time.**
+
+Every feature is then one of five moves on that spine:
+
+| Move | Features |
+| --- | --- |
+| The **world** resolves an unknown | Standing Watch (triggers, triage, bounded work, HITL pause) |
+| The **person** resolves an unknown | Plug-number sheet (3.1); clear-a-finding (3.4) |
+| The agent says **which unknown matters most** | Sensitivity (3.2) — which is also the watch list |
+| The UI shows **where unknowns live and what changed** | Scope matrix (3.3); freshness + digest; case list |
+| The case produces its **record** | Decision memo (3.5) |
+
+Underneath, infrastructure that makes the above more real but is not a feature of its own:
+Cedar for tool policy, MemoryManager for what-the-person-has-seen, A2A for the background agent
+as a service, Bedrock/AgentCore if credentials appear. **Cut from the coherent set:** pack
+routing (3.7) and second-pack-in-an-hour (3.10) — both true, both a different story.
+
+**Sequencing for parallel agents, with the collision rules learned this session** (no
+`git add -A` while agents run; kill 8080 before any Playwright run; open every regenerated
+baseline):
+
+1. **Day 1 — spikes, in parallel, no product code:** HITL interrupt/resume with the scripted
+   Model; Cedar policy evaluating the existing Deny case; A2A server + client with a scripted
+   agent. Each returns pass/fail with evidence. Decide the mechanism set from results, not hopes.
+2. **Day 2 — foundations, serialized because they touch shared files:** unify `Clock`; per-case
+   run queue with a global cap; `/api/cases` summary + a global event stream; read markers.
+3. **Days 3–5 — features in parallel, one agent each, disjoint files:** trigger contracts +
+   dispatcher + fixtures; plug-number sheet; sensitivity in `scoring.ts`; scope matrix; case list
+   + digest + freshness; decision memo. Each lands with its own tests. Integration happens on the
+   bid pack only; energy and car stay untouched.
+4. **Day 6 — the licence-status watch, HITL pause, and the full journey e2e.** The flip-back beat.
+5. **Day 7 — verify, redeploy, record.**
+
+Real-time surfacing costs nothing extra: watch events are runtime events; they project into the
+same activity stream the pane already tails, and the dev view already live-tails at 400 ms. The
+only new plumbing is the global stream for the case list.
+
+## E. Additional gaps found during this research
+
+15. **No per-case run guard** (A.1). Latent today; a real bug once anything other than a click
+    can start a run.
+16. **No `/api/cases` list endpoint and no global event stream** (A.2).
+17. **No read marker** (A.3).
+18. **Duplicate `Clock` interfaces** in core (A.4).
+19. **Interrupt/resume never exercised** — the SDK's stateless human-in-the-loop mechanism is
+    unused, while we hand-rolled a confirmation guard. Not wrong; a missed opportunity.
+20. **Cedar unused** — the AWS policy language ships in the SDK we already depend on, and our
+    Deny beat is a hand-written allow-list.
